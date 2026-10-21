@@ -6,6 +6,7 @@ import { SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core/constants/featur
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { matchesCommandQuery, splitTextByQueryMatches } from '@/components/command-palette-search';
+import { SettingsConfigNotices } from '@/components/settings/SettingsConfigNotices';
 import { SettingsDialogBodyLazy } from '@/components/settings/SettingsDialogBodyLazy';
 import { SettingsDialogErrorBoundary } from '@/components/settings/SettingsDialogErrorBoundary';
 import { UPDATE_CHECKING_NOTICE_ID } from '@/components/UpdateNotices.shared';
@@ -479,7 +480,9 @@ function SettingsDialogFrame({
         onEscapeKeyDown={(event) => {
           if (
             event.target instanceof Element &&
-            event.target.closest('[data-slot="combobox-chip-input"][aria-expanded="true"]')
+            event.target.closest(
+              '[data-slot="combobox-chip-input"][aria-expanded="true"], [data-slot="doc-change-notice"]',
+            )
           ) {
             event.preventDefault();
           }
@@ -507,6 +510,7 @@ function SettingsDialogFrame({
           // biome-ignore lint/a11y/noNoninteractiveTabindex: this scrollable content section must be focusable so keyboard users can scroll long settings pages.
           tabIndex={0}
         >
+          <SettingsConfigNotices onDismissFocus={() => contentRef.current?.focus()} />
           <SettingsDialogErrorBoundary key={shownId}>
             <Suspense fallback={<SettingsContentSkeleton />}>
               <SettingsDialogBodyLazy

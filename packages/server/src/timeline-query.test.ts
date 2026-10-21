@@ -26,6 +26,7 @@ import {
   parkBranch,
   SERVICE_WRITER,
   type ShadowHandle,
+  saveInMemoryCheckpoint,
   saveVersion,
   type WriterIdentity,
 } from './shadow-repo';
@@ -474,6 +475,30 @@ describe('getDocumentHistory', () => {
       'content/docs',
     );
     expect(personal.entries).toHaveLength(0);
+  });
+
+  test('lists the history entries of a global skill, held in the open project shadow repo', async () => {
+    const { shadow } = await setup();
+    const docName = '__skill__/global/my-skill';
+    const sha = await saveInMemoryCheckpoint(shadow, 'content/docs', {
+      kind: 'external-change-both-kept',
+      docName,
+      contents: '# My Skill outside\n',
+      label: 'Outside version before both versions were kept',
+      metadata: { side: 'theirs', keptBlocks: 1 },
+    });
+
+    const all = await getDocumentHistory(shadow, { docName }, 'content/docs');
+    expect(all.entries.map((e) => e.sha)).toEqual([sha]);
+
+    const checkpoints = await getDocumentHistory(
+      shadow,
+      { docName, type: 'checkpoint' },
+      'content/docs',
+    );
+    expect(checkpoints.entries.map((e) => e.checkpoint?.kind)).toEqual([
+      'external-change-both-kept',
+    ]);
   });
 
   test('deduplicates entries that appear in multiple ref walks', async () => {

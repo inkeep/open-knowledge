@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { DiskReceiptLog } from './disk-receipts.ts';
+import { DiskReceiptLog, receiptFileIsGoneIn } from './disk-receipts.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
 import { contentHash } from './version-hash.ts';
 
@@ -172,6 +172,24 @@ describe('DiskReceiptLog', () => {
     expect(log.isRecentOwnWrite('doc', contentHash('outside\n'))).toBe(false);
     log.forget('doc');
     expect(log.isRecentOwnWrite('doc', contentHash('v9\n'))).toBe(false);
+  });
+
+  test('a receipt counts as gone only when no file the document could live in exists', () => {
+    const content = join(dir, 'content');
+    mkdirSync(join(content, 'diagrams'), { recursive: true });
+    writeFileSync(join(content, 'notes.md'), '# Notes\n');
+    writeFileSync(join(content, 'diagrams', 'flow.mmd'), 'graph TD\n');
+    writeFileSync(join(content, 'value.ts'), 'export {};\n');
+    const isGone = receiptFileIsGoneIn(content);
+
+    expect(isGone('notes')).toBe(false);
+    expect(isGone('diagrams/flow.mmd')).toBe(false);
+    expect(isGone('value.ts')).toBe(false);
+    expect(isGone('gone')).toBe(true);
+    expect(isGone('diagrams/gone.mmd')).toBe(true);
+    expect(isGone('__skill__/global/demo')).toBe(false);
+    expect(isGone('__config__/project')).toBe(false);
+    expect(isGone('../outside')).toBe(false);
   });
 
   test('pruning drops receipts whose file is gone and rewrites the log without them', () => {

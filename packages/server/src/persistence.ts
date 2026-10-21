@@ -1,5 +1,6 @@
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import type { Extension } from '@hocuspocus/server';
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
@@ -41,7 +42,13 @@ import {
   isPersistenceExcludedDoc,
   isSystemDoc,
 } from './cc1-broadcast.ts';
-import { type ConfigPersistenceCtx, loadConfigDoc, storeConfigDoc } from './config-persistence.ts';
+import {
+  type ConfigPersistenceCtx,
+  configDocAbsPath,
+  loadConfigDoc,
+  type StoreConfigDocOutcome,
+  storeConfigDoc,
+} from './config-persistence.ts';
 import type { ConflictAuthority } from './conflict-authority.ts';
 import {
   type FreezingLifecycleStatus,
@@ -66,6 +73,7 @@ import {
 import { resolveDirectoryRoot, resolveNativePath } from './directory-root.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 import type { FileObservation } from './disk-receipts.ts';
+import { displayPathFor } from './display-path.ts';
 import {
   assertNeverStorePublishOutcome,
   type DeferredStoreDiscardCause,
@@ -106,18 +114,23 @@ import {
   type ManagedArtifactCtx,
   managedArtifactContributorAttribution,
   managedArtifactTimelinePaths,
+  type StoreManagedArtifactOutcome,
   storeManagedArtifactDoc,
+  storeManagedArtifactWroteFile,
 } from './managed-artifact-persistence.ts';
 import { mdManager, schema } from './md-manager.ts';
+import type { MergeHistoryRecorder } from './merge-history.ts';
 import {
   loadMermaidDoc,
   type MermaidPersistenceCtx,
+  type StoreMermaidOutcome,
   storeMermaidDoc,
 } from './mermaid-persistence.ts';
 import {
   incrementDeferredStoreFailures,
   incrementGitAutoSaveFailure,
   incrementGitWriterCommitFailure,
+  incrementHeldSave,
   incrementManagedArtifactReconcileCheckpointCreated,
   incrementManagedArtifactReconcileDeduped,
   incrementPersistenceDeferHold,
@@ -150,6 +163,7 @@ import {
   getOrLoadRenameLogIndex,
   pendingRenameLogEntries,
 } from './rename-log.ts';
+import { type SaveHold, visibleHoldCause } from './save-hold.ts';
 import { getConvergedFragmentWitness, OBSERVER_SYNC_ORIGIN } from './server-observers.ts';
 import type { ShadowRef, WriterIdentity } from './shadow-repo.ts';
 import {
@@ -175,6 +189,66 @@ import {
 import { getMeter, setActiveSpanAttributes, withSpan } from './telemetry.ts';
 
 const log = getLogger('persistence');
+
+type StoreSettlement = SaveHold | 'resolved' | 'neutral';
+
+function assertNeverStoreOutcome(outcome: never): never {
+  throw new Error(`unhandled store outcome: ${String(outcome)}`);
+}
+
+function configSettlement(outcome: StoreConfigDocOutcome, retry: boolean): StoreSettlement {
+  if (typeof outcome === 'object') return outcome;
+  switch (outcome) {
+    case 'persisted':
+    case 'reconciled':
+    case 'reverted':
+      return 'resolved';
+    case 'no-op':
+      return retry ? 'resolved' : 'neutral';
+    case 'write-failed':
+      return 'neutral';
+    default:
+      return assertNeverStoreOutcome(outcome);
+  }
+}
+
+function managedArtifactSettlement(
+  outcome: StoreManagedArtifactOutcome,
+  retry: boolean,
+): StoreSettlement {
+  if (typeof outcome === 'object') return outcome;
+  switch (outcome) {
+    case 'persisted':
+    case 'merged':
+    case 'both-kept':
+    case 'kept-live':
+    case 'stash-fallback':
+    case 'applied':
+      return 'resolved';
+    case 'no-op':
+      return retry ? 'resolved' : 'neutral';
+    case 'unchanged':
+    case 'write-failed':
+      return 'neutral';
+    default:
+      return assertNeverStoreOutcome(outcome);
+  }
+}
+
+function enginelessSettlement(outcome: StoreMermaidOutcome, retry: boolean): StoreSettlement {
+  if (typeof outcome === 'object') return outcome;
+  switch (outcome) {
+    case 'persisted':
+    case 'kept-live':
+      return 'resolved';
+    case 'no-op':
+      return retry ? 'resolved' : 'neutral';
+    case 'write-failed':
+      return 'neutral';
+    default:
+      return assertNeverStoreOutcome(outcome);
+  }
+}
 const compareLog = getLogger('store-compare');
 
 const MAX_STORE_COMPARE_RUNS = 3;
@@ -416,6 +490,7 @@ export interface PersistenceOptions {
   lifecycleOf?: (document: Y.Doc, docName: string) => LifecycleView | null;
   ephemeral?: boolean;
   ingestDiskAtStore: StoreDiskIntake | null;
+  mergeHistory: MergeHistoryRecorder | null;
 }
 
 export function captureDocSnapshotForPersistence(document: Y.Doc): {
@@ -513,6 +588,10 @@ export interface PersistenceHandle {
   forgetObservedFile: (docName: string) => void;
   readonly configPersistenceCtx: ConfigPersistenceCtx;
   readonly managedArtifactCtx: ManagedArtifactCtx;
+  readonly mermaidPersistenceCtx: MermaidPersistenceCtx;
+  retryHeldSave: (document: Y.Doc, documentName: string) => Promise<void>;
+  isHeldSaveDue: (documentName: string) => boolean;
+  hasHeldSave: (documentName: string) => boolean;
 }
 
 export function createPersistenceExtension(options: PersistenceOptions): PersistenceHandle {
@@ -556,6 +635,8 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
     homedirOverride: options?.configHomedirOverride,
     onConfigRejected: options?.onConfigRejected,
     ephemeral,
+    agreedDisk: new Map<string, string>(),
+    history: options.mergeHistory,
   };
 
   const managedArtifactLkgCache = new Map<string, string>();
@@ -567,13 +648,23 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
     getReconciledBase: (docName) => durabilityState.getReconciledBase(docName),
     beforeReconcileDivergence: (document, docName, liveContent, diskContent) =>
       checkpointBeforeManagedArtifactReconcile(document, docName, liveContent, diskContent),
+    history: options.mergeHistory,
   };
 
   const mermaidLkgCache = new Map<string, string>();
   const mermaidPersistenceCtx: MermaidPersistenceCtx = {
     assertContentPath: options?.assertContentPath,
     contentDir,
+    home: options?.configHomedirOverride ?? homedir(),
     lkgCache: mermaidLkgCache,
+    receipts: {
+      get: (docName) => durabilityState.getReceipt(docName),
+      recordAgreed: (docName, content, observation) =>
+        durabilityState.recordReceiptAgreed(docName, content, observation),
+      recordOwnWrite: (docName, content, observation) =>
+        durabilityState.recordReceiptOwnWrite(docName, content, observation),
+    },
+    history: options.mergeHistory,
   };
 
   const tripwireResetFailedDocs = new Set<string>();
@@ -2472,62 +2563,12 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
       lastContext: _lastContext,
     }) {
       if (isSystemDoc(documentName)) return;
-      if (isConfigDoc(documentName)) {
-        const outcome = await storeConfigDoc(
-          document,
-          documentName,
-          lastTransactionOrigin,
-          configPersistenceCtx,
-        );
-        if (outcome === 'persisted' || outcome === 'reconciled') {
-          try {
-            onConfigPersisted?.(documentName);
-          } catch (err) {
-            log.warn({ err, documentName }, '[persistence] onConfigPersisted callback failed');
-          }
-        }
-        return;
-      }
-      if (isManagedArtifactDoc(documentName)) {
-        const outcome = await storeManagedArtifactDoc(
-          document,
-          documentName,
-          lastTransactionOrigin,
-          managedArtifactCtx,
-        );
-        if (outcome === 'persisted') {
-          const writer = resolveWriterFromOrigin(lastTransactionOrigin, getPrincipal);
-          if (writer && writer.id !== SERVICE_WRITER.id && !writer.id.startsWith('agent-')) {
-            const attribution = managedArtifactContributorAttribution(documentName);
-            if (attribution) {
-              recordContributor(
-                attribution.docKey,
-                writer.id,
-                writer.name,
-                writer.id,
-                attribution.subject,
-              );
-              scheduleGitCommit();
-            }
-          }
-          try {
-            onManagedSkillPersisted?.(documentName);
-          } catch (err) {
-            log.warn(
-              { err, documentName },
-              '[persistence] onManagedSkillPersisted callback failed',
-            );
-          }
-        }
-        return;
-      }
       if (
-        isMermaidDoc(documentName) ||
-        isExcalidrawDoc(documentName) ||
-        isEditableTextDoc(documentName)
+        isConfigDoc(documentName) ||
+        isManagedArtifactDoc(documentName) ||
+        isEnginelessDoc(documentName)
       ) {
-        options?.assertContentPath?.(safeContentPath(documentName, contentDir));
-        await storeMermaidDoc(document, documentName, lastTransactionOrigin, mermaidPersistenceCtx);
+        await storeOutsideContentPipeline(document, documentName, lastTransactionOrigin);
         return;
       }
       if (durabilityState.isBatchInProgress() || isStoreHeld(documentName)) {
@@ -2568,6 +2609,134 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
     };
   }
 
+  function isEnginelessDoc(documentName: string): boolean {
+    return (
+      isMermaidDoc(documentName) || isExcalidrawDoc(documentName) || isEditableTextDoc(documentName)
+    );
+  }
+
+  const heldSaves = new Map<string, SaveHold>();
+
+  function surfaceHeldSave(documentName: string, hold: SaveHold, causeChanged: boolean): void {
+    const cause = visibleHoldCause(hold);
+    if (cause === null) return;
+    if (!isConfigDoc(documentName)) {
+      options.mergeHistory?.noticeHeld(documentName, cause);
+      return;
+    }
+    if (!causeChanged) return;
+    const file = displayPathFor(
+      configDocAbsPath(documentName, configPersistenceCtx),
+      projectDir,
+      configPersistenceCtx.homedirOverride ?? homedir(),
+    );
+    options.onConfigRejected?.(documentName, { code: 'SAVE_HELD', cause, file });
+  }
+
+  function settleHeldSave(documentName: string, settlement: StoreSettlement): void {
+    if (settlement === 'neutral') return;
+    if (settlement === 'resolved') {
+      durabilityState.clearStoreRefused(documentName);
+      heldSaves.delete(documentName);
+      if (!isConfigDoc(documentName)) options.mergeHistory?.clearHeld(documentName);
+      return;
+    }
+    incrementHeldSave();
+    durabilityState.markStoreRefused(documentName);
+    const previous = heldSaves.get(documentName);
+    heldSaves.set(documentName, settlement);
+    const causeChanged = previous?.cause !== settlement.cause;
+    if (causeChanged && settlement.cause === 'not-utf8') {
+      log.warn(
+        { documentName },
+        '[persistence] the file changed outside to bytes that are not valid UTF-8, so the save is held; it is tried again when the file changes',
+      );
+    }
+    surfaceHeldSave(documentName, settlement, causeChanged);
+  }
+
+  function isHeldSaveDue(documentName: string): boolean {
+    if (!durabilityState.isStoreRefused(documentName)) return false;
+    const hold = heldSaves.get(documentName);
+    if (hold?.cause !== 'not-utf8') return true;
+    return restatFile(hold.path, hold.observation).kind !== 'same';
+  }
+
+  async function storeOutsideContentPipeline(
+    document: Y.Doc,
+    documentName: string,
+    lastTransactionOrigin: unknown,
+  ): Promise<void> {
+    const retry = lastTransactionOrigin === null;
+    if (isConfigDoc(documentName)) {
+      const outcome = await storeConfigDoc(
+        document,
+        documentName,
+        lastTransactionOrigin,
+        configPersistenceCtx,
+      );
+      settleHeldSave(documentName, configSettlement(outcome, retry));
+      if (outcome === 'persisted' || outcome === 'reconciled') {
+        try {
+          onConfigPersisted?.(documentName);
+        } catch (err) {
+          log.warn({ err, documentName }, '[persistence] onConfigPersisted callback failed');
+        }
+      }
+      return;
+    }
+    if (isManagedArtifactDoc(documentName)) {
+      const outcome = await storeManagedArtifactDoc(
+        document,
+        documentName,
+        lastTransactionOrigin,
+        managedArtifactCtx,
+      );
+      settleHeldSave(documentName, managedArtifactSettlement(outcome, retry));
+      if (storeManagedArtifactWroteFile(outcome)) {
+        const writer = resolveWriterFromOrigin(lastTransactionOrigin, getPrincipal);
+        if (writer && writer.id !== SERVICE_WRITER.id && !writer.id.startsWith('agent-')) {
+          const attribution = managedArtifactContributorAttribution(documentName);
+          if (attribution) {
+            recordContributor(
+              attribution.docKey,
+              writer.id,
+              writer.name,
+              writer.id,
+              attribution.subject,
+            );
+            scheduleGitCommit();
+          }
+        }
+        try {
+          onManagedSkillPersisted?.(documentName);
+        } catch (err) {
+          log.warn({ err, documentName }, '[persistence] onManagedSkillPersisted callback failed');
+        }
+      }
+      return;
+    }
+    options?.assertContentPath?.(safeContentPath(documentName, contentDir));
+    const outcome = await storeMermaidDoc(
+      document,
+      documentName,
+      lastTransactionOrigin,
+      mermaidPersistenceCtx,
+    );
+    settleHeldSave(documentName, enginelessSettlement(outcome, retry));
+  }
+
+  async function retryHeldSave(document: Y.Doc, documentName: string): Promise<void> {
+    if (
+      !isConfigDoc(documentName) &&
+      !isManagedArtifactDoc(documentName) &&
+      !isEnginelessDoc(documentName)
+    ) {
+      return;
+    }
+    await storeOutsideContentPipeline(document, documentName, null);
+  }
+
   async function forceStore(document: Y.Doc, documentName: string): Promise<void> {
     if (isPersistenceExcludedDoc(documentName)) {
       return;
@@ -2596,5 +2765,9 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
     forgetObservedFile,
     configPersistenceCtx,
     managedArtifactCtx,
+    mermaidPersistenceCtx,
+    retryHeldSave,
+    isHeldSaveDue,
+    hasHeldSave: (documentName) => heldSaves.has(documentName),
   };
 }

@@ -16,6 +16,7 @@ import {
   compareDiskBeforeReplace,
   isTransientReadError,
   observationOf,
+  readObservedText,
   receiptIntakeSkipOf,
   restatFile,
 } from './store-compare.ts';
@@ -66,7 +67,20 @@ describe('compareDiskBeforeReplace', () => {
 
   test('a whitespace-only outside change the bridge normalizer tolerates is still a change', () => {
     writeFileSync(path, '# Doc\n\nagreed   \n');
-    expect(compare()).toEqual({ kind: 'changed', text: '# Doc\n\nagreed   \n' });
+    expect(compare()).toEqual({
+      kind: 'changed',
+      text: '# Doc\n\nagreed   \n',
+      lossless: true,
+      observation: observationOf(statSync(path, { bigint: true })),
+    });
+  });
+
+  test('an outside change that is not valid UTF-8 is reported as not lossless', () => {
+    writeFileSync(path, Buffer.from('\ufeffoutside\r\n', 'utf16le'));
+    const outcome = compare();
+    expect(outcome.kind).toBe('changed');
+    if (outcome.kind !== 'changed') return;
+    expect(outcome.lossless).toBe(false);
   });
 
   test('a line-ending-only outside change is a change', () => {
@@ -137,6 +151,31 @@ describe('compareDiskBeforeReplace', () => {
       () => changing,
     );
     expect(outcome).toMatchObject({ kind: 'unreadable', transient: true });
+  });
+});
+
+describe('readObservedText', () => {
+  test('reads the text with its observation, and says whether the bytes survive a UTF-8 round trip', () => {
+    writeFileSync(path, 'caf\u00e9\n', 'utf-8');
+    expect(readObservedText(path)).toEqual({
+      kind: 'read',
+      text: 'caf\u00e9\n',
+      lossless: true,
+      observation: observationOf(statSync(path, { bigint: true })),
+    });
+
+    writeFileSync(path, Buffer.from('caf\u00e9\n', 'latin1'));
+    expect(readObservedText(path)).toMatchObject({ kind: 'read', lossless: false });
+  });
+
+  test('a missing file is absent and any other read error is a failure', () => {
+    expect(readObservedText(join(dir, 'missing.md'))).toEqual({ kind: 'absent' });
+    const failure = errno('EACCES');
+    expect(
+      readObservedText(path, () => {
+        throw failure;
+      }),
+    ).toEqual({ kind: 'failed', error: failure });
   });
 });
 

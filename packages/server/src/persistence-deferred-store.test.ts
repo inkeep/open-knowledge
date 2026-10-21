@@ -102,6 +102,7 @@ describe('batch-gated L1 persistence', () => {
     writeFileSync(docPath, 'initial\n', 'utf-8');
     const acks: Array<{ docName: string; sv: Uint8Array }> = [];
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -143,6 +144,7 @@ describe('batch-gated L1 persistence', () => {
       previousMarkdown: string | null;
     }> = [];
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -171,6 +173,7 @@ describe('batch-gated L1 persistence', () => {
     const docPath = join(tmpDir, `${docName}.md`);
     writeFileSync(docPath, 'clean\n', 'utf-8');
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -201,6 +204,7 @@ describe('batch-gated L1 persistence', () => {
     const goodPath = join(tmpDir, `${goodDocName}.md`);
     writeFileSync(goodPath, 'good base\n', 'utf-8');
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -238,6 +242,7 @@ describe('batch-gated L1 persistence', () => {
     writeFileSync(docPath, 'base\n', 'utf-8');
     let resetAttempts = 0;
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -273,6 +278,7 @@ describe('batch-gated L1 persistence', () => {
     writeFileSync(docPath, 'branch A base\n', 'utf-8');
     const acks: Array<{ docName: string; sv: Uint8Array }> = [];
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -311,6 +317,7 @@ describe('batch-gated L1 persistence', () => {
     const docPath = join(tmpDir, `${docName}.md`);
     writeFileSync(docPath, 'branch A base\n', 'utf-8');
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -354,6 +361,7 @@ describe('batch-gated L1 persistence', () => {
     let secondPendingAfterDiscardCall: Promise<unknown> | undefined;
 
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -420,6 +428,7 @@ describe('quiescence gate — deferCount cleanup on disk-write error', () => {
     writeFileSync(docPath, 'initial\n', 'utf-8');
 
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -449,6 +458,7 @@ describe('quiescence gate — deferCount cleanup on disk-write error', () => {
     writeFileSync(docPath, 'initial\n', 'utf-8');
 
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -531,6 +541,7 @@ describe('Y.Text-is-truth wiring (FR-33 / FR-35)', () => {
     const docPath = join(tmpDir, `${docName}.md`);
     writeFileSync(docPath, '', 'utf-8');
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -557,6 +568,7 @@ describe('Y.Text-is-truth wiring (FR-33 / FR-35)', () => {
     writeFileSync(docPath, '__cold__\n', 'utf-8');
 
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -612,6 +624,7 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
     const docPath = join(tmpDir, `${docName}.md`);
     writeFileSync(docPath, 'initial\n', 'utf-8');
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -654,6 +667,7 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
     const docPath = join(tmpDir, `${docName}.md`);
     writeFileSync(docPath, 'initial\n', 'utf-8');
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -687,6 +701,7 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
     const docPath = join(tmpDir, `${docName}.md`);
     writeFileSync(docPath, 'initial\n', 'utf-8');
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -746,6 +761,7 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
     const docPath = join(tmpDir, `${docName}.md`);
     writeFileSync(docPath, 'initial\n', 'utf-8');
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -795,6 +811,7 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
     const docPath = join(tmpDir, `${docName}.md`);
     writeFileSync(docPath, 'initial\n', 'utf-8');
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -910,6 +927,7 @@ describe('forceStore dispatch (staleness watchdog entry point)', () => {
     const docPath = join(tmpDir, `${docName}.md`);
     writeFileSync(docPath, 'initial\n', 'utf-8');
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -933,6 +951,7 @@ describe('forceStore dispatch (staleness watchdog entry point)', () => {
     const docPath = join(tmpDir, `${docName}.md`);
     writeFileSync(docPath, 'initial\n', 'utf-8');
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -957,6 +976,7 @@ describe('forceStore dispatch (staleness watchdog entry point)', () => {
 
   test('short-circuits synthetic docs without touching queues', async () => {
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,

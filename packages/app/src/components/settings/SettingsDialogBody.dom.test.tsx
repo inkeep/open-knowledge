@@ -15,6 +15,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-libra
 import userEvent from '@testing-library/user-event';
 import { ThemeProvider, useTheme } from 'next-themes';
 import type { ReactNode } from 'react';
+import { toast } from 'sonner';
 import { afterEach, describe, expect, type Mock, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
@@ -404,6 +405,48 @@ describe('SettingsDialogBody preferences runtime', () => {
       ).toBe('Invalid attachment folder path');
     });
     expectVisualClassTokens(attachmentField?.className, ['animate-settings-flash']);
+  });
+
+  test('a held settings save shows its cause and the file it names where other rejections show', async () => {
+    const shown = vi.spyOn(toast, 'error');
+    const { binding } = makeBinding();
+    await renderPreferences(binding);
+
+    act(() => {
+      emitConfigValidationRejected({
+        v: 1,
+        ch: 'config-validation-rejected',
+        seq: 3,
+        docName: CONFIG_DOC_NAME_USER,
+        error: { code: 'SAVE_HELD', cause: 'not-utf8', file: '~/.ok/global.yml' },
+      });
+    });
+
+    await waitFor(() =>
+      expect(shown).toHaveBeenCalledWith(
+        '~/.ok/global.yml was not saved because it changed outside OpenKnowledge to content that is not UTF-8 text, so the file was not written over. Your edits stay here, and saving is tried again when the file changes.',
+        { duration: 8000 },
+      ),
+    );
+
+    act(() => {
+      emitConfigValidationRejected({
+        v: 1,
+        ch: 'config-validation-rejected',
+        seq: 4,
+        docName: CONFIG_DOC_NAME_USER,
+        error: { code: 'SAVE_HELD', cause: 'keeps-changing', file: '~/.ok/global.yml' },
+      });
+    });
+
+    await waitFor(() =>
+      expect(shown).toHaveBeenLastCalledWith(
+        '~/.ok/global.yml was not saved because it kept changing outside OpenKnowledge. Your edits stay here, and saving is tried again.',
+        { duration: 8000 },
+      ),
+    );
+    expect(shown).toHaveBeenCalledTimes(2);
+    shown.mockRestore();
   });
 });
 

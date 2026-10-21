@@ -92,6 +92,11 @@ export const KnownConfigValidationErrorSchema = z.discriminatedUnion('code', [
     lineNumber: z.number().int().min(1).optional(),
   }),
   z.object({
+    code: z.literal('SAVE_HELD'),
+    cause: z.enum(['no-history-or-backup', 'keeps-changing', 'not-utf8', 'unreadable']),
+    file: z.string(),
+  }),
+  z.object({
     code: z.literal('UNKNOWN'),
     message: z.string().optional(),
   }),
@@ -310,6 +315,8 @@ export function humanFormat(error: ConfigValidationError): string {
       return error.lineNumber !== undefined
         ? `.okignore line ${error.lineNumber}: ${error.detail}`
         : `.okignore: ${error.detail}`;
+    case 'SAVE_HELD':
+      return `${error.file} was not saved (${error.cause}); saving is tried again.`;
     case 'UNKNOWN':
       return error.message ?? 'Unknown error.';
   }

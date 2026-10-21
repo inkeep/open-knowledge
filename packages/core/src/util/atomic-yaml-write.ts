@@ -29,6 +29,7 @@ export interface AtomicWriteOptions {
   mode?: number;
   sweepStaleTmps?: boolean;
   fs?: AtomicWriteFsAdapter;
+  beforeRename?: () => void;
 }
 
 export interface AtomicWriteSyncOptions {
@@ -80,6 +81,7 @@ export async function atomicWriteFile(
   const tmpPath = atomicTempPath(absPath);
   try {
     await fs.writeFile(tmpPath, content, { encoding: 'utf-8', mode: opts.mode ?? 0o644 });
+    opts.beforeRename?.();
     await fs.rename(tmpPath, absPath);
   } catch (e) {
     try {

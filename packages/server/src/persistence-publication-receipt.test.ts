@@ -23,6 +23,7 @@ describe('successful publication receipt ownership', () => {
 
   test('ordinary publication remains usable without a receipt consumer', async () => {
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: fixture.contentDir,
       projectDir: fixture.contentDir,
@@ -42,6 +43,7 @@ describe('successful publication receipt ownership', () => {
         throw new Error('Receipt consumer cannot accept the occurrence');
       };
       const options: ReceiptOptions = {
+        mergeHistory: null,
         ingestDiskAtStore: null,
         contentDir: fixture.contentDir,
         projectDir: fixture.contentDir,

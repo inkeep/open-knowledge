@@ -585,6 +585,18 @@ msgstr "댓글 {0}개 중 {failed}개 업데이트에 실패했습니다."
 msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} files failed to upload}}"
 msgstr "{failedCount, plural, other {{failedCount}개 파일을 업로드하지 못했습니다}}"
 
+msgid "{file} was not saved because it changed outside OpenKnowledge to content that is not UTF-8 text, so the file was not written over. Your edits stay here, and saving is tried again when the file changes."
+msgstr "{file}이(가) OpenKnowledge 밖에서 UTF-8 텍스트가 아닌 내용으로 변경되어 저장되지 않았고, 파일을 덮어쓰지 않았습니다. 편집 내용은 여기에 그대로 있으며, 파일이 변경되면 다시 저장을 시도합니다."
+
+msgid "{file} was not saved because it could not be read to compare it with outside changes, so the file was not written over. Your edits stay here, and saving is tried again."
+msgstr "{file}을(를) 외부 변경과 비교하기 위해 읽을 수 없어 저장되지 않았고, 파일을 덮어쓰지 않았습니다. 편집 내용은 여기에 그대로 있으며, 다시 저장을 시도합니다."
+
+msgid "{file} was not saved because it kept changing outside OpenKnowledge. Your edits stay here, and saving is tried again."
+msgstr "{file}이(가) OpenKnowledge 밖에서 계속 변경되어 저장되지 않았습니다. 편집 내용은 여기에 그대로 있으며, 다시 저장을 시도합니다."
+
+msgid "{file} was not saved. It changed outside OpenKnowledge, and that version could not be kept in history or in the backup folder, so the file was not written over. Your edits stay here, and saving is tried again."
+msgstr "{file}이(가) 저장되지 않았습니다. OpenKnowledge 밖에서 변경되었지만 그 버전을 기록이나 백업 폴더에 보관할 수 없어 파일을 덮어쓰지 않았습니다. 편집 내용은 여기에 그대로 있으며, 다시 저장을 시도합니다."
+
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr "{fileCount, plural, other {파일 #개}}"
 
@@ -1460,8 +1472,17 @@ msgstr "항상 포함"
 msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version is in the timeline."
 msgstr "{fileName}의 외부 변경을 병합할 수 없어 이 버전이 유지되었습니다. 외부 버전은 타임라인에 있습니다."
 
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to {backupPath}."
+msgstr "{fileName}의 외부 변경을 병합할 수 없어 이 버전이 유지되었습니다. 외부 버전은 {backupPath}에 저장되었습니다."
+
 msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to the document's history."
 msgstr "{fileName}의 외부 변경을 병합할 수 없어 이 버전이 유지되었습니다. 외부 버전은 문서 기록에 저장되었습니다."
+
+msgid "An outside change to {fileName} was not valid settings, so your settings stayed. A copy of the outside version was kept in this project's history, which the app cannot show yet."
+msgstr "{fileName}의 외부 변경이 올바른 설정이 아니어서 기존 설정이 유지되었습니다. 외부 버전의 사본은 이 프로젝트 기록에 보관되었지만, 앱에서는 아직 볼 수 없습니다."
+
+msgid "An outside change to {fileName} was not valid settings, so your settings stayed. A copy of the outside version was saved to {backupPath}."
+msgstr "{fileName}의 외부 변경이 올바른 설정이 아니어서 기존 설정이 유지되었습니다. 외부 버전의 사본은 {backupPath}에 저장되었습니다."
 
 msgid "An unexpected error occurred."
 msgstr "예기치 않은 오류가 발생했습니다."
@@ -9456,6 +9477,12 @@ msgstr "설정을 불러오지 못했습니다"
 
 msgid "Settings for this project. Some are shared with every collaborator through git; others apply only on this computer."
 msgstr "이 프로젝트의 설정입니다. 일부는 git을 통해 모든 협업자와 공유되고, 일부는 이 컴퓨터에만 적용됩니다."
+
+msgid "Settings in {fileName} changed outside OpenKnowledge and now apply. A copy of the change you were making was kept in this project's history, which the app cannot show yet."
+msgstr "{fileName}의 설정이 OpenKnowledge 밖에서 변경되어 이제 적용됩니다. 진행 중이던 변경 내용의 사본은 이 프로젝트 기록에 보관되었지만, 앱에서는 아직 볼 수 없습니다."
+
+msgid "Settings in {fileName} changed outside OpenKnowledge and now apply. A copy of the change you were making was saved to {backupPath}."
+msgstr "{fileName}의 설정이 OpenKnowledge 밖에서 변경되어 이제 적용됩니다. 진행 중이던 변경 내용의 사본은 {backupPath}에 저장되었습니다."
 
 msgid "Settings sections"
 msgstr "설정 섹션"

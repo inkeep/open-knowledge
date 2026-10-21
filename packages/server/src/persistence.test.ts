@@ -256,6 +256,7 @@ describe('persistence refuses links into private repository state', () => {
 
   function createPersistence(durabilityState = new DocumentDurabilityState()) {
     return createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir,
       projectDir: contentDir,
@@ -271,6 +272,7 @@ describe('persistence refuses links into private repository state', () => {
     const durabilityState = new DocumentDurabilityState();
     durabilityState.setReconciledBase('note', '# Before\n');
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir,
       projectDir: contentDir,
@@ -516,6 +518,7 @@ describe('durable derived-index projection', () => {
       recordDurableStore,
     };
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir,
       projectDir: contentDir,
@@ -539,6 +542,7 @@ describe('durable derived-index projection', () => {
     const durabilityState = new DocumentDurabilityState();
     const recordDurableStore = vi.fn();
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir,
       projectDir: contentDir,
@@ -569,6 +573,7 @@ describe('durable derived-index projection', () => {
     });
     await derivedDocumentIndex.close();
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir,
       projectDir: contentDir,

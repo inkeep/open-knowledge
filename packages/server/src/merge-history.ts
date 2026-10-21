@@ -1,12 +1,16 @@
 import type { ParsedCheckpoint } from '@inkeep/open-knowledge-core/shadow-repo-layout';
-import type { DocNoticeSink } from './doc-notices.ts';
+import type { DocNoticeSink, MoveReason } from './doc-notices.ts';
+import { type BackupCopy, backUpDisplacedVersion } from './edit-backups.ts';
 import { getLogger } from './logger.ts';
 import {
   incrementMergeHistoryCheckpointCreated,
   incrementMergeHistoryCheckpointFailures,
   incrementMergeHistoryUnavailable,
+  incrementNoEngineHistoryCheckpointCreated,
+  incrementNoEngineHistoryCheckpointFailures,
 } from './metrics.ts';
 import { countKeptBlocks, type KeptBlockPair } from './reconciliation.ts';
+import type { VisibleHoldCause } from './save-hold.ts';
 import {
   type InMemoryCheckpointParams,
   type ShadowHandle,
@@ -20,9 +24,20 @@ type KeptLiveMetadata = Extract<
 
 type MergeSide = KeptLiveMetadata['side'];
 
+type NoEngineFileType = Extract<
+  ParsedCheckpoint,
+  { kind: 'external-change-no-engine' }
+>['metadata']['fileType'];
+
+export type EnginelessFileType = Exclude<NoEngineFileType, 'config'>;
+
+export type KeptCopy =
+  | { readonly where: 'history'; readonly entry: string }
+  | { readonly where: 'backup'; readonly backup: BackupCopy };
+
 type MergeHistoryParams = Extract<
   InMemoryCheckpointParams,
-  { kind: 'external-change-both-kept' | 'external-change-kept-live' }
+  { kind: 'external-change-both-kept' | 'external-change-kept-live' | 'external-change-no-engine' }
 >;
 
 export interface MergeHistoryRecorder {
@@ -36,6 +51,20 @@ export interface MergeHistoryRecorder {
     displaced: { side: MergeSide; bytes: string },
     reason: KeptLiveMetadata['reason'],
   ): Promise<boolean>;
+  saveNoEngine(
+    docName: string,
+    displaced: { side: MergeSide; bytes: string },
+    fileType: NoEngineFileType,
+  ): Promise<string | null>;
+  noticeNoEngine(
+    docName: string,
+    side: MergeSide,
+    fileType: NoEngineFileType,
+    copy: KeptCopy,
+  ): void;
+  noticeBackup(docName: string, side: MergeSide, reason: MoveReason, backup: BackupCopy): void;
+  noticeHeld(docName: string, cause: VisibleHoldCause): void;
+  clearHeld(docName: string): void;
 }
 
 export type MergeHistoryWriter = typeof saveInMemoryCheckpoint;
@@ -55,6 +84,35 @@ const SIDE_LABEL: Record<MergeSide, string> = {
   theirs: 'Outside version',
 };
 
+function noEngineNoticeReason(
+  fileType: NoEngineFileType,
+  side: MergeSide,
+): Extract<
+  MoveReason,
+  'no-merge-engine' | 'outside-settings-applied' | 'outside-settings-invalid'
+> {
+  if (fileType !== 'config') return 'no-merge-engine';
+  return side === 'ours' ? 'outside-settings-applied' : 'outside-settings-invalid';
+}
+
+const HISTORY_COUNTERS: Record<
+  MergeHistoryParams['kind'],
+  { created: () => void; failed: () => void }
+> = {
+  'external-change-both-kept': {
+    created: incrementMergeHistoryCheckpointCreated,
+    failed: incrementMergeHistoryCheckpointFailures,
+  },
+  'external-change-kept-live': {
+    created: incrementMergeHistoryCheckpointCreated,
+    failed: incrementMergeHistoryCheckpointFailures,
+  },
+  'external-change-no-engine': {
+    created: incrementNoEngineHistoryCheckpointCreated,
+    failed: incrementNoEngineHistoryCheckpointFailures,
+  },
+};
+
 export function createMergeHistoryRecorder(
   options: MergeHistoryRecorderOptions,
 ): MergeHistoryRecorder {
@@ -62,7 +120,7 @@ export function createMergeHistoryRecorder(
   const write = (shadow: ShadowHandle, params: MergeHistoryParams): Promise<string | null> =>
     writeCheckpoint(shadow, options.contentRoot, params).then(
       (sha) => {
-        incrementMergeHistoryCheckpointCreated();
+        HISTORY_COUNTERS[params.kind].created();
         log.info(
           { docName: params.docName, kind: params.kind, side: params.metadata.side, sha },
           `[reconcile] history entry saved (${params.kind}, ${params.metadata.side}): ${params.docName}`,
@@ -70,7 +128,7 @@ export function createMergeHistoryRecorder(
         return sha;
       },
       (err: unknown) => {
-        incrementMergeHistoryCheckpointFailures();
+        HISTORY_COUNTERS[params.kind].failed();
         log.error(
           { err, docName: params.docName, kind: params.kind, side: params.metadata.side },
           `[reconcile] history entry write failed (${params.kind}, ${params.metadata.side}): ${params.docName}`,
@@ -85,6 +143,54 @@ export function createMergeHistoryRecorder(
       { docName, kind },
       `[reconcile] history entry not saved for ${docName} (${kind}): the shadow repo is unavailable`,
     );
+  };
+
+  const saveNoEngine: MergeHistoryRecorder['saveNoEngine'] = async (
+    docName,
+    displaced,
+    fileType,
+  ) => {
+    const shadow = options.getShadow();
+    if (!shadow) {
+      unavailable(docName, 'external-change-no-engine');
+      return null;
+    }
+    return write(shadow, {
+      kind: 'external-change-no-engine',
+      docName,
+      contents: displaced.bytes,
+      label: `${SIDE_LABEL[displaced.side]} moved to history (no merge for ${fileType}) @ ${new Date().toISOString()}`,
+      branch: options.getBranch() ?? 'main',
+      metadata: { side: displaced.side, fileType },
+    });
+  };
+
+  const noticeBackup: MergeHistoryRecorder['noticeBackup'] = (docName, side, reason, backup) => {
+    options.notices?.record(docName, options.getBranch() ?? 'main', {
+      kind: 'moved-to-backup',
+      side,
+      reason,
+      backup: backup.display,
+    });
+  };
+
+  const noticeNoEngine: MergeHistoryRecorder['noticeNoEngine'] = (
+    docName,
+    side,
+    fileType,
+    copy,
+  ) => {
+    const reason = noEngineNoticeReason(fileType, side);
+    if (copy.where === 'backup') {
+      noticeBackup(docName, side, reason, copy.backup);
+      return;
+    }
+    options.notices?.record(docName, options.getBranch() ?? 'main', {
+      kind: 'moved-to-history',
+      side,
+      reason,
+      entry: copy.entry,
+    });
   };
 
   return {
@@ -142,5 +248,32 @@ export function createMergeHistoryRecorder(
       });
       return true;
     },
+
+    saveNoEngine,
+    noticeNoEngine,
+    noticeBackup,
+
+    noticeHeld(docName, cause) {
+      options.notices?.record(docName, options.getBranch() ?? 'main', { kind: 'save-held', cause });
+    },
+
+    clearHeld(docName) {
+      options.notices?.withdrawHeld(docName, options.getBranch() ?? 'main');
+    },
   };
+}
+
+export async function keepNoEngineVersion(
+  history: Pick<MergeHistoryRecorder, 'saveNoEngine'> | null,
+  home: string,
+  project: string,
+  docName: string,
+  displaced: { side: MergeSide; bytes: string },
+  fileType: NoEngineFileType,
+  fileName: string,
+): Promise<KeptCopy | null> {
+  const entry = history === null ? null : await history.saveNoEngine(docName, displaced, fileType);
+  if (entry !== null) return { where: 'history', entry };
+  const backup = await backUpDisplacedVersion(home, project, docName, displaced.bytes, fileName);
+  return backup === null ? null : { where: 'backup', backup };
 }

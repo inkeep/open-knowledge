@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -10,10 +11,11 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { LINEAGE_EPOCH_KEY } from '@inkeep/open-knowledge-core';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { FILE_WATCHER_ORIGIN } from './external-change.ts';
 import { registerExternalSkill, unregisterExternalSkill } from './external-skill-registry.ts';
+import * as fsTraced from './fs-traced.ts';
 import {
   applyExternalManagedArtifactChange,
   loadManagedArtifactDoc,
@@ -25,18 +27,55 @@ import {
   managedArtifactTimelinePaths,
   storeManagedArtifactDoc,
 } from './managed-artifact-persistence.ts';
+import type { MergeHistoryRecorder } from './merge-history.ts';
+import { getMetrics, resetMetrics } from './metrics.ts';
+import type { KeptBlockPair } from './reconciliation.ts';
 
 let projectDir: string;
 let home: string;
 let reconciled: Map<string, string>;
 
-function makeCtx(): ManagedArtifactCtx {
+function makeCtx(history: ManagedArtifactCtx['history'] = null): ManagedArtifactCtx {
   return {
     projectDir,
     homedirOverride: home,
     lkgCache: new Map<string, string>(),
     setReconciledBase: (n, c) => reconciled.set(n, c),
     getReconciledBase: (n) => reconciled.get(n),
+    history,
+  };
+}
+
+interface RecordedHistory {
+  bothKept: Array<{ docName: string; ours: string; theirs: string; kept: KeptBlockPair[] }>;
+  keptLive: Array<{ docName: string; side: string; bytes: string; reason: string }>;
+  backups: Array<{ docName: string; side: string; reason: string; display: string }>;
+}
+
+function recordingHistory(
+  keptLiveSaves = true,
+  duringKeptLive?: () => void,
+): {
+  history: Pick<MergeHistoryRecorder, 'bothKept' | 'keptLive' | 'noticeBackup'>;
+  recorded: RecordedHistory;
+} {
+  const recorded: RecordedHistory = { bothKept: [], keptLive: [], backups: [] };
+  return {
+    recorded,
+    history: {
+      bothKept: (docName, versions, kept) => {
+        recorded.bothKept.push({ docName, ...versions, kept: [...kept] });
+      },
+      keptLive: async (docName, displaced, reason) => {
+        duringKeptLive?.();
+        if (!keptLiveSaves) return false;
+        recorded.keptLive.push({ docName, ...displaced, reason });
+        return true;
+      },
+      noticeBackup: (docName, side, reason, backup) => {
+        recorded.backups.push({ docName, side, reason, display: backup.display });
+      },
+    },
   };
 }
 
@@ -48,8 +87,10 @@ beforeEach(() => {
   projectDir = mkdtempSync(join(tmpdir(), 'ok-ma-proj-'));
   home = mkdtempSync(join(tmpdir(), 'ok-ma-home-'));
   reconciled = new Map();
+  resetMetrics();
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   rmSync(projectDir, { recursive: true, force: true });
   rmSync(home, { recursive: true, force: true });
 });
@@ -331,19 +372,19 @@ describe('store/load round-trip', () => {
 describe('discarded-edit backups', () => {
   beforeEach(adoptClaudeHost);
 
-  async function reconcileLocalEdit(docName: string, localEdit: string): Promise<void> {
+  async function reconcileLocalEdit(docName: string, outsideText: string): Promise<void> {
     const ctx = makeCtx();
     const path = managedArtifactAbsPath(docName, ctx);
     mkdirSync(dirname(path), { recursive: true });
     const doc = new Y.Doc();
     doc.transact(() => doc.getText('source').insert(0, 'base\n'), 'agent');
     await storeManagedArtifactDoc(doc, docName, 'agent', ctx);
-    writeFileSync(path, 'other writer\n', 'utf-8');
+    writeFileSync(path, `<<<<<<< here\n${outsideText}\n=======\nbase\n>>>>>>> there\n`, 'utf-8');
     doc.transact(
-      () => doc.getText('source').insert(doc.getText('source').length, localEdit),
+      () => doc.getText('source').insert(doc.getText('source').length, 'local'),
       'agent',
     );
-    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('reconciled');
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('stash-fallback');
   }
 
   function backupDirs(): string[] {
@@ -391,114 +432,453 @@ describe('discarded-edit backups', () => {
   });
 });
 
-describe('concurrent-writer reconcile', () => {
+describe('an outside change to a global skill', () => {
   const docName = '__skill__/global/demo';
+  const SAVED = '---\nname: demo\ndescription: a\n---\n\nFirst.\n\nSecond.\n';
+  const HERE = '---\nname: demo\ndescription: a\n---\n\nFirst, here.\n\nSecond.\n';
+  const OUTSIDE_SAME_BLOCK = '---\nname: demo\ndescription: a\n---\n\nFirst, outside.\n\nSecond.\n';
+  const BOTH_KEPT =
+    '---\nname: demo\ndescription: a\n---\n\nFirst, here.\n\nFirst, outside.\n\nSecond.\n';
+  const OUTSIDE_OTHER_BLOCK =
+    '---\nname: demo\ndescription: a\n---\n\nFirst.\n\nSecond, outside.\n';
+  const MERGED = '---\nname: demo\ndescription: a\n---\n\nFirst, here.\n\nSecond, outside.\n';
+  const OUTSIDE_WITH_MARKERS =
+    '---\nname: demo\ndescription: a\n---\n\n<<<<<<< ours\nFirst, ours.\n=======\nFirst, theirs.\n>>>>>>> theirs\n\nSecond.\n';
+
+  let path: string;
 
   beforeEach(() => {
     adoptClaudeHost();
-    mkdirSync(dirname(managedArtifactAbsPath(docName, makeCtx())), { recursive: true });
+    path = managedArtifactAbsPath(docName, makeCtx());
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, SAVED, 'utf-8');
   });
 
-  test('store reconciles instead of clobbering when disk diverged from LKG', async () => {
-    const ctx = makeCtx();
+  function openSaved(ctx: ManagedArtifactCtx): Y.Doc {
     const doc = new Y.Doc();
-    doc.transact(
-      () => doc.getText('source').insert(0, '---\nname: demo\ndescription: a\n---\nA\n'),
-      'agent',
+    loadManagedArtifactDoc(doc, docName, ctx);
+    return doc;
+  }
+
+  function editTo(doc: Y.Doc, text: string): void {
+    doc.transact(() => {
+      const src = doc.getText('source');
+      src.delete(0, src.length);
+      src.insert(0, text);
+    }, 'agent');
+  }
+
+  function stashedFiles(): string[] {
+    const root = resolve(home, '.ok', 'edit-backups', 'discarded');
+    if (!existsSync(root)) return [];
+    return readdirSync(root).flatMap((dir) =>
+      readdirSync(resolve(root, dir)).map((f) => readFileSync(resolve(root, dir, f), 'utf-8')),
     );
-    await storeManagedArtifactDoc(doc, docName, 'agent', ctx);
+  }
 
-    const path = managedArtifactAbsPath(docName, ctx);
-    const otherWriter = '---\nname: demo\ndescription: a\n---\nOTHER WRITER\n';
-    writeFileSync(path, otherWriter, 'utf-8');
+  test('a same-block collision at the store keeps both versions live and on disk, with both pre-merge versions recorded', async () => {
+    const { history, recorded } = recordingHistory();
+    const ctx = makeCtx(history);
+    const doc = openSaved(ctx);
+    editTo(doc, HERE);
+    writeFileSync(path, OUTSIDE_SAME_BLOCK, 'utf-8');
 
-    doc.transact(
-      () => doc.getText('source').insert(doc.getText('source').length, 'local edit'),
-      'agent',
-    );
-    const outcome = await storeManagedArtifactDoc(doc, docName, 'agent', ctx);
-    expect(outcome).toBe('reconciled');
-    expect(readFileSync(path, 'utf-8')).toBe(otherWriter);
-    expect(reconciled.get(docName)).toBe(otherWriter);
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('both-kept');
 
-    const safe = docName.replace(/[^A-Za-z0-9._-]+/g, '__');
-    const stashDir = resolve(home, '.ok', 'edit-backups', 'discarded', safe);
-    const stashed = readdirSync(stashDir);
-    expect(stashed).toHaveLength(1);
-    expect(readFileSync(resolve(stashDir, stashed[0] as string), 'utf-8')).toContain('local edit');
+    expect(doc.getText('source').toString()).toBe(BOTH_KEPT);
+    expect(readFileSync(path, 'utf-8')).toBe(BOTH_KEPT);
+    expect(reconciled.get(docName)).toBe(BOTH_KEPT);
+    expect(recorded.bothKept).toHaveLength(1);
+    expect(recorded.bothKept[0]).toMatchObject({ docName, ours: HERE, theirs: OUTSIDE_SAME_BLOCK });
+    expect(stashedFiles()).toEqual([]);
+    expect(getMetrics().managedArtifactMerge).toEqual({ 'store:both-kept': 1 });
   });
 
-  test('reconcile invokes beforeReconcileDivergence with the live and disk content', async () => {
-    const calls: Array<{ docName: string; live: string; disk: string }> = [];
+  test('edits to different blocks merge at the store with no history entry', async () => {
+    const { history, recorded } = recordingHistory();
+    const ctx = makeCtx(history);
+    const doc = openSaved(ctx);
+    editTo(doc, HERE);
+    writeFileSync(path, OUTSIDE_OTHER_BLOCK, 'utf-8');
+
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('merged');
+
+    expect(doc.getText('source').toString()).toBe(MERGED);
+    expect(readFileSync(path, 'utf-8')).toBe(MERGED);
+    expect(recorded).toEqual({ bothKept: [], keptLive: [], backups: [] });
+  });
+
+  test('an outside version that cannot be merged leaves the version here live and on disk and goes to history', async () => {
+    const { history, recorded } = recordingHistory();
+    const ctx = makeCtx(history);
+    const doc = openSaved(ctx);
+    editTo(doc, HERE);
+    writeFileSync(path, OUTSIDE_WITH_MARKERS, 'utf-8');
+
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('kept-live');
+
+    expect(doc.getText('source').toString()).toBe(HERE);
+    expect(readFileSync(path, 'utf-8')).toBe(HERE);
+    expect(recorded.keptLive).toEqual([
+      { docName, side: 'theirs', bytes: OUTSIDE_WITH_MARKERS, reason: 'conflict-markers' },
+    ]);
+    expect(stashedFiles()).toEqual([]);
+  });
+
+  test('a file that appears under a skill typed into before it existed keeps the version here', async () => {
+    rmSync(path);
+    const { history, recorded } = recordingHistory();
+    const ctx = makeCtx(history);
+    const doc = openSaved(ctx);
+    editTo(doc, HERE);
+    writeFileSync(path, OUTSIDE_SAME_BLOCK, 'utf-8');
+
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('kept-live');
+
+    expect(doc.getText('source').toString()).toBe(HERE);
+    expect(readFileSync(path, 'utf-8')).toBe(HERE);
+    expect(recorded.keptLive).toEqual([
+      { docName, side: 'theirs', bytes: OUTSIDE_SAME_BLOCK, reason: 'no-base' },
+    ]);
+  });
+
+  test('when history cannot hold the outside version it goes to the discarded-edit backups, with a notice naming the file', async () => {
+    const { history, recorded } = recordingHistory(false);
+    const ctx = makeCtx(history);
+    const doc = openSaved(ctx);
+    editTo(doc, HERE);
+    writeFileSync(path, OUTSIDE_WITH_MARKERS, 'utf-8');
+
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('stash-fallback');
+
+    expect(readFileSync(path, 'utf-8')).toBe(HERE);
+    expect(stashedFiles()).toEqual([OUTSIDE_WITH_MARKERS]);
+    expect(recorded.backups).toEqual([
+      {
+        docName,
+        side: 'theirs',
+        reason: 'conflict-markers',
+        display: expect.stringMatching(
+          /^~\/\.ok\/edit-backups\/discarded\/__skill____global__demo\/.+\.md$/,
+        ),
+      },
+    ]);
+  });
+
+  test('when neither history nor the stash can take the outside version, nothing is written', async () => {
+    mkdirSync(join(home, '.ok'), { recursive: true });
+    writeFileSync(join(home, '.ok', 'edit-backups'), 'not a folder');
+    const { history } = recordingHistory(false);
+    const ctx = makeCtx(history);
+    const doc = openSaved(ctx);
+    editTo(doc, HERE);
+    writeFileSync(path, OUTSIDE_WITH_MARKERS, 'utf-8');
+
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toEqual({
+      kind: 'held',
+      cause: 'no-history-or-backup',
+    });
+
+    expect(readFileSync(path, 'utf-8')).toBe(OUTSIDE_WITH_MARKERS);
+    expect(doc.getText('source').toString()).toBe(HERE);
+    expect(getMetrics().managedArtifactMerge).toEqual({ 'store:held': 1 });
+  });
+
+  test('an outside write during the history save of a refused merge is taken in before anything is written', async () => {
+    const later = OUTSIDE_OTHER_BLOCK;
+    let planted = false;
+    const { history, recorded } = recordingHistory(true, () => {
+      if (planted) return;
+      planted = true;
+      writeFileSync(path, later, 'utf-8');
+    });
+    const ctx = makeCtx(history);
+    const doc = openSaved(ctx);
+    editTo(doc, HERE);
+    writeFileSync(path, OUTSIDE_WITH_MARKERS, 'utf-8');
+
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('merged');
+
+    expect(readFileSync(path, 'utf-8')).toBe(MERGED);
+    expect(doc.getText('source').toString()).toBe(MERGED);
+    expect(recorded.keptLive.map((entry) => entry.bytes)).toEqual([OUTSIDE_WITH_MARKERS]);
+  });
+
+  test('an outside write between the compare and the rename is refused and merged on the next round', async () => {
+    const { history } = recordingHistory();
+    const ctx = makeCtx(history);
+    const doc = openSaved(ctx);
+    editTo(doc, HERE);
+    const write = fsTraced.tracedAtomicFs.writeFile;
+    let planted = false;
+    vi.spyOn(fsTraced.tracedAtomicFs, 'writeFile').mockImplementation(async (...args) => {
+      await write(...args);
+      if (planted) return;
+      planted = true;
+      writeFileSync(path, OUTSIDE_OTHER_BLOCK, 'utf-8');
+    });
+
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('merged');
+
+    expect(readFileSync(path, 'utf-8')).toBe(MERGED);
+    expect(getMetrics().storeRestatRefused).toBe(1);
+  });
+
+  test('an outside write between the compare and the rename of a both-kept merge leaves the live doc alone, and the retry records both pre-merge versions', async () => {
+    const OUTSIDE_AGAIN =
+      '---\nname: demo\ndescription: a\n---\n\nFirst, outside again.\n\nSecond.\n';
+    const BOTH_KEPT_AGAIN =
+      '---\nname: demo\ndescription: a\n---\n\nFirst, here.\n\nFirst, outside again.\n\nSecond.\n';
+    const { history, recorded } = recordingHistory();
+    const ctx = makeCtx(history);
+    const doc = openSaved(ctx);
+    editTo(doc, HERE);
+    writeFileSync(path, OUTSIDE_SAME_BLOCK, 'utf-8');
+    const write = fsTraced.tracedAtomicFs.writeFile;
+    let liveAtPlant: string | undefined;
+    vi.spyOn(fsTraced.tracedAtomicFs, 'writeFile').mockImplementation(async (...args) => {
+      await write(...args);
+      if (liveAtPlant !== undefined) return;
+      liveAtPlant = doc.getText('source').toString();
+      writeFileSync(path, OUTSIDE_AGAIN, 'utf-8');
+    });
+
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('both-kept');
+
+    expect(liveAtPlant).toBe(HERE);
+    expect(doc.getText('source').toString()).toBe(BOTH_KEPT_AGAIN);
+    expect(readFileSync(path, 'utf-8')).toBe(BOTH_KEPT_AGAIN);
+    expect(doc.getText('source').toString().split('First, here.')).toHaveLength(2);
+    expect(recorded.bothKept).toHaveLength(1);
+    expect(recorded.bothKept[0]).toMatchObject({ docName, ours: HERE, theirs: OUTSIDE_AGAIN });
+    expect(getMetrics().storeRestatRefused).toBe(1);
+  });
+
+  test('an outside version that is not valid UTF-8 is neither merged nor written over, at the save or the intake', async () => {
+    const { history, recorded } = recordingHistory();
+    const ctx = makeCtx(history);
+    const doc = openSaved(ctx);
+    editTo(doc, HERE);
+    const latin1 = Buffer.from(OUTSIDE_SAME_BLOCK.replace('outside', 'caf\u00e9'), 'latin1');
+    writeFileSync(path, latin1);
+
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toMatchObject({
+      kind: 'held',
+      cause: 'not-utf8',
+      path,
+    });
+    expect(
+      await applyExternalManagedArtifactChange(doc, docName, latin1.toString('utf8'), ctx),
+    ).toBe('held');
+
+    expect(readFileSync(path).equals(latin1)).toBe(true);
+    expect(doc.getText('source').toString()).toBe(HERE);
+    expect(recorded).toEqual({ bothKept: [], keptLive: [], backups: [] });
+    expect(stashedFiles()).toEqual([]);
+    expect(getMetrics().managedArtifactMerge).toEqual({ 'store:held': 1, 'intake:held': 1 });
+  });
+
+  test('the polled intake reports a lock timeout as held, and lets any other failure reach the watcher', async () => {
+    const ctx = makeCtx(recordingHistory().history);
+    const doc = openSaved(ctx);
+    editTo(doc, HERE);
+    writeFileSync(path, OUTSIDE_SAME_BLOCK, 'utf-8');
+    const lock = `${path}.lock`;
+    writeFileSync(lock, '');
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout'] });
+    try {
+      const intake = applyExternalManagedArtifactChange(doc, docName, OUTSIDE_SAME_BLOCK, ctx);
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect(await intake).toBe('held');
+    } finally {
+      vi.useRealTimers();
+      rmSync(lock, { force: true });
+    }
+    expect(doc.getText('source').toString()).toBe(HERE);
+    expect(getMetrics().managedArtifactMerge).toEqual({ 'intake:held': 1 });
+
+    const failure = new Error('merge defect');
+    const failing: ManagedArtifactCtx = {
+      ...ctx,
+      beforeReconcileDivergence: () => {
+        throw failure;
+      },
+    };
+    await expect(
+      applyExternalManagedArtifactChange(doc, docName, OUTSIDE_SAME_BLOCK, failing),
+    ).rejects.toBe(failure);
+    expect(readFileSync(path, 'utf-8')).toBe(OUTSIDE_SAME_BLOCK);
+  });
+
+  test('a merge the polled intake writes while a save waits for the lock is not written over', async () => {
+    const { history } = recordingHistory();
+    const ctx = makeCtx(history);
+    const doc = openSaved(ctx);
+    editTo(doc, HERE);
+    writeFileSync(path, OUTSIDE_SAME_BLOCK, 'utf-8');
+    const mkdir = fsTraced.tracedMkdir;
+    let intake: Promise<unknown> | undefined;
+    vi.spyOn(fsTraced, 'tracedMkdir').mockImplementation(async (...args) => {
+      if (intake === undefined) {
+        intake = applyExternalManagedArtifactChange(doc, docName, OUTSIDE_SAME_BLOCK, ctx);
+        await intake;
+      }
+      return mkdir(...args);
+    });
+
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('no-op');
+
+    expect(await intake).toBe('both-kept');
+    expect(readFileSync(path, 'utf-8')).toBe(BOTH_KEPT);
+    expect(doc.getText('source').toString()).toBe(BOTH_KEPT);
+  });
+
+  test.skipIf(process.getuid?.() === 0)(
+    'writes nothing when the file cannot be read for the compare',
+    async () => {
+      const ctx = makeCtx(recordingHistory().history);
+      const doc = openSaved(ctx);
+      editTo(doc, HERE);
+      chmodSync(path, 0o000);
+      try {
+        expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toEqual({
+          kind: 'held',
+          cause: 'unreadable',
+        });
+      } finally {
+        chmodSync(path, 0o644);
+      }
+      expect(readFileSync(path, 'utf-8')).toBe(SAVED);
+    },
+  );
+
+  test('the paired apply hands the loss detector the version here and the text it applies', async () => {
+    const calls: Array<{ docName: string; live: string; applied: string }> = [];
     const ctx: ManagedArtifactCtx = {
-      ...makeCtx(),
-      beforeReconcileDivergence: (_doc, name, live, disk) => {
-        calls.push({ docName: name, live, disk });
+      ...makeCtx(recordingHistory().history),
+      beforeReconcileDivergence: (_doc, name, live, applied) => {
+        calls.push({ docName: name, live, applied });
         return undefined;
       },
     };
-    const doc = new Y.Doc();
-    const v1 = '---\nname: demo\ndescription: a\n---\nA\n';
-    doc.transact(() => doc.getText('source').insert(0, v1), 'agent');
-    await storeManagedArtifactDoc(doc, docName, 'agent', ctx);
+    const doc = openSaved(ctx);
+    editTo(doc, HERE);
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('persisted');
     expect(calls).toHaveLength(0);
 
-    const path = managedArtifactAbsPath(docName, ctx);
-    const otherWriter = '---\nname: demo\ndescription: a\n---\nOTHER WRITER\n';
-    writeFileSync(path, otherWriter, 'utf-8');
-
-    doc.transact(
-      () => doc.getText('source').insert(doc.getText('source').length, 'local edit'),
-      'agent',
-    );
+    editTo(doc, `${HERE}\nThird, here.\n`);
+    writeFileSync(path, OUTSIDE_OTHER_BLOCK.replace('First.', 'First, here.'), 'utf-8');
     const live = doc.getText('source').toString();
-    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('reconciled');
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('merged');
 
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.docName).toBe(docName);
-    expect(calls[0]?.live).toBe(live);
-    expect(calls[0]?.live).toContain('local edit');
-    expect(calls[0]?.disk).toBe(otherWriter);
+    expect(calls).toEqual([{ docName, live, applied: doc.getText('source').toString() }]);
   });
 
-  test('reconcile still returns reconciled when no checkpoint hook is wired', async () => {
-    const ctx = makeCtx();
+  test('the store still merges when no checkpoint hook is wired', async () => {
+    const ctx = makeCtx(recordingHistory().history);
     expect(ctx.beforeReconcileDivergence).toBeUndefined();
-    const doc = new Y.Doc();
-    doc.transact(
-      () => doc.getText('source').insert(0, '---\nname: demo\ndescription: a\n---\nA\n'),
-      'agent',
+    const doc = openSaved(ctx);
+    editTo(doc, HERE);
+    writeFileSync(path, OUTSIDE_SAME_BLOCK, 'utf-8');
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('both-kept');
+  });
+
+  test('the polled intake applies a refresh of a skill nobody edited, with no history', async () => {
+    const { history, recorded } = recordingHistory();
+    const ctx = makeCtx(history);
+    const doc = openSaved(ctx);
+    writeFileSync(path, OUTSIDE_OTHER_BLOCK, 'utf-8');
+
+    expect(await applyExternalManagedArtifactChange(doc, docName, OUTSIDE_OTHER_BLOCK, ctx)).toBe(
+      'applied',
     );
-    await storeManagedArtifactDoc(doc, docName, 'agent', ctx);
-    const path = managedArtifactAbsPath(docName, ctx);
-    writeFileSync(path, '---\nname: demo\ndescription: a\n---\nOTHER\n', 'utf-8');
-    doc.transact(() => doc.getText('source').insert(doc.getText('source').length, 'x'), 'agent');
-    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('reconciled');
+
+    expect(doc.getText('source').toString()).toBe(OUTSIDE_OTHER_BLOCK);
+    expect(reconciled.get(docName)).toBe(OUTSIDE_OTHER_BLOCK);
+    expect(recorded).toEqual({ bothKept: [], keptLive: [], backups: [] });
   });
 
-  test('applyExternalManagedArtifactChange imports disk bytes into the live doc', () => {
-    const ctx = makeCtx();
-    const doc = new Y.Doc();
-    const raw = '---\nname: demo\ndescription: a\n---\nEXTERNAL\n';
-    expect(applyExternalManagedArtifactChange(doc, docName, raw, ctx)).toBe('applied');
-    expect(doc.getText('source').toString()).toBe(raw);
-    expect(reconciled.get(docName)).toBe(raw);
+  test('the polled intake keeps both versions of a block edited on both sides and writes the result', async () => {
+    const { history, recorded } = recordingHistory();
+    const ctx = makeCtx(history);
+    const doc = openSaved(ctx);
+    editTo(doc, HERE);
+    writeFileSync(path, OUTSIDE_SAME_BLOCK, 'utf-8');
+
+    expect(await applyExternalManagedArtifactChange(doc, docName, OUTSIDE_SAME_BLOCK, ctx)).toBe(
+      'both-kept',
+    );
+
+    expect(doc.getText('source').toString()).toBe(BOTH_KEPT);
+    expect(readFileSync(path, 'utf-8')).toBe(BOTH_KEPT);
+    expect(recorded.bothKept).toHaveLength(1);
+    expect(getMetrics().managedArtifactMerge).toEqual({ 'intake:both-kept': 1 });
   });
 
-  test('applyExternalManagedArtifactChange is a no-op for a null doc', () => {
+  test('the polled intake takes nothing in when the file moved on since the poll', async () => {
+    const ctx = makeCtx(recordingHistory().history);
+    const doc = openSaved(ctx);
+    editTo(doc, HERE);
+    writeFileSync(path, OUTSIDE_OTHER_BLOCK, 'utf-8');
+
+    expect(await applyExternalManagedArtifactChange(doc, docName, OUTSIDE_SAME_BLOCK, ctx)).toBe(
+      'no-op',
+    );
+    expect(doc.getText('source').toString()).toBe(HERE);
+  });
+
+  test('applyExternalManagedArtifactChange is a no-op for a null doc', async () => {
     const ctx = makeCtx();
-    expect(applyExternalManagedArtifactChange(null, docName, 'whatever', ctx)).toBe('no-op');
+    expect(await applyExternalManagedArtifactChange(null, docName, 'whatever', ctx)).toBe('no-op');
     expect(reconciled.has(docName)).toBe(false);
   });
 
-  test('applyExternalManagedArtifactChange short-circuits a self-write (content === LKG)', () => {
+  test('applyExternalManagedArtifactChange short-circuits a self-write (content === LKG)', async () => {
     const ctx = makeCtx();
     const doc = new Y.Doc();
     const raw = '---\nname: demo\ndescription: a\n---\nBODY\n';
     ctx.lkgCache.set(docName, raw);
-    expect(applyExternalManagedArtifactChange(doc, docName, raw, ctx)).toBe('no-op');
+    expect(await applyExternalManagedArtifactChange(doc, docName, raw, ctx)).toBe('no-op');
     expect(doc.getText('source').toString()).toBe('');
     expect(reconciled.has(docName)).toBe(false);
+  });
+});
+
+describe('an outside change to an external skill', () => {
+  let skillDir: string;
+
+  beforeEach(() => {
+    skillDir = mkdtempSync(join(tmpdir(), 'ok-ma-ext-'));
+    writeFileSync(join(skillDir, 'SKILL.md'), '# External\n\nFirst.\n\nSecond.\n', 'utf-8');
+    registerExternalSkill('ext-merge', skillDir);
+  });
+  afterEach(() => {
+    unregisterExternalSkill('ext-merge');
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+
+  test('a same-block collision at the store keeps both versions', async () => {
+    const docName = '__extskill__/ext-merge';
+    const { history, recorded } = recordingHistory();
+    const ctx = makeCtx(history);
+    const doc = new Y.Doc();
+    loadManagedArtifactDoc(doc, docName, ctx);
+    doc.transact(() => {
+      const src = doc.getText('source');
+      src.delete(0, src.length);
+      src.insert(0, '# External\n\nFirst, here.\n\nSecond.\n');
+    }, 'agent');
+    writeFileSync(
+      join(skillDir, 'SKILL.md'),
+      '# External\n\nFirst, outside.\n\nSecond.\n',
+      'utf-8',
+    );
+
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('both-kept');
+    expect(readFileSync(join(skillDir, 'SKILL.md'), 'utf-8')).toBe(
+      '# External\n\nFirst, here.\n\nFirst, outside.\n\nSecond.\n',
+    );
+    expect(recorded.bothKept).toHaveLength(1);
   });
 });
 

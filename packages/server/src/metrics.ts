@@ -40,6 +40,45 @@ export type ReceiptIntakeSkip = 'echo' | 'superseded';
 
 export type ReceiptAtLoad = 'unchanged' | 'changed' | 'missing';
 
+export type EnginelessStoreOutcome =
+  | 'match'
+  | 'kept-live'
+  | 'held-no-history-or-backup'
+  | 'held-unreadable'
+  | 'held-exhausted'
+  | 'held-not-utf8'
+  | 'absent';
+
+export type EnginelessIntakeOutcome =
+  | 'applied'
+  | 'kept-live'
+  | 'unchanged'
+  | 'held-no-history-or-backup'
+  | 'held-not-utf8';
+
+export type ManagedArtifactMergeOutcome =
+  | 'applied'
+  | 'unchanged'
+  | 'merged'
+  | 'both-kept'
+  | 'kept-live'
+  | 'stash-fallback'
+  | 'held';
+
+type ManagedArtifactMergeKey = `${'store' | 'intake'}:${ManagedArtifactMergeOutcome}`;
+
+export type ConfigOutsideChangeOutcome =
+  | 'applied'
+  | 'applied-displaced'
+  | 'rejected'
+  | 'invalid-kept-live'
+  | 'held-no-history-or-backup'
+  | 'held-not-utf8'
+  | 'held-exhausted'
+  | 'deferred';
+
+type ConfigOutsideChangeKey = `${'store' | 'intake'}:${ConfigOutsideChangeOutcome}`;
+
 export interface ReconciliationMetrics {
   reconcileCount: number;
   conflictCount: number;
@@ -146,6 +185,17 @@ export interface ReconciliationMetrics {
   managedArtifactReconcile: number;
   managedArtifactReconcileCheckpointCreated: number;
   managedArtifactReconcileDeduped: number;
+  managedArtifactMerge: Partial<Record<ManagedArtifactMergeKey, number>>;
+  enginelessStore: Partial<Record<EnginelessStoreOutcome, number>>;
+  enginelessIntake: Partial<Record<EnginelessIntakeOutcome, number>>;
+  configOutsideChange: Partial<Record<ConfigOutsideChangeKey, number>>;
+  noEngineHistoryCheckpointCreated: number;
+  noEngineHistoryCheckpointFailures: number;
+  heldSaves: number;
+  heldSaveRetries: number;
+  heldSaveRetryFailures: number;
+  displacedVersionBackups: number;
+  displacedVersionBackupFailures: number;
   reDeriveBackstopTripped: number;
   /**
    * Count of Observer A settlement checks that detected a drain settling split-brain beyond
@@ -294,6 +344,17 @@ const counters: ReconciliationMetrics = {
   managedArtifactReconcile: 0,
   managedArtifactReconcileCheckpointCreated: 0,
   managedArtifactReconcileDeduped: 0,
+  managedArtifactMerge: {},
+  enginelessStore: {},
+  enginelessIntake: {},
+  configOutsideChange: {},
+  noEngineHistoryCheckpointCreated: 0,
+  noEngineHistoryCheckpointFailures: 0,
+  heldSaves: 0,
+  heldSaveRetries: 0,
+  heldSaveRetryFailures: 0,
+  displacedVersionBackups: 0,
+  displacedVersionBackupFailures: 0,
   reDeriveBackstopTripped: 0,
   bridgeSplitBrainRederives: 0,
   bridgeSplitBrainRederivesSuppressed: 0,
@@ -685,6 +746,58 @@ export function incrementManagedArtifactReconcileDeduped(): void {
   counters.managedArtifactReconcileDeduped++;
 }
 
+export function incrementManagedArtifactMerge(
+  site: 'store' | 'intake',
+  outcome: ManagedArtifactMergeOutcome,
+): void {
+  const key: ManagedArtifactMergeKey = `${site}:${outcome}`;
+  counters.managedArtifactMerge[key] = (counters.managedArtifactMerge[key] ?? 0) + 1;
+}
+
+export function incrementEnginelessStore(outcome: EnginelessStoreOutcome): void {
+  counters.enginelessStore[outcome] = (counters.enginelessStore[outcome] ?? 0) + 1;
+}
+
+export function incrementEnginelessIntake(outcome: EnginelessIntakeOutcome): void {
+  counters.enginelessIntake[outcome] = (counters.enginelessIntake[outcome] ?? 0) + 1;
+}
+
+export function incrementConfigOutsideChange(
+  site: 'store' | 'intake',
+  outcome: ConfigOutsideChangeOutcome,
+): void {
+  const key: ConfigOutsideChangeKey = `${site}:${outcome}`;
+  counters.configOutsideChange[key] = (counters.configOutsideChange[key] ?? 0) + 1;
+}
+
+export function incrementHeldSave(): void {
+  counters.heldSaves++;
+}
+
+export function incrementHeldSaveRetry(): void {
+  counters.heldSaveRetries++;
+}
+
+export function incrementHeldSaveRetryFailures(): void {
+  counters.heldSaveRetryFailures++;
+}
+
+export function incrementDisplacedVersionBackups(): void {
+  counters.displacedVersionBackups++;
+}
+
+export function incrementDisplacedVersionBackupFailures(): void {
+  counters.displacedVersionBackupFailures++;
+}
+
+export function incrementNoEngineHistoryCheckpointCreated(): void {
+  counters.noEngineHistoryCheckpointCreated++;
+}
+
+export function incrementNoEngineHistoryCheckpointFailures(): void {
+  counters.noEngineHistoryCheckpointFailures++;
+}
+
 export function incrementReDeriveBackstopTripped(): void {
   counters.reDeriveBackstopTripped++;
 }
@@ -921,6 +1034,10 @@ export function getMetrics(): ReconciliationMetrics {
     storeDiskCompare: { ...counters.storeDiskCompare },
     receiptIntakeSkip: { ...counters.receiptIntakeSkip },
     receiptAtLoad: { ...counters.receiptAtLoad },
+    managedArtifactMerge: { ...counters.managedArtifactMerge },
+    enginelessStore: { ...counters.enginelessStore },
+    enginelessIntake: { ...counters.enginelessIntake },
+    configOutsideChange: { ...counters.configOutsideChange },
     mapDrivenSpliceFallback: { ...counters.mapDrivenSpliceFallback },
     mapDrivenSpliceMemoSkips: { ...counters.mapDrivenSpliceMemoSkips },
     observerAResidualMergeSpliceUnavailable: {
@@ -1028,6 +1145,17 @@ export function resetMetrics(): void {
   counters.managedArtifactReconcile = 0;
   counters.managedArtifactReconcileCheckpointCreated = 0;
   counters.managedArtifactReconcileDeduped = 0;
+  counters.managedArtifactMerge = {};
+  counters.enginelessStore = {};
+  counters.enginelessIntake = {};
+  counters.configOutsideChange = {};
+  counters.noEngineHistoryCheckpointCreated = 0;
+  counters.noEngineHistoryCheckpointFailures = 0;
+  counters.heldSaves = 0;
+  counters.heldSaveRetries = 0;
+  counters.heldSaveRetryFailures = 0;
+  counters.displacedVersionBackups = 0;
+  counters.displacedVersionBackupFailures = 0;
   counters.reDeriveBackstopTripped = 0;
   counters.bridgeSplitBrainRederives = 0;
   counters.bridgeSplitBrainRederivesSuppressed = 0;

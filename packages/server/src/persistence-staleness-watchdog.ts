@@ -5,6 +5,8 @@ import { isPersistenceExcludedDoc } from './cc1-broadcast.ts';
 import type { FreezingLifecycleStatus, LifecycleView } from './conflict-kinds.ts';
 import { getLogger } from './logger.ts';
 import {
+  incrementHeldSaveRetry,
+  incrementHeldSaveRetryFailures,
   incrementPersistenceStalenessDetected,
   incrementPersistenceStalenessForcedStores,
   incrementPersistenceStalenessForceStoreTimeouts,
@@ -38,6 +40,8 @@ export interface StalenessWatchdogOptions {
   hasInFlight: (documentName: string) => boolean;
   forceStoreTimeoutMs?: number;
   msSinceLastUserTx?: (doc: Y.Doc, nowMs: number) => number | null;
+  isHeldSaveDue?: (documentName: string) => boolean;
+  retryHeldSave?: (document: Y.Doc, documentName: string) => Promise<void>;
 }
 
 export interface StalenessWatchdogHandle {
@@ -65,6 +69,8 @@ export function createPersistenceStalenessWatchdog(
   const msSinceLastUserTx = options.msSinceLastUserTx ?? getMsSinceLastUserTx;
 
   const attempts = new Map<string, AttemptRecord>();
+  const heldRetriesInFlight = new Set<string>();
+  const heldRetryFailures = new Map<string, number>();
   let disposed = false;
   let sweepInFlight: Promise<void> | null = null;
 
@@ -102,11 +108,22 @@ export function createPersistenceStalenessWatchdog(
     let divergent = 0;
     let forced = 0;
     let stoodDown = 0;
+    let heldRetried = 0;
     const seen = new Set<string>();
     for (const [documentName, document] of options.getLoadedDocuments()) {
       if (disposed) return;
       seen.add(documentName);
-      if (isPersistenceExcludedDoc(documentName)) continue;
+      if (isPersistenceExcludedDoc(documentName)) {
+        if (
+          options.retryHeldSave &&
+          !heldRetriesInFlight.has(documentName) &&
+          options.isHeldSaveDue?.(documentName) === true
+        ) {
+          heldRetried++;
+          await retryHeldSaveWithin(options.retryHeldSave, document, documentName);
+        }
+        continue;
+      }
       if (frozenStatusOf(document, documentName) !== null) {
         continue;
       }
@@ -304,20 +321,72 @@ export function createPersistenceStalenessWatchdog(
     for (const name of attempts.keys()) {
       if (!seen.has(name)) attempts.delete(name);
     }
+    for (const name of heldRetryFailures.keys()) {
+      if (!seen.has(name)) heldRetryFailures.delete(name);
+    }
 
     const summary = {
       scanned,
       divergent,
       forced,
       stoodDown,
+      heldRetried,
       skippedInFlight,
       elapsedMs: now() - startedMs,
     };
-    if (divergent > 0 || forced > 0 || stoodDown > 0) {
+    if (divergent > 0 || forced > 0 || stoodDown > 0 || heldRetried > 0) {
       log.info(summary, '[persistence-staleness] sweep complete');
     } else {
       log.debug(summary, '[persistence-staleness] sweep complete');
     }
+  }
+
+  async function retryHeldSaveWithin(
+    retryHeldSave: NonNullable<StalenessWatchdogOptions['retryHeldSave']>,
+    document: Y.Doc,
+    documentName: string,
+  ): Promise<void> {
+    incrementHeldSaveRetry();
+    let pendingRetry: Promise<void>;
+    try {
+      pendingRetry = retryHeldSave(document, documentName);
+    } catch (err) {
+      pendingRetry = Promise.reject(err);
+    }
+    heldRetriesInFlight.add(documentName);
+    void pendingRetry
+      .finally(() => {
+        heldRetriesInFlight.delete(documentName);
+      })
+      .catch(() => {});
+    const outcome = await raceForceStore(pendingRetry).catch((err: unknown) => {
+      log.warn(
+        { err, docName: documentName, failedAttempts: countHeldRetryFailure(documentName) },
+        '[persistence-staleness] retrying a held save failed; it is tried again at the next sweep',
+      );
+      return 'failed' as const;
+    });
+    if (outcome === 'settled') {
+      heldRetryFailures.delete(documentName);
+      return;
+    }
+    if (outcome === 'timeout') {
+      log.warn(
+        {
+          docName: documentName,
+          forceStoreTimeoutMs,
+          failedAttempts: countHeldRetryFailure(documentName),
+        },
+        `[persistence-staleness] retrying the held save of ${documentName} did not settle within ${forceStoreTimeoutMs}ms; counted as a failed attempt, and it is tried again at a sweep after it settles`,
+      );
+    }
+  }
+
+  function countHeldRetryFailure(documentName: string): number {
+    incrementHeldSaveRetryFailures();
+    const failed = (heldRetryFailures.get(documentName) ?? 0) + 1;
+    heldRetryFailures.set(documentName, failed);
+    return failed;
   }
 
   async function raceForceStore(pendingStore: Promise<void>): Promise<'settled' | 'timeout'> {

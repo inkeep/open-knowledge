@@ -325,6 +325,18 @@ describe('OkignoreSection runtime behavior', () => {
     );
 
     act(() => {
+      emitConfigValidationRejected({
+        docName: '__config__/okignore',
+        error: { code: 'SAVE_HELD', cause: 'keeps-changing', file: '.okignore' },
+      } as never);
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-okignore-rejection-banner').textContent).toContain(
+        'was not saved because it kept changing outside OpenKnowledge. Your edits stay here, and saving is tried again.',
+      ),
+    );
+
+    act(() => {
       emitConfigIgnoreNestedError({ path: 'nested/.okignore', error: 'parse failed' } as never);
     });
     expect(toast.error).toHaveBeenCalledWith('Nested .okignore error in nested/.okignore', {

@@ -1,5 +1,14 @@
 import { closeSync, constants, existsSync, lstatSync, openSync, readFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import {
+  CONFIG_DOC_NAMES,
+  isEditableTextDocFile,
+  isExcalidrawDocFile,
+  isManagedArtifactDocName,
+  isMermaidDocFile,
+  SUPPORTED_DOC_EXTENSIONS,
+  SYSTEM_DOC_NAME,
+} from '@inkeep/open-knowledge-core';
 import { atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import {
   tracedAppendNoFollowSync,
@@ -16,6 +25,7 @@ import {
   incrementReceiptRecordsOtherVersion,
   incrementReceiptRecordsUnreadable,
 } from './metrics.ts';
+import { isWithinDir } from './path-utils.ts';
 import { contentHash } from './version-hash.ts';
 
 const DISK_RECEIPT_SCHEMA_VERSION = 1;
@@ -105,6 +115,39 @@ function parseLine(line: string): ParsedLine {
     ino: record.ino,
     at: record.at,
     via: record.via,
+  };
+}
+
+function isReservedReceiptName(docName: string): boolean {
+  return (
+    docName === SYSTEM_DOC_NAME ||
+    (CONFIG_DOC_NAMES as readonly string[]).includes(docName) ||
+    isManagedArtifactDocName(docName)
+  );
+}
+
+function receiptFileCandidates(docName: string): string[] {
+  const markdown = SUPPORTED_DOC_EXTENSIONS.map((extension) => `${docName}${extension}`);
+  const ownPath =
+    isMermaidDocFile(docName) || isExcalidrawDocFile(docName) || isEditableTextDocFile(docName);
+  return ownPath ? [docName, ...markdown] : markdown;
+}
+
+export function receiptFileIsGoneIn(contentDir: string): (docName: string) => boolean {
+  return (docName) => {
+    if (isReservedReceiptName(docName)) return false;
+    for (const relativePath of receiptFileCandidates(docName)) {
+      const candidate = resolve(contentDir, relativePath);
+      if (!isWithinDir(candidate, contentDir)) return false;
+      try {
+        lstatSync(candidate);
+        return false;
+      } catch (err) {
+        const code = errnoCode(err);
+        if (code !== 'ENOENT' && code !== 'ENOTDIR') return false;
+      }
+    }
+    return true;
   };
 }
 

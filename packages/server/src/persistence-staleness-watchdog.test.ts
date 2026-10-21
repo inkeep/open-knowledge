@@ -282,6 +282,27 @@ describe('exclusions', () => {
     expect(getMetrics().persistenceStalenessDetected).toBe(0);
   });
 
+  test('retries the held save of a file it does not otherwise watch, and only a held one', async () => {
+    await rig.watchdog.dispose();
+    const held = new Set(['diagram.mmd', '__config__/project']);
+    const retried: string[] = [];
+    rig = makeRig({
+      isHeldSaveDue: (name) => held.has(name),
+      retryHeldSave: async (_document, name) => {
+        retried.push(name);
+      },
+    });
+    for (const name of ['diagram.mmd', '__config__/project', 'notes.txt', '__system__']) {
+      rig.docs.set(name, makeDoc('held text\n'));
+    }
+
+    await rig.watchdog.sweep();
+
+    expect(retried.sort()).toEqual(['__config__/project', 'diagram.mmd']);
+    expect(rig.forceCalls).toEqual([]);
+    expect(getMetrics().heldSaveRetries).toBe(2);
+  });
+
   test('skips docs frozen by lifecycle status', async () => {
     for (const status of MAP_FROZEN_STATUSES) {
       const doc = seedWedgedDoc(rig, `lifecycle-${status}`);
@@ -542,6 +563,55 @@ describe('in-flight suppression against the real durability state', () => {
     } finally {
       await local.watchdog.dispose();
       vi.useRealTimers();
+    }
+  });
+});
+
+describe('a stalled held-save retry does not wedge the sweep', () => {
+  test('a retry that never settles times out as a failed attempt, later documents still sweep, and neither the next sweep nor dispose waits on it', async () => {
+    const retried: string[] = [];
+    const local = makeRig({
+      forceStoreTimeoutMs: 50,
+      isHeldSaveDue: (name) => name === 'stuck.mmd',
+      retryHeldSave: (_document, name) => {
+        retried.push(name);
+        return new Promise<void>(() => {});
+      },
+    });
+    local.docs.set('stuck.mmd', makeDoc('held text\n'));
+    seedWedgedDoc(local, 'z-healthy-doc');
+
+    await local.watchdog.sweep();
+
+    expect(retried).toEqual(['stuck.mmd']);
+    expect(local.bases.get('z-healthy-doc')).toBe('# edited in memory\n');
+    expect(getMetrics().heldSaveRetryFailures).toBe(1);
+
+    await local.watchdog.sweep();
+
+    expect(retried).toEqual(['stuck.mmd']);
+    await expect(local.watchdog.dispose()).resolves.toBeUndefined();
+  });
+
+  test('a retry that throws is counted as a failed attempt and tried again at the next sweep', async () => {
+    let attempts = 0;
+    const local = makeRig({
+      isHeldSaveDue: () => true,
+      retryHeldSave: async () => {
+        attempts++;
+        throw new Error('injected retry failure');
+      },
+    });
+    try {
+      local.docs.set('diagram.mmd', makeDoc('held text\n'));
+
+      await local.watchdog.sweep();
+      await local.watchdog.sweep();
+
+      expect(attempts).toBe(2);
+      expect(getMetrics().heldSaveRetryFailures).toBe(2);
+    } finally {
+      await local.watchdog.dispose();
     }
   });
 });

@@ -329,7 +329,6 @@ export async function getDocumentHistory(
   const managed = query.docName
     ? managedArtifactTimelinePaths(query.docName)
     : ({ managed: false } as const);
-  if (managed.managed && !managed.versioned) return EMPTY;
   const managedFilePath = managed.managed && managed.versioned ? managed.filePath : undefined;
   const effectiveDocName = managed.managed && managed.versioned ? managed.docKey : query.docName;
 

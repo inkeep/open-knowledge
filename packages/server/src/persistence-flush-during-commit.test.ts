@@ -81,6 +81,7 @@ test.each([
   async ({ commitDebounceMs, waitForTimer }) => {
     writeFileSync(join(contentDir, 'notes.md'), 'initial\n');
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir,
       projectDir: tmpDir,

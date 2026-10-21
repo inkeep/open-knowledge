@@ -585,6 +585,18 @@ msgstr "{failed} dari {0} komentar tidak dapat diperbarui."
 msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} files failed to upload}}"
 msgstr "{failedCount, plural, other {{failedCount} berkas gagal diunggah}}"
 
+msgid "{file} was not saved because it changed outside OpenKnowledge to content that is not UTF-8 text, so the file was not written over. Your edits stay here, and saving is tried again when the file changes."
+msgstr "{file} tidak disimpan karena diubah dari luar OpenKnowledge menjadi konten yang bukan teks UTF-8, jadi file tidak ditimpa. Suntingan Anda tetap di sini, dan penyimpanan akan dicoba lagi saat file berubah."
+
+msgid "{file} was not saved because it could not be read to compare it with outside changes, so the file was not written over. Your edits stay here, and saving is tried again."
+msgstr "{file} tidak disimpan karena tidak bisa dibaca untuk dibandingkan dengan perubahan dari luar, jadi file tidak ditimpa. Suntingan Anda tetap di sini, dan penyimpanan akan dicoba lagi."
+
+msgid "{file} was not saved because it kept changing outside OpenKnowledge. Your edits stay here, and saving is tried again."
+msgstr "{file} tidak disimpan karena terus berubah dari luar OpenKnowledge. Suntingan Anda tetap di sini, dan penyimpanan akan dicoba lagi."
+
+msgid "{file} was not saved. It changed outside OpenKnowledge, and that version could not be kept in history or in the backup folder, so the file was not written over. Your edits stay here, and saving is tried again."
+msgstr "{file} tidak disimpan. File ini diubah dari luar OpenKnowledge, dan versi tersebut tidak bisa disimpan di riwayat maupun di folder cadangan, jadi file tidak ditimpa. Suntingan Anda tetap di sini, dan penyimpanan akan dicoba lagi."
+
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr "{fileCount, plural, other {# berkas}}"
 
@@ -1456,8 +1468,17 @@ msgstr "Selalu disertakan"
 msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version is in the timeline."
 msgstr "Perubahan dari luar pada {fileName} tidak bisa digabungkan, jadi versi ini tetap dipakai. Versi dari luar ada di lini masa."
 
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to {backupPath}."
+msgstr "Perubahan dari luar pada {fileName} tidak bisa digabungkan, jadi versi ini tetap dipakai. Versi dari luar disimpan di {backupPath}."
+
 msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to the document's history."
 msgstr "Perubahan dari luar pada {fileName} tidak bisa digabungkan, jadi versi ini tetap dipakai. Versi dari luar disimpan di riwayat dokumen."
+
+msgid "An outside change to {fileName} was not valid settings, so your settings stayed. A copy of the outside version was kept in this project's history, which the app cannot show yet."
+msgstr "Perubahan dari luar pada {fileName} bukan pengaturan yang valid, jadi pengaturan Anda tetap dipakai. Salinan versi dari luar disimpan di riwayat proyek ini, yang belum bisa ditampilkan aplikasi."
+
+msgid "An outside change to {fileName} was not valid settings, so your settings stayed. A copy of the outside version was saved to {backupPath}."
+msgstr "Perubahan dari luar pada {fileName} bukan pengaturan yang valid, jadi pengaturan Anda tetap dipakai. Salinan versi dari luar disimpan di {backupPath}."
 
 msgid "An unexpected error occurred."
 msgstr "Terjadi galat yang tidak terduga."
@@ -9452,6 +9473,12 @@ msgstr "Gagal memuat pengaturan"
 
 msgid "Settings for this project. Some are shared with every collaborator through git; others apply only on this computer."
 msgstr "Pengaturan untuk proyek ini. Sebagian dibagikan ke setiap kolaborator lewat git; sisanya hanya berlaku di komputer ini."
+
+msgid "Settings in {fileName} changed outside OpenKnowledge and now apply. A copy of the change you were making was kept in this project's history, which the app cannot show yet."
+msgstr "Pengaturan di {fileName} diubah dari luar OpenKnowledge dan kini berlaku. Salinan perubahan yang sedang Anda buat disimpan di riwayat proyek ini, yang belum bisa ditampilkan aplikasi."
+
+msgid "Settings in {fileName} changed outside OpenKnowledge and now apply. A copy of the change you were making was saved to {backupPath}."
+msgstr "Pengaturan di {fileName} diubah dari luar OpenKnowledge dan kini berlaku. Salinan perubahan yang sedang Anda buat disimpan di {backupPath}."
 
 msgid "Settings sections"
 msgstr "Bagian pengaturan"

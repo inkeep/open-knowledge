@@ -585,6 +585,18 @@ msgstr "تعذّر تحديث {failed} من {0} تعليقات."
 msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} files failed to upload}}"
 msgstr "{failedCount, plural, zero {فشل رفع {failedCount} ملف} one {فشل رفع ملف واحد} two {فشل رفع ملفين} few {فشل رفع {failedCount} ملفات} many {فشل رفع {failedCount} ملفًا} other {فشل رفع {failedCount} ملف}}"
 
+msgid "{file} was not saved because it changed outside OpenKnowledge to content that is not UTF-8 text, so the file was not written over. Your edits stay here, and saving is tried again when the file changes."
+msgstr "لم يُحفظ {file} لأنه تغيّر خارج OpenKnowledge إلى محتوى ليس نصًا بترميز UTF-8، لذا لم يُكتب فوق الملف. تبقى تعديلاتك هنا، وستُعاد محاولة الحفظ عندما يتغيّر الملف."
+
+msgid "{file} was not saved because it could not be read to compare it with outside changes, so the file was not written over. Your edits stay here, and saving is tried again."
+msgstr "لم يُحفظ {file} لأنه تعذّرت قراءته لمقارنته بالتغييرات الخارجية، لذا لم يُكتب فوق الملف. تبقى تعديلاتك هنا، وستُعاد محاولة الحفظ."
+
+msgid "{file} was not saved because it kept changing outside OpenKnowledge. Your edits stay here, and saving is tried again."
+msgstr "لم يُحفظ {file} لأنه ظل يتغيّر خارج OpenKnowledge. تبقى تعديلاتك هنا، وستُعاد محاولة الحفظ."
+
+msgid "{file} was not saved. It changed outside OpenKnowledge, and that version could not be kept in history or in the backup folder, so the file was not written over. Your edits stay here, and saving is tried again."
+msgstr "لم يُحفظ {file}. تغيّر خارج OpenKnowledge، وتعذّر الاحتفاظ بتلك النسخة في السجل أو في مجلد النسخ الاحتياطية، لذا لم يُكتب فوق الملف. تبقى تعديلاتك هنا، وستُعاد محاولة الحفظ."
+
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr "{fileCount, plural, zero {# ملف} one {ملف واحد} two {ملفان} few {# ملفات} many {# ملفًا} other {# ملف}}"
 
@@ -1460,8 +1472,17 @@ msgstr "مُدرج دائمًا"
 msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version is in the timeline."
 msgstr "تعذّر دمج تغيير خارجي في {fileName}، لذا بقيت هذه النسخة. النسخة الخارجية موجودة في الخط الزمني."
 
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to {backupPath}."
+msgstr "تعذّر دمج تغيير خارجي في {fileName}، لذا بقيت هذه النسخة. حُفظت النسخة الخارجية في {backupPath}."
+
 msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to the document's history."
 msgstr "تعذّر دمج تغيير خارجي في {fileName}، لذا بقيت هذه النسخة. حُفظت النسخة الخارجية في سجل المستند."
+
+msgid "An outside change to {fileName} was not valid settings, so your settings stayed. A copy of the outside version was kept in this project's history, which the app cannot show yet."
+msgstr "لم يكن التغيير الخارجي في {fileName} إعدادات صالحة، لذا بقيت إعداداتك. احتُفظ بنسخة من النسخة الخارجية في سجل هذا المشروع، ولا يستطيع التطبيق عرضه بعد."
+
+msgid "An outside change to {fileName} was not valid settings, so your settings stayed. A copy of the outside version was saved to {backupPath}."
+msgstr "لم يكن التغيير الخارجي في {fileName} إعدادات صالحة، لذا بقيت إعداداتك. حُفظت نسخة من النسخة الخارجية في {backupPath}."
 
 msgid "An unexpected error occurred."
 msgstr "حدث خطأ غير متوقع."
@@ -9456,6 +9477,12 @@ msgstr "فشل تحميل الإعدادات"
 
 msgid "Settings for this project. Some are shared with every collaborator through git; others apply only on this computer."
 msgstr "إعدادات هذا المشروع. بعضها يُشارك مع كل متعاون عبر git، وبعضها ينطبق على هذا الكمبيوتر فقط."
+
+msgid "Settings in {fileName} changed outside OpenKnowledge and now apply. A copy of the change you were making was kept in this project's history, which the app cannot show yet."
+msgstr "تغيّرت الإعدادات في {fileName} خارج OpenKnowledge وأصبحت سارية الآن. احتُفظ بنسخة من التغيير الذي كنت تجريه في سجل هذا المشروع، ولا يستطيع التطبيق عرضه بعد."
+
+msgid "Settings in {fileName} changed outside OpenKnowledge and now apply. A copy of the change you were making was saved to {backupPath}."
+msgstr "تغيّرت الإعدادات في {fileName} خارج OpenKnowledge وأصبحت سارية الآن. حُفظت نسخة من التغيير الذي كنت تجريه في {backupPath}."
 
 msgid "Settings sections"
 msgstr "أقسام الإعدادات"

@@ -144,6 +144,12 @@ const SURFACED_KINDS: ParsedCheckpoint[] = [
     size: 12,
     metadata: { side: 'theirs', reason: 'check-failed' },
   },
+  {
+    kind: 'external-change-no-engine',
+    docName: 'flow.mmd',
+    size: 12,
+    metadata: { side: 'theirs', fileType: 'mermaid' },
+  },
 ];
 const MERGE_VERSION_ROWS: Array<{ checkpoint: ParsedCheckpoint; title: string; side: string }> = [
   {
@@ -185,6 +191,16 @@ const MERGE_VERSION_ROWS: Array<{ checkpoint: ParsedCheckpoint; title: string; s
     },
     title: 'Not merged',
     side: 'Version in OpenKnowledge',
+  },
+  {
+    checkpoint: {
+      kind: 'external-change-no-engine',
+      docName: 'flow.mmd',
+      size: 12,
+      metadata: { side: 'theirs', fileType: 'mermaid' },
+    },
+    title: 'Not merged',
+    side: 'Outside version',
   },
 ];
 const AUTO_CONSOLIDATION: ParsedCheckpoint = {

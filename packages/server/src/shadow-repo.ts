@@ -869,6 +869,14 @@ export type InMemoryCheckpointParams = (
       branch?: string;
       metadata: Extract<ParsedCheckpoint, { kind: 'external-change-kept-live' }>['metadata'];
     }
+  | {
+      kind: 'external-change-no-engine';
+      docName: string;
+      contents: string;
+      label: string;
+      branch?: string;
+      metadata: Extract<ParsedCheckpoint, { kind: 'external-change-no-engine' }>['metadata'];
+    }
 ) & {
   date?: string;
 };
@@ -1020,6 +1028,14 @@ async function saveInMemoryCheckpointInner(
         metadata: params.metadata,
       };
       break;
+    case 'external-change-no-engine':
+      parsed = {
+        kind: 'external-change-no-engine',
+        docName: params.docName,
+        size,
+        metadata: params.metadata,
+      };
+      break;
   }
   const bodyLine = formatCheckpointBodyLine(parsed);
   const message = `checkpoint: ${params.label}\n\n${bodyLine}`;
@@ -1163,6 +1179,7 @@ export interface CheckpointRetentionPolicy {
   maxManagedArtifactReconcile: number;
   maxExternalChangeBothKeptPerDocument: number;
   maxExternalChangeKeptLivePerDocument: number;
+  maxExternalChangeNoEnginePerDocument: number;
   maxAutoConsolidation: number;
   ttlMs: number;
 }
@@ -1183,6 +1200,7 @@ export const DEFAULT_CHECKPOINT_RETENTION: CheckpointRetentionPolicy = {
   maxManagedArtifactReconcile: 50,
   maxExternalChangeBothKeptPerDocument: 50,
   maxExternalChangeKeptLivePerDocument: 50,
+  maxExternalChangeNoEnginePerDocument: 50,
   maxAutoConsolidation: 2,
   ttlMs: 30 * 24 * 60 * 60 * 1000,
 };
@@ -1204,6 +1222,7 @@ export interface CheckpointGcResult {
   deletedManagedArtifactReconcile: number;
   deletedExternalChangeBothKept: number;
   deletedExternalChangeKeptLive: number;
+  deletedExternalChangeNoEngine: number;
   deletedAutoConsolidation: number;
   retained: number;
 }
@@ -1308,6 +1327,12 @@ export const GC_BUCKET_POLICY = {
     applyTtl: false,
     scope: 'document',
   },
+  'external-change-no-engine': {
+    limit: (p) => p.maxExternalChangeNoEnginePerDocument,
+    counter: 'deletedExternalChangeNoEngine',
+    applyTtl: false,
+    scope: 'document',
+  },
   'auto-consolidation': {
     limit: (p) => p.maxAutoConsolidation,
     counter: 'deletedAutoConsolidation',
@@ -1346,6 +1371,7 @@ async function gcCheckpointRefsInner(
     deletedManagedArtifactReconcile: 0,
     deletedExternalChangeBothKept: 0,
     deletedExternalChangeKeptLive: 0,
+    deletedExternalChangeNoEngine: 0,
     deletedAutoConsolidation: 0,
     retained: 0,
   };

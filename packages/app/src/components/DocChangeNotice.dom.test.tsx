@@ -119,6 +119,30 @@ describe('DocChangeNotice', () => {
         notice: moved('n-ours', 'folder/plan', 'ours'),
         says: "Edits to plan.md kept from the last time this branch was open could not be merged, so the file's version stayed.",
       },
+      {
+        notice: {
+          ...moved('n-engineless', 'folder/plan', 'theirs'),
+          file: 'folder/flow.mmd',
+          reason: 'no-merge-engine',
+        },
+        says: 'An outside change to flow.mmd could not be merged, so this version stayed. The outside version is in the timeline.',
+      },
+      {
+        notice: {
+          ...moved('n-settings-applied', 'folder/plan', 'ours'),
+          file: '.ok/config.yml',
+          reason: 'outside-settings-applied',
+        },
+        says: "Settings in config.yml changed outside OpenKnowledge and now apply. A copy of the change you were making was kept in this project's history, which the app cannot show yet.",
+      },
+      {
+        notice: {
+          ...moved('n-settings-invalid', 'folder/plan', 'theirs'),
+          file: '.okignore',
+          reason: 'outside-settings-invalid',
+        },
+        says: "An outside change to .okignore was not valid settings, so your settings stayed. A copy of the outside version was kept in this project's history, which the app cannot show yet.",
+      },
     ];
     for (const { notice, says } of cases) {
       serverNotices = [notice];
@@ -126,6 +150,91 @@ describe('DocChangeNotice', () => {
       expect((await findNotice()).textContent).toContain(says);
       cleanup();
     }
+  });
+
+  test('a version kept in the backup folder, and a save that is held, say where the version went or why nothing was saved', async () => {
+    const backup = '~/.ok/edit-backups/discarded/folder__flow.mmd/2026-10-21T10-00-00-000Z.mmd';
+    const common = {
+      docName: 'folder/flow.mmd',
+      file: 'folder/flow.mmd',
+      firstAt: AT,
+      lastAt: AT,
+      events: 1,
+      entries: [],
+    };
+    const cases: Array<{ notice: DocNoticeWire; says: string }> = [
+      {
+        notice: {
+          ...common,
+          id: 'n-backup',
+          kind: 'moved-to-backup',
+          side: 'theirs',
+          reason: 'no-merge-engine',
+          backup,
+        },
+        says: `An outside change to flow.mmd could not be merged, so this version stayed. The outside version was saved to ${backup}.`,
+      },
+      {
+        notice: { ...common, id: 'n-held-none', kind: 'save-held', cause: 'no-history-or-backup' },
+        says: 'flow.mmd was not saved. It changed outside OpenKnowledge, and that version could not be kept in history or in the backup folder, so the file was not written over. Your edits stay here, and saving is tried again.',
+      },
+      {
+        notice: { ...common, id: 'n-held-busy', kind: 'save-held', cause: 'keeps-changing' },
+        says: 'flow.mmd was not saved because it kept changing outside OpenKnowledge. Your edits stay here, and saving is tried again.',
+      },
+      {
+        notice: { ...common, id: 'n-held-bytes', kind: 'save-held', cause: 'not-utf8' },
+        says: 'flow.mmd was not saved because it changed outside OpenKnowledge to content that is not UTF-8 text, so the file was not written over. Your edits stay here, and saving is tried again when the file changes.',
+      },
+    ];
+    for (const { notice, says } of cases) {
+      serverNotices = [notice];
+      renderNotice('folder/flow.mmd');
+      const shown = await findNotice();
+      expect(shown.textContent).toContain(says);
+      expect(within(shown).queryByRole('button', { name: 'Open timeline' })).toBeNull();
+      cleanup();
+    }
+  });
+
+  test('a held save shows above a kept-version notice on the same document, and each dismisses on its own', async () => {
+    serverNotices = [
+      moved('n-kept', 'notes', 'theirs'),
+      {
+        id: 'n-held',
+        docName: 'notes',
+        file: 'notes.md',
+        kind: 'save-held',
+        cause: 'unreadable',
+        firstAt: AT,
+        lastAt: AT,
+        events: 1,
+        entries: [],
+      },
+    ];
+    renderNotice('notes');
+
+    await waitFor(() =>
+      expect(screen.getAllByRole('region', { name: 'File change notice' })).toHaveLength(2),
+    );
+    const [held, kept] = screen.getAllByRole('region', { name: 'File change notice' });
+    expect(held?.textContent).toContain(
+      'notes.md was not saved because it could not be read to compare it with outside changes, so the file was not written over.',
+    );
+    expect(kept?.textContent).toContain('An outside change to notes.md could not be merged');
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe(
+        'notes.md was not saved because it could not be read to compare it with outside changes, so the file was not written over. Your edits stay here, and saving is tried again. An outside change to notes.md could not be merged, so this version stayed. The outside version is in the timeline.',
+      ),
+    );
+
+    fireEvent.click(within(held as HTMLElement).getByRole('button', { name: 'Dismiss notice' }));
+
+    await waitFor(() => expect(dismissBodies).toEqual([{ docName: 'notes', id: 'n-held' }]));
+    expect(screen.getAllByRole('region', { name: 'File change notice' })).toHaveLength(1);
+    expect(screen.getByRole('region', { name: 'File change notice' }).textContent).toContain(
+      'An outside change to notes.md could not be merged',
+    );
   });
 
   test('a document with no notice shows nothing but keeps an empty status region ready', async () => {

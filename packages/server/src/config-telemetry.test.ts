@@ -217,7 +217,12 @@ describe('config-edit OTel spans', () => {
       const ytext = ydoc.getText('source');
       ytext.insert(0, 'mcp:\n  tools:\n    search:\n      maxResults: 75\n');
       const lkgCache = new Map<string, string>();
-      const ctx = { projectDir: testDir, lkgCache };
+      const ctx = {
+        projectDir: testDir,
+        lkgCache,
+        agreedDisk: new Map<string, string>(),
+        history: null,
+      };
 
       const outcome = await storeConfigDoc(ydoc, CONFIG_DOC_NAME_PROJECT, undefined, ctx);
       expect(outcome).toBe('persisted');
@@ -242,6 +247,8 @@ describe('config-edit OTel spans', () => {
         projectDir: testDir,
         lkgCache,
         onConfigRejected: () => {},
+        agreedDisk: new Map<string, string>(),
+        history: null,
       };
 
       const outcome = await storeConfigDoc(ydoc, CONFIG_DOC_NAME_PROJECT, undefined, ctx);
@@ -260,13 +267,18 @@ describe('config-edit OTel spans', () => {
   });
 
   describe('applyExternalConfigChange — file watcher path', () => {
-    it('emits config.validate(L3) on a watcher-driven change', () => {
+    it('emits config.validate(L3) on a watcher-driven change', async () => {
       const ydoc = new Y.Doc();
       const lkgCache = new Map<string, string>();
       lkgCache.set(CONFIG_DOC_NAME_PROJECT, 'mcp:\n  autoStart: false\n');
-      const ctx = { projectDir: testDir, lkgCache };
+      const ctx = {
+        projectDir: testDir,
+        lkgCache,
+        agreedDisk: new Map<string, string>(),
+        history: null,
+      };
 
-      const outcome = applyExternalConfigChange(
+      const outcome = await applyExternalConfigChange(
         ydoc,
         CONFIG_DOC_NAME_PROJECT,
         'mcp:\n  autoStart: true\n',

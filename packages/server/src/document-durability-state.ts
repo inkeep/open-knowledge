@@ -425,6 +425,14 @@ export class DocumentDurabilityState {
     this.receipts.recordAgreed(docName, diskContent);
   }
 
+  recordReceiptAgreed(docName: string, content: string, observation?: FileObservation): void {
+    this.receipts.recordAgreed(docName, content, observation);
+  }
+
+  recordReceiptOwnWrite(docName: string, content: string, observation?: FileObservation): void {
+    this.receipts.recordOwnWrite(docName, content, observation);
+  }
+
   setReconciledBase(docName: string, content: string, observation?: FileObservation): void {
     this.receipts.recordAgreed(docName, content, observation);
     let bases = this.reconciledBaseByBranch.get(this.activeBranch);

@@ -5,25 +5,67 @@ import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { requestDocPanelTab } from '@/components/doc-panel-events';
 import { SkillModeBanner } from '@/components/SkillModeBanner';
 import { Button } from '@/components/ui/button';
-import { useDocNotice } from '@/hooks/use-doc-notices';
+import { useDocNotices } from '@/hooks/use-doc-notices';
+import { saveHeldMessage } from '@/lib/save-held-message';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 
 const announcedNoticeIds = new Set<string>();
 
 const EDITOR_FOCUS_TARGETS = ['[contenteditable="true"]', '.cm-content'] as const;
 
+type NoticeFileLabel = 'name' | 'path';
+
+function noticeFileText(notice: DocNoticeWire, fileLabel: NoticeFileLabel): string {
+  return fileLabel === 'path' ? notice.file : (notice.file.split('/').pop() ?? notice.file);
+}
+
 function NoticeMessage({
   notice,
   canOpenTimeline,
+  fileLabel,
 }: {
   notice: DocNoticeWire;
   canOpenTimeline: boolean;
+  fileLabel: NoticeFileLabel;
 }) {
+  const { t } = useLingui();
   const fileName = (
     <span translate="no" className="font-medium text-foreground">
-      {notice.file.split('/').pop() ?? notice.file}
+      {noticeFileText(notice, fileLabel)}
     </span>
   );
+  if (notice.kind === 'save-held') {
+    return t(saveHeldMessage(notice.cause, noticeFileText(notice, fileLabel)));
+  }
+  if (notice.kind === 'moved-to-backup') {
+    const backupPath = (
+      <span translate="no" className="font-medium text-foreground break-all">
+        {notice.backup}
+      </span>
+    );
+    if (notice.reason === 'outside-settings-applied') {
+      return (
+        <Trans>
+          Settings in {fileName} changed outside OpenKnowledge and now apply. A copy of the change
+          you were making was saved to {backupPath}.
+        </Trans>
+      );
+    }
+    if (notice.reason === 'outside-settings-invalid') {
+      return (
+        <Trans>
+          An outside change to {fileName} was not valid settings, so your settings stayed. A copy of
+          the outside version was saved to {backupPath}.
+        </Trans>
+      );
+    }
+    return (
+      <Trans>
+        An outside change to {fileName} could not be merged, so this version stayed. The outside
+        version was saved to {backupPath}.
+      </Trans>
+    );
+  }
   if (notice.kind === 'both-kept') {
     if (notice.kept.duplicated > 0) {
       return (
@@ -49,6 +91,22 @@ function NoticeMessage({
       <Trans>
         A deletion in {fileName} was undone because the same text was changed on the other side. The
         earlier versions were saved to the document's history.
+      </Trans>
+    );
+  }
+  if (notice.reason === 'outside-settings-applied') {
+    return (
+      <Trans>
+        Settings in {fileName} changed outside OpenKnowledge and now apply. A copy of the change you
+        were making was kept in this project's history, which the app cannot show yet.
+      </Trans>
+    );
+  }
+  if (notice.reason === 'outside-settings-invalid') {
+    return (
+      <Trans>
+        An outside change to {fileName} was not valid settings, so your settings stayed. A copy of
+        the outside version was kept in this project's history, which the app cannot show yet.
       </Trans>
     );
   }
@@ -89,34 +147,35 @@ function focusEditorWithin(scope: HTMLElement | null): void {
   scope.closest<HTMLElement>('[data-editor-region]')?.focus();
 }
 
-export function DocChangeNotice({
-  docName,
-  timelineAvailable,
-}: {
-  docName: string;
-  timelineAvailable: boolean;
-}) {
-  const { t } = useLingui();
-  const { notice, dismiss } = useDocNotice(docName);
-  const singleFile = useSingleFileMode();
-  const sectionRef = useRef<HTMLElement>(null);
-  const messageRef = useRef<HTMLSpanElement>(null);
-  const [announcement, setAnnouncement] = useState('');
-  const canOpenTimeline = timelineAvailable && !singleFile;
+interface NoticeSectionProps {
+  notice: DocNoticeWire;
+  canOpenTimeline: boolean;
+  fileLabel: NoticeFileLabel;
+  onDismissFocus?: () => void;
+  messageRef: (node: HTMLSpanElement | null) => void;
+  dismiss: (notice: DocNoticeWire) => void;
+}
 
-  const noticeId = notice?.id ?? null;
-  useEffect(() => {
-    if (noticeId === null || announcedNoticeIds.has(noticeId)) return;
-    announcedNoticeIds.add(noticeId);
-    setAnnouncement(messageRef.current?.textContent ?? '');
-  }, [noticeId]);
+function NoticeSection({
+  notice,
+  canOpenTimeline,
+  fileLabel,
+  onDismissFocus,
+  messageRef,
+  dismiss,
+}: NoticeSectionProps) {
+  const { t } = useLingui();
+  const sectionRef = useRef<HTMLElement>(null);
 
   function handleDismiss() {
-    if (notice === null) return;
     const hadFocus = sectionRef.current?.contains(document.activeElement) ?? false;
     const scope = sectionRef.current?.parentElement ?? null;
     dismiss(notice);
-    if (hadFocus) requestAnimationFrame(() => focusEditorWithin(scope));
+    if (!hadFocus) return;
+    requestAnimationFrame(() => {
+      if (onDismissFocus) onDismissFocus();
+      else focusEditorWithin(scope);
+    });
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
@@ -126,51 +185,94 @@ export function DocChangeNotice({
   }
 
   return (
+    <section
+      ref={sectionRef}
+      aria-label={t`File change notice`}
+      data-slot="doc-change-notice"
+      data-testid="doc-change-notice"
+      onKeyDown={handleKeyDown}
+      className="shrink-0"
+    >
+      <SkillModeBanner
+        icon={<History className="size-4" aria-hidden />}
+        clampLines={false}
+        actions={
+          <>
+            {canOpenTimeline && notice.entries.length > 0 ? (
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto px-1"
+                onClick={() => requestDocPanelTab('timeline', { focus: 'panel' })}
+              >
+                {t`Open timeline`}
+              </Button>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6 text-muted-foreground"
+              aria-label={t`Dismiss notice`}
+              onClick={handleDismiss}
+            >
+              <X className="size-3.5" aria-hidden />
+            </Button>
+          </>
+        }
+      >
+        <span ref={messageRef}>
+          <NoticeMessage notice={notice} canOpenTimeline={canOpenTimeline} fileLabel={fileLabel} />
+        </span>
+      </SkillModeBanner>
+    </section>
+  );
+}
+
+export function DocChangeNotice({
+  docName,
+  timelineAvailable,
+  fileLabel = 'name',
+  onDismissFocus,
+}: {
+  docName: string;
+  timelineAvailable: boolean;
+  fileLabel?: NoticeFileLabel;
+  onDismissFocus?: () => void;
+}) {
+  const { notices, dismiss } = useDocNotices(docName);
+  const singleFile = useSingleFileMode();
+  const messages = useRef(new Map<string, HTMLSpanElement>());
+  const [announcement, setAnnouncement] = useState('');
+  const canOpenTimeline = timelineAvailable && !singleFile;
+
+  useEffect(() => {
+    const fresh = notices.filter((notice) => !announcedNoticeIds.has(notice.id));
+    if (fresh.length === 0) return;
+    for (const notice of fresh) announcedNoticeIds.add(notice.id);
+    setAnnouncement(
+      fresh.map((notice) => messages.current.get(notice.id)?.textContent ?? '').join(' '),
+    );
+  }, [notices]);
+
+  return (
     <>
       <span role="status" className="sr-only">
         {announcement}
       </span>
-      {notice === null ? null : (
-        <section
-          ref={sectionRef}
-          aria-label={t`File change notice`}
-          data-testid="doc-change-notice"
-          onKeyDown={handleKeyDown}
-          className="shrink-0"
-        >
-          <SkillModeBanner
-            icon={<History className="size-4" aria-hidden />}
-            clampLines={false}
-            actions={
-              <>
-                {canOpenTimeline && notice.entries.length > 0 ? (
-                  <Button
-                    variant="link"
-                    size="sm"
-                    className="h-auto px-1"
-                    onClick={() => requestDocPanelTab('timeline', { focus: 'panel' })}
-                  >
-                    {t`Open timeline`}
-                  </Button>
-                ) : null}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-6 text-muted-foreground"
-                  aria-label={t`Dismiss notice`}
-                  onClick={handleDismiss}
-                >
-                  <X className="size-3.5" aria-hidden />
-                </Button>
-              </>
-            }
-          >
-            <span ref={messageRef}>
-              <NoticeMessage notice={notice} canOpenTimeline={canOpenTimeline} />
-            </span>
-          </SkillModeBanner>
-        </section>
-      )}
+      {notices.map((notice) => (
+        <NoticeSection
+          key={notice.id}
+          notice={notice}
+          canOpenTimeline={canOpenTimeline}
+          fileLabel={fileLabel}
+          onDismissFocus={onDismissFocus}
+          messageRef={(node) => {
+            if (node === null) messages.current.delete(notice.id);
+            else messages.current.set(notice.id, node);
+          }}
+          dismiss={dismiss}
+        />
+      ))}
     </>
   );
 }

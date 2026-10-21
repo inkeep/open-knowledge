@@ -155,7 +155,8 @@ function classifyEntry(entry: TimelineEntry): EntryDescriptor {
     const checkpoint = entry.checkpoint;
     if (
       checkpoint?.kind === 'external-change-both-kept' ||
-      checkpoint?.kind === 'external-change-kept-live'
+      checkpoint?.kind === 'external-change-kept-live' ||
+      checkpoint?.kind === 'external-change-no-engine'
     ) {
       return { kind: 'merge-version', side: checkpoint.metadata.side };
     }
@@ -181,7 +182,12 @@ function displayAuthor(entry: TimelineEntry): string {
     if (entry.checkpoint?.kind === 'external-change-both-kept') {
       return t`Before an outside change was merged`;
     }
-    if (entry.checkpoint?.kind === 'external-change-kept-live') return t`Not merged`;
+    if (
+      entry.checkpoint?.kind === 'external-change-kept-live' ||
+      entry.checkpoint?.kind === 'external-change-no-engine'
+    ) {
+      return t`Not merged`;
+    }
     return t`Recovered content`;
   }
   if (entry.type === 'upstream') return t`Upstream sync`;

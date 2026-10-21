@@ -25,7 +25,9 @@ describe('startManagedArtifactWatcher', () => {
   test('fires onChange for a SKILL.md created after start', async () => {
     const skillsRoot = resolve(root, '.ok', 'skills');
     const seen: Array<[string, string]> = [];
-    cleanup = await startManagedArtifactWatcher([skillsRoot], (p, c) => seen.push([p, c]));
+    cleanup = await startManagedArtifactWatcher([skillsRoot], (p, c) => {
+      seen.push([p, c]);
+    });
 
     const skillDir = resolve(skillsRoot, 'demo');
     mkdirSync(skillDir, { recursive: true });
@@ -51,7 +53,9 @@ describe('startManagedArtifactWatcher', () => {
     const unlinked: string[] = [];
     cleanup = await startManagedArtifactWatcher(
       [skillsRoot],
-      (p) => changed.push(p),
+      (p) => {
+        changed.push(p);
+      },
       (p) => unlinked.push(p),
     );
 
@@ -73,7 +77,9 @@ describe('startManagedArtifactWatcher', () => {
     writeFileSync(leaf, 'v1', 'utf-8');
 
     const contents: string[] = [];
-    cleanup = await startManagedArtifactWatcher([skillsRoot], (_p, c) => contents.push(c));
+    cleanup = await startManagedArtifactWatcher([skillsRoot], (_p, c) => {
+      contents.push(c);
+    });
 
     writeFileSync(resolve(skillDir, 'NOTES.md'), 'noise', 'utf-8');
     writeFileSync(leaf, 'v2', 'utf-8');
@@ -94,7 +100,9 @@ describe('startManagedArtifactWatcher', () => {
     writeFileSync(leaf, 'v1', 'utf-8');
 
     const seen: Array<[string, string]> = [];
-    cleanup = await startManagedArtifactWatcher([skillsRoot], (p, c) => seen.push([p, c]));
+    cleanup = await startManagedArtifactWatcher([skillsRoot], (p, c) => {
+      seen.push([p, c]);
+    });
 
     const addedDir = resolve(skillsRoot, 'added');
     mkdirSync(addedDir, { recursive: true });
@@ -129,6 +137,7 @@ describe('managed-artifact watch roots never conjure a harness home', () => {
         lkgCache: new Map<string, string>(),
         setReconciledBase: () => {},
         getReconciledBase: () => undefined,
+        history: null,
       }),
       () => {},
     );

@@ -44,7 +44,12 @@ export type DiskCompareOutcome =
       readonly alreadyCandidate: boolean;
     }
   | { readonly kind: 'drift'; readonly observation: FileObservation }
-  | { readonly kind: 'changed'; readonly text: string }
+  | {
+      readonly kind: 'changed';
+      readonly text: string;
+      readonly lossless: boolean;
+      readonly observation: FileObservation;
+    }
   | { readonly kind: 'absent' }
   | { readonly kind: 'unreadable'; readonly error: unknown; readonly transient: boolean };
 
@@ -110,7 +115,43 @@ export function compareDiskBeforeReplace(
   if (input.baseHash !== undefined && diskHash === input.baseHash) {
     return { kind: 'drift', observation };
   }
-  return { kind: 'changed', text };
+  return {
+    kind: 'changed',
+    text,
+    lossless: Buffer.from(text, 'utf8').equals(observed.bytes),
+    observation,
+  };
+}
+
+export type ObservedTextRead =
+  | {
+      readonly kind: 'read';
+      readonly text: string;
+      readonly lossless: boolean;
+      readonly observation: FileObservation;
+    }
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'failed'; readonly error: unknown };
+
+export function readObservedText(
+  path: string,
+  read: (path: string) => ObservedFileRead = tracedReadObservedSync,
+): ObservedTextRead {
+  let observed: ObservedFileRead;
+  try {
+    observed = read(path);
+  } catch (error) {
+    const code = errnoCode(error);
+    if (code !== undefined && ABSENT_CODES.has(code)) return { kind: 'absent' };
+    return { kind: 'failed', error };
+  }
+  const text = observed.bytes.toString('utf8');
+  return {
+    kind: 'read',
+    text,
+    lossless: Buffer.from(text, 'utf8').equals(observed.bytes),
+    observation: observationOf(observed.before),
+  };
 }
 
 export type RestatOutcome =

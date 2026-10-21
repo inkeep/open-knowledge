@@ -512,6 +512,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
 
     const durabilityState = new DocumentDurabilityState();
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: rig.tmpDir,
       projectDir: rig.tmpDir,
@@ -559,6 +560,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
 
     const durabilityState = new DocumentDurabilityState();
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: rig.tmpDir,
       projectDir: rig.tmpDir,
@@ -598,6 +600,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
 
     const durabilityState = new DocumentDurabilityState();
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: rig.tmpDir,
       projectDir: rig.tmpDir,
@@ -636,6 +639,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
 
     const durabilityState = new DocumentDurabilityState();
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: rig.tmpDir,
       projectDir: rig.tmpDir,
@@ -673,6 +677,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
 
     const durabilityState = new DocumentDurabilityState();
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: rig.tmpDir,
       projectDir: rig.tmpDir,
@@ -734,6 +739,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
 
     const durabilityState = new DocumentDurabilityState();
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: rig.tmpDir,
       projectDir: rig.tmpDir,
@@ -787,6 +793,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
 
     const durabilityState = new DocumentDurabilityState();
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: rig.tmpDir,
       projectDir: rig.tmpDir,
@@ -828,6 +835,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
 
     const durabilityState = new DocumentDurabilityState();
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: rig.tmpDir,
       projectDir: rig.tmpDir,

@@ -10,7 +10,7 @@ export type ManagedArtifactWatcherUnsubscribe = () => Promise<void>;
 
 export async function startManagedArtifactWatcher(
   roots: ReadonlyArray<string>,
-  onChange: (absPath: string, content: string) => void,
+  onChange: (absPath: string, content: string) => void | Promise<void>,
   onUnlink?: (absPath: string) => void,
 ): Promise<ManagedArtifactWatcherUnsubscribe> {
   const log = getLogger('managed-artifact-watcher');
@@ -44,10 +44,13 @@ export async function startManagedArtifactWatcher(
     }
     if (content === lastContent.get(path)) return;
     lastContent.set(path, content);
-    try {
-      onChange(path, content);
-    } catch (err) {
+    const reportFailure = (err: unknown): void => {
       log.warn({ err, path }, 'managed-artifact change handler threw');
+    };
+    try {
+      void Promise.resolve(onChange(path, content)).catch(reportFailure);
+    } catch (err) {
+      reportFailure(err);
     }
   };
   const handleUnlink = (path: string): void => {

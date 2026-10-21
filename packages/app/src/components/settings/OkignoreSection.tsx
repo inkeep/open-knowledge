@@ -37,6 +37,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { subscribeToConfigIgnoreNestedError } from '@/lib/config-ignore-nested-error-events';
 import { subscribeToConfigValidationRejected } from '@/lib/config-validation-events';
+import { saveHeldRejection } from '@/lib/save-held-message';
 import { cn } from '@/lib/utils';
 import {
   appendPattern,
@@ -153,12 +154,13 @@ function OkignoreSectionBody({ binding }: { binding: OkignoreBinding }) {
   useEffect(() => {
     return binding.subscribeRejection(({ error }) => {
       const detail = pickOkignoreDetail(error);
-      const message = detail?.detail ?? humanFormat(error);
+      const held = saveHeldRejection(error);
+      const message = held === null ? (detail?.detail ?? humanFormat(error)) : t(held);
       setRejection({ message, lineNumber: detail?.lineNumber, ts: Date.now() });
       if (rejectionTimerRef.current) clearTimeout(rejectionTimerRef.current);
       rejectionTimerRef.current = setTimeout(() => setRejection(null), REJECTION_BANNER_MS);
     });
-  }, [binding]);
+  }, [binding, t]);
 
   useEffect(() => {
     return subscribeToConfigIgnoreNestedError((event) => {

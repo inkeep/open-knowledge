@@ -76,6 +76,7 @@ async function createStoreHarness(
   });
 
   const persistence = createPersistenceExtension({
+    mergeHistory: null,
     ingestDiskAtStore: null,
     contentDir: projectRoot,
     projectDir: projectRoot,

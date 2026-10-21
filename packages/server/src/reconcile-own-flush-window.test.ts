@@ -102,6 +102,7 @@ async function drivePhantomDivergence(
   let windowFired = false;
   let windowGuard: Promise<ReconcileBeforeWriteResult> | undefined;
   const persistence = createPersistenceExtension({
+    mergeHistory: null,
     ingestDiskAtStore: null,
     contentDir: tmpDir,
     projectDir: tmpDir,
@@ -206,6 +207,7 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
     writeFileSync(docPath, BASE_CONTENT, 'utf-8');
 
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -245,6 +247,7 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
     let laterFlush: Promise<void> | undefined;
     let peekAfterLaterStart: string | undefined;
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
@@ -314,6 +317,7 @@ describe('reconcileDiskBeforeAgentWrite — overlapping own flushes are not fore
     let conflictAfterGuard: boolean | undefined;
 
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: async (name, _path, content) => {
         const taken = await reconcileDiskBeforeAgentWrite(
           durabilityState,

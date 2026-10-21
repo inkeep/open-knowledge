@@ -1,4 +1,5 @@
 import type { ConfigBinding, OkignoreBinding } from '@inkeep/open-knowledge-core';
+import type { DocNoticeWire } from '@inkeep/open-knowledge-core/schemas/api';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -120,6 +121,8 @@ vi.doMock('@/lib/handoff/use-claude-desktop-integration', () => ({
 }));
 
 const { SettingsDialogShell } = await import('./SettingsDialogShell');
+const { DocNoticesProvider } = await import('@/hooks/use-doc-notices');
+const { SingleFileModeProvider } = await import('@/lib/single-file-mode');
 
 const SENTINEL_USER_BINDING = {
   current: () => ({}) as never,
@@ -411,5 +414,94 @@ describe('SettingsDialogShell userBinding gating (Tier-3 mount)', () => {
         since,
       ),
     ).toEqual(['components/settings/settings-search-index.ts']);
+  });
+});
+
+describe('a settings file notice inside the Settings dialog', () => {
+  const NOTICE: DocNoticeWire = {
+    id: 'n-local',
+    docName: '__local__/project',
+    file: '.ok/local/config.yml',
+    kind: 'moved-to-history',
+    side: 'ours',
+    reason: 'outside-settings-applied',
+    firstAt: '2026-10-21T10:00:00.000Z',
+    lastAt: '2026-10-21T10:00:00.000Z',
+    events: 1,
+    entries: ['a'.repeat(40)],
+  };
+  let originalFetch: typeof globalThis.fetch;
+  let serverNotices: DocNoticeWire[] = [];
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    resetProbe();
+    mockBodyMode = 'probe';
+    mockProjectConfig = { contentRules: { markdownlint: { enabled: true } } };
+    serverNotices = [NOTICE];
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url === '/api/doc-notices/dismiss') {
+        const body = JSON.parse(String(init?.body)) as { id: string };
+        serverNotices = serverNotices.filter((notice) => notice.id !== body.id);
+        return Promise.resolve(Response.json({ dismissed: true }));
+      }
+      if (url === '/api/doc-notices') {
+        return Promise.resolve(Response.json({ notices: serverNotices }));
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    }) as never;
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    cleanup();
+    consoleErrorSpy.mockRestore();
+  });
+
+  function renderWithNotices(onOpenChange: (open: boolean) => void) {
+    return render(
+      <SingleFileModeProvider>
+        <DocNoticesProvider>
+          <SettingsDialogShell open onOpenChange={onOpenChange} />
+        </DocNoticesProvider>
+      </SingleFileModeProvider>,
+    );
+  }
+
+  test('names the settings file by its path, sits first in the content tab order, and Escape on it dismisses only the notice', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    renderWithNotices(onOpenChange);
+
+    const notice = await screen.findByRole('region', { name: 'File change notice' });
+    expect(notice.textContent).toContain('Settings in .ok/local/config.yml changed outside');
+    const content = screen.getByRole('region', { name: 'Settings content' });
+    content.focus();
+    await user.tab();
+    expect(notice.contains(document.activeElement)).toBe(true);
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'File change notice' })).toBeNull(),
+    );
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).toBe(content));
+  });
+
+  test('Escape anywhere else in the dialog still closes it', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    renderWithNotices(onOpenChange);
+    await screen.findByRole('region', { name: 'File change notice' });
+
+    screen.getByRole('region', { name: 'Settings content' }).focus();
+    await user.keyboard('{Escape}');
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

@@ -48,6 +48,16 @@ describe('DocumentDurabilityState', () => {
     expect(state.takeStoreFailure('doc')).toBeNull();
   });
 
+  test('records receipts for a document without giving it a reconciled base', () => {
+    const state = new DocumentDurabilityState('main', { receipts: new DiskReceiptLog() });
+    state.recordReceiptAgreed('flow.mmd', 'graph TD\n');
+    expect(state.getReceipt('flow.mmd')).toMatchObject({ via: 'agreed' });
+    state.recordReceiptOwnWrite('flow.mmd', 'graph LR\n');
+    expect(state.getReceipt('flow.mmd')).toMatchObject({ via: 'own-write' });
+    expect(state.isRecentOwnWrite('flow.mmd', contentHash('graph LR\n'))).toBe(true);
+    expect(state.getReconciledBase('flow.mmd')).toBeUndefined();
+  });
+
   test('a batch held by two owners lasts until both release it, and only the last release ends it', () => {
     const state = new DocumentDurabilityState();
     state.holdBatch('head-watcher');

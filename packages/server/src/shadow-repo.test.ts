@@ -1701,6 +1701,16 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
           metadata: { side: 'theirs', reason: 'check-failed' },
         });
         return;
+      case 'external-change-no-engine':
+        await saveInMemoryCheckpoint(shadow, 'content/docs', {
+          kind,
+          docName: 'p.mmd',
+          contents: `p${tag}\n`,
+          label: 'l',
+          date,
+          metadata: { side: 'theirs', fileType: 'mermaid' },
+        });
+        return;
       case 'auto-consolidation':
         await writeAutoConsolidationCheckpoint(shadow, tag === '' ? 1 : Number(tag));
         return;
@@ -1771,6 +1781,41 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
       .split('\n')
       .sort();
     expect(remaining).toEqual([...quiet, ...busy.slice(3)].sort());
+  });
+
+  test('outside versions of files with no merge engine keep a per-document cap and never expire', async () => {
+    const { gcCheckpointRefs } = await import('./shadow-repo.ts');
+    const seed = (docName: string, rank: number): Promise<string> =>
+      saveInMemoryCheckpoint(shadow, 'content/docs', {
+        kind: 'external-change-no-engine',
+        docName,
+        contents: `${docName} ${rank}\n`,
+        label: 'l',
+        date: seedDate(rank),
+        metadata: { side: 'theirs', fileType: 'excalidraw' },
+      });
+    const quiet = await seed('quiet.excalidraw', 1);
+    const busy: string[] = [];
+    for (let rank = 2; rank <= 5; rank++) busy.push(await seed('busy.excalidraw', rank));
+
+    const result = await gcCheckpointRefs(shadow, 'main', {
+      ...DEFAULT_CHECKPOINT_RETENTION,
+      maxExternalChangeNoEnginePerDocument: 2,
+      ttlMs: 1,
+    });
+
+    expect(result.deletedExternalChangeNoEngine).toBe(2);
+    const remaining = (
+      await shadowGit(shadow).raw(
+        'for-each-ref',
+        '--format=%(objectname)',
+        'refs/checkpoints/main/',
+      )
+    )
+      .trim()
+      .split('\n')
+      .sort();
+    expect(remaining).toEqual([quiet, ...busy.slice(2)].sort());
   });
 
   test('every registered kind is actually REAPED at its own limit, not merely bucketed', async () => {

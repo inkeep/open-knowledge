@@ -3,7 +3,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
 import { type DocNoticeWire, DocNoticeWireSchema } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
-import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
+import { isSystemDoc } from './cc1-broadcast.ts';
 import { getLocalDir } from './config/paths.ts';
 import { docNameToRelativePath } from './doc-extensions.ts';
 import { tracedMkdirSync, tracedRenameSync, tracedWriteFileSync } from './fs-traced.ts';
@@ -21,19 +21,35 @@ const MAX_ENTRIES_PER_NOTICE = 8;
 
 type BothKeptNotice = Extract<DocNoticeWire, { kind: 'both-kept' }>;
 type MovedNotice = Extract<DocNoticeWire, { kind: 'moved-to-history' }>;
+type HeldNotice = Extract<DocNoticeWire, { kind: 'save-held' }>;
+
+export type MoveReason = MovedNotice['reason'];
 
 export type DocNoticeEvent =
   | { kind: 'both-kept'; kept: BothKeptNotice['kept'] }
   | {
       kind: 'moved-to-history';
       side: MovedNotice['side'];
-      reason: MovedNotice['reason'];
+      reason: MoveReason;
       entry: string;
-    };
+    }
+  | {
+      kind: 'moved-to-backup';
+      side: MovedNotice['side'];
+      reason: MoveReason;
+      backup: string;
+    }
+  | { kind: 'save-held'; cause: HeldNotice['cause'] };
 
 export interface DocNoticeSink {
   record(docName: string, branch: string, event: DocNoticeEvent): string | null;
   attachEntry(docName: string, id: string, entry: string): void;
+  withdrawHeld(docName: string, branch: string): void;
+}
+
+export interface NoticeFile {
+  readonly abs: string;
+  readonly display: string;
 }
 
 export interface DocNoticeLedgerOptions {
@@ -43,7 +59,9 @@ export interface DocNoticeLedgerOptions {
   isReady: () => boolean;
   signal: () => void;
   isHeld?: (docName: string) => boolean;
+  isSaveHeld?: (docName: string) => boolean;
   now?: () => number;
+  resolveFile?: (docName: string) => NoticeFile | null;
 }
 
 const StoredNoticeSchema = z.object({
@@ -57,16 +75,54 @@ const StoredFileSchema = z.object({
   notices: z.array(z.unknown()),
 });
 
-function keyOf(branch: string, docName: string): string {
-  return `${branch}\u0000${docName}`;
+type NoticeSlot = 'kept' | 'held';
+
+const NOTICE_SLOTS: readonly NoticeSlot[] = ['kept', 'held'];
+
+function slotOf(kind: DocNoticeWire['kind']): NoticeSlot {
+  return kind === 'save-held' ? 'held' : 'kept';
+}
+
+function keyOf(branch: string, docName: string, slot: NoticeSlot): string {
+  return `${branch}\u0000${docName}\u0000${slot}`;
 }
 
 function isNoticeDoc(docName: string): boolean {
-  return !isSystemDoc(docName) && !isConfigDoc(docName);
+  return !isSystemDoc(docName);
 }
 
 export function docNoticesPath(projectDir: string): string {
   return join(getLocalDir(projectDir), DOC_NOTICES_FILENAME);
+}
+
+type NoticeCommon = Pick<
+  DocNoticeWire,
+  'id' | 'docName' | 'file' | 'firstAt' | 'lastAt' | 'events' | 'entries'
+>;
+
+function noticeOf(common: NoticeCommon, event: DocNoticeEvent): DocNoticeWire {
+  switch (event.kind) {
+    case 'both-kept':
+      return { ...common, kind: 'both-kept', kept: event.kept };
+    case 'moved-to-history':
+      return { ...common, kind: 'moved-to-history', side: event.side, reason: event.reason };
+    case 'moved-to-backup':
+      return {
+        ...common,
+        kind: 'moved-to-backup',
+        side: event.side,
+        reason: event.reason,
+        backup: event.backup,
+      };
+    case 'save-held':
+      return { ...common, kind: 'save-held', cause: event.cause };
+    default:
+      return assertNeverNoticeEvent(event);
+  }
+}
+
+function assertNeverNoticeEvent(event: never): never {
+  throw new Error(`unhandled notice event: ${JSON.stringify(event)}`);
 }
 
 export class DocNoticeLedger implements DocNoticeSink {
@@ -83,14 +139,21 @@ export class DocNoticeLedger implements DocNoticeSink {
 
   record(docName: string, branch: string, event: DocNoticeEvent): string | null {
     if (!isNoticeDoc(docName)) return null;
-    const key = keyOf(branch, docName);
+    const key = keyOf(branch, docName, slotOf(event.kind));
     const existing = this.byKey.get(key)?.notice;
+    if (
+      event.kind === 'save-held' &&
+      existing?.kind === 'save-held' &&
+      existing.cause === event.cause
+    ) {
+      return existing.id;
+    }
     const at = new Date().toISOString();
     const entry = event.kind === 'moved-to-history' ? event.entry : undefined;
     const common = {
       id: existing?.id ?? randomUUID(),
       docName,
-      file: docNameToRelativePath(docName),
+      file: this.options.resolveFile?.(docName)?.display ?? docNameToRelativePath(docName),
       firstAt: existing?.firstAt ?? at,
       lastAt: at,
       events: (existing?.events ?? 0) + 1,
@@ -98,10 +161,7 @@ export class DocNoticeLedger implements DocNoticeSink {
         -MAX_ENTRIES_PER_NOTICE,
       ),
     };
-    const notice: DocNoticeWire =
-      event.kind === 'both-kept'
-        ? { ...common, kind: 'both-kept', kept: event.kept }
-        : { ...common, kind: 'moved-to-history', side: event.side, reason: event.reason };
+    const notice = noticeOf(common, event);
     this.byKey.delete(key);
     this.missingSince.delete(key);
     this.byKey.set(key, { branch, notice });
@@ -117,6 +177,15 @@ export class DocNoticeLedger implements DocNoticeSink {
     return notice.id;
   }
 
+  withdrawHeld(docName: string, branch: string): void {
+    const key = keyOf(branch, docName, 'held');
+    if (!this.byKey.has(key)) return;
+    this.byKey.delete(key);
+    this.missingSince.delete(key);
+    log.info({ docName, branch }, `[doc-notices] held-save notice withdrawn: ${docName}`);
+    this.commit();
+  }
+
   attachEntry(docName: string, id: string, entry: string): void {
     for (const [key, stored] of this.byKey) {
       if (stored.notice.docName !== docName || stored.notice.id !== id) continue;
@@ -130,22 +199,27 @@ export class DocNoticeLedger implements DocNoticeSink {
 
   rename(oldDocName: string, newDocName: string, branch: string, newFile?: string): void {
     if (!isNoticeDoc(oldDocName) || !isNoticeDoc(newDocName)) return;
-    const oldKey = keyOf(branch, oldDocName);
-    const stored = this.byKey.get(oldKey);
-    if (!stored) return;
-    this.byKey.delete(oldKey);
-    this.missingSince.delete(oldKey);
-    const newKey = keyOf(branch, newDocName);
-    this.byKey.delete(newKey);
-    this.missingSince.delete(newKey);
-    this.byKey.set(newKey, {
-      branch,
-      notice: {
-        ...stored.notice,
-        docName: newDocName,
-        file: newFile ?? `${newDocName}${extname(stored.notice.file)}`,
-      },
-    });
+    let moved = false;
+    for (const slot of NOTICE_SLOTS) {
+      const oldKey = keyOf(branch, oldDocName, slot);
+      const stored = this.byKey.get(oldKey);
+      if (!stored) continue;
+      moved = true;
+      this.byKey.delete(oldKey);
+      this.missingSince.delete(oldKey);
+      const newKey = keyOf(branch, newDocName, slot);
+      this.byKey.delete(newKey);
+      this.missingSince.delete(newKey);
+      this.byKey.set(newKey, {
+        branch,
+        notice: {
+          ...stored.notice,
+          docName: newDocName,
+          file: newFile ?? `${newDocName}${extname(stored.notice.file)}`,
+        },
+      });
+    }
+    if (!moved) return;
     log.info(
       { docName: newDocName, from: oldDocName, branch },
       `[doc-notices] notice followed a rename: ${oldDocName} -> ${newDocName}`,
@@ -166,7 +240,14 @@ export class DocNoticeLedger implements DocNoticeSink {
     const gone: Array<[string, StoredNotice]> = [];
     const now = this.options.now?.() ?? Date.now();
     for (const [key, stored] of onBranch) {
-      const presence = this.filePresence(stored.notice.file);
+      if (
+        stored.notice.kind === 'save-held' &&
+        this.options.isSaveHeld?.(stored.notice.docName) === false
+      ) {
+        gone.push([key, stored]);
+        continue;
+      }
+      const presence = this.filePresence(stored.notice.docName, stored.notice.file);
       if (presence === 'present' || this.options.isHeld?.(stored.notice.docName) === true) {
         this.missingSince.delete(key);
       } else if (presence === 'missing') {
@@ -204,9 +285,10 @@ export class DocNoticeLedger implements DocNoticeSink {
     return false;
   }
 
-  private filePresence(file: string): 'present' | 'missing' | 'unknown' {
+  private filePresence(docName: string, file: string): 'present' | 'missing' | 'unknown' {
+    const abs = this.options.resolveFile?.(docName)?.abs ?? join(this.options.contentDir, file);
     try {
-      statSync(join(this.options.contentDir, file));
+      statSync(abs);
       return 'present';
     } catch (err) {
       const code = errnoCode(err);
@@ -260,7 +342,10 @@ export class DocNoticeLedger implements DocNoticeSink {
     for (const row of file.notices) {
       const stored = StoredNoticeSchema.safeParse(row);
       if (!stored.success || !isNoticeDoc(stored.data.notice.docName)) continue;
-      this.byKey.set(keyOf(stored.data.branch, stored.data.notice.docName), stored.data);
+      this.byKey.set(
+        keyOf(stored.data.branch, stored.data.notice.docName, slotOf(stored.data.notice.kind)),
+        stored.data,
+      );
     }
   }
 

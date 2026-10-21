@@ -19,6 +19,27 @@ describe('checkpoint-kind registry', () => {
     expect([...CHECKPOINT_KINDS].sort()).toEqual(Object.keys(SAMPLE_BY_KIND).sort());
   });
 
+  it('reads every kept-live reason and every no-engine file type, and nothing else', () => {
+    const line = (kind: string, metadata: Record<string, string>) =>
+      `ok-checkpoint-v1: ${JSON.stringify({ kind, docName: 'x', size: 1, metadata })}`;
+    for (const reason of ['check-failed', 'too-large', 'conflict-markers', 'no-base']) {
+      expect(
+        parseCheckpoint(line('external-change-kept-live', { side: 'theirs', reason }))?.kind,
+      ).toBe('external-change-kept-live');
+    }
+    for (const fileType of ['mermaid', 'excalidraw', 'text', 'config']) {
+      expect(
+        parseCheckpoint(line('external-change-no-engine', { side: 'ours', fileType }))?.kind,
+      ).toBe('external-change-no-engine');
+    }
+    expect(
+      parseCheckpoint(line('external-change-kept-live', { side: 'theirs', reason: 'other' })),
+    ).toBeNull();
+    expect(
+      parseCheckpoint(line('external-change-no-engine', { side: 'theirs', fileType: 'pdf' })),
+    ).toBeNull();
+  });
+
   it('gives every kind a complete, well-typed attribute set', () => {
     for (const kind of CHECKPOINT_KINDS) {
       const attrs = CHECKPOINT_KIND_REGISTRY[kind];

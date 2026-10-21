@@ -17,7 +17,7 @@ import {
   type ConfigValidationError,
   isKnownConfigError,
 } from '@inkeep/open-knowledge-core';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import {
   CONFIG_FILE_WATCHER_ORIGIN,
@@ -32,14 +32,58 @@ import {
   loadConfigDoc,
   storeConfigDoc,
 } from './config-persistence.ts';
+import * as fsTraced from './fs-traced.ts';
+import { getMetrics, resetMetrics } from './metrics.ts';
+
+interface MovedConfigVersion {
+  docName: string;
+  side: 'ours' | 'theirs';
+  bytes: string;
+  fileType: string;
+}
 
 interface Fixture {
   projectDir: string;
   homedir: string;
   rejections: Array<{ docName: string; error: ConfigValidationError }>;
+  moved: MovedConfigVersion[];
   ctx: ConfigPersistenceCtx;
   cleanup: () => void;
 }
+
+interface NoticedConfigVersion {
+  docName: string;
+  side: string;
+  where: 'history' | 'backup';
+  entry: string;
+}
+
+const noticed: NoticedConfigVersion[] = [];
+let duringSave: (() => void) | null = null;
+
+function recordingHistory(
+  moved: MovedConfigVersion[],
+  saves: () => boolean = () => true,
+): NonNullable<ConfigPersistenceCtx['history']> {
+  return {
+    saveNoEngine: async (docName, displaced, fileType) => {
+      duringSave?.();
+      if (!saves()) return null;
+      moved.push({ docName, ...displaced, fileType });
+      return `entry-${moved.length}`;
+    },
+    noticeNoEngine: (docName, side, _fileType, copy) => {
+      noticed.push({
+        docName,
+        side,
+        where: copy.where,
+        entry: copy.where === 'history' ? copy.entry : copy.backup.display,
+      });
+    },
+  };
+}
+
+let historySaves = true;
 
 function makeFixture(): Fixture {
   const root = mkdtempSync(join(tmpdir(), 'ok-config-persist-'));
@@ -48,18 +92,25 @@ function makeFixture(): Fixture {
   mkdirSync(projectDir, { recursive: true });
   mkdirSync(homedir, { recursive: true });
   const rejections: Fixture['rejections'] = [];
+  const moved: MovedConfigVersion[] = [];
+  historySaves = true;
+  noticed.length = 0;
+  duringSave = null;
   const ctx: ConfigPersistenceCtx = {
     projectDir,
     lkgCache: new Map(),
+    agreedDisk: new Map(),
     homedirOverride: homedir,
     onConfigRejected: (docName, error) => {
       rejections.push({ docName, error });
     },
+    history: recordingHistory(moved, () => historySaves),
   };
   return {
     projectDir,
     homedir,
     rejections,
+    moved,
     ctx,
     cleanup: () => {
       try {
@@ -67,6 +118,19 @@ function makeFixture(): Fixture {
       } catch {}
     },
   };
+}
+
+function backupsIn(home: string): string[] {
+  const root = join(home, '.ok', 'edit-backups', 'discarded');
+  if (!existsSync(root)) return [];
+  return readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => readFileSync(join(entry.parentPath, entry.name), 'utf-8'));
+}
+
+function blockBackups(home: string): void {
+  mkdirSync(join(home, '.ok'), { recursive: true });
+  writeFileSync(join(home, '.ok', 'edit-backups'), 'not a folder');
 }
 
 function writeWorkspaceConfig(projectDir: string, content: string): string {
@@ -87,10 +151,165 @@ let fx: Fixture;
 
 beforeEach(() => {
   fx = makeFixture();
+  resetMetrics();
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   fx.cleanup();
+});
+
+describe('settings outside changes: agreed version, races and deferral', () => {
+  const SAVED = 'mcp:\n  autoStart: true\n';
+  const EDIT = 'mcp:\n  autoStart: true\n# note\n';
+
+  function projectPath(): string {
+    const path = configDocAbsPath(CONFIG_DOC_NAME_PROJECT, fx.ctx);
+    mkdirSync(dirname(path), { recursive: true });
+    return path;
+  }
+
+  function loaded(fileBytes: string | null): Y.Doc {
+    const path = projectPath();
+    if (fileBytes !== null) writeFileSync(path, fileBytes, 'utf-8');
+    const doc = new Y.Doc();
+    loadConfigDoc(doc, CONFIG_DOC_NAME_PROJECT, fx.ctx);
+    return doc;
+  }
+
+  function type(doc: Y.Doc, text: string): void {
+    const ytext = doc.getText('source');
+    doc.transact(() => {
+      ytext.delete(0, ytext.length);
+      ytext.insert(0, text);
+    }, 'person');
+  }
+
+  test('an empty settings file at load is not an outside change: the first edit is written', async () => {
+    const doc = loaded('');
+    type(doc, EDIT);
+
+    expect(await storeConfigDoc(doc, CONFIG_DOC_NAME_PROJECT, 'person', fx.ctx)).toBe('persisted');
+
+    expect(readFileSync(projectPath(), 'utf-8')).toBe(EDIT);
+    expect(doc.getText('source').toString()).toBe(EDIT);
+    expect(fx.moved).toEqual([]);
+    expect(noticed).toEqual([]);
+  });
+
+  test('a settings file that was invalid at load is not an outside change: the first valid edit is written', async () => {
+    const doc = loaded('contentRules: [unclosed\n');
+    type(doc, EDIT);
+
+    expect(await storeConfigDoc(doc, CONFIG_DOC_NAME_PROJECT, 'person', fx.ctx)).toBe('persisted');
+
+    expect(readFileSync(projectPath(), 'utf-8')).toBe(EDIT);
+    expect(fx.moved).toEqual([]);
+    expect(noticed).toEqual([]);
+  });
+
+  test('two outside versions arriving during one history save end with the newer one applied, noticed once', async () => {
+    const doc = loaded(SAVED);
+    type(doc, EDIT);
+    const w1 = 'mcp:\n  autoStart: false\n';
+    const w2 = 'mcp:\n  autoStart: false\n# outside again\n';
+
+    const [first, second] = await Promise.all([
+      applyExternalConfigChange(doc, CONFIG_DOC_NAME_PROJECT, w1, fx.ctx),
+      applyExternalConfigChange(doc, CONFIG_DOC_NAME_PROJECT, w2, fx.ctx),
+    ]);
+
+    expect([first, second]).toEqual(['applied', 'applied']);
+    expect(doc.getText('source').toString()).toBe(w2);
+    expect(fx.moved.map((version) => version.bytes)).toEqual([EDIT]);
+    expect(noticed).toHaveLength(1);
+  });
+
+  test('typing through every history save defers the outside version to the pending save, with no notice', async () => {
+    const doc = loaded(SAVED);
+    type(doc, EDIT);
+    let typed = 0;
+    duringSave = () => {
+      typed += 1;
+      type(doc, `${EDIT}# still typing ${typed}\n`);
+    };
+
+    expect(
+      await applyExternalConfigChange(
+        doc,
+        CONFIG_DOC_NAME_PROJECT,
+        'mcp:\n  autoStart: false\n',
+        fx.ctx,
+      ),
+    ).toBe('held');
+
+    expect(doc.getText('source').toString()).toBe(`${EDIT}# still typing 3\n`);
+    expect(fx.moved).toHaveLength(3);
+    expect(noticed).toEqual([]);
+    expect(getMetrics().configOutsideChange).toEqual({ 'intake:deferred': 1 });
+  });
+
+  test('an empty settings document has nothing unsaved for the intake to keep', async () => {
+    const doc = loaded(SAVED);
+    type(doc, '');
+
+    expect(
+      await applyExternalConfigChange(
+        doc,
+        CONFIG_DOC_NAME_PROJECT,
+        'mcp:\n  autoStart: false\n',
+        fx.ctx,
+      ),
+    ).toBe('applied');
+
+    expect(fx.moved).toEqual([]);
+    expect(getMetrics().configOutsideChange).toEqual({ 'intake:applied': 1 });
+  });
+
+  test('a valid outside version written during the history save of an invalid one wins, with the edit kept', async () => {
+    const path = projectPath();
+    const doc = loaded(SAVED);
+    type(doc, EDIT);
+    writeFileSync(path, 'mcp: [unclosed\n', 'utf-8');
+    const later = 'mcp:\n  autoStart: false\n';
+    let planted = false;
+    duringSave = () => {
+      if (planted) return;
+      planted = true;
+      writeFileSync(path, later, 'utf-8');
+    };
+
+    expect(await storeConfigDoc(doc, CONFIG_DOC_NAME_PROJECT, 'person', fx.ctx)).toBe('reconciled');
+
+    expect(readFileSync(path, 'utf-8')).toBe(later);
+    expect(doc.getText('source').toString()).toBe(later);
+    expect(fx.moved.map((version) => [version.side, version.bytes])).toEqual([
+      ['theirs', 'mcp: [unclosed\n'],
+      ['ours', EDIT],
+    ]);
+    expect(noticed.map((notice) => notice.side)).toEqual(['ours']);
+  });
+
+  test('an outside version written between the compare and the rename is not written over', async () => {
+    const path = projectPath();
+    const doc = loaded(SAVED);
+    type(doc, EDIT);
+    const between = 'mcp:\n  autoStart: false\n';
+    const write = fsTraced.tracedWriteFile;
+    let planted = false;
+    vi.spyOn(fsTraced, 'tracedWriteFile').mockImplementation(async (...args) => {
+      await write(...args);
+      if (planted) return;
+      planted = true;
+      writeFileSync(path, between, 'utf-8');
+    });
+
+    expect(await storeConfigDoc(doc, CONFIG_DOC_NAME_PROJECT, 'person', fx.ctx)).toBe('reconciled');
+
+    expect(readFileSync(path, 'utf-8')).toBe(between);
+    expect(fx.moved.map((version) => version.bytes)).toEqual([EDIT]);
+    expect(getMetrics().storeRestatRefused).toBe(1);
+  });
 });
 
 describe('configDocAbsPath', () => {
@@ -250,22 +469,27 @@ describe('storeConfigDoc — cross-process reconciliation (file lock)', () => {
   function makeSecondCtxSharingHomedir(primary: Fixture): {
     ctx: ConfigPersistenceCtx;
     rejections: Array<{ docName: string; error: ConfigValidationError }>;
+    moved: MovedConfigVersion[];
   } {
     const rejections: Array<{ docName: string; error: ConfigValidationError }> = [];
+    const moved: MovedConfigVersion[] = [];
     return {
       rejections,
+      moved,
       ctx: {
         projectDir: primary.projectDir,
         lkgCache: new Map(),
+        agreedDisk: new Map(),
         homedirOverride: primary.homedir,
         onConfigRejected: (docName, error) => {
           rejections.push({ docName, error });
         },
+        history: recordingHistory(moved),
       },
     };
   }
 
-  test('reconciles when disk diverged from LKG: imports disk into Y.Text and does NOT overwrite disk', async () => {
+  test('a valid outside version wins at the store and the unsaved edit it displaces goes to history', async () => {
     const path = configDocAbsPath(CONFIG_DOC_NAME_USER, fx.ctx);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, 'mcp:\n  autoStart: false\n', 'utf-8');
@@ -281,6 +505,92 @@ describe('storeConfigDoc — cross-process reconciliation (file lock)', () => {
     expect(doc.getText('source').toString()).toBe('mcp:\n  autoStart: false\n');
     expect(fx.ctx.lkgCache.get(CONFIG_DOC_NAME_USER)).toBe('mcp:\n  autoStart: false\n');
     expect(fx.rejections).toHaveLength(0);
+    expect(fx.moved).toEqual([
+      {
+        docName: CONFIG_DOC_NAME_USER,
+        side: 'ours',
+        bytes: 'appearance:\n  theme: dark\n',
+        fileType: 'config',
+      },
+    ]);
+    expect(getMetrics().configOutsideChange).toEqual({ 'store:applied-displaced': 1 });
+  });
+
+  test('a valid outside version that history cannot take applies once the unsaved edit is in the backup folder', async () => {
+    const path = configDocAbsPath(CONFIG_DOC_NAME_USER, fx.ctx);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, 'mcp:\n  autoStart: false\n', 'utf-8');
+    fx.ctx.lkgCache.set(CONFIG_DOC_NAME_USER, 'mcp:\n  autoStart: true\n');
+    historySaves = false;
+
+    const doc = new Y.Doc();
+    doc.getText('source').insert(0, 'appearance:\n  theme: dark\n');
+
+    expect(await storeConfigDoc(doc, CONFIG_DOC_NAME_USER, undefined, fx.ctx)).toBe('reconciled');
+    expect(doc.getText('source').toString()).toBe('mcp:\n  autoStart: false\n');
+    expect(backupsIn(fx.homedir)).toEqual(['appearance:\n  theme: dark\n']);
+    expect(noticed).toEqual([
+      {
+        docName: CONFIG_DOC_NAME_USER,
+        side: 'ours',
+        where: 'backup',
+        entry: expect.stringMatching(
+          /^~\/\.ok\/edit-backups\/discarded\/projects\/[0-9a-f]{8}\/[^/]+\/[^/]+\.yml$/,
+        ),
+      },
+    ]);
+    expect(getMetrics().configOutsideChange).toEqual({ 'store:applied-displaced': 1 });
+  });
+
+  test('a valid outside version that neither history nor the backup folder can take leaves the unsaved edit live and nothing written', async () => {
+    const path = configDocAbsPath(CONFIG_DOC_NAME_USER, fx.ctx);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, 'mcp:\n  autoStart: false\n', 'utf-8');
+    fx.ctx.lkgCache.set(CONFIG_DOC_NAME_USER, 'mcp:\n  autoStart: true\n');
+    historySaves = false;
+    blockBackups(fx.homedir);
+
+    const doc = new Y.Doc();
+    doc.getText('source').insert(0, 'appearance:\n  theme: dark\n');
+
+    expect(await storeConfigDoc(doc, CONFIG_DOC_NAME_USER, undefined, fx.ctx)).toEqual({
+      kind: 'held',
+      cause: 'no-history-or-backup',
+    });
+    expect(doc.getText('source').toString()).toBe('appearance:\n  theme: dark\n');
+    expect(readFileSync(path, 'utf-8')).toBe('mcp:\n  autoStart: false\n');
+    expect(fx.ctx.lkgCache.get(CONFIG_DOC_NAME_USER)).toBe('mcp:\n  autoStart: true\n');
+    expect(noticed).toEqual([]);
+    expect(getMetrics().configOutsideChange).toEqual({ 'store:held-no-history-or-backup': 1 });
+  });
+
+  test('an outside version that is not valid UTF-8 is neither applied nor written over, at the save or the intake', async () => {
+    const path = configDocAbsPath(CONFIG_DOC_NAME_USER, fx.ctx);
+    mkdirSync(dirname(path), { recursive: true });
+    const latin1 = Buffer.from('appearance:\n  theme: caf\u00e9\n', 'latin1');
+    writeFileSync(path, latin1);
+    fx.ctx.lkgCache.set(CONFIG_DOC_NAME_USER, 'mcp:\n  autoStart: true\n');
+
+    const doc = new Y.Doc();
+    doc.getText('source').insert(0, 'appearance:\n  theme: dark\n');
+
+    expect(await storeConfigDoc(doc, CONFIG_DOC_NAME_USER, undefined, fx.ctx)).toMatchObject({
+      kind: 'held',
+      cause: 'not-utf8',
+      path,
+    });
+    expect(
+      await applyExternalConfigChange(doc, CONFIG_DOC_NAME_USER, latin1.toString('utf8'), fx.ctx),
+    ).toBe('held');
+
+    expect(readFileSync(path).equals(latin1)).toBe(true);
+    expect(doc.getText('source').toString()).toBe('appearance:\n  theme: dark\n');
+    expect(fx.moved).toEqual([]);
+    expect(backupsIn(fx.homedir)).toEqual([]);
+    expect(getMetrics().configOutsideChange).toEqual({
+      'store:held-not-utf8': 1,
+      'intake:held-not-utf8': 1,
+    });
   });
 
   test('two servers writing the SAME shared file: second store reconciles, first writer wins', async () => {
@@ -310,6 +620,14 @@ describe('storeConfigDoc — cross-process reconciliation (file lock)', () => {
     expect(second.ctx.lkgCache.get(CONFIG_DOC_NAME_USER)).toBe('mcp:\n  autoStart: false\n');
 
     expect(docB.getText('source').toString()).not.toContain('theme: dark');
+    expect(second.moved).toEqual([
+      {
+        docName: CONFIG_DOC_NAME_USER,
+        side: 'ours',
+        bytes: 'appearance:\n  theme: dark\n',
+        fileType: 'config',
+      },
+    ]);
   });
 
   test('disk matches LKG: writes proceed normally (no spurious reconciliation)', async () => {
@@ -338,7 +656,7 @@ describe('storeConfigDoc — cross-process reconciliation (file lock)', () => {
     expect(existsSync(`${path}.lock`)).toBe(false);
   });
 
-  test('disk diverged but content is INVALID YAML: do NOT reconcile, write our valid content instead', async () => {
+  test('disk diverged but content is INVALID YAML: the outside version goes to history, then our valid content is written', async () => {
     const path = configDocAbsPath(CONFIG_DOC_NAME_USER, fx.ctx);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, 'mcp:\n  autoStart: !!!!!!!!!!!!!!\n', 'utf-8');
@@ -354,6 +672,52 @@ describe('storeConfigDoc — cross-process reconciliation (file lock)', () => {
     expect(doc.getText('source').toString()).toBe('appearance:\n  theme: dark\n');
     expect(fx.ctx.lkgCache.get(CONFIG_DOC_NAME_USER)).toBe('appearance:\n  theme: dark\n');
     expect(fx.rejections).toHaveLength(0);
+    expect(fx.moved).toEqual([
+      {
+        docName: CONFIG_DOC_NAME_USER,
+        side: 'theirs',
+        bytes: 'mcp:\n  autoStart: !!!!!!!!!!!!!!\n',
+        fileType: 'config',
+      },
+    ]);
+    expect(getMetrics().configOutsideChange).toEqual({ 'store:invalid-kept-live': 1 });
+  });
+
+  test('an invalid outside version that history cannot take goes to the backup folder before our settings are written', async () => {
+    const path = configDocAbsPath(CONFIG_DOC_NAME_USER, fx.ctx);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, 'mcp:\n  autoStart: !!!!!!!!!!!!!!\n', 'utf-8');
+    fx.ctx.lkgCache.set(CONFIG_DOC_NAME_USER, 'mcp:\n  autoStart: true\n');
+    historySaves = false;
+
+    const doc = new Y.Doc();
+    doc.getText('source').insert(0, 'appearance:\n  theme: dark\n');
+
+    expect(await storeConfigDoc(doc, CONFIG_DOC_NAME_USER, undefined, fx.ctx)).toBe('persisted');
+    expect(readFileSync(path, 'utf-8')).toBe('appearance:\n  theme: dark\n');
+    expect(backupsIn(fx.homedir)).toEqual(['mcp:\n  autoStart: !!!!!!!!!!!!!!\n']);
+    expect(noticed.map(({ side, where }) => ({ side, where }))).toEqual([
+      { side: 'theirs', where: 'backup' },
+    ]);
+  });
+
+  test('an invalid outside version that neither history nor the backup folder can take is not written over', async () => {
+    const path = configDocAbsPath(CONFIG_DOC_NAME_USER, fx.ctx);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, 'mcp:\n  autoStart: !!!!!!!!!!!!!!\n', 'utf-8');
+    fx.ctx.lkgCache.set(CONFIG_DOC_NAME_USER, 'mcp:\n  autoStart: true\n');
+    historySaves = false;
+    blockBackups(fx.homedir);
+
+    const doc = new Y.Doc();
+    doc.getText('source').insert(0, 'appearance:\n  theme: dark\n');
+
+    expect(await storeConfigDoc(doc, CONFIG_DOC_NAME_USER, undefined, fx.ctx)).toEqual({
+      kind: 'held',
+      cause: 'no-history-or-backup',
+    });
+    expect(readFileSync(path, 'utf-8')).toBe('mcp:\n  autoStart: !!!!!!!!!!!!!!\n');
+    expect(doc.getText('source').toString()).toBe('appearance:\n  theme: dark\n');
   });
 
   test('mkdir failure surfaces as write-failed via onConfigRejected; no exception escapes', async () => {
@@ -571,6 +935,7 @@ describe('persistence extension dispatch — config-doc integration', () => {
     const rejections: Array<{ docName: string; error: ConfigValidationError }> = [];
 
     const handle = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: fx.projectDir,
       projectDir: fx.projectDir,
@@ -592,6 +957,7 @@ describe('persistence extension dispatch — config-doc integration', () => {
   test('config-doc onStoreDocument validates + writes disk', async () => {
     const { createPersistenceExtension } = await import('./persistence.ts');
     const handle = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: fx.projectDir,
       projectDir: fx.projectDir,
@@ -618,6 +984,7 @@ describe('persistence extension dispatch — config-doc integration', () => {
     const notified: string[] = [];
 
     const handle = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: fx.projectDir,
       projectDir: fx.projectDir,
@@ -649,6 +1016,7 @@ describe('persistence extension dispatch — config-doc integration', () => {
     const notified: string[] = [];
 
     const handle = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: fx.projectDir,
       projectDir: fx.projectDir,
@@ -684,6 +1052,7 @@ describe('persistence extension dispatch — config-doc integration', () => {
     const rejections: Array<{ docName: string; error: ConfigValidationError }> = [];
 
     const handle = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: fx.projectDir,
       projectDir: fx.projectDir,
@@ -718,6 +1087,7 @@ describe('persistence extension dispatch — config-doc integration', () => {
     const { createPersistenceExtension } = await import('./persistence.ts');
     const rejections: Array<{ docName: string; error: ConfigValidationError }> = [];
     const handle = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: fx.projectDir,
       projectDir: fx.projectDir,
@@ -751,7 +1121,7 @@ function readdirSafe(p: string): string[] {
 }
 
 describe('applyExternalConfigChange', () => {
-  test('valid external content updates Y.Text under CONFIG_FILE_WATCHER_ORIGIN + LKG', () => {
+  test('valid external content updates Y.Text under CONFIG_FILE_WATCHER_ORIGIN + LKG', async () => {
     const doc = new Y.Doc();
     fx.ctx.lkgCache.set(CONFIG_DOC_NAME_PROJECT, 'theme: light\n');
     doc.getText('source').insert(0, 'theme: light\n');
@@ -762,7 +1132,12 @@ describe('applyExternalConfigChange', () => {
     });
 
     const newContent = 'theme: dark\n';
-    const outcome = applyExternalConfigChange(doc, CONFIG_DOC_NAME_PROJECT, newContent, fx.ctx);
+    const outcome = await applyExternalConfigChange(
+      doc,
+      CONFIG_DOC_NAME_PROJECT,
+      newContent,
+      fx.ctx,
+    );
 
     expect(outcome).toBe('applied');
     expect(doc.getText('source').toString()).toBe(newContent);
@@ -771,7 +1146,86 @@ describe('applyExternalConfigChange', () => {
     expect(fx.rejections).toHaveLength(0);
   });
 
-  test('content equal to LKG short-circuits: no mutation, no rejection', () => {
+  test('a valid outside version applies over an unsaved edit, which goes to history first', async () => {
+    const doc = new Y.Doc();
+    fx.ctx.lkgCache.set(CONFIG_DOC_NAME_PROJECT, 'mcp:\n  autoStart: true\n');
+    doc.getText('source').insert(0, 'mcp:\n  autoStart: true\n# note\n');
+
+    const outcome = await applyExternalConfigChange(
+      doc,
+      CONFIG_DOC_NAME_PROJECT,
+      'mcp:\n  autoStart: false\n',
+      fx.ctx,
+    );
+
+    expect(outcome).toBe('applied');
+    expect(doc.getText('source').toString()).toBe('mcp:\n  autoStart: false\n');
+    expect(fx.moved).toEqual([
+      {
+        docName: CONFIG_DOC_NAME_PROJECT,
+        side: 'ours',
+        bytes: 'mcp:\n  autoStart: true\n# note\n',
+        fileType: 'config',
+      },
+    ]);
+    expect(getMetrics().configOutsideChange).toEqual({ 'intake:applied-displaced': 1 });
+  });
+
+  test('a valid outside version with nothing unsaved applies with no history entry', async () => {
+    const doc = new Y.Doc();
+    fx.ctx.lkgCache.set(CONFIG_DOC_NAME_PROJECT, 'mcp:\n  autoStart: true\n');
+    doc.getText('source').insert(0, 'mcp:\n  autoStart: true\n');
+
+    await applyExternalConfigChange(
+      doc,
+      CONFIG_DOC_NAME_PROJECT,
+      'mcp:\n  autoStart: false\n',
+      fx.ctx,
+    );
+
+    expect(doc.getText('source').toString()).toBe('mcp:\n  autoStart: false\n');
+    expect(fx.moved).toEqual([]);
+    expect(getMetrics().configOutsideChange).toEqual({ 'intake:applied': 1 });
+  });
+
+  test('when history cannot take the unsaved edit, the backup folder does and the outside version applies', async () => {
+    const doc = new Y.Doc();
+    fx.ctx.lkgCache.set(CONFIG_DOC_NAME_PROJECT, 'mcp:\n  autoStart: true\n');
+    doc.getText('source').insert(0, 'mcp:\n  autoStart: true\n# note\n');
+    historySaves = false;
+
+    expect(
+      await applyExternalConfigChange(
+        doc,
+        CONFIG_DOC_NAME_PROJECT,
+        'mcp:\n  autoStart: false\n',
+        fx.ctx,
+      ),
+    ).toBe('applied');
+    expect(doc.getText('source').toString()).toBe('mcp:\n  autoStart: false\n');
+    expect(backupsIn(fx.homedir)).toEqual(['mcp:\n  autoStart: true\n# note\n']);
+  });
+
+  test('when neither history nor the backup folder can take the unsaved edit, the outside version is not applied over it', async () => {
+    const doc = new Y.Doc();
+    fx.ctx.lkgCache.set(CONFIG_DOC_NAME_PROJECT, 'mcp:\n  autoStart: true\n');
+    doc.getText('source').insert(0, 'mcp:\n  autoStart: true\n# note\n');
+    historySaves = false;
+    blockBackups(fx.homedir);
+
+    expect(
+      await applyExternalConfigChange(
+        doc,
+        CONFIG_DOC_NAME_PROJECT,
+        'mcp:\n  autoStart: false\n',
+        fx.ctx,
+      ),
+    ).toBe('held');
+    expect(doc.getText('source').toString()).toBe('mcp:\n  autoStart: true\n# note\n');
+    expect(fx.ctx.lkgCache.get(CONFIG_DOC_NAME_PROJECT)).toBe('mcp:\n  autoStart: true\n');
+  });
+
+  test('content equal to LKG short-circuits: no mutation, no rejection', async () => {
     const doc = new Y.Doc();
     const yaml = 'mcp:\n  autoStart: false\n';
     fx.ctx.lkgCache.set(CONFIG_DOC_NAME_PROJECT, yaml);
@@ -782,7 +1236,7 @@ describe('applyExternalConfigChange', () => {
       if (tx.origin === CONFIG_FILE_WATCHER_ORIGIN) mutationCount++;
     });
 
-    const outcome = applyExternalConfigChange(doc, CONFIG_DOC_NAME_PROJECT, yaml, fx.ctx);
+    const outcome = await applyExternalConfigChange(doc, CONFIG_DOC_NAME_PROJECT, yaml, fx.ctx);
 
     expect(outcome).toBe('no-op');
     expect(isConfigEcho(CONFIG_DOC_NAME_PROJECT, yaml, fx.ctx)).toBe(true);
@@ -790,8 +1244,8 @@ describe('applyExternalConfigChange', () => {
     expect(fx.rejections).toHaveLength(0);
   });
 
-  test('null document → no-op (document not loaded yet)', () => {
-    const outcome = applyExternalConfigChange(
+  test('null document → no-op (document not loaded yet)', async () => {
+    const outcome = await applyExternalConfigChange(
       null,
       CONFIG_DOC_NAME_PROJECT,
       'theme: dark\n',
@@ -805,34 +1259,34 @@ describe('applyExternalConfigChange', () => {
 
   test.each(['mcp:\n  autoStart: false\n', ''])(
     'distinguishes cached echoes from new content after unloading (%j)',
-    (content) => {
+    async (content) => {
       const doc = new Y.Doc();
-      expect(applyExternalConfigChange(doc, CONFIG_DOC_NAME_PROJECT, content, fx.ctx)).toBe(
+      expect(await applyExternalConfigChange(doc, CONFIG_DOC_NAME_PROJECT, content, fx.ctx)).toBe(
         'applied',
       );
       doc.destroy();
 
       expect(isConfigEcho(CONFIG_DOC_NAME_PROJECT, content, fx.ctx)).toBe(true);
-      expect(applyExternalConfigChange(null, CONFIG_DOC_NAME_PROJECT, content, fx.ctx)).toBe(
+      expect(await applyExternalConfigChange(null, CONFIG_DOC_NAME_PROJECT, content, fx.ctx)).toBe(
         'no-op',
       );
       const changed = 'mcp:\n  autoStart: true\n';
       expect(isConfigEcho(CONFIG_DOC_NAME_PROJECT, changed, fx.ctx)).toBe(false);
-      expect(applyExternalConfigChange(null, CONFIG_DOC_NAME_PROJECT, changed, fx.ctx)).toBe(
+      expect(await applyExternalConfigChange(null, CONFIG_DOC_NAME_PROJECT, changed, fx.ctx)).toBe(
         'no-op',
       );
       expect(isConfigEcho(CONFIG_DOC_NAME_PROJECT, changed, fx.ctx)).toBe(false);
     },
   );
 
-  test('YAML parse error → rejected; Y.Text NOT mutated; onConfigRejected fired', () => {
+  test('YAML parse error → rejected; Y.Text NOT mutated; onConfigRejected fired', async () => {
     const doc = new Y.Doc();
     const valid = 'theme: light\n';
     fx.ctx.lkgCache.set(CONFIG_DOC_NAME_PROJECT, valid);
     doc.getText('source').insert(0, valid);
 
     const broken = 'theme: !!!!!\n';
-    const outcome = applyExternalConfigChange(doc, CONFIG_DOC_NAME_PROJECT, broken, fx.ctx);
+    const outcome = await applyExternalConfigChange(doc, CONFIG_DOC_NAME_PROJECT, broken, fx.ctx);
 
     expect(outcome).toBe('rejected');
     expect(doc.getText('source').toString()).toBe(valid);
@@ -846,12 +1300,12 @@ describe('applyExternalConfigChange', () => {
     expect(fx.ctx.lkgCache.get(CONFIG_DOC_NAME_PROJECT)).toBe(valid);
   });
 
-  test('schema-invalid external content → rejected with structured issues', () => {
+  test('schema-invalid external content → rejected with structured issues', async () => {
     const doc = new Y.Doc();
     fx.ctx.lkgCache.set(CONFIG_DOC_NAME_PROJECT, 'content:\n  dir: docs\n');
 
     const invalid = 'appearance:\n  theme: midnight\n';
-    const outcome = applyExternalConfigChange(doc, CONFIG_DOC_NAME_PROJECT, invalid, fx.ctx);
+    const outcome = await applyExternalConfigChange(doc, CONFIG_DOC_NAME_PROJECT, invalid, fx.ctx);
 
     expect(outcome).toBe('rejected');
     expect(fx.rejections).toHaveLength(1);
@@ -865,24 +1319,29 @@ describe('applyExternalConfigChange', () => {
     }
   });
 
-  test('LKG-undefined + valid external content → applied; LKG seeded', () => {
+  test('LKG-undefined + valid external content → applied; LKG seeded', async () => {
     const doc = new Y.Doc();
     expect(fx.ctx.lkgCache.has(CONFIG_DOC_NAME_USER)).toBe(false);
 
     const yaml = 'theme: dark\n';
-    const outcome = applyExternalConfigChange(doc, CONFIG_DOC_NAME_USER, yaml, fx.ctx);
+    const outcome = await applyExternalConfigChange(doc, CONFIG_DOC_NAME_USER, yaml, fx.ctx);
 
     expect(outcome).toBe('applied');
     expect(doc.getText('source').toString()).toBe(yaml);
     expect(fx.ctx.lkgCache.get(CONFIG_DOC_NAME_USER)).toBe(yaml);
   });
 
-  test('project-local: external content propagates to Y.Text + LKG', () => {
+  test('project-local: external content propagates to Y.Text + LKG', async () => {
     const doc = new Y.Doc();
     expect(fx.ctx.lkgCache.has(CONFIG_DOC_NAME_PROJECT_LOCAL)).toBe(false);
 
     const yaml = 'autoSync:\n  enabled: true\n';
-    const outcome = applyExternalConfigChange(doc, CONFIG_DOC_NAME_PROJECT_LOCAL, yaml, fx.ctx);
+    const outcome = await applyExternalConfigChange(
+      doc,
+      CONFIG_DOC_NAME_PROJECT_LOCAL,
+      yaml,
+      fx.ctx,
+    );
 
     expect(outcome).toBe('applied');
     expect(doc.getText('source').toString()).toBe(yaml);
@@ -894,7 +1353,7 @@ describe('applyExternalConfigChange', () => {
     fx.ctx.lkgCache.set(CONFIG_DOC_NAME_PROJECT, 'theme: light\n');
     doc.getText('source').insert(0, 'theme: light\n');
 
-    applyExternalConfigChange(doc, CONFIG_DOC_NAME_PROJECT, 'theme: dark\n', fx.ctx);
+    await applyExternalConfigChange(doc, CONFIG_DOC_NAME_PROJECT, 'theme: dark\n', fx.ctx);
 
     const outcome = await storeConfigDoc(
       doc,
@@ -1123,7 +1582,7 @@ describe('okignore — storeConfigDoc validator', () => {
 });
 
 describe('okignore — applyExternalConfigChange', () => {
-  test('valid external content updates Y.Text under CONFIG_FILE_WATCHER_ORIGIN', () => {
+  test('valid external content updates Y.Text under CONFIG_FILE_WATCHER_ORIGIN', async () => {
     const doc = new Y.Doc();
     fx.ctx.lkgCache.set(CONFIG_DOC_NAME_OKIGNORE, '');
 
@@ -1133,7 +1592,12 @@ describe('okignore — applyExternalConfigChange', () => {
     });
 
     const newContent = 'drafts/\n*.tmp\n';
-    const outcome = applyExternalConfigChange(doc, CONFIG_DOC_NAME_OKIGNORE, newContent, fx.ctx);
+    const outcome = await applyExternalConfigChange(
+      doc,
+      CONFIG_DOC_NAME_OKIGNORE,
+      newContent,
+      fx.ctx,
+    );
 
     expect(outcome).toBe('applied');
     expect(doc.getText('source').toString()).toBe(newContent);
@@ -1142,14 +1606,14 @@ describe('okignore — applyExternalConfigChange', () => {
     expect(fx.rejections).toHaveLength(0);
   });
 
-  test('invalid external content (whitespace-only line) → rejected; Y.Text NOT mutated', () => {
+  test('invalid external content (whitespace-only line) → rejected; Y.Text NOT mutated', async () => {
     const doc = new Y.Doc();
     const valid = 'drafts/\n';
     fx.ctx.lkgCache.set(CONFIG_DOC_NAME_OKIGNORE, valid);
     doc.getText('source').insert(0, valid);
 
     const broken = 'drafts/\n   \n';
-    const outcome = applyExternalConfigChange(doc, CONFIG_DOC_NAME_OKIGNORE, broken, fx.ctx);
+    const outcome = await applyExternalConfigChange(doc, CONFIG_DOC_NAME_OKIGNORE, broken, fx.ctx);
 
     expect(outcome).toBe('rejected');
     expect(doc.getText('source').toString()).toBe(valid);
@@ -1164,7 +1628,7 @@ describe('okignore — applyExternalConfigChange', () => {
     expect(fx.ctx.lkgCache.get(CONFIG_DOC_NAME_OKIGNORE)).toBe(valid);
   });
 
-  test('content equal to LKG short-circuits: no rejection, no Y.Text mutation', () => {
+  test('content equal to LKG short-circuits: no rejection, no Y.Text mutation', async () => {
     const doc = new Y.Doc();
     const body = 'drafts/\n';
     fx.ctx.lkgCache.set(CONFIG_DOC_NAME_OKIGNORE, body);
@@ -1175,7 +1639,7 @@ describe('okignore — applyExternalConfigChange', () => {
       if (tx.origin === CONFIG_FILE_WATCHER_ORIGIN) mutationCount++;
     });
 
-    const outcome = applyExternalConfigChange(doc, CONFIG_DOC_NAME_OKIGNORE, body, fx.ctx);
+    const outcome = await applyExternalConfigChange(doc, CONFIG_DOC_NAME_OKIGNORE, body, fx.ctx);
 
     expect(outcome).toBe('no-op');
     expect(mutationCount).toBe(0);
@@ -1246,7 +1710,7 @@ describe('okignore — rejection counter telemetry', () => {
     const doc = new Y.Doc();
     fx.ctx.lkgCache.set(CONFIG_DOC_NAME_OKIGNORE, 'drafts/\n');
 
-    applyExternalConfigChange(doc, CONFIG_DOC_NAME_OKIGNORE, '   \n', fx.ctx);
+    await applyExternalConfigChange(doc, CONFIG_DOC_NAME_OKIGNORE, '   \n', fx.ctx);
 
     const points = await readPoints('ok.config.ignore.rejection_total');
     const total = points.reduce((acc, p) => acc + p.value, 0);

@@ -5,6 +5,7 @@ import {
   BridgeMergeContentLossError,
   type DiskEditReconciledWarning,
   normalizeBridge,
+  type ParsedCheckpoint,
   prependFrontmatter,
   type ReconcileMergeOutcome,
   stripFrontmatter,
@@ -255,7 +256,12 @@ function clearStaleExternalWriteConflict(
   lifecycleMap.delete('detectedAt');
 }
 
-type ReconcileCheckSite = 'watcher' | 'agent-write' | 'branch-switch';
+type ReconcileCheckSite =
+  | 'watcher'
+  | 'agent-write'
+  | 'branch-switch'
+  | 'skill-store'
+  | 'skill-intake';
 
 export function reportReconcileCheckFailed(
   docName: string,
@@ -285,7 +291,7 @@ export function reportReconcileBothKept(
 
 export function reportReconcileKeptLive(
   docName: string,
-  reason: 'check-failed' | 'too-large',
+  reason: Extract<ParsedCheckpoint, { kind: 'external-change-kept-live' }>['metadata']['reason'],
   site: ReconcileCheckSite,
 ): void {
   incrementReconcileKeptLive();

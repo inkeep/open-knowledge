@@ -162,7 +162,11 @@ describe('reconciliation metrics', () => {
         key === 'observerAResidualMergeSpliceUnavailable' ||
         key === 'storeDiskCompare' ||
         key === 'receiptIntakeSkip' ||
-        key === 'receiptAtLoad'
+        key === 'receiptAtLoad' ||
+        key === 'managedArtifactMerge' ||
+        key === 'enginelessStore' ||
+        key === 'enginelessIntake' ||
+        key === 'configOutsideChange'
       ) {
         expect(value).toEqual({});
       } else {

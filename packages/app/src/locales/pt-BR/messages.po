@@ -585,6 +585,18 @@ msgstr "Não foi possível atualizar {failed} de {0} comentários."
 msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} files failed to upload}}"
 msgstr "{failedCount, plural, one {Falha ao enviar 1 arquivo} many {Falha ao enviar {failedCount} arquivos} other {Falha ao enviar {failedCount} arquivos}}"
 
+msgid "{file} was not saved because it changed outside OpenKnowledge to content that is not UTF-8 text, so the file was not written over. Your edits stay here, and saving is tried again when the file changes."
+msgstr "{file} não foi salvo porque foi alterado fora do OpenKnowledge para um conteúdo que não é texto UTF-8, então o arquivo não foi sobrescrito. Suas edições continuam aqui, e o salvamento será tentado de novo quando o arquivo mudar."
+
+msgid "{file} was not saved because it could not be read to compare it with outside changes, so the file was not written over. Your edits stay here, and saving is tried again."
+msgstr "{file} não foi salvo porque não pôde ser lido para compará-lo com alterações externas, então o arquivo não foi sobrescrito. Suas edições continuam aqui, e o salvamento será tentado de novo."
+
+msgid "{file} was not saved because it kept changing outside OpenKnowledge. Your edits stay here, and saving is tried again."
+msgstr "{file} não foi salvo porque continuava mudando fora do OpenKnowledge. Suas edições continuam aqui, e o salvamento será tentado de novo."
+
+msgid "{file} was not saved. It changed outside OpenKnowledge, and that version could not be kept in history or in the backup folder, so the file was not written over. Your edits stay here, and saving is tried again."
+msgstr "{file} não foi salvo. Ele foi alterado fora do OpenKnowledge, e essa versão não pôde ser guardada no histórico nem na pasta de backup, então o arquivo não foi sobrescrito. Suas edições continuam aqui, e o salvamento será tentado de novo."
+
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr "{fileCount, plural, one {# arquivo} many {# arquivos} other {# arquivos}}"
 
@@ -1456,8 +1468,17 @@ msgstr "Sempre incluído"
 msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version is in the timeline."
 msgstr "Uma alteração externa em {fileName} não pôde ser mesclada, então esta versão foi mantida. A versão externa está na linha do tempo."
 
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to {backupPath}."
+msgstr "Uma alteração externa em {fileName} não pôde ser mesclada, então esta versão foi mantida. A versão externa foi salva em {backupPath}."
+
 msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to the document's history."
 msgstr "Uma alteração externa em {fileName} não pôde ser mesclada, então esta versão foi mantida. A versão externa foi salva no histórico do documento."
+
+msgid "An outside change to {fileName} was not valid settings, so your settings stayed. A copy of the outside version was kept in this project's history, which the app cannot show yet."
+msgstr "Uma alteração externa em {fileName} não continha configurações válidas, então suas configurações foram mantidas. Uma cópia da versão externa foi guardada no histórico deste projeto, que o aplicativo ainda não consegue mostrar."
+
+msgid "An outside change to {fileName} was not valid settings, so your settings stayed. A copy of the outside version was saved to {backupPath}."
+msgstr "Uma alteração externa em {fileName} não continha configurações válidas, então suas configurações foram mantidas. Uma cópia da versão externa foi salva em {backupPath}."
 
 msgid "An unexpected error occurred."
 msgstr "Ocorreu um erro inesperado."
@@ -9452,6 +9473,12 @@ msgstr "Falha ao carregar as configurações"
 
 msgid "Settings for this project. Some are shared with every collaborator through git; others apply only on this computer."
 msgstr "Configurações deste projeto. Algumas são compartilhadas com cada colaborador pelo git; outras se aplicam somente neste computador."
+
+msgid "Settings in {fileName} changed outside OpenKnowledge and now apply. A copy of the change you were making was kept in this project's history, which the app cannot show yet."
+msgstr "As configurações em {fileName} foram alteradas fora do OpenKnowledge e agora estão em vigor. Uma cópia da alteração que você estava fazendo foi guardada no histórico deste projeto, que o aplicativo ainda não consegue mostrar."
+
+msgid "Settings in {fileName} changed outside OpenKnowledge and now apply. A copy of the change you were making was saved to {backupPath}."
+msgstr "As configurações em {fileName} foram alteradas fora do OpenKnowledge e agora estão em vigor. Uma cópia da alteração que você estava fazendo foi salva em {backupPath}."
 
 msgid "Settings sections"
 msgstr "Seções das configurações"

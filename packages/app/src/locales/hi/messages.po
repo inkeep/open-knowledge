@@ -585,6 +585,18 @@ msgstr "{0} में से {failed} टिप्पणियाँ अपड�
 msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} files failed to upload}}"
 msgstr "{failedCount, plural, one {1 फ़ाइल अपलोड नहीं हो सकी} other {{failedCount} फ़ाइलें अपलोड नहीं हो सकीं}}"
 
+msgid "{file} was not saved because it changed outside OpenKnowledge to content that is not UTF-8 text, so the file was not written over. Your edits stay here, and saving is tried again when the file changes."
+msgstr "{file} सहेजी नहीं गई, क्योंकि इसे OpenKnowledge के बाहर ऐसी सामग्री में बदला गया जो UTF-8 टेक्स्ट नहीं है, इसलिए फ़ाइल को ओवरराइट नहीं किया गया। आपके संपादन यहीं बने रहेंगे, और फ़ाइल बदलने पर सहेजने की फिर से कोशिश की जाएगी।"
+
+msgid "{file} was not saved because it could not be read to compare it with outside changes, so the file was not written over. Your edits stay here, and saving is tried again."
+msgstr "{file} सहेजी नहीं गई, क्योंकि बाहरी बदलावों से तुलना करने के लिए इसे पढ़ा नहीं जा सका, इसलिए फ़ाइल को ओवरराइट नहीं किया गया। आपके संपादन यहीं बने रहेंगे, और सहेजने की फिर से कोशिश की जाएगी।"
+
+msgid "{file} was not saved because it kept changing outside OpenKnowledge. Your edits stay here, and saving is tried again."
+msgstr "{file} सहेजी नहीं गई, क्योंकि यह OpenKnowledge के बाहर बार-बार बदलती रही। आपके संपादन यहीं बने रहेंगे, और सहेजने की फिर से कोशिश की जाएगी।"
+
+msgid "{file} was not saved. It changed outside OpenKnowledge, and that version could not be kept in history or in the backup folder, so the file was not written over. Your edits stay here, and saving is tried again."
+msgstr "{file} सहेजी नहीं गई। इसे OpenKnowledge के बाहर बदला गया, और वह संस्करण न इतिहास में रखा जा सका न बैकअप फ़ोल्डर में, इसलिए फ़ाइल को ओवरराइट नहीं किया गया। आपके संपादन यहीं बने रहेंगे, और सहेजने की फिर से कोशिश की जाएगी।"
+
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr "{fileCount, plural, one {# फ़ाइल} other {# फ़ाइलें}}"
 
@@ -1456,8 +1468,17 @@ msgstr "हमेशा शामिल"
 msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version is in the timeline."
 msgstr "{fileName} में बाहर से किया गया बदलाव मर्ज नहीं किया जा सका, इसलिए यह संस्करण बना रहा। बाहरी संस्करण समयरेखा में है।"
 
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to {backupPath}."
+msgstr "{fileName} में बाहर से किया गया बदलाव मर्ज नहीं किया जा सका, इसलिए यह संस्करण बना रहा। बाहरी संस्करण {backupPath} में सहेजा गया है।"
+
 msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to the document's history."
 msgstr "{fileName} में बाहर से किया गया बदलाव मर्ज नहीं किया जा सका, इसलिए यह संस्करण बना रहा। बाहरी संस्करण दस्तावेज़ के इतिहास में सहेजा गया है।"
+
+msgid "An outside change to {fileName} was not valid settings, so your settings stayed. A copy of the outside version was kept in this project's history, which the app cannot show yet."
+msgstr "{fileName} में बाहर से किया गया बदलाव मान्य सेटिंग्स नहीं था, इसलिए आपकी सेटिंग्स बनी रहीं। बाहरी संस्करण की एक प्रति इस प्रोजेक्ट के इतिहास में रखी गई है, जिसे ऐप अभी नहीं दिखा सकता।"
+
+msgid "An outside change to {fileName} was not valid settings, so your settings stayed. A copy of the outside version was saved to {backupPath}."
+msgstr "{fileName} में बाहर से किया गया बदलाव मान्य सेटिंग्स नहीं था, इसलिए आपकी सेटिंग्स बनी रहीं। बाहरी संस्करण की एक प्रति {backupPath} में सहेजी गई है।"
 
 msgid "An unexpected error occurred."
 msgstr "एक अप्रत्याशित त्रुटि हुई।"
@@ -9452,6 +9473,12 @@ msgstr "सेटिंग लोड नहीं हो सकीं"
 
 msgid "Settings for this project. Some are shared with every collaborator through git; others apply only on this computer."
 msgstr "इस प्रोजेक्ट की सेटिंग्स। कुछ git के ज़रिए हर सहयोगी के साथ साझा होती हैं; बाक़ी केवल इस कंप्यूटर पर लागू होती हैं।"
+
+msgid "Settings in {fileName} changed outside OpenKnowledge and now apply. A copy of the change you were making was kept in this project's history, which the app cannot show yet."
+msgstr "{fileName} की सेटिंग्स OpenKnowledge के बाहर बदली गईं और अब लागू हैं। आप जो बदलाव कर रहे थे, उसकी एक प्रति इस प्रोजेक्ट के इतिहास में रखी गई है, जिसे ऐप अभी नहीं दिखा सकता।"
+
+msgid "Settings in {fileName} changed outside OpenKnowledge and now apply. A copy of the change you were making was saved to {backupPath}."
+msgstr "{fileName} की सेटिंग्स OpenKnowledge के बाहर बदली गईं और अब लागू हैं। आप जो बदलाव कर रहे थे, उसकी एक प्रति {backupPath} में सहेजी गई है।"
 
 msgid "Settings sections"
 msgstr "सेटिंग अनुभाग"

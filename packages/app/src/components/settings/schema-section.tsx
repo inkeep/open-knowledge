@@ -5,11 +5,13 @@ import {
   CONFIG_DOC_NAME_PROJECT,
   CONFIG_DOC_NAME_USER,
 } from '@inkeep/open-knowledge-core/constants/cc1';
+import { useLingui } from '@lingui/react/macro';
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import type { FieldPath } from 'react-hook-form';
 import { toast } from 'sonner';
 import { Form } from '@/components/ui/form';
 import { subscribeToConfigValidationRejected } from '@/lib/config-validation-events';
+import { saveHeldRejection } from '@/lib/save-held-message';
 import { firstIssuePath, type Scope, SettingsField } from './field-controls';
 import type { SettingsScope } from './ScopeBadge';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
@@ -35,6 +37,7 @@ export function BoundSchemaSection({
   scopeBadge,
   slotsAfter,
 }: BoundSchemaSectionProps) {
+  const { t } = useLingui();
   const { form, commitField } = useConfigForm(binding);
   const [flashedPath, setFlashedPath] = useState<string | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -44,7 +47,8 @@ export function BoundSchemaSection({
     const unsubscribe = subscribeToConfigValidationRejected((event) => {
       if (event.docName !== docName) return;
 
-      toast.error(humanFormat(event.error), { duration: 8000 });
+      const held = saveHeldRejection(event.error);
+      toast.error(held === null ? humanFormat(event.error) : t(held), { duration: 8000 });
 
       const path = firstIssuePath(event.error);
       if (path) {
@@ -65,7 +69,7 @@ export function BoundSchemaSection({
       unsubscribe();
       if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     };
-  }, [scope, form]);
+  }, [scope, form, t]);
 
   return (
     <Form {...form}>

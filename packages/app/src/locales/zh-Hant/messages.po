@@ -585,6 +585,18 @@ msgstr "{0} 則註解中有 {failed} 則無法更新。"
 msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} files failed to upload}}"
 msgstr "{failedCount, plural, other {{failedCount} 個檔案上傳失敗}}"
 
+msgid "{file} was not saved because it changed outside OpenKnowledge to content that is not UTF-8 text, so the file was not written over. Your edits stay here, and saving is tried again when the file changes."
+msgstr "{file} 未儲存，因為它在 OpenKnowledge 之外被改成了非 UTF-8 文字的內容，所以沒有覆寫該檔案。你的編輯仍保留在這裡，檔案再次變更時會重新嘗試儲存。"
+
+msgid "{file} was not saved because it could not be read to compare it with outside changes, so the file was not written over. Your edits stay here, and saving is tried again."
+msgstr "{file} 未儲存，因為無法讀取它來與外部變更進行比較，所以沒有覆寫該檔案。你的編輯仍保留在這裡，稍後會重新嘗試儲存。"
+
+msgid "{file} was not saved because it kept changing outside OpenKnowledge. Your edits stay here, and saving is tried again."
+msgstr "{file} 未儲存，因為它在 OpenKnowledge 之外持續變更。你的編輯仍保留在這裡，稍後會重新嘗試儲存。"
+
+msgid "{file} was not saved. It changed outside OpenKnowledge, and that version could not be kept in history or in the backup folder, so the file was not written over. Your edits stay here, and saving is tried again."
+msgstr "{file} 未儲存。它在 OpenKnowledge 之外被變更，而該版本無法儲存到記錄或備份資料夾中，所以沒有覆寫該檔案。你的編輯仍保留在這裡，稍後會重新嘗試儲存。"
+
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr "{fileCount, plural, other {# 個檔案}}"
 
@@ -1460,8 +1472,17 @@ msgstr "一律包含"
 msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version is in the timeline."
 msgstr "{fileName} 的外部變更無法合併，因此保留了目前的版本。外部版本在時間軸中。"
 
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to {backupPath}."
+msgstr "{fileName} 的外部變更無法合併，因此保留了目前的版本。外部版本已儲存到 {backupPath}。"
+
 msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to the document's history."
 msgstr "{fileName} 的外部變更無法合併，因此保留了目前的版本。外部版本已儲存到文件的記錄中。"
+
+msgid "An outside change to {fileName} was not valid settings, so your settings stayed. A copy of the outside version was kept in this project's history, which the app cannot show yet."
+msgstr "{fileName} 的外部變更不是有效的設定，因此保留了你的設定。外部版本已儲存一份副本到這個專案的記錄中，應用程式暫時無法顯示這些記錄。"
+
+msgid "An outside change to {fileName} was not valid settings, so your settings stayed. A copy of the outside version was saved to {backupPath}."
+msgstr "{fileName} 的外部變更不是有效的設定，因此保留了你的設定。外部版本已儲存一份副本到 {backupPath}。"
 
 msgid "An unexpected error occurred."
 msgstr "發生了非預期的錯誤。"
@@ -9456,6 +9477,12 @@ msgstr "設定載入失敗"
 
 msgid "Settings for this project. Some are shared with every collaborator through git; others apply only on this computer."
 msgstr "這個專案的設定。部分設定會透過 git 與每位協作者分享；其餘只在這台電腦上生效。"
+
+msgid "Settings in {fileName} changed outside OpenKnowledge and now apply. A copy of the change you were making was kept in this project's history, which the app cannot show yet."
+msgstr "{fileName} 中的設定已在 OpenKnowledge 之外變更，現已生效。你正在進行的變更已儲存一份副本到這個專案的記錄中，應用程式暫時無法顯示這些記錄。"
+
+msgid "Settings in {fileName} changed outside OpenKnowledge and now apply. A copy of the change you were making was saved to {backupPath}."
+msgstr "{fileName} 中的設定已在 OpenKnowledge 之外變更，現已生效。你正在進行的變更已儲存一份副本到 {backupPath}。"
 
 msgid "Settings sections"
 msgstr "設定分區"

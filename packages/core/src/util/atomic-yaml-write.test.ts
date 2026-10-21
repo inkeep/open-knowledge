@@ -77,6 +77,33 @@ describe('atomicWriteFile (async) — sequential', () => {
   });
 });
 
+describe('atomicWriteFile (async) — the check before the rename', () => {
+  test('runs after the temp file is written and before the target is replaced', async () => {
+    writeFileSync(target, 'before\n');
+    const seen: Array<{ target: string; tmps: number }> = [];
+    await atomicWriteFile(target, 'after\n', {
+      beforeRename: () => {
+        seen.push({ target: readFileSync(target, 'utf-8'), tmps: orphanTmps().length });
+      },
+    });
+    expect(seen).toEqual([{ target: 'before\n', tmps: 1 }]);
+    expect(readFileSync(target, 'utf-8')).toBe('after\n');
+  });
+
+  test('a check that throws leaves the target untouched and removes the temp file', async () => {
+    writeFileSync(target, 'outside\n');
+    await expect(
+      atomicWriteFile(target, 'ours\n', {
+        beforeRename: () => {
+          throw new Error('the target moved');
+        },
+      }),
+    ).rejects.toThrow('the target moved');
+    expect(readFileSync(target, 'utf-8')).toBe('outside\n');
+    expect(orphanTmps()).toEqual([]);
+  });
+});
+
 describe('atomicWriteFile (async) — failure cleanup', () => {
   test('cleans tmp when rename fails because target is a non-empty dir', async () => {
     mkdirSync(target, { recursive: true });

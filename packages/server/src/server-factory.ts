@@ -84,7 +84,11 @@ import {
 import {
   CC1Broadcaster,
   isConfigDoc,
+  isEditableTextDoc,
+  isExcalidrawDoc,
   isManagedArtifactDoc,
+  isMermaidDoc,
+  isPersistenceExcludedDoc,
   isReservedForUserTree,
   SYSTEM_DOC_NAME,
 } from './cc1-broadcast.ts';
@@ -97,6 +101,7 @@ import {
 } from './config-file-watcher.ts';
 import {
   applyExternalConfigChange,
+  configDocAbsPath,
   isConfigEcho,
   resetConfigDocForTest,
 } from './config-persistence.ts';
@@ -132,17 +137,17 @@ import {
 } from './derived-document-index.ts';
 import { resolveDirectoryRoot } from './directory-root.ts';
 import { applyDiskContentToDoc } from './disk-content-intake.ts';
-import { DiskReceiptLog } from './disk-receipts.ts';
+import { DiskReceiptLog, receiptFileIsGoneIn } from './disk-receipts.ts';
+import { displayPathFor } from './display-path.ts';
 import {
   canonicalDocName,
   docNameToRelativePath,
   getDocExtension,
   isRegisteredMarkdownDocName,
-  SUPPORTED_DOC_EXTENSIONS,
   stripDocExtension,
 } from './doc-extensions.ts';
 import { runDocLineageGuard } from './doc-lineage-guard.ts';
-import { DocNoticeLedger } from './doc-notices.ts';
+import { DocNoticeLedger, type NoticeFile } from './doc-notices.ts';
 import {
   DocumentDurabilityState,
   type StaleExternalWriteConflict,
@@ -246,6 +251,7 @@ import {
 import {
   applyExternalManagedArtifactChange,
   homeFor,
+  managedArtifactAbsPath,
   managedArtifactDocNameForPath,
   managedArtifactSkillsRoots,
 } from './managed-artifact-persistence.ts';
@@ -254,6 +260,7 @@ import { recoverPendingManagedRename } from './managed-rename-journal.ts';
 import type { NativeTomlMcpEditor } from './mcp-config-reconciler.ts';
 import { mdManager, schema } from './md-manager.ts';
 import { createMergeHistoryRecorder, type MergeHistoryWriter } from './merge-history.ts';
+import { applyExternalEnginelessChange } from './mermaid-persistence.ts';
 import {
   incrementBatch,
   incrementBranchSwitch,
@@ -634,20 +641,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   const diskReceipts = new DiskReceiptLog({
     path: join(getLocalDir(projectDir), 'receipts.jsonl'),
   });
-  const receiptFileIsGone = (docName: string): boolean => {
-    for (const extension of SUPPORTED_DOC_EXTENSIONS) {
-      const candidate = resolve(contentDir, `${docName}${extension}`);
-      if (!isWithinDir(candidate, contentDir)) return false;
-      try {
-        lstatSync(candidate);
-        return false;
-      } catch (err) {
-        const code = errnoCode(err);
-        if (code !== 'ENOENT' && code !== 'ENOTDIR') return false;
-      }
-    }
-    return true;
-  };
+  const receiptFileIsGone = receiptFileIsGoneIn(contentDir);
   const durabilityState = new DocumentDurabilityState(initialBranch, {
     persistencePath: join(getLocalDir(projectDir), 'stale-external-writes.json'),
     receipts: diskReceipts,
@@ -1320,6 +1314,25 @@ export function createServer(options: ServerOptions): ServerInstance {
     },
     () => {},
   );
+  const noticeDisplayPath = (abs: string): string =>
+    displayPathFor(abs, projectDir, configHomedirOverride ?? homedir());
+  let heldSaveProbe: (docName: string) => boolean = () => true;
+  const noticeFileOutsideContent = (docName: string): NoticeFile | null => {
+    let abs: string;
+    try {
+      if (isConfigDoc(docName)) abs = configDocAbsPath(docName, persistence.configPersistenceCtx);
+      else if (isManagedArtifactDoc(docName)) {
+        abs = managedArtifactAbsPath(docName, persistence.managedArtifactCtx);
+      } else return null;
+    } catch (err) {
+      log.debug(
+        { err, docName },
+        '[doc-notices] no file to name for a notice outside the content folder',
+      );
+      return null;
+    }
+    return { abs, display: noticeDisplayPath(abs) };
+  };
   const docNotices = new DocNoticeLedger({
     projectDir,
     contentDir,
@@ -1327,6 +1340,15 @@ export function createServer(options: ServerOptions): ServerInstance {
     isReady: () => readyForNotices,
     signal: () => cc1Broadcaster?.signal('sync-status'),
     isHeld: (docName) => vanishedDocuments.has(docName),
+    isSaveHeld: (docName) => heldSaveProbe(docName),
+    resolveFile: noticeFileOutsideContent,
+  });
+  const mergeHistory = createMergeHistoryRecorder({
+    getShadow: () => shadowRef?.current,
+    contentRoot: contentRoot ?? '',
+    getBranch: getStorageBranch,
+    writeCheckpoint: options.mergeHistoryWriter,
+    notices: docNotices,
   });
   const offlineRemovalsReconciled = Promise.withResolvers<void>();
 
@@ -1746,7 +1768,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
     try {
       const content = readFileSync(configResult.path, 'utf-8');
-      applyExternalConfigChange(
+      await applyExternalConfigChange(
         hocuspocus.documents.get(CONFIG_DOC_NAME_PROJECT) ?? null,
         CONFIG_DOC_NAME_PROJECT,
         content,
@@ -2282,6 +2304,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       isRecentlyRemoved: (docName) => recentlyRemovedDocs.has(docName),
       mdManager: options.mdManager,
       getLossRing: () => lossRing,
+      mergeHistory,
       ingestDiskAtStore: async (docName, absPath, content) => {
         let outcome: DiskIntakeOutcome;
         try {
@@ -2304,6 +2327,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     };
 
     persistence = createPersistenceExtension({ ...persistenceOpts, durabilityState });
+    heldSaveProbe = (docName) => persistence.hasHeldSave(docName);
 
     hocuspocus = new Hocuspocus({
       quiet,
@@ -2386,6 +2410,9 @@ export function createServer(options: ServerOptions): ServerInstance {
         getLoadedDocuments: () => hp.documents,
         lifecycleOf: (document, documentName) => conflicts.lifecycleOf(document, documentName),
         forceStore: (document, documentName) => persistence.forceStore(document, documentName),
+        isHeldSaveDue: (documentName) => persistence.isHeldSaveDue(documentName),
+        retryHeldSave: (document, documentName) =>
+          persistence.retryHeldSave(document, documentName),
         getBase: (documentName) => durabilityState.getReconciledBase(documentName),
         isBatchActive: () => durabilityState.isBatchInProgress(),
         hasInFlight: (documentName) => durabilityState.inFlightFlushCount(documentName) > 0,
@@ -2999,14 +3026,6 @@ export function createServer(options: ServerOptions): ServerInstance {
         return assertNeverDiskEvent(event);
     }
   }
-
-  const mergeHistory = createMergeHistoryRecorder({
-    getShadow: () => shadowRef.current,
-    contentRoot: contentRoot ?? '',
-    getBranch: getStorageBranch,
-    writeCheckpoint: options.mergeHistoryWriter,
-    notices: docNotices,
-  });
 
   const CHECKPOINT_KIND_BY_MINT_SITE = {
     delete: 'external-change-rescue',
@@ -4342,6 +4361,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           await derivedDocumentIndex.recordFileTargetUpsert(event.relativePath);
           invalidateReferencedAssetsCache?.();
           signalChannel('files');
+          await takeInEnginelessChange(event.relativePath);
           break;
         }
         case 'file-delete': {
@@ -4412,6 +4432,22 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   let watcher: WatcherHandle | null = null;
 
+  function isEnginelessDoc(docName: string): boolean {
+    return isMermaidDoc(docName) || isExcalidrawDoc(docName) || isEditableTextDoc(docName);
+  }
+
+  async function takeInEnginelessChange(docName: string): Promise<boolean> {
+    if (!isEnginelessDoc(docName)) return false;
+    const document = hocuspocus.documents.get(docName);
+    if (!document) return false;
+    const outcome = await applyExternalEnginelessChange(
+      document,
+      docName,
+      persistence.mermaidPersistenceCtx,
+    );
+    return outcome !== 'unchanged';
+  }
+
   async function refreshDocumentsFromDisk(
     docNames: readonly string[],
     trigger: DocumentRefreshTrigger,
@@ -4420,9 +4456,15 @@ export function createServer(options: ServerOptions): ServerInstance {
     const aliases = watcher.getAliasMap();
     const index = watcher.getFileIndex();
     const paths: string[] = [];
+    const engineless = { checked: 0, found: 0 };
     for (const requested of new Set(docNames)) {
       const docName = aliases.get(requested) ?? requested;
       if (isReservedForUserTree(docName)) continue;
+      if (isEnginelessDoc(docName)) {
+        engineless.checked++;
+        if (await takeInEnginelessChange(docName)) engineless.found++;
+        continue;
+      }
       const indexed = index.get(docName)?.canonicalPath;
       if (indexed !== undefined) {
         paths.push(indexed);
@@ -4437,8 +4479,12 @@ export function createServer(options: ServerOptions): ServerInstance {
         );
       }
     }
-    if (paths.length === 0) return { checked: 0, found: 0 };
-    const result = await watcher.recheckPaths(paths);
+    const rechecked =
+      paths.length === 0 ? { checked: 0, found: 0 } : await watcher.recheckPaths(paths);
+    const result = {
+      checked: rechecked.checked + engineless.checked,
+      found: rechecked.found + engineless.found,
+    };
     const summary = { trigger, ...result };
     if (result.found > 0)
       log.info(summary, `[reconcile] re-read on ${trigger} found outside changes`);
@@ -4466,7 +4512,9 @@ export function createServer(options: ServerOptions): ServerInstance {
       return 'lost';
     }
     try {
-      const ours = serializeDoc(docName);
+      const ours = isPersistenceExcludedDoc(docName)
+        ? (hocuspocus.documents.get(docName)?.getText('source').toString() ?? null)
+        : serializeDoc(docName);
       if (ours === null) {
         log.warn(
           { docName, context },
@@ -5300,7 +5348,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       if (!absPath) continue;
       try {
         log.info({ docName: configDocName, path: absPath }, '[config-file-watcher] starting');
-        const cleanup = await startConfigFileWatcher(absPath, (content) => {
+        const takeInConfigChange = async (content: string): Promise<void> => {
           const document = hocuspocus.documents.get(configDocName);
           const alreadyApplied = isConfigEcho(
             configDocName,
@@ -5315,7 +5363,7 @@ export function createServer(options: ServerOptions): ServerInstance {
             },
             '[config-file-watcher] file changed',
           );
-          const outcome = applyExternalConfigChange(
+          const outcome = await applyExternalConfigChange(
             document ?? null,
             configDocName,
             content,
@@ -5329,6 +5377,14 @@ export function createServer(options: ServerOptions): ServerInstance {
           if (!alreadyApplied) {
             logConfigDiagnostics(configDocName);
           }
+        };
+        const cleanup = await startConfigFileWatcher(absPath, (content) => {
+          void takeInConfigChange(content).catch((err: unknown) => {
+            log.warn(
+              { err, docName: configDocName },
+              '[config-file-watcher] change handler failed',
+            );
+          });
         });
         configFileWatcherCleanups.push({ docName: configDocName, cleanup });
         configFileWatcherResyncs.set(configDocName, cleanup.resync);
@@ -5353,11 +5409,11 @@ export function createServer(options: ServerOptions): ServerInstance {
           });
         }, 300);
       };
-      const reconcileManagedArtifactDisk = (absPath: string, content: string): void => {
+      const reconcileManagedArtifactDisk = async (absPath: string, content: string) => {
         const docName = managedArtifactDocNameForPath(absPath, persistence.managedArtifactCtx);
         if (!docName) return;
         const document = hocuspocus.documents.get(docName);
-        const outcome = applyExternalManagedArtifactChange(
+        const outcome = await applyExternalManagedArtifactChange(
           document ?? null,
           docName,
           content,
@@ -5440,7 +5496,7 @@ export function createServer(options: ServerOptions): ServerInstance {
               if (changedPath === okignorePath) {
                 try {
                   const document = hocuspocus.documents.get(CONFIG_DOC_NAME_OKIGNORE) ?? null;
-                  const outcome = applyExternalConfigChange(
+                  const outcome = await applyExternalConfigChange(
                     document,
                     CONFIG_DOC_NAME_OKIGNORE,
                     content,

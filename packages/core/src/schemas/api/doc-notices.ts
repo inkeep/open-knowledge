@@ -2,7 +2,21 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 
 const DOC_NOTICE_SIDES = ['ours', 'theirs'] as const;
-const DOC_NOTICE_MOVE_REASONS = ['check-failed', 'too-large'] as const;
+const DOC_NOTICE_MOVE_REASONS = [
+  'check-failed',
+  'too-large',
+  'conflict-markers',
+  'no-base',
+  'no-merge-engine',
+  'outside-settings-applied',
+  'outside-settings-invalid',
+] as const;
+const DOC_NOTICE_HOLD_CAUSES = [
+  'no-history-or-backup',
+  'keeps-changing',
+  'not-utf8',
+  'unreadable',
+] as const;
 
 const DocNoticeKeptBlocksSchema = z.object({
   duplicated: z.number().int().nonnegative(),
@@ -34,6 +48,22 @@ export const DocNoticeWireSchema = z.discriminatedUnion('kind', [
       kind: z.literal('moved-to-history'),
       side: z.enum(DOC_NOTICE_SIDES),
       reason: z.enum(DOC_NOTICE_MOVE_REASONS),
+    })
+    .loose(),
+  z
+    .object({
+      ...docNoticeCommon,
+      kind: z.literal('moved-to-backup'),
+      side: z.enum(DOC_NOTICE_SIDES),
+      reason: z.enum(DOC_NOTICE_MOVE_REASONS),
+      backup: z.string().min(1),
+    })
+    .loose(),
+  z
+    .object({
+      ...docNoticeCommon,
+      kind: z.literal('save-held'),
+      cause: z.enum(DOC_NOTICE_HOLD_CAUSES),
     })
     .loose(),
 ]) satisfies StandardSchemaV1;

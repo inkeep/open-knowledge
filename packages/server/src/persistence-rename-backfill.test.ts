@@ -81,6 +81,7 @@ describe('rename-log commitSha backfill', () => {
     writeFileSync(join(contentDir, 'alpha.md'), '# alpha\n');
     writeFileSync(join(contentDir, 'gamma.md'), '# gamma\n');
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir,
       projectDir: tmpDir,

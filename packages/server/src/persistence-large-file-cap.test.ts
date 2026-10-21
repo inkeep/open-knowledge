@@ -34,6 +34,7 @@ describe('persistence large-file cap', () => {
     writeFileSync(filePath, '');
     truncateSync(filePath, DOCUMENT_OPEN_BYTE_LIMIT + 1);
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
     });
@@ -50,6 +51,7 @@ describe('persistence large-file cap', () => {
     const filePath = join(tmpDir, 'exact.md');
     writeFileSync(filePath, 'a'.repeat(DOCUMENT_OPEN_BYTE_LIMIT));
     const persistence = createPersistenceExtension({
+      mergeHistory: null,
       ingestDiskAtStore: null,
       contentDir: tmpDir,
     });
