@@ -45,7 +45,11 @@ describe('skill install-projection lifecycle', () => {
 
     const res = await installSkill({ name: 'trip-log', targets: ['claude', 'cursor'] });
     expect(res.status).toBe(200);
-    const parsed = SkillInstallSuccessSchema.safeParse(await res.json());
+    const installed = (await res.json()) as Record<string, unknown>;
+    expect(installed).not.toHaveProperty('outcome');
+    expect(installed).not.toHaveProperty('saved');
+    expect(installed).not.toHaveProperty('nextStep');
+    const parsed = SkillInstallSuccessSchema.safeParse(installed);
     expect(parsed.success).toBe(true);
     if (parsed.success) {
       expect(parsed.data.hosts.sort()).toEqual(['claude', 'cursor']);

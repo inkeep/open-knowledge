@@ -199,7 +199,13 @@ describe('the notice on a document after an outside edit', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ docName, markdown: 'Agent line.\n', position: 'append' }),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      type: 'urn:ok:error:both-kept',
+      outcome: 'both-kept',
+      saved: true,
+      nextStep: 're-read',
+    });
 
     expect(await noticesFor(docName)).toEqual([
       expect.objectContaining({

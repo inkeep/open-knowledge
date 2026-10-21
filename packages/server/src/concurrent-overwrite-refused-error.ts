@@ -1,4 +1,5 @@
 import type { ServerResponse } from 'node:http';
+import { REFUSAL_OUTCOMES } from './agent-write-outcome.ts';
 import { stripDocExtension } from './doc-extensions.ts';
 import { errorResponse } from './http/error-response.ts';
 import { getLogger } from './logger.ts';
@@ -49,6 +50,7 @@ export function respondConcurrentOverwriteRefused(
     extensions: {
       file: error.file,
       retryAfterSeconds: CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS,
+      ...REFUSAL_OUTCOMES['urn:ok:error:concurrent-overwrite-refused'],
     },
     extraHeaders: { 'Retry-After': String(CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS) },
   });

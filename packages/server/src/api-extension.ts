@@ -26,6 +26,7 @@ import {
   AGENTS_SKILLS_ROOT,
   AgentWriteBatchRequestSchema,
   AgentWriteBatchSuccessSchema,
+  type AgentWriteOutcomeFields,
   AgentWriteRequestSchema,
   AgentWriteSuccessSchema,
   asTargetNamespace,
@@ -181,6 +182,13 @@ import {
   UNIDENTIFIED_WRITER_ID,
 } from './agent-id.ts';
 import {
+  type AgentWriteFlushOutcome,
+  outcomeOfSavedWrite,
+  outcomeOfStoreFailure,
+  REFUSAL_OUTCOMES,
+  reportedOutcome,
+} from './agent-write-outcome.ts';
+import {
   applyRenameMap,
   BacklinkIndexRequiredError,
   buildRenameMap,
@@ -228,6 +236,7 @@ import {
   type DeferredStoreDiscardCause,
   type DocumentDurabilityState,
   editWasCarried,
+  type HeldSaveReason,
   OK_DOC_MOVED,
   OK_DOC_REMOVED,
   OK_PATH_UNRESOLVABLE,
@@ -235,6 +244,7 @@ import {
   OK_STORE_DISCARDED,
   OK_STORE_HELD,
   OK_STORE_REFUSED,
+  OK_WRITE_REPLACED,
   type StoreFailure,
   type WrittenThrough,
   writtenThroughOf,
@@ -242,6 +252,7 @@ import {
 import type { RefreshDocumentsFromDisk } from './document-refresh.ts';
 import {
   buildReconcileWarning,
+  type ReconcileBeforeWriteResult,
   reconcileDiskBeforeAgentWrite,
   reviveFrozenResidentDoc,
 } from './external-change.ts';
@@ -273,6 +284,7 @@ import {
   AGENT_SESSION_CAPACITY_TYPE,
   respondAgentSessionCapacity,
 } from './http/agent-session-capacity.ts';
+import { respondBothKept } from './http/agent-write-response.ts';
 import { type ApiRouteTable, createApiRequestPipeline } from './http/api-pipeline.ts';
 import { createAssetRoutes } from './http/asset-routes.ts';
 import { createCommentRoutes } from './http/comment-routes.ts';
@@ -368,7 +380,6 @@ import {
   incrementAgentWriteCalls,
   incrementSummariesProvided,
   incrementSummariesTruncated,
-  type StorePendingReason,
 } from './metrics.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
 import { assertProjectContentSubtree } from './project-content-scope.ts';
@@ -1447,14 +1458,14 @@ function removedDocProblem(failure: StoreFailure) {
         type: 'urn:ok:error:doc-removed' as const,
         title:
           'Edit not saved to disk: the document was deleted outside the app, and the edit went to its history.',
-        detail: `${failure.message}. Retrying will not help: the document is closed. Its history (the timeline) has the edit; re-create the document with write if you still want the content.`,
+        detail: `${failure.message}. Retrying will not help: the document is closed. Its history (the timeline) has the edit; tell the user the file was deleted, and do not re-create the document on your own.`,
       } satisfies BatchEntryError;
     case undefined:
       return {
         type: 'urn:ok:error:doc-removed' as const,
         title:
           'Edit applied in memory; disk write refused because the document is no longer on disk.',
-        detail: `${failure.message}. Retrying will not help: re-create the document before writing this content again.`,
+        detail: `${failure.message}. Retrying will not help: tell the user the file is no longer on disk.`,
       } satisfies BatchEntryError;
   }
 }
@@ -1469,11 +1480,14 @@ function movedDocProblem(failure: StoreFailure) {
 }
 
 function stoppedServerProblem(failure: StoreFailure) {
+  const renamedTo = failure.removal?.kind === 'renamed' ? failure.removal.renamedTo : undefined;
   return {
     type: 'urn:ok:error:server-stopped' as const,
-    title:
-      "Edit not saved to disk: the server stopped while the document's file was missing, and the edit went to its history.",
-    detail: `${failure.message}. After OpenKnowledge restarts, find the edit in the document's history (the timeline), and re-create the document with write if you still want it.`,
+    title: 'Edit not saved to disk: the server stopped before the edit reached disk.',
+    detail:
+      renamedTo === undefined
+        ? `${failure.message}. After OpenKnowledge restarts, the edit is in the document's history (the timeline); tell the user.`
+        : `${failure.message}. After OpenKnowledge restarts, re-read the document at ${renamedTo} to see whether it holds the edit, and re-apply the edit there if it is missing. Do not re-create the document under its old name.`,
   } satisfies BatchEntryError;
 }
 
@@ -1482,7 +1496,16 @@ function pathFaultProblem(failure: StoreFailure) {
     type: 'urn:ok:error:path-escape' as const,
     title:
       'Edit applied in memory; disk write refused because the document path could not be resolved.',
-    detail: `${failure.message}. Retrying will not help: the path has to be repaired on disk before this content can be written.`,
+    detail: `${failure.message}. Retrying will not help: tell the user the path has to be repaired on disk before this content can be written.`,
+  } satisfies BatchEntryError;
+}
+
+function replacedWriteProblem(failure: StoreFailure) {
+  return {
+    type: 'urn:ok:error:write-replaced' as const,
+    title:
+      'Edit not saved: the file on disk replaced the document, and the edit went to its history.',
+    detail: `${failure.message}. OpenKnowledge had no agreed version of the file to merge the edit with, so it took the file in as it is and saved the document as it was, this edit included, to the document's history (the timeline). Re-read the document, and re-apply the edit if it is still needed.`,
   } satisfies BatchEntryError;
 }
 
@@ -1532,7 +1555,7 @@ function discardedStoreProblem(failure: StoreFailure) {
 type HeldSaveRetry = 'next-save' | 'next-edit' | 'conflict-resolved' | 'replaced-on-next-edit';
 
 const HELD_SAVE_RULES: Readonly<
-  Record<StorePendingReason, { readonly retryWhen: HeldSaveRetry; readonly sentence: string }>
+  Record<HeldSaveReason, { readonly retryWhen: HeldSaveRetry; readonly sentence: string }>
 > = {
   'pending-unreadable': {
     retryWhen: 'next-save',
@@ -1555,9 +1578,9 @@ const HELD_SAVE_RULES: Readonly<
       'A later save merges the outside change and writes it: the next edit to this document, or the idle save within a few minutes.',
   },
   'pending-intake-failed-no-base': {
-    retryWhen: 'replaced-on-next-edit',
+    retryWhen: 'next-save',
     sentence:
-      'This edit is not saved to the file, and no save runs on its own: OpenKnowledge has no agreed version of the file to merge it with. The next edit to this document replaces the document with the file on disk and moves this edit, with any typing since, to the document history (timeline). Do not repeat this write now: after that next edit, re-read the document and re-apply this edit if it is still needed.',
+      'A later save merges the outside change and writes it: the next edit to this document, or the idle save within a few minutes.',
   },
   'pending-no-intake': {
     retryWhen: 'next-edit',
@@ -1566,24 +1589,43 @@ const HELD_SAVE_RULES: Readonly<
   'pending-conflict': {
     retryWhen: 'conflict-resolved',
     sentence:
-      'It is saved after the conflict on this document is resolved; ask the user to resolve it in the OpenKnowledge app.',
+      'It is saved once the user has dealt with the file in the OpenKnowledge app; tell the user which file it is.',
+  },
+  'pending-unsettled': {
+    retryWhen: 'next-save',
+    sentence:
+      'The save was still running when the write stopped waiting for it, and it finishes on its own.',
+  },
+  'pending-rename': {
+    retryWhen: 'next-save',
+    sentence:
+      'The edit goes with the document to its new name, or to its history if the move cannot carry it. Do not repeat this write, and do not re-create the document under its old name: re-read it at its new name.',
   },
 };
 
+const NO_BASE_HOLD_SENTENCE =
+  'This edit is in the document but is not saved to the file, and no save runs on its own: OpenKnowledge has no agreed version of the file to merge it with. Any further write to this document, yours included, replaces the document with the file on disk and moves this edit, that write and any typing since to the document history (timeline). Do not write to this document again; tell the user that its file changed outside OpenKnowledge.';
+
+function heldSaveDetail(failure: StoreFailure, reason: HeldSaveReason, noBase: boolean): string {
+  if (noBase) return `${failure.message}. ${NO_BASE_HOLD_SENTENCE}`;
+  const { sentence } = HELD_SAVE_RULES[reason];
+  if (reason === 'pending-rename') return `${failure.message}. ${sentence}`;
+  if (reason === 'pending-conflict') {
+    return `${failure.message}. The edit is kept in the document. ${sentence} Do not repeat this write.`;
+  }
+  return `${failure.message}. The edit is kept in the document. ${sentence} Do not repeat this write: re-read the document before editing it further.`;
+}
+
 function heldSaveProblem(failure: StoreFailure) {
   const reason = failure.held?.reason ?? 'pending-unreadable';
-  const noBase = failure.held?.noBase === true || reason === 'pending-intake-failed-no-base';
-  const rule = HELD_SAVE_RULES[noBase ? 'pending-intake-failed-no-base' : reason];
+  const noBase = failure.held?.noBase === true;
   return {
     type: 'urn:ok:error:save-held' as const,
     title: 'Edit applied in memory; its save to disk is held.',
-    detail: noBase
-      ? `${failure.message}. ${rule.sentence}`
-      : `${failure.message}. The edit is kept in the document. ${rule.sentence} Do not repeat this write: re-read the document before editing it further.`,
+    detail: heldSaveDetail(failure, reason, noBase),
     reason,
-    retryWhen: rule.retryWhen,
+    retryWhen: noBase ? ('replaced-on-next-edit' as const) : HELD_SAVE_RULES[reason].retryWhen,
     ...(failure.held?.causeCode === undefined ? {} : { causeCode: failure.held.causeCode }),
-    nextStep: 're-read' as const,
   } satisfies BatchEntryError;
 }
 
@@ -1592,8 +1634,53 @@ function refusedStoreProblem(failure: StoreFailure) {
     type: 'urn:ok:error:store-refused' as const,
     title:
       'Edit applied in memory; disk write refused because the duplication baseline could not be read.',
-    detail: `${failure.message}. The edit is applied in collaborative state and the document file on disk was not updated; a copy of the edited document is preserved in the server's recovery buffer unless that buffer is unavailable or unwritable. Retry the write once the filesystem fault is repaired.`,
+    detail: `${failure.message}. The edit is applied in collaborative state and the document file on disk was not updated; a copy of the edited document is preserved in the server's recovery buffer unless that buffer is unavailable or unwritable. Do not repeat the write now: once the filesystem fault is repaired, re-read the document and repeat the edit only if it is missing.`,
   } satisfies BatchEntryError;
+}
+
+function storeFailureProblem(
+  failure: StoreFailure,
+): { status: HttpErrorStatus; problem: BatchEntryError } | undefined {
+  const fields = outcomeOfStoreFailure(failure);
+  const withOutcome = (status: HttpErrorStatus, problem: BatchEntryError) => ({
+    status,
+    problem: { ...problem, ...fields },
+  });
+  switch (failure.code) {
+    case OK_STORE_REFUSED:
+      return withOutcome(503, refusedStoreProblem(failure));
+    case OK_STORE_HELD:
+      return withOutcome(503, heldSaveProblem(failure));
+    case OK_DOC_REMOVED:
+      return withOutcome(409, removedDocProblem(failure));
+    case OK_STORE_DISCARDED:
+      return withOutcome(409, discardedStoreProblem(failure));
+    case OK_DOC_MOVED:
+      return withOutcome(409, movedDocProblem(failure));
+    case OK_SERVER_STOPPED:
+      return withOutcome(503, stoppedServerProblem(failure));
+    case OK_PATH_UNRESOLVABLE:
+      return withOutcome(400, pathFaultProblem(failure));
+    case OK_WRITE_REPLACED:
+      return withOutcome(409, replacedWriteProblem(failure));
+    default:
+      return undefined;
+  }
+}
+
+function withoutOutcomeFields(problem: BatchEntryError): BatchEntryError {
+  const { outcome: _outcome, saved: _saved, nextStep: _nextStep, ...rest } = problem;
+  return rest;
+}
+
+function storeFailureEntryProblem(failure: StoreFailure): BatchEntryError {
+  const known = storeFailureProblem(failure);
+  if (known) return withoutOutcomeFields(known.problem);
+  return {
+    type: classifyUploadErrno({ code: failure.code } as NodeJS.ErrnoException),
+    title: 'Write applied in memory but failed to persist to disk.',
+    detail: `${failure.code ?? 'unknown error'}: ${failure.message}. The content was NOT saved and will be lost if the server restarts.`,
+  };
 }
 
 export function respondPersistenceFailure(
@@ -1601,39 +1688,14 @@ export function respondPersistenceFailure(
   failure: StoreFailure,
   handler: string,
 ): void {
-  if (failure.code === OK_STORE_REFUSED) {
-    const { type, title, detail } = refusedStoreProblem(failure);
-    errorResponse(res, 503, type, title, { handler, detail });
-    return;
-  }
-  if (failure.code === OK_STORE_HELD) {
-    const { type, title, detail, ...extensions } = heldSaveProblem(failure);
-    errorResponse(res, 503, type, title, { handler, detail, extensions });
-    return;
-  }
-  if (failure.code === OK_DOC_REMOVED) {
-    const { type, title, detail } = removedDocProblem(failure);
-    errorResponse(res, 409, type, title, { handler, detail });
-    return;
-  }
-  if (failure.code === OK_STORE_DISCARDED) {
-    const { type, title, detail } = discardedStoreProblem(failure);
-    errorResponse(res, 409, type, title, { handler, detail });
-    return;
-  }
-  if (failure.code === OK_DOC_MOVED) {
-    const { type, title, detail } = movedDocProblem(failure);
-    errorResponse(res, 409, type, title, { handler, detail });
-    return;
-  }
-  if (failure.code === OK_SERVER_STOPPED) {
-    const { type, title, detail } = stoppedServerProblem(failure);
-    errorResponse(res, 503, type, title, { handler, detail });
-    return;
-  }
-  if (failure.code === OK_PATH_UNRESOLVABLE) {
-    const { type, title, detail } = pathFaultProblem(failure);
-    errorResponse(res, 400, type, title, { handler, detail });
+  const known = storeFailureProblem(failure);
+  if (known) {
+    const { type, title, detail, ...extensions } = known.problem;
+    errorResponse(res, known.status, type, title, {
+      handler,
+      ...(detail === undefined ? {} : { detail }),
+      extensions,
+    });
     return;
   }
   const reason = classifyUploadErrno({ code: failure.code } as NodeJS.ErrnoException);
@@ -1642,7 +1704,7 @@ export function respondPersistenceFailure(
     uploadStatusFor(reason),
     reason,
     `Write applied in memory but failed to persist to disk (${failure.code ?? 'unknown error'}): ${failure.message}. The content was NOT saved and will be lost if the server restarts.`,
-    { handler },
+    { handler, extensions: { ...outcomeOfStoreFailure(failure) } },
   );
 }
 
@@ -2060,10 +2122,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     });
   }
 
-  type FlushOutcome =
-    | { kind: 'failure'; failure: StoreFailure }
-    | { kind: 'stale-external-write' }
-    | null;
+  type FlushOutcome = AgentWriteFlushOutcome;
+
+  function heldUnsettled(docName: string, reason: HeldSaveReason, message: string): FlushOutcome {
+    return {
+      kind: 'failure',
+      failure: { code: OK_STORE_HELD, message: `${docName} ${message}`, held: { reason } },
+    };
+  }
 
   async function answerForCarriedEdit(
     docName: string,
@@ -2074,19 +2140,35 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
       return { kind: 'failure', failure };
     }
     const answer = await durabilityState.awaitRenameCarry(docName, failure.removal.carry);
-    if (answer.kind === 'unsettled') {
-      log.warn(
-        { docName },
-        "[agent-write] the rename carry did not settle within the write's wait; acknowledging before it reaches disk",
-      );
-      return null;
+    const renamedTo = failure.removal.renamedTo;
+    switch (answer.kind) {
+      case 'unsettled':
+        return heldUnsettled(
+          docName,
+          'pending-rename',
+          `was still being moved outside the app to ${renamedTo} when the write stopped waiting`,
+        );
+      case 'stopped':
+        return {
+          kind: 'failure',
+          failure: {
+            code: OK_SERVER_STOPPED,
+            message: `The server stopped while ${docName} was being moved outside the app to ${renamedTo}`,
+            removal: { kind: 'renamed', renamedTo },
+          },
+        };
+      case 'settled':
+        return {
+          kind: 'failure',
+          failure: editWasCarried(writtenThrough, answer.carried)
+            ? { ...failure, code: OK_DOC_MOVED }
+            : failure,
+        };
+      default: {
+        const unhandled: never = answer;
+        throw new Error(`unhandled rename carry answer: ${JSON.stringify(unhandled)}`);
+      }
     }
-    return {
-      kind: 'failure',
-      failure: editWasCarried(writtenThrough, answer.carried)
-        ? { ...failure, code: OK_DOC_MOVED }
-        : failure,
-    };
   }
 
   function writtenThroughOfResident(docName: string): WrittenThrough | undefined {
@@ -2094,18 +2176,24 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     return resident ? writtenThroughOf(resident) : undefined;
   }
 
+  function markPendingAgentStore(docName: string): boolean {
+    const debounceId = `onStoreDocument-${docName}`;
+    if (!hocuspocus.debouncer.isDebounced(debounceId)) return false;
+    durabilityState.markAgentWriteStore(docName);
+    return true;
+  }
+
   async function flushDiskAndDetectOutcome(
     docName: string,
     writtenThrough: WrittenThrough | undefined = writtenThroughOfResident(docName),
   ): Promise<FlushOutcome> {
-    const debounceId = `onStoreDocument-${docName}`;
-    if (hocuspocus.debouncer.isDebounced(debounceId)) {
-      durabilityState.markAgentWriteStore(docName);
-      await hocuspocus.debouncer.executeNow(debounceId);
+    if (markPendingAgentStore(docName)) {
+      await hocuspocus.debouncer.executeNow(`onStoreDocument-${docName}`);
     }
     const deferredWaitStarted = Date.now();
     const deferredWait = await durabilityState.awaitDeferredStoreOutcome(docName);
     let failure: StoreFailure | undefined;
+    let unsettled = false;
     switch (deferredWait?.kind) {
       case undefined:
       case 'completed':
@@ -2117,6 +2205,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
         failure = durabilityState.takeStoreFailure(docName) ?? deferredWait.failure;
         break;
       case 'unsettled': {
+        unsettled = true;
         const waitedMs = Date.now() - deferredWaitStarted;
         console.warn(
           JSON.stringify({
@@ -2128,7 +2217,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
         );
         log.warn(
           { docName, waitedMs },
-          '[agent-write] deferred store still pending after the wait; acknowledging before it reaches disk',
+          '[agent-write] deferred store still pending after the wait; answering that the save is held',
         );
         break;
       }
@@ -2136,11 +2225,28 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
         assertNeverDeferredStoreWait(deferredWait);
     }
     failure ??= durabilityState.takeStoreFailure(docName) ?? undefined;
+    const atSave = durabilityState.readStoreIntake(docName, writtenThrough);
     if (failure) return answerForCarriedEdit(docName, failure, writtenThrough);
     if (durabilityState.takeStaleExternalWriteFreeze(docName)) {
       return { kind: 'stale-external-write' };
     }
-    return null;
+    if (unsettled) {
+      return heldUnsettled(
+        docName,
+        'pending-unsettled',
+        'was still being saved when the write stopped waiting',
+      );
+    }
+    if (atSave === 'disk-replaced') {
+      return {
+        kind: 'failure',
+        failure: {
+          code: OK_WRITE_REPLACED,
+          message: `${docName} changed on disk, and its file replaced the document`,
+        },
+      };
+    }
+    return atSave === undefined ? null : { kind: 'taken-in', merge: atSave };
   }
 
   function staleExternalWriteProblem(docName: string) {
@@ -2156,6 +2262,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
           '/',
         ),
       resolutionOptions: RESOLUTION_OPTIONS,
+      ...REFUSAL_OUTCOMES['urn:ok:error:stale-external-write'],
     } satisfies BatchEntryError;
   }
 
@@ -3746,7 +3853,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
             400,
             'urn:ok:error:reserved-doc-name',
             `'${docName}' is a reserved document name.`,
-            { handler: 'agent-write' },
+            {
+              handler: 'agent-write',
+              extensions: { ...REFUSAL_OUTCOMES['urn:ok:error:reserved-doc-name'] },
+            },
           );
           return;
         }
@@ -3851,15 +3961,24 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
         onAgentWrite?.();
 
         const agentWriteWarning = buildReconcileWarning(agentWriteReconcile);
+        const agentWriteBody = {
+          timestamp,
+          ...(summaryResponse ? { summary: summaryResponse } : {}),
+          ...(agentWriteWarning ? { warnings: [agentWriteWarning] } : {}),
+        };
+        const agentWriteOutcome = reportedOutcome(
+          docName,
+          outcomeOfSavedWrite(agentWriteReconcile, flushOutcome),
+        );
+        if (agentWriteOutcome?.outcome === 'both-kept') {
+          respondBothKept(res, 'agent-write', agentWriteBody, agentWriteOutcome);
+          return;
+        }
         successResponse(
           res,
           200,
           AgentWriteSuccessSchema,
-          {
-            timestamp,
-            ...(summaryResponse ? { summary: summaryResponse } : {}),
-            ...(agentWriteWarning ? { warnings: [agentWriteWarning] } : {}),
-          },
+          { ...agentWriteBody, ...agentWriteOutcome },
           { handler: 'agent-write' },
         );
       } catch (e) {
@@ -3907,12 +4026,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
 
         const timestamp = new Date().toISOString();
 
-        interface BatchErrorResult {
+        interface BatchErrorResult extends Partial<AgentWriteOutcomeFields> {
           status: 'error';
           docName: string;
           error: BatchEntryError;
         }
-        interface BatchWrittenResult extends WriteLinkAdvisoryProjection {
+        interface BatchWrittenResult
+          extends WriteLinkAdvisoryProjection,
+            Partial<AgentWriteOutcomeFields> {
           status: 'written';
           docName: string;
           summary?: SummaryResponse;
@@ -3926,10 +4047,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
           title: string,
           detail?: string,
           extensions?: Record<string, unknown>,
+          outcome?: AgentWriteOutcomeFields,
         ): BatchErrorResult => ({
           status: 'error',
           docName,
           error: { type, title, ...(detail !== undefined ? { detail } : {}), ...extensions },
+          ...outcome,
         });
 
         const classifyEntryFailure = (docName: string, e: unknown): BatchErrorResult => {
@@ -3941,6 +4064,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
               CONCURRENT_OVERWRITE_REFUSED_TITLE,
               CONCURRENT_OVERWRITE_REFUSED_DETAIL_WITH_POSITIONS,
               { retryAfterSeconds: CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS },
+              REFUSAL_OUTCOMES['urn:ok:error:concurrent-overwrite-refused'],
             );
           }
           if (e instanceof DocInConflictError) {
@@ -3961,6 +4085,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
                 detail,
                 ...envelope,
               },
+              ...REFUSAL_OUTCOMES['urn:ok:error:doc-in-conflict'],
             };
           }
           if (e instanceof FrontmatterMalformedError) {
@@ -3970,6 +4095,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
               'urn:ok:error:frontmatter-malformed',
               'Frontmatter YAML is malformed.',
               frontmatterRefusalDetail(e),
+              undefined,
+              REFUSAL_OUTCOMES['urn:ok:error:frontmatter-malformed'],
             );
           }
           if (e instanceof AgentSessionCapacityError) {
@@ -3979,6 +4106,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
               AGENT_SESSION_CAPACITY_TITLE,
               AGENT_SESSION_CAPACITY_DETAIL,
               AGENT_SESSION_CAPACITY_EXTENSIONS,
+              REFUSAL_OUTCOMES['urn:ok:error:too-many-agent-sessions'],
             );
           }
           log.error(
@@ -3995,14 +4123,16 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
         interface PendingEntry {
           index: number;
           docName: string;
-          session: Awaited<ReturnType<typeof sessionManager.getSession>>;
+          reconcile: ReconcileBeforeWriteResult;
           summaryResponse?: SummaryResponse;
           warnings: AdvisoryWarning[];
+          diverged: boolean;
         }
 
         const results: (BatchResult | undefined)[] = new Array(body.docs.length);
         const pending: PendingEntry[] = [];
         const writtenThroughByDoc = new Map<string, WrittenThrough>();
+        const writtenSourceByDoc = new Map<string, string>();
 
         try {
           const icon = iconFromClientName(clientName);
@@ -4026,6 +4156,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
                   resolvedDocName,
                   'urn:ok:error:reserved-doc-name',
                   `'${resolvedDocName}' is a reserved document name.`,
+                  undefined,
+                  undefined,
+                  REFUSAL_OUTCOMES['urn:ok:error:reserved-doc-name'],
                 );
                 continue;
               }
@@ -4103,6 +4236,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
                     });
                   }, session.origin);
                   writtenThroughByDoc.set(resolvedDocName, writtenThroughOf(session.dc.document));
+                  writtenSourceByDoc.set(
+                    resolvedDocName,
+                    session.dc.document.getText('source').toString(),
+                  );
+                  markPendingAgentStore(resolvedDocName);
                 } finally {
                   disposeEntryEffectCapture();
                 }
@@ -4130,9 +4268,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
                 pending.push({
                   index: i,
                   docName: resolvedDocName,
-                  session,
+                  reconcile,
                   summaryResponse,
                   warnings,
+                  diverged: writeDivergence !== undefined,
                 });
               } catch (e) {
                 results[i] = classifyEntryFailure(resolvedDocName, e);
@@ -4140,39 +4279,21 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
             }
 
             const flushErrors = new Map<string, BatchErrorResult['error'] | undefined>();
+            const flushOutcomes = new Map<string, FlushOutcome>();
             for (const p of pending) {
               if (flushErrors.has(p.docName)) continue;
               const flushOutcome = await flushDiskAndDetectOutcome(
                 p.docName,
                 writtenThroughByDoc.get(p.docName),
               );
+              flushOutcomes.set(p.docName, flushOutcome);
               if (flushOutcome?.kind === 'failure') {
-                if (flushOutcome.failure.code === OK_DOC_REMOVED) {
-                  flushErrors.set(p.docName, removedDocProblem(flushOutcome.failure));
-                } else if (flushOutcome.failure.code === OK_PATH_UNRESOLVABLE) {
-                  flushErrors.set(p.docName, pathFaultProblem(flushOutcome.failure));
-                } else if (flushOutcome.failure.code === OK_STORE_REFUSED) {
-                  flushErrors.set(p.docName, refusedStoreProblem(flushOutcome.failure));
-                } else if (flushOutcome.failure.code === OK_STORE_HELD) {
-                  flushErrors.set(p.docName, heldSaveProblem(flushOutcome.failure));
-                } else if (flushOutcome.failure.code === OK_STORE_DISCARDED) {
-                  flushErrors.set(p.docName, discardedStoreProblem(flushOutcome.failure));
-                } else if (flushOutcome.failure.code === OK_DOC_MOVED) {
-                  flushErrors.set(p.docName, movedDocProblem(flushOutcome.failure));
-                } else if (flushOutcome.failure.code === OK_SERVER_STOPPED) {
-                  flushErrors.set(p.docName, stoppedServerProblem(flushOutcome.failure));
-                } else {
-                  const reason = classifyUploadErrno({
-                    code: flushOutcome.failure.code,
-                  } as NodeJS.ErrnoException);
-                  flushErrors.set(p.docName, {
-                    type: reason,
-                    title: 'Write applied in memory but failed to persist to disk.',
-                    detail: `${flushOutcome.failure.code ?? 'unknown error'}: ${flushOutcome.failure.message}. The content was NOT saved and will be lost if the server restarts.`,
-                  });
-                }
+                flushErrors.set(p.docName, storeFailureEntryProblem(flushOutcome.failure));
               } else if (flushOutcome?.kind === 'stale-external-write') {
-                flushErrors.set(p.docName, staleExternalWriteProblem(p.docName));
+                flushErrors.set(
+                  p.docName,
+                  withoutOutcomeFields(staleExternalWriteProblem(p.docName)),
+                );
               } else {
                 flushErrors.set(p.docName, undefined);
               }
@@ -4185,11 +4306,22 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
             let lastWrittenDoc: string | undefined;
             for (const p of pending) {
               const flushError = flushErrors.get(p.docName);
+              const flushOutcome = flushOutcomes.get(p.docName) ?? null;
               if (flushError !== undefined) {
-                results[p.index] = { status: 'error', docName: p.docName, error: flushError };
+                results[p.index] = {
+                  status: 'error',
+                  docName: p.docName,
+                  error: flushError,
+                  ...(flushOutcome?.kind === 'failure'
+                    ? outcomeOfStoreFailure(flushOutcome.failure)
+                    : REFUSAL_OUTCOMES['urn:ok:error:stale-external-write']),
+                };
                 continue;
               }
-              const writtenSource = p.session.dc.document.getText('source').toString();
+              const writtenSource =
+                hocuspocus.documents.get(p.docName)?.getText('source').toString() ??
+                writtenSourceByDoc.get(p.docName) ??
+                '';
               registerWrittenDocInFileIndex(p.docName, writtenSource);
               const linkAdvisory = linkAdvisor(
                 writtenSource,
@@ -4200,6 +4332,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
               results[p.index] = {
                 status: 'written',
                 docName: p.docName,
+                ...reportedOutcome(
+                  p.docName,
+                  outcomeOfSavedWrite(p.reconcile, flushOutcome, p.diverged),
+                ),
                 ...(p.summaryResponse ? { summary: p.summaryResponse } : {}),
                 ...(warnings.length > 0 ? { warnings } : {}),
                 ...linkAdvisory.links,

@@ -13,6 +13,10 @@ import {
 } from '@inkeep/open-knowledge-core';
 import type { SkillHostId } from '@inkeep/open-knowledge-core/skills-catalog';
 import { parseSkillsLock, SKILLS_LOCK_REL } from '@inkeep/open-knowledge-core/skills-catalog';
+import {
+  type AgentWriteFlushOutcome,
+  answeredWithSuccessOnAppRoutes,
+} from '../agent-write-outcome.ts';
 import type { ContentFilter } from '../content-filter.ts';
 import type { StoreFailure } from '../document-durability-state.ts';
 import { scanGlobalInPlaceSkills, scanInPlaceSkills } from '../in-place-skills.ts';
@@ -50,11 +54,7 @@ export interface SkillsInstallRouteDeps {
   shippedBundleSkillMd: (name: string, scope?: 'project' | 'global') => string | null;
   respondStaleExternalWrite: (res: ServerResponse, handler: string, docName: string) => void;
   respondPersistenceFailure: (res: ServerResponse, failure: StoreFailure, handler: string) => void;
-  flushDiskAndDetectOutcome: (
-    docName: string,
-  ) => Promise<
-    { kind: 'failure'; failure: StoreFailure } | { kind: 'stale-external-write' } | null
-  >;
+  flushDiskAndDetectOutcome: (docName: string) => Promise<AgentWriteFlushOutcome>;
   skillInstallOps: SkillInstallOpsService;
   skillPlacementOps: SkillPlacementOpsService;
   signalChannel: ((channel: 'files' | 'lint-config' | 'comments') => void) | undefined;
@@ -133,7 +133,10 @@ export function createSkillsInstallRoutes(deps: SkillsInstallRouteDeps): ApiRout
             ? `${relative(inPlaceScanBase, skillDir).split(sep).join('/')}/SKILL`
             : skillLiveDocName(body.scope, body.name);
         const liveSkillFlush = await flushDiskAndDetectOutcome(liveSkillDoc);
-        if (liveSkillFlush?.kind === 'failure') {
+        if (
+          liveSkillFlush?.kind === 'failure' &&
+          !answeredWithSuccessOnAppRoutes(liveSkillFlush.failure)
+        ) {
           respondPersistenceFailure(res, liveSkillFlush.failure, 'skill-install');
           return;
         }
@@ -760,7 +763,13 @@ export function createSkillsInstallRoutes(deps: SkillsInstallRouteDeps): ApiRout
           res,
           200,
           SkillInstallSuccessSchema,
-          { name: body.name, hosts, scripts: validity.hasScripts, warnings, warningCodes },
+          {
+            name: body.name,
+            hosts,
+            scripts: validity.hasScripts,
+            warnings,
+            warningCodes,
+          },
           { handler: 'skill-install' },
         );
       } catch (e) {

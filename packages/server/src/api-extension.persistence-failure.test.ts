@@ -34,7 +34,7 @@ function makeMockRes() {
 }
 
 describe('respondPersistenceFailure — store-refused', () => {
-  test('an OK_STORE_REFUSED failure renders a 503 with the store-refused URN and retry guidance', () => {
+  test('an OK_STORE_REFUSED failure renders a 503 with the store-refused URN and re-read guidance', () => {
     const { res, writeHeadCalls, endCalls } = makeMockRes();
     const failure: StoreFailure = {
       code: OK_STORE_REFUSED,
@@ -54,7 +54,9 @@ describe('respondPersistenceFailure — store-refused', () => {
     const detail = String(body.detail);
     expect(detail).toContain('recovery buffer');
     expect(detail).toContain('filesystem fault');
-    expect(detail).toContain('Retry');
+    expect(detail).toContain('repeat the edit only if it is missing');
+    expect(detail).not.toContain('Retry the write');
+    expect(body).toMatchObject({ outcome: 'refused', saved: false, nextStep: 're-read' });
   });
 
   test('a non-refusal failure keeps the generic upload rendering instead of the 503', () => {
@@ -70,7 +72,7 @@ describe('respondPersistenceFailure — store-refused', () => {
 });
 
 describe('respondPersistenceFailure: a held save', () => {
-  test('an OK_STORE_HELD failure renders a 503 save-held problem with its reason, cause, retry rule and a re-read next step', () => {
+  test('an OK_STORE_HELD failure renders a 503 save-held problem with its reason, cause and the projection-held outcome', () => {
     const { res, writeHeadCalls, endCalls } = makeMockRes();
     const failure: StoreFailure = {
       code: OK_STORE_HELD,
@@ -86,10 +88,12 @@ describe('respondPersistenceFailure: a held save', () => {
       type: 'urn:ok:error:save-held',
       title: 'Edit applied in memory; its save to disk is held.',
       reason: 'pending-unreadable',
-      retryWhen: 'next-save',
       causeCode: 'EBUSY',
+      outcome: 'projection-held',
+      saved: false,
       nextStep: 're-read',
     });
+    expect(body).toMatchObject({ retryWhen: 'next-save' });
     const detail = String(body.detail);
     expect(detail).toContain('kept in the document');
     expect(detail).toContain('once the file can be read again');
@@ -99,10 +103,10 @@ describe('respondPersistenceFailure: a held save', () => {
   });
 
   test.each([
-    { held: { reason: 'pending-intake-failed-no-base' as const } },
+    { held: { reason: 'pending-intake-failed-no-base' as const, noBase: true as const } },
     { held: { reason: 'pending-unreadable' as const, causeCode: 'EBUSY', noBase: true as const } },
   ])(
-    'a hold on a document with no agreed version ($held.reason) never says the edit is saved',
+    'a hold on a file with no agreed version ($held.reason) is refused and says any further write replaces it',
     ({ held }) => {
       const { res, endCalls } = makeMockRes();
       respondPersistenceFailure(
@@ -115,14 +119,17 @@ describe('respondPersistenceFailure: a held save', () => {
         type: 'urn:ok:error:save-held',
         reason: held.reason,
         retryWhen: 'replaced-on-next-edit',
-        nextStep: 're-read',
+        outcome: 'refused',
+        saved: false,
+        nextStep: 'none',
       });
       const detail = String(body.detail);
-      expect(detail).toContain('This edit is not saved to the file');
+      expect(detail).toContain('is not saved to the file');
+      expect(detail).toContain('yours included');
       expect(detail).toContain('replaces the document with the file on disk');
       expect(detail).toContain('document history (timeline)');
-      expect(detail).toContain('re-apply this edit');
-      expect(detail).not.toContain('kept in the document');
+      expect(detail).toContain('tell the user');
+      expect(detail).not.toContain('re-read the document before editing it further');
       expect(detail).not.toMatch(/saves it|writes it|is saved after/);
     },
   );
@@ -130,17 +137,38 @@ describe('respondPersistenceFailure: a held save', () => {
   test.each([
     {
       reason: 'pending-conflict' as const,
-      retryWhen: 'conflict-resolved',
-      says: 'after the conflict on this document is resolved',
+      outcome: {
+        outcome: 'refused',
+        saved: false,
+        nextStep: 'none',
+        retryWhen: 'conflict-resolved',
+      },
+      says: 'tell the user which file it is',
       neverSays: 'idle save',
     },
     {
       reason: 'pending-intake-failed' as const,
-      retryWhen: 'next-save',
+      outcome: {
+        outcome: 'projection-held',
+        saved: false,
+        nextStep: 're-read',
+        retryWhen: 'next-save',
+      },
       says: 'the idle save within a few minutes',
       neverSays: 'conflict',
     },
-  ])('a $reason hold states its own retry rule', ({ reason, retryWhen, says, neverSays }) => {
+    {
+      reason: 'pending-unsettled' as const,
+      outcome: {
+        outcome: 'projection-held',
+        saved: false,
+        nextStep: 're-read',
+        retryWhen: 'next-save',
+      },
+      says: 'finishes on its own',
+      neverSays: 'idle save',
+    },
+  ])('a $reason hold states its own rule and outcome', ({ reason, outcome, says, neverSays }) => {
     const { res, endCalls } = makeMockRes();
     respondPersistenceFailure(
       res,
@@ -148,7 +176,7 @@ describe('respondPersistenceFailure: a held save', () => {
       'agent-write-md',
     );
     const body = JSON.parse(endCalls[0] ?? '{}') as Record<string, unknown>;
-    expect(body).toMatchObject({ reason, retryWhen, nextStep: 're-read' });
+    expect(body).toMatchObject({ reason, ...outcome });
     expect(String(body.detail)).toContain(says);
     expect(String(body.detail)).not.toContain(neverSays);
   });
@@ -222,6 +250,50 @@ describe('respondPersistenceFailure: the save of a document whose file went miss
     expect(body.type).toBe('urn:ok:error:doc-removed');
     expect(String(body.title)).toContain('deleted outside the app');
     expect(String(body.detail)).toContain('history');
+  });
+
+  test('a shutdown while a move was being carried names the new path and says re-read there', () => {
+    const { res, writeHeadCalls, endCalls } = makeMockRes();
+    respondPersistenceFailure(
+      res,
+      {
+        code: OK_SERVER_STOPPED,
+        message: 'The server stopped while notes was being moved outside the app to archive/notes',
+        removal: { kind: 'renamed', renamedTo: 'archive/notes' },
+      },
+      'agent-write-md',
+    );
+
+    expect(writeHeadCalls[0]?.status).toBe(503);
+    const body = JSON.parse(endCalls[0] ?? '{}') as Record<string, unknown>;
+    expect(body).toMatchObject({
+      type: 'urn:ok:error:server-stopped',
+      outcome: 'refused',
+      saved: false,
+      nextStep: 're-read',
+    });
+    expect(String(body.detail)).toContain('re-read the document at archive/notes');
+    expect(String(body.detail)).toContain('Do not re-create the document under its old name');
+    expect(String(body.detail)).not.toContain('re-create the document with write');
+  });
+
+  test('a rename carry still running when the write stops waiting names the new path', () => {
+    const { res, endCalls } = makeMockRes();
+    respondPersistenceFailure(
+      res,
+      {
+        code: OK_STORE_HELD,
+        message:
+          'notes was still being moved outside the app to archive/notes when the write stopped waiting',
+        held: { reason: 'pending-rename' },
+      },
+      'agent-write-md',
+    );
+    const body = JSON.parse(endCalls[0] ?? '{}') as Record<string, unknown>;
+    expect(body).toMatchObject({ reason: 'pending-rename', outcome: 'projection-held' });
+    expect(String(body.detail)).toContain('archive/notes');
+    expect(String(body.detail)).toContain('re-read it at its new name');
+    expect(String(body.detail)).toContain('do not re-create the document under its old name');
   });
 
   test('a shutdown while the file was missing renders a 503 server-stopped', () => {

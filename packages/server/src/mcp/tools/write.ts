@@ -88,6 +88,23 @@ import {
   TEMPLATE_CONTENT_DESCRIBE,
   TEMPLATE_PATH_DESCRIBE,
 } from './verb-schemas.ts';
+import {
+  failedWriteResult,
+  landedLead,
+  landedWithoutSuccess,
+  leadFor,
+  needsAttention,
+  REFUSED_WITHOUT_ERROR_STATUS,
+  refusedDespiteSuccess,
+  refusedWriteResult,
+  rereadAfterLanding,
+  type WriteOutcome,
+  weightierOutcome,
+  writeOutcomeFields,
+  writeOutcomeLine,
+  writeOutcomeOf,
+  writeOutcomeOutputShape,
+} from './write-outcome.ts';
 
 const DESCRIPTION = [
   'Create/replace exactly one `document`, `folder`, `template`, `skill`, or `asset`; use `documents` for an ordered batch. Requires the Hocuspocus server.',
@@ -97,7 +114,7 @@ const DESCRIPTION = [
   '`skill: {name, description, body, scope?}` writes agent guidance; lowercase letters/digits/hyphens name is identity, description is when to use it. New skills use the default skill home; existing ones keep their real folder. Use install for editors.',
   '`asset: {path, content|source}` uploads binary image/file: base64 content or local source path. `documents` takes document specs and reports each result.',
   'Optional summary: one-line outcome ≤80 chars, persisted to git history; avoid secrets or PII. Batches need per-entry summary; top-level is ignored.',
-  'Read response warnings: content-divergence/disk-edit-reconciled means re-read; mermaid-parse-error means the write landed but fix the fence.',
+  'Follow nextStep: retry|re-read|none. Outcomes merged-first, both-kept, projection-held landed: never retry. mermaid-parse-error: fix the fence.',
   CANONICAL_COMPONENT_GUIDANCE,
 ].join('\n');
 
@@ -130,9 +147,11 @@ type WriteOneResult =
       extensionNote?: string;
       createdByPosition?: 'append' | 'prepend';
       templateHint?: readonly { name: string; description?: string }[];
+      outcome?: WriteOutcome;
+      frontmatterNote?: string;
       raw: WriteApiResult;
     }
-  | { docName: string; ok: false; error: string };
+  | { docName: string; ok: false; error: string; outcome?: WriteOutcome };
 
 export function frontmatterIgnoredNote(
   position: string,
@@ -329,7 +348,11 @@ async function writeOneDoc(
     ...(spec.summary !== undefined ? { summary: spec.summary } : {}),
     ...agentIdentityFields(identity),
   });
-  if (!result.ok) {
+  const outcome = writeOutcomeOf(result);
+  if (result.ok && refusedDespiteSuccess(outcome)) {
+    return { docName, ok: false, error: REFUSED_WITHOUT_ERROR_STATUS, outcome };
+  }
+  if (!result.ok && !landedWithoutSuccess(outcome)) {
     const offsetBasis =
       result.type === 'urn:ok:error:invalid-request' && result.contentControlAdmission === true
         ? spec.template !== undefined
@@ -346,24 +369,32 @@ async function writeOneDoc(
       docName,
       ok: false,
       error: `${requestFailureText(result)}${offsetBasis}${recovery}`,
+      ...(outcome ? { outcome } : {}),
     };
   }
 
-  if (spec.template !== undefined && hasFrontmatter) {
+  const templateFrontmatterHeld =
+    spec.template !== undefined && hasFrontmatter && !result.ok && outcome?.outcome !== 'both-kept';
+  let entryOutcome = outcome;
+  if (spec.template !== undefined && hasFrontmatter && !templateFrontmatterHeld) {
     const fmResult = await httpPost(url, '/api/frontmatter-patch', {
       docName,
       patch: spec.frontmatter,
       ...agentIdentityFields(identity),
     });
-    if (!fmResult.ok) {
+    const fmOutcome = writeOutcomeOf(fmResult);
+    if ((!fmResult.ok && !landedWithoutSuccess(fmOutcome)) || refusedDespiteSuccess(fmOutcome)) {
       return {
         docName,
         ok: false,
-        error: frontmatterPatchAppliedNothing(fmResult)
-          ? `document created from template "${spec.template}", but its frontmatter patch was refused, so the document exists without that frontmatter: ${requestFailureText(fmResult)} Apply the frontmatter alone with edit({ document: { path: "${docName}", frontmatter } }); do not repeat the templated write.`
-          : `document created from template "${spec.template}", but its frontmatter patch failed, and this response does not show whether the frontmatter was applied: ${requestFailureText(fmResult)} Re-read the document before changing it; do not repeat the templated write.`,
+        error:
+          frontmatterPatchAppliedNothing(fmResult) || fmOutcome?.outcome === 'refused'
+            ? `document created from template "${spec.template}"; its body landed, but its frontmatter patch was refused, so the frontmatter was not applied: ${requestFailureText(fmResult)} Re-read the document, then apply the frontmatter alone with edit({ document: { path: "${docName}", frontmatter } }); do not repeat the templated write.`
+            : `document created from template "${spec.template}"; its body landed, but its frontmatter patch failed, and this response does not show whether the frontmatter was applied: ${requestFailureText(fmResult)} Re-read the document, then apply only the missing frontmatter with edit({ document: { path: "${docName}", frontmatter } }); do not repeat the templated write.`,
+        ...(outcome ? { outcome: rereadAfterLanding(outcome) } : {}),
       };
     }
+    entryOutcome = weightierOutcome(outcome, fmOutcome);
   }
 
   const extensionNote = extensionIgnoredNote(requestedExt, existingExt, docName);
@@ -379,6 +410,12 @@ async function writeOneDoc(
     ...(spec.template !== undefined ? { fromTemplate: spec.template } : {}),
     ...(extensionNote ? { extensionNote } : {}),
     ...(templateHint ? { templateHint } : {}),
+    ...(entryOutcome ? { outcome: entryOutcome } : {}),
+    ...(templateFrontmatterHeld
+      ? {
+          frontmatterNote: `The frontmatter you passed with the template was not applied, because the document's save is held. Re-read the document, then apply it with edit({ document: { path: "${docName}", frontmatter } }).`,
+        }
+      : {}),
     raw: result,
   };
 }
@@ -461,17 +498,30 @@ async function handleTemplate(
     ...(summary !== undefined ? { summary } : {}),
     ...agentIdentityFields(deps.identityRef?.current),
   });
+  const outcome = writeOutcomeOf(result);
   if (!result.ok) {
-    return textResult(
+    return failedWriteResult(
       errorTextWithDetail(result, 'Any body offset refers to the full submitted template.content.'),
-      true,
+      outcome,
     );
+  }
+  if (refusedDespiteSuccess(outcome)) {
+    return refusedWriteResult(`The write of template "${name}"`, outcome);
   }
   const created = result.created === true;
   const path = typeof result.path === 'string' ? result.path : undefined;
+  const outcomeLine = outcome?.outcome === 'applied' ? null : writeOutcomeLine(outcome);
   return textPlusStructured(
-    `${created ? 'Created' : 'Updated'} template "${name}" in ${folder || '(root)'}${path ? ` (${path})` : ''}.`,
-    { template: { ok: true, path, created } },
+    [
+      leadFor(
+        outcome,
+        `${created ? 'Created' : 'Updated'} template "${name}"`,
+        `${created ? 'Created' : 'Updated'} template "${name}" in ${folder || '(root)'}${path ? ` (${path})` : ''}.`,
+      ),
+      ...(outcomeLine ? [outcomeLine] : []),
+    ].join('\n'),
+    { template: { ok: true, path, created }, ...writeOutcomeFields(outcome) },
+    needsAttention(outcome),
   );
 }
 
@@ -635,6 +685,10 @@ async function handleSkillWrite(
     kind?: string;
     created?: boolean;
     error?: string;
+    outcome?: string;
+    saved?: boolean;
+    nextStep?: string;
+    landedNote?: string;
   }> = [];
 
   let skillMdResult: Awaited<ReturnType<typeof writeSkill>> | null = null;
@@ -648,7 +702,9 @@ async function handleSkillWrite(
       identity,
       lockDir,
     });
-    if (skillMdResult.isError) return skillMdResult;
+    const skillMdStructured = (skillMdResult as { structuredContent?: Record<string, unknown> })
+      .structuredContent;
+    if (skillMdResult.isError && skillMdStructured?.skill === undefined) return skillMdResult;
   }
 
   for (const f of normalizedFiles) {
@@ -660,23 +716,47 @@ async function handleSkillWrite(
       summary,
       identity,
     });
-    const struct = (r as { structuredContent?: { skill?: { file?: Record<string, unknown> } } })
-      .structuredContent;
-    if (r.isError) {
-      fileResults.push({ path: f.path, ok: false, error: r.content[0]?.text ?? 'write failed' });
+    const struct = (
+      r as {
+        structuredContent?: { skill?: { file?: Record<string, unknown> } } & Record<
+          string,
+          unknown
+        >;
+      }
+    ).structuredContent;
+    const fileOutcome = writeOutcomeFields(struct ? writeOutcomeOf(struct) : undefined);
+    const file = struct?.skill?.file;
+    if (r.isError && file === undefined) {
+      fileResults.push({
+        path: f.path,
+        ok: false,
+        error: r.content[0]?.text ?? 'write failed',
+        ...fileOutcome,
+      });
     } else {
-      const file = struct?.skill?.file ?? {};
+      const landedNote = landedWithoutSuccess(struct ? writeOutcomeOf(struct) : undefined)
+        ? r.content[0]?.text
+        : undefined;
       fileResults.push({
         path: f.path,
         ok: true,
-        ...(typeof file.kind === 'string' ? { kind: file.kind } : {}),
-        ...(typeof file.created === 'boolean' ? { created: file.created } : {}),
+        ...(typeof file?.kind === 'string' ? { kind: file.kind } : {}),
+        ...(typeof file?.created === 'boolean' ? { created: file.created } : {}),
+        ...fileOutcome,
+        ...(landedNote === undefined ? {} : { landedNote }),
       });
     }
   }
 
   const fileOk = fileResults.filter((r) => r.ok).length;
-  const anyFileFailed = fileResults.some((r) => !r.ok);
+  const anyFileFailed = fileResults.some(
+    (r) =>
+      !r.ok ||
+      r.outcome === 'refused' ||
+      r.outcome === 'both-kept' ||
+      r.outcome === 'projection-held',
+  );
+  const skillMdNeedsAttention = skillMdResult?.isError === true;
   const baseStructured =
     ((skillMdResult as { structuredContent?: Record<string, unknown> } | null)?.structuredContent as
       | Record<string, unknown>
@@ -685,7 +765,12 @@ async function handleSkillWrite(
   const { text: _skillMdOnlyText, ...baseWithoutText } = baseStructured;
   const structured: Record<string, unknown> = {
     ...baseWithoutText,
-    skill: { ...baseSkill, ...(files.length > 0 ? { files: fileResults } : {}) },
+    skill: {
+      ...baseSkill,
+      ...(files.length > 0
+        ? { files: fileResults.map(({ landedNote: _landedNote, ...entry }) => entry) }
+        : {}),
+    },
   };
 
   const lines: string[] = [];
@@ -693,10 +778,18 @@ async function handleSkillWrite(
   if (files.length > 0) {
     lines.push(`${fileOk}/${files.length} bundle file(s) written.`);
     for (const r of fileResults) {
-      lines.push(r.ok ? `  ${r.path} (${r.kind ?? 'file'})` : `  Failed ${r.path}: ${r.error}`);
+      lines.push(
+        r.ok
+          ? `  ${r.path} (${r.kind ?? 'file'})${r.landedNote ? `: ${r.landedNote}` : ''}`
+          : `  Failed ${r.path}: ${r.error}`,
+      );
     }
   }
-  return textPlusStructured(lines.filter(Boolean).join('\n'), structured, anyFileFailed);
+  return textPlusStructured(
+    lines.filter(Boolean).join('\n'),
+    structured,
+    anyFileFailed || skillMdNeedsAttention,
+  );
 }
 
 async function handleBatch(
@@ -713,40 +806,59 @@ async function handleBatch(
     results.push(await writeOneDoc(spec, cwd, contentDir, url, deps));
   }
   const docOut = results.map((r) => {
-    if (!r.ok) return { docName: r.docName, ok: false as const, error: r.error };
+    if (!r.ok) {
+      return {
+        docName: r.docName,
+        ok: false as const,
+        error: r.error,
+        ...writeOutcomeFields(r.outcome),
+      };
+    }
     const preview = resolvePreviewUrl(r.docName, { lockDir });
     const warnings = parseAdvisoryWarnings(r.raw.warnings);
-    const brokenLinks = parseBrokenLinks(r.raw.brokenLinks);
+    const linksChecked = r.outcome?.outcome !== 'projection-held';
+    const brokenLinks = linksChecked ? parseBrokenLinks(r.raw.brokenLinks) : undefined;
     const brokenLinkSuppression = parseBrokenLinkSuppression(r.raw.brokenLinkSuppression);
     return {
       docName: r.docName,
       ok: true as const,
       position: r.position,
+      ...writeOutcomeFields(r.outcome),
       ...(preview ? { previewUrl: preview.url } : {}),
       ...(warnings ? { warnings } : {}),
       ...(r.templateHint ? { templateHint: r.templateHint } : {}),
-      brokenLinks,
+      ...(brokenLinks ? { brokenLinks } : {}),
       ...(brokenLinkSuppression ? { brokenLinkSuppression } : {}),
     };
   });
   const okCount = docOut.filter((d) => d.ok).length;
-  const allOk = okCount === docOut.length;
+  const allOk = results.every((r) => r.ok && !needsAttention(r.outcome));
   const lines = documents.map((spec, i) => {
     const r = results[i];
-    if (!r?.ok) return `Failed ${spec.path}: ${r?.error ?? 'unknown error'}`;
+    if (!r?.ok) {
+      const outcomeLine = writeOutcomeLine(r?.outcome);
+      return `Failed ${spec.path}: ${r?.error ?? 'unknown error'}${outcomeLine ? ` ${outcomeLine}` : ''}`;
+    }
     if (emptyAppendNoOpNote(r.position, spec.content)) {
       return `No change to ${spec.path} — empty ${r.position}, document unchanged.`;
     }
     const d = docOut[i];
     const baseParts = [
-      r.createdByPosition
-        ? createdByPositionNote(r.docName, r.createdByPosition)
-        : `Wrote ${spec.path} (${r.position}).`,
+      r.outcome && landedWithoutSuccess(r.outcome)
+        ? landedLead(r.outcome, `Wrote ${spec.path} (${r.position})`)
+        : r.createdByPosition
+          ? createdByPositionNote(r.docName, r.createdByPosition)
+          : `Wrote ${spec.path} (${r.position}).`,
     ];
+    if (r.outcome?.outcome === 'projection-held' && typeof r.raw.detail === 'string') {
+      baseParts.push(r.raw.detail);
+    }
+    const entryOutcomeLine = r.outcome?.outcome === 'applied' ? null : writeOutcomeLine(r.outcome);
+    if (entryOutcomeLine) baseParts.push(entryOutcomeLine);
     if (d?.ok && d.warnings) {
       baseParts.push(...formatAdvisoryBriefs(d.warnings));
     }
-    if (d?.ok) {
+    if (d?.ok && d.brokenLinks) {
       const brokenBrief = formatBrokenLinkBrief(d.brokenLinks);
       if (brokenBrief) baseParts.push(brokenBrief);
       if (d.brokenLinkSuppression) {
@@ -764,7 +876,11 @@ async function handleBatch(
     const r = results[i];
     if (!r?.ok) return [];
     const fmNote = frontmatterIgnoredNote(r.position, spec.content);
-    const notes = [...(fmNote ? [fmNote] : []), ...(r.extensionNote ? [r.extensionNote] : [])];
+    const notes = [
+      ...(fmNote ? [fmNote] : []),
+      ...(r.frontmatterNote ? [r.frontmatterNote] : []),
+      ...(r.extensionNote ? [r.extensionNote] : []),
+    ];
     return notes.map((n) => `${spec.path} — ${n}`);
   });
   const text = [`${okCount}/${docOut.length} written.`, ...lines, ...perDocNotes].join('\n');
@@ -787,9 +903,10 @@ async function handleSingleDoc(
   autoOpen: boolean,
 ) {
   const w = await writeOneDoc(spec, cwd, contentDir, url, deps);
-  if (!w.ok) return textResult(`Error: ${w.error}`, true);
+  if (!w.ok) return failedWriteResult(`Error: ${w.error}`, w.outcome);
 
   const result = w.raw;
+  const landedOnly = w.outcome !== undefined && landedWithoutSuccess(w.outcome);
   const preview = resolvePreviewUrl(w.docName, { lockDir });
   const systemSubscriberCount =
     typeof result.systemSubscriberCount === 'number' ? result.systemSubscriberCount : undefined;
@@ -806,15 +923,21 @@ async function handleSingleDoc(
 
   const noOpNote = emptyAppendNoOpNote(w.position, spec.content);
   const lines: string[] = [
-    w.createdByPosition
-      ? createdByPositionNote(w.docName, w.createdByPosition)
-      : (noOpNote ??
-        (w.fromTemplate !== undefined
-          ? `Written successfully (instantiated from template "${w.fromTemplate}").`
-          : `Written successfully (${w.position}).`)),
+    w.outcome && landedOnly
+      ? landedLead(w.outcome, `Written (${w.position})`)
+      : w.createdByPosition
+        ? createdByPositionNote(w.docName, w.createdByPosition)
+        : (noOpNote ??
+          (w.fromTemplate !== undefined
+            ? `Written successfully (instantiated from template "${w.fromTemplate}").`
+            : `Written successfully (${w.position}).`)),
   ];
+  if (w.outcome?.outcome === 'projection-held' && typeof result.detail === 'string') {
+    lines.push(result.detail);
+  }
   const fmNote = frontmatterIgnoredNote(w.position, spec.content);
   if (fmNote) lines.push(fmNote);
+  if (w.frontmatterNote) lines.push(w.frontmatterNote);
   if (w.extensionNote) lines.push(w.extensionNote);
   if (noPreviewAnywhere && !preview) lines.push(startUiTextHint());
   if (summaryHint) lines.push(summaryHint);
@@ -829,6 +952,8 @@ async function handleSingleDoc(
   lines.push(...formatBrokenLinkLines(brokenLinks));
   if (brokenLinkSuppression) lines.push(formatBrokenLinkSuppressionLine(brokenLinkSuppression));
   if (w.templateHint) lines.push(formatTemplateHintLine(w.templateHint));
+  const outcomeLine = w.outcome?.outcome === 'applied' ? null : writeOutcomeLine(w.outcome);
+  if (outcomeLine) lines.push(outcomeLine);
   const text = lines.join('\n');
 
   const document: Record<string, unknown> = {
@@ -840,7 +965,14 @@ async function handleSingleDoc(
   if (advisoryWarnings) document.warnings = advisoryWarnings;
   if (w.templateHint) document.templateHint = w.templateHint;
   const warning = noPreviewAnywhere ? buildPreviewAttachWarning(preview, autoOpen) : undefined;
-  return textPlusStructured(text, nestDocResult(preview, warning, document));
+  return textPlusStructured(
+    text,
+    {
+      ...nestDocResult(preview, warning, w.outcome?.outcome === 'projection-held' ? {} : document),
+      ...writeOutcomeFields(w.outcome),
+    },
+    needsAttention(w.outcome),
+  );
 }
 
 export function register(server: ServerInstance, deps: WriteDeps): void {
@@ -988,6 +1120,7 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
         cwd: z.string().optional().describe(ROUTED_CWD_DESCRIPTION),
       },
       outputSchema: outputSchemaWithText({
+        ...writeOutcomeOutputShape,
         document: z
           .object({
             hints: looseObjectArray.optional().describe('Server-provided write hints, when any.'),
@@ -995,7 +1128,7 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
           })
           .optional()
           .describe(
-            'Single-document write result. Always present on a successful single-doc write — it carries `brokenLinks` (possibly `[]`) plus any `brokenLinkSuppression`/`summary`/`hints`/`warnings`. Read `brokenLinkSuppression` and `warnings` before concluding anything from an empty `brokenLinks`: a suppression means a project policy withheld findings that are not yours to repair; a `link-check-deferred` warning means links were not checked yet.',
+            'Single-document write result. Present on every saved single-doc write (absent when the outcome is projection-held, whose links were not checked) — it carries `brokenLinks` (possibly `[]`) plus any `brokenLinkSuppression`/`summary`/`hints`/`warnings`. Read `brokenLinkSuppression` and `warnings` before concluding anything from an empty `brokenLinks`: a suppression means a project policy withheld findings that are not yours to repair; a `link-check-deferred` warning means links were not checked yet.',
           ),
         folder: z
           .object({
@@ -1064,7 +1197,7 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
         documents: looseObjectArray
           .optional()
           .describe(
-            'Batch write: per-doc result `{ docName, ok, position?, previewUrl?, warnings?, brokenLinks, brokenLinkSuppression?, error? }`. `brokenLinks` (possibly `[]`) is present on each successful entry, same as a single-doc write — and, same as a single-doc write, an empty list means every link resolves only on entries carrying no `brokenLinkSuppression` and no `link-check-deferred` warning (links not checked yet because the server is still starting or busy).',
+            'Batch write: per-doc result `{ docName, ok, outcome?, saved?, nextStep?, position?, previewUrl?, warnings?, brokenLinks, brokenLinkSuppression?, error? }`, each entry with its own outcome fields (the top-level ones are absent). `brokenLinks` (possibly `[]`) is present on each successful entry whose outcome is not projection-held (the links of a held entry were not checked, and its text carries the server detail instead), same as a single-doc write — and, same as a single-doc write, an empty list means every link resolves only on entries carrying no `brokenLinkSuppression` and no `link-check-deferred` warning (links not checked yet because the server is still starting or busy).',
           ),
         previewUrl: previewUrlOutputField.optional(),
         previewUrlSource: previewUrlSourceField,

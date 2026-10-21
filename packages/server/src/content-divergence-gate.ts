@@ -47,7 +47,7 @@ export function evaluateContentDivergence(
 }
 
 const DEFAULT_DIVERGENCE_HINT =
-  'The converged document differs from the bytes you composed. The write landed; `currentState` carries what is in the document now — re-read only if it is truncated.';
+  'The write landed and is saved, but the stored text differs from the bytes you sent. Re-read the document before the next edit; `currentState` carries what it holds now.';
 
 export function toContentDivergenceWarning(
   d: AgentWriteContentDivergence,

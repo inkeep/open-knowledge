@@ -257,13 +257,22 @@ describe('PRD-6832 β L1: agent write reconciles a newer out-of-band disk edit',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ docName, markdown: 'agent-line\n', position: 'append' }),
       });
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(409);
       const body = (await res.json()) as {
-        warnings?: Array<{ kind?: string; mergeOutcome?: string; nextStep?: string }>;
+        type?: string;
+        outcome?: string;
+        saved?: boolean;
+        nextStep?: string;
+        warnings?: Array<{ kind?: string; mergeOutcome?: string }>;
       };
+      expect(body).toMatchObject({
+        type: 'urn:ok:error:both-kept',
+        outcome: 'both-kept',
+        saved: true,
+        nextStep: 're-read',
+      });
       const reconciled = body.warnings?.find((w) => w.kind === 'disk-edit-reconciled');
       expect(reconciled?.mergeOutcome).toBe('both-kept');
-      expect(reconciled?.nextStep).toBe('re-read');
 
       expect(serverYtext()).toContain(
         'shared-line crdt-version\n\nshared-line disk-version\n\nagent-line',

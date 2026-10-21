@@ -156,18 +156,22 @@ describe('agent-write-batch — store-refused flush failure rendering', () => {
 
     expect(response.status).toBe(200);
     const { results } = JSON.parse(response.body) as {
-      results: Array<{ status: string; error?: Record<string, unknown> }>;
+      results: Array<{ status: string; error?: Record<string, unknown>; outcome?: string }>;
     };
-    expect(results[0]?.status).toBe('error');
+    expect(results[0]).toMatchObject({
+      status: 'error',
+      outcome: 'refused',
+      saved: false,
+      nextStep: 'none',
+    });
     expect(results[0]?.error).toMatchObject({
       type: 'urn:ok:error:save-held',
       reason: 'pending-conflict',
-      retryWhen: 'conflict-resolved',
-      nextStep: 're-read',
     });
-    expect(String(results[0]?.error?.detail)).toContain(
-      'after the conflict on this document is resolved',
-    );
+    expect(results[0]?.error).not.toHaveProperty('outcome');
+    expect(results[0]?.error).not.toHaveProperty('saved');
+    expect(results[0]?.error).not.toHaveProperty('nextStep');
+    expect(String(results[0]?.error?.detail)).toContain('tell the user which file it is');
     expect(String(results[0]?.error?.detail)).toContain('Do not repeat this write');
   });
 

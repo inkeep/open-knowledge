@@ -151,6 +151,7 @@ import { DocNoticeLedger, type NoticeFile } from './doc-notices.ts';
 import {
   DocumentDurabilityState,
   type StaleExternalWriteConflict,
+  type StoreIntakeMerge,
   type WrittenThrough,
   writtenThroughOf,
 } from './document-durability-state.ts';
@@ -2314,6 +2315,9 @@ export function createServer(options: ServerOptions): ServerInstance {
         }
         switch (outcome.kind) {
           case 'applied':
+            return outcome.merge === undefined
+              ? { kind: 'taken-in' }
+              : { kind: 'taken-in', merge: outcome.merge };
           case 'nothing-to-take':
             return { kind: 'taken-in' };
           case 'conflict':
@@ -3783,7 +3787,9 @@ export function createServer(options: ServerOptions): ServerInstance {
         `[reconcile] ${docName} base=${baseToken} reason=no-base result=${result} ours=${oursH} theirs=${theirsH} rescue=${rescue}`,
       );
       await recordUpsertAfterIntake(docName, theirs);
-      return { kind: 'applied' };
+      return liveOnlyContentAtRisk
+        ? { kind: 'applied', merge: 'disk-replaced' }
+        : { kind: 'applied' };
     }
     return { kind: 'failed', error: applyError };
   };
@@ -3800,7 +3806,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   };
 
   type DiskIntakeOutcome =
-    | { readonly kind: 'applied' }
+    | { readonly kind: 'applied'; readonly merge?: StoreIntakeMerge }
     | { readonly kind: 'nothing-to-take' }
     | { readonly kind: 'conflict' }
     | { readonly kind: 'failed'; readonly error: unknown };
@@ -3930,7 +3936,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         incrementReconcile();
         conflicts.dissolveReconcile(docName);
         await recordUpsertAfterIntake(docName, theirs);
-        return { kind: 'applied' };
+        return { kind: 'applied', merge: 'clean' };
 
       case 'merged':
         try {
@@ -3948,7 +3954,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         incrementReconcile();
         conflicts.dissolveReconcile(docName);
         await recordUpsertAfterIntake(docName, theirs);
-        return { kind: 'applied' };
+        return { kind: 'applied', merge: 'merged' };
 
       case 'both-kept': {
         try {
@@ -3974,7 +3980,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         reportReconcileBothKept(docName, result.kept, 'watcher');
         conflicts.dissolveReconcile(docName);
         await recordUpsertAfterIntake(docName, theirs);
-        return { kind: 'applied' };
+        return { kind: 'applied', merge: 'both-kept' };
       }
 
       case 'refused': {
@@ -3990,7 +3996,7 @@ export function createServer(options: ServerOptions): ServerInstance {
             reportReconcileKeptLive(docName, result.reason, 'watcher');
             conflicts.dissolveReconcile(docName);
             await recordUpsertAfterIntake(docName, theirs);
-            return { kind: 'applied' };
+            return { kind: 'applied', merge: 'kept-live' };
           }
         }
         incrementConflict();
@@ -4196,6 +4202,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           bufferedRemovalScopes.delete(event);
           durabilityState.beginRenameCarry(oldDocName);
           let carriedThrough: WrittenThrough | null = null;
+          let retiredResident = false;
           try {
             const document = removal.document;
             const residentBeforeRename = removal.residentCurrent() && document ? document : null;
@@ -4266,6 +4273,7 @@ export function createServer(options: ServerOptions): ServerInstance {
               if (carried) carriedThrough = textBeforeRename;
             }
             const retired = removal.residentCurrent() && document ? document : lateResident;
+            retiredResident = Boolean(retired);
             if (retired) {
               const closedConnections = retired.getConnectionsCount();
               /* WARN: the `delete` branch above and `captureAndCloseDocuments` pair their
@@ -4307,6 +4315,7 @@ export function createServer(options: ServerOptions): ServerInstance {
             scheduleIndexRegenerationAfterRemoval(oldDocName);
           } finally {
             durabilityState.settleRenameCarry(oldDocName, carriedThrough);
+            if (!retiredResident) durabilityState.endRenameCarry(oldDocName);
             removal.dispose();
           }
           break;

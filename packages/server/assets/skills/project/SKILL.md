@@ -103,9 +103,9 @@ Every `.md` / `.mdx` needs YAML frontmatter — `title` + `description` required
 - **Use a template when one fits (MUST).** Instantiate via `write({ document: { path, template } })`; inherited templates count. Skip only when none match or the user asked for free-form (note why in chat). Create templates proactively when a shape recurs.
 - **When recurring per-doc properties emerge (MUST).** Writing the same frontmatter on multiple siblings → bake those starting values into a template (`write({ template })`). Folder frontmatter does not cascade values into docs.
 
-## Conflict-aware writes
+## Write outcomes
 
-For a conflict refusal, follow the tool's recovery instructions and `references/conflict-resolution.md`; ask the user to resolve tracked conflicts in the app.
+For every write result, read `outcome` and follow `nextStep` (`references/conflict-resolution.md` has each outcome's move): never repeat a write that landed (`merged-first`, `both-kept`, `projection-held`), and when a refusal says `nextStep: none`, nothing you send changes it: tell the user which file and what the result says, and carry on.
 
 ## Anti-patterns — the top offenders
 

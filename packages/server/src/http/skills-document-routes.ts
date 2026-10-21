@@ -35,6 +35,12 @@ import {
   type SkillsLock,
 } from '@inkeep/open-knowledge-core/skills-catalog';
 import type { AgentSessionManager } from '../agent-sessions.ts';
+import {
+  type AgentWriteFlushOutcome,
+  answeredWithSuccessOnAppRoutes,
+  outcomeOfSavedWrite,
+  reportedOutcome,
+} from '../agent-write-outcome.ts';
 import { composeAndWriteRawBody } from '../bridge-intake.ts';
 import { isLinkIndexExcludedDoc } from '../cc1-broadcast.ts';
 import type { RemovalLifecycleStatus } from '../conflict-kinds.ts';
@@ -158,11 +164,7 @@ export interface SkillsDocumentRouteDeps {
   };
   sessionManager: AgentSessionManager;
   respondStaleExternalWrite: (res: ServerResponse, handler: string, docName: string) => void;
-  flushDiskAndDetectOutcome: (
-    docName: string,
-  ) => Promise<
-    { kind: 'failure'; failure: StoreFailure } | { kind: 'stale-external-write' } | null
-  >;
+  flushDiskAndDetectOutcome: (docName: string) => Promise<AgentWriteFlushOutcome>;
   respondPersistenceFailure: (res: ServerResponse, failure: StoreFailure, handler: string) => void;
   okArtifactKey: (
     kind: 'template' | 'folder-frontmatter' | 'folder' | 'skill',
@@ -619,7 +621,10 @@ export function createSkillsDocumentRoutes(deps: SkillsDocumentRouteDeps): ApiRo
         }, session.origin);
 
         const flushOutcome = await flushDiskAndDetectOutcome(docName);
-        if (flushOutcome?.kind === 'failure') {
+        if (
+          flushOutcome?.kind === 'failure' &&
+          !answeredWithSuccessOnAppRoutes(flushOutcome.failure)
+        ) {
           respondPersistenceFailure(res, flushOutcome.failure, 'skill-put');
           return;
         }
@@ -643,6 +648,7 @@ export function createSkillsDocumentRoutes(deps: SkillsDocumentRouteDeps): ApiRo
           200,
           SkillPutSuccessSchema,
           {
+            ...reportedOutcome(docName, outcomeOfSavedWrite(undefined, flushOutcome)),
             path: relPath,
             created,
             warnings: composed.warnings,

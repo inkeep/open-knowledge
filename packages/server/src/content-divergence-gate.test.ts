@@ -81,6 +81,9 @@ describe('content-divergence gate', () => {
     expect(w.currentState).toEqual(d.currentState);
     expect(typeof w.hint).toBe('string');
     expect(w.hint).toContain('currentState');
+    expect(w.hint).toContain('the stored text differs from the bytes you sent');
+    expect(w.hint).toContain('Re-read the document before the next edit');
+    expect(w.hint).not.toContain('only if it is truncated');
   });
 
   test('toContentDivergenceWarning accepts an explicit hint override', () => {

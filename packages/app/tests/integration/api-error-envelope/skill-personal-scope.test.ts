@@ -101,6 +101,9 @@ describe('global-scope skills', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { hosts: string[] };
     expect(body.hosts).toContain('claude');
+    expect(body).not.toHaveProperty('outcome');
+    expect(body).not.toHaveProperty('saved');
+    expect(body).not.toHaveProperty('nextStep');
     expect(existsSync(join(tmpHome, '.claude', 'skills', 'daily-standup', 'SKILL.md'))).toBe(true);
   });
 

@@ -68,6 +68,20 @@ import {
   TEMPLATE_METADATA_CONTROL_ADVICE,
   TEMPLATE_PATH_DESCRIBE,
 } from './verb-schemas.ts';
+import {
+  failedWriteResult,
+  landedLead,
+  landedWithoutSuccess,
+  leadFor,
+  needsAttention,
+  refusedDespiteSuccess,
+  refusedWriteResult,
+  type WriteOutcome,
+  writeOutcomeFields,
+  writeOutcomeLine,
+  writeOutcomeOf,
+  writeOutcomeOutputShape,
+} from './write-outcome.ts';
 
 const DESCRIPTION = [
   'Edit exactly one `document`, `folder`, `template`, or `skill`: body find/replace OR metadata, never both in one call. Requires the Hocuspocus server.',
@@ -75,7 +89,7 @@ const DESCRIPTION = [
   "`folder: {path, frontmatter}` patches metadata (no body). `template: {path: '<folder>/<name>', ...}` takes body find/replace/occurrence or frontmatter.",
   '`skill: {name, ...}` takes body find/replace/occurrence OR description (its only metadata leaf). Recorded, unedited copies refresh from the source on watcher/startup sync; links reflect edits immediately. Hand-edited copies are preserved.',
   'Optional summary: one-line outcome ≤80 chars for any edit, persisted to git history; avoid secrets or PII.',
-  'Read structuredContent.document.warnings: content-divergence/disk-edit-reconciled means re-read with exec; mermaid-parse-error means the edit landed but fix the fence and re-edit.',
+  'Follow nextStep (retry|re-read|none). merged-first, both-kept and projection-held landed: re-read, never retry. mermaid-parse-error: the edit landed; fix the fence.',
   CANONICAL_COMPONENT_GUIDANCE,
 ].join('\n');
 
@@ -188,7 +202,13 @@ async function handleDocBody(
     ...(args.summary !== undefined ? { summary: args.summary } : {}),
     ...agentIdentityFields(identity),
   });
-  if (!result.ok) return textResult(errorTextWithDetail(result), true);
+  const outcome = writeOutcomeOf(result);
+  if (!result.ok && !landedWithoutSuccess(outcome)) {
+    return failedWriteResult(errorTextWithDetail(result), outcome);
+  }
+  if (refusedDespiteSuccess(outcome)) {
+    return refusedWriteResult(`The edit of "${normalized.docName}"`, outcome);
+  }
   return composeWritePreviewResult(
     result,
     normalized.docName,
@@ -196,6 +216,7 @@ async function handleDocBody(
     contentDir,
     autoOpen,
     'Edit applied successfully.',
+    outcome,
   );
 }
 
@@ -217,7 +238,8 @@ async function handleDocFrontmatter(
     ...(args.summary !== undefined ? { summary: args.summary } : {}),
     ...agentIdentityFields(identity),
   });
-  if (!result.ok) {
+  const outcome = writeOutcomeOf(result);
+  if (!result.ok && !landedWithoutSuccess(outcome)) {
     const errorText = errorTextWithDetail(result);
     const fieldErrors =
       result.fieldErrors && typeof result.fieldErrors === 'object'
@@ -225,9 +247,12 @@ async function handleDocFrontmatter(
         : undefined;
     if (fieldErrors) {
       const lines = Object.entries(fieldErrors).map(([k, m]) => `  ${k}: ${m}`);
-      return textResult(`${errorText}\n${lines.join('\n')}`, true);
+      return failedWriteResult(`${errorText}\n${lines.join('\n')}`, outcome);
     }
-    return textResult(errorText, true);
+    return failedWriteResult(errorText, outcome);
+  }
+  if (refusedDespiteSuccess(outcome)) {
+    return refusedWriteResult(`The frontmatter patch of "${normalized.docName}"`, outcome);
   }
   const setKeys: string[] = [];
   const deleteKeys: string[] = [];
@@ -248,6 +273,7 @@ async function handleDocFrontmatter(
     contentDir,
     autoOpen,
     `Frontmatter patched (${opSummary || `${Object.keys(doc.frontmatter).length} key(s)`}).`,
+    outcome,
   );
 }
 
@@ -258,6 +284,7 @@ function composeWritePreviewResult(
   _contentDir: string,
   autoOpen: boolean,
   leadLine: string,
+  outcome: WriteOutcome | undefined,
 ) {
   const lockDir = resolveLockDir(cwd);
   const preview = resolvePreviewUrl(docName, { lockDir });
@@ -273,7 +300,12 @@ function composeWritePreviewResult(
   const brokenLinks = parseBrokenLinks(result.brokenLinks);
   const brokenLinkSuppression = parseBrokenLinkSuppression(result.brokenLinkSuppression);
 
-  const lines: string[] = [leadLine];
+  const lines: string[] = [
+    outcome && landedWithoutSuccess(outcome) ? landedLead(outcome, 'Edit applied') : leadLine,
+  ];
+  if (outcome?.outcome === 'projection-held' && typeof result.detail === 'string') {
+    lines.push(result.detail);
+  }
   if (noPreviewAnywhere && !preview) lines.push(startUiTextHint());
   if (summaryHint) lines.push(summaryHint);
   if (advisoryWarnings) {
@@ -281,6 +313,8 @@ function composeWritePreviewResult(
   }
   lines.push(...formatBrokenLinkLines(brokenLinks));
   if (brokenLinkSuppression) lines.push(formatBrokenLinkSuppressionLine(brokenLinkSuppression));
+  const outcomeLine = outcome?.outcome === 'applied' ? null : writeOutcomeLine(outcome);
+  if (outcomeLine) lines.push(outcomeLine);
   const text = lines.join('\n');
   const document: Record<string, unknown> = {
     brokenLinks,
@@ -289,7 +323,14 @@ function composeWritePreviewResult(
   if (summaryResult) document.summary = summaryResult;
   if (advisoryWarnings) document.warnings = advisoryWarnings;
   const warning = noPreviewAnywhere ? buildPreviewAttachWarning(preview, autoOpen) : undefined;
-  return textPlusStructured(text, nestDocResult(preview, warning, document));
+  return textPlusStructured(
+    text,
+    {
+      ...nestDocResult(preview, warning, outcome?.outcome === 'projection-held' ? {} : document),
+      ...writeOutcomeFields(outcome),
+    },
+    needsAttention(outcome),
+  );
 }
 
 function templateFilePath(
@@ -367,14 +408,20 @@ async function handleTemplate(
       ...(summary !== undefined ? { summary } : {}),
       ...agentIdentityFields(deps.identityRef?.current),
     });
+    const outcome = writeOutcomeOf(result);
     if (!result.ok)
-      return textResult(errorTextWithDetail(result, TEMPLATE_METADATA_CONTROL_ADVICE), true);
+      return failedWriteResult(
+        errorTextWithDetail(result, TEMPLATE_METADATA_CONTROL_ADVICE),
+        outcome,
+      );
+    if (refusedDespiteSuccess(outcome)) {
+      return refusedWriteResult(`The frontmatter patch of template "${name}"`, outcome);
+    }
     const path = typeof result.path === 'string' ? result.path : undefined;
-    return textPlusStructured(
+    return templateEditResult(
       `Patched template "${name}" frontmatter${path ? ` (${path})` : ''}.`,
-      {
-        template: { ok: true, path },
-      },
+      path,
+      outcome,
     );
   }
 
@@ -398,12 +445,29 @@ async function handleTemplate(
     ...(summary !== undefined ? { summary } : {}),
     ...agentIdentityFields(deps.identityRef?.current),
   });
+  const outcome = writeOutcomeOf(result);
   if (!result.ok)
-    return textResult(errorTextWithDetail(result, TEMPLATE_EDIT_CONTROL_ADVICE), true);
+    return failedWriteResult(errorTextWithDetail(result, TEMPLATE_EDIT_CONTROL_ADVICE), outcome);
+  if (refusedDespiteSuccess(outcome)) {
+    return refusedWriteResult(`The edit of template "${name}"`, outcome);
+  }
   const path = typeof result.path === 'string' ? result.path : undefined;
-  return textPlusStructured(`Edited template "${name}"${path ? ` (${path})` : ''}.`, {
-    template: { ok: true, path },
-  });
+  return templateEditResult(`Edited template "${name}"${path ? ` (${path})` : ''}.`, path, outcome);
+}
+
+function templateEditResult(
+  lead: string,
+  path: string | undefined,
+  outcome: WriteOutcome | undefined,
+) {
+  const outcomeLine = outcome?.outcome === 'applied' ? null : writeOutcomeLine(outcome);
+  return textPlusStructured(
+    [leadFor(outcome, lead.replace(/\.$/, ''), lead), ...(outcomeLine ? [outcomeLine] : [])].join(
+      '\n',
+    ),
+    { template: { ok: true, path }, ...writeOutcomeFields(outcome) },
+    needsAttention(outcome),
+  );
 }
 
 async function handleSkillFileEdit(
@@ -666,11 +730,12 @@ export function register(server: ServerInstance, deps: EditDeps): void {
         cwd: z.string().optional().describe(ROUTED_CWD_DESCRIPTION),
       },
       outputSchema: outputSchemaWithText({
+        ...writeOutcomeOutputShape,
         document: z
           .object(documentResultBaseShape)
           .optional()
           .describe(
-            'Document edit result. Always present on a successful document edit (body or frontmatter) — it carries `brokenLinks` (possibly `[]`) plus any `brokenLinkSuppression`/`summary`/`warnings`. Read `brokenLinkSuppression` and `warnings` before concluding anything from an empty `brokenLinks`: a suppression means a project policy withheld findings that are not yours to repair; a `link-check-deferred` warning means links were not checked yet. Absent only for folder/template edits.',
+            'Document edit result. Present on every saved document edit, body or frontmatter (absent when the outcome is projection-held, whose links were not checked) — it carries `brokenLinks` (possibly `[]`) plus any `brokenLinkSuppression`/`summary`/`warnings`. Read `brokenLinkSuppression` and `warnings` before concluding anything from an empty `brokenLinks`: a suppression means a project policy withheld findings that are not yours to repair; a `link-check-deferred` warning means links were not checked yet. Absent only for folder/template edits.',
           ),
         folder: z
           .object({

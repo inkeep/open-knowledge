@@ -1,5 +1,6 @@
 import type { ServerResponse } from 'node:http';
 import type { AgentSessionCapacityError } from '../agent-sessions.ts';
+import { REFUSAL_OUTCOMES } from '../agent-write-outcome.ts';
 import { errorResponse } from './error-response.ts';
 
 export const AGENT_SESSION_CAPACITY_TYPE = 'urn:ok:error:too-many-agent-sessions';
@@ -22,7 +23,10 @@ export function respondAgentSessionCapacity(
     handler,
     cause: error,
     detail: AGENT_SESSION_CAPACITY_DETAIL,
-    extensions: { ...AGENT_SESSION_CAPACITY_EXTENSIONS },
+    extensions: {
+      ...AGENT_SESSION_CAPACITY_EXTENSIONS,
+      ...REFUSAL_OUTCOMES['urn:ok:error:too-many-agent-sessions'],
+    },
     extraHeaders: { 'Retry-After': String(AGENT_SESSION_CAPACITY_RETRY_AFTER_SECONDS) },
   });
 }

@@ -6,6 +6,7 @@ import { resolvePreviewUrlForTool } from './preview-url.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
   agentIdentityFields,
+  errorTextWithDetail,
   hocuspocusNotRunningError,
   httpGet,
   httpPost,
@@ -21,6 +22,17 @@ import {
   textResult,
   versionInputSchema,
 } from './shared.ts';
+import {
+  failedWriteResult,
+  leadFor,
+  needsAttention,
+  refusedDespiteSuccess,
+  refusedWriteResult,
+  writeOutcomeFields,
+  writeOutcomeLine,
+  writeOutcomeOf,
+  writeOutcomeOutputShape,
+} from './write-outcome.ts';
 
 export const DESCRIPTION = [
   'Restore exactly one document or skill to version (40-char SHA from history). Requires the Hocuspocus server. document accepts optional .md/.mdx; restore is append-only through CRDT and visible to connected editors. skill is a PROJECT-scope name (global is unversioned); its folder is rewritten. Recorded, unedited copies refresh on watcher/startup sync; links reflect edits immediately. Hand-edited copies are preserved.',
@@ -57,17 +69,23 @@ export function register(server: ServerInstance, deps: RestoreVersionDeps): void
         cwd: z.string().optional().describe(ROUTED_CWD_DESCRIPTION),
       },
       outputSchema: outputSchemaWithText({
+        ...writeOutcomeOutputShape,
         document: z
           .string()
           .optional()
           .describe('The document that was restored (echo of the input).'),
         skill: z.string().optional().describe('The skill that was restored (echo of the input).'),
-        version: z.string().describe('The version that was restored to (echo of the input).'),
+        version: z
+          .string()
+          .optional()
+          .describe(
+            'The version that was restored to (echo of the input); absent when the restore did not land.',
+          ),
         restoredFiles: z
           .array(z.string())
           .optional()
           .describe('Skill restore only: the skill-dir-relative files rewritten.'),
-        previewUrl: previewUrlOutputField,
+        previewUrl: previewUrlOutputField.optional(),
         previewUrlSource: previewUrlSourceField,
         summary: summaryOutputSchema.optional(),
         warnings: z
@@ -144,7 +162,11 @@ export function register(server: ServerInstance, deps: RestoreVersionDeps): void
         ...(args.summary !== undefined ? { summary: args.summary } : {}),
         ...agentIdentityFields(identity),
       });
-      if (!result.ok) return textResult(`Error: ${result.error}`, true);
+      const outcome = writeOutcomeOf(result);
+      if (!result.ok) return failedWriteResult(errorTextWithDetail(result), outcome);
+      if (refusedDespiteSuccess(outcome)) {
+        return refusedWriteResult(`The restore of "${docName}"`, outcome);
+      }
 
       const summaryResult =
         result.summary && typeof result.summary === 'object'
@@ -159,26 +181,37 @@ export function register(server: ServerInstance, deps: RestoreVersionDeps): void
         typeof versionResult.timestamp === 'string' ? versionResult.timestamp : undefined;
       const provenance = author && timestamp ? ` (${author}, ${timestamp})` : '';
       const textLines = [
-        `Restored "${docName}" to version ${args.version.slice(0, 8)}${provenance}. The change has been applied to all connected editors.`,
+        leadFor(
+          outcome,
+          `Restored "${docName}" to version ${args.version.slice(0, 8)}`,
+          `Restored "${docName}" to version ${args.version.slice(0, 8)}${provenance}. The change has been applied to all connected editors.`,
+        ),
       ];
       if (summaryHint) textLines.push(summaryHint);
       if (advisoryWarnings) {
         textLines.push(...formatAdvisoryLines(advisoryWarnings));
       }
+      const outcomeLine = outcome?.outcome === 'applied' ? null : writeOutcomeLine(outcome);
+      if (outcomeLine) textLines.push(outcomeLine);
 
       const preview = await resolvePreviewUrlForTool(
         docName,
         { config: deps.config, resolveCwd: deps.resolveCwd },
         cwd,
       );
-      return textPlusStructured(textLines.join('\n'), {
-        document: docName,
-        version: args.version,
-        previewUrl: preview?.url ?? null,
-        ...(preview ? { previewUrlSource: preview.source } : {}),
-        ...(summaryResult ? { summary: summaryResult } : {}),
-        ...(advisoryWarnings ? { warnings: advisoryWarnings } : {}),
-      });
+      return textPlusStructured(
+        textLines.join('\n'),
+        {
+          document: docName,
+          version: args.version,
+          previewUrl: preview?.url ?? null,
+          ...(preview ? { previewUrlSource: preview.source } : {}),
+          ...(summaryResult ? { summary: summaryResult } : {}),
+          ...(advisoryWarnings ? { warnings: advisoryWarnings } : {}),
+          ...writeOutcomeFields(outcome),
+        },
+        needsAttention(outcome),
+      );
     },
   );
 }

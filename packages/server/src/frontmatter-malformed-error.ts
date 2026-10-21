@@ -4,6 +4,7 @@
  */
 
 import type { ServerResponse } from 'node:http';
+import { REFUSAL_OUTCOMES } from './agent-write-outcome.ts';
 import { stripDocExtension } from './doc-extensions.ts';
 import { errorResponse } from './http/error-response.ts';
 
@@ -84,6 +85,7 @@ export function respondFrontmatterMalformed(
     extensions: {
       file: err.file,
       parseError: err.parseError,
+      ...REFUSAL_OUTCOMES['urn:ok:error:frontmatter-malformed'],
     },
   });
 }

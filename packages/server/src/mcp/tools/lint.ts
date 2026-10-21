@@ -31,6 +31,18 @@ import {
   textResult,
   zeroFindingsSummary,
 } from './shared.ts';
+import {
+  failedWriteResult,
+  landedLead,
+  landedWithoutSuccess,
+  needsAttention,
+  refusedDespiteSuccess,
+  refusedWriteResult,
+  writeOutcomeFields,
+  writeOutcomeLine,
+  writeOutcomeOf,
+  writeOutcomeOutputShape,
+} from './write-outcome.ts';
 
 export const DESCRIPTION = [
   "Lint markdown and optionally auto-fix. Requires the Hocuspocus server. `document` selects one extension-less doc and overrides path. Otherwise scan all in-scope .md/.mdx; path narrows to file/folder. `fix: true` requires document and applies fixable rules through the live collaborative doc with attribution. Use edit/write for remaining findings; the OpenKnowledge CLI's lint --fix is the unattributed headless/CI path.",
@@ -136,6 +148,7 @@ export function register(server: ServerInstance, deps: LintDeps): void {
         cwd: z.string().optional().describe(ROUTED_CWD_DESCRIPTION),
       },
       outputSchema: outputSchemaWithText({
+        ...writeOutcomeOutputShape,
         files: looseObjectArray
           .optional()
           .describe(
@@ -144,11 +157,13 @@ export function register(server: ServerInstance, deps: LintDeps): void {
         fileCount: z.number().optional().describe('Audit only: total in-scope documents scanned.'),
         errorCount: z
           .number()
+          .optional()
           .describe(
             'Total error-severity violations. Pre-fix, and so possibly an overstatement, when `diagnosticsArePreFix` is true.',
           ),
         warningCount: z
           .number()
+          .optional()
           .describe(
             'Total warning-severity violations. Pre-fix, and so possibly an overstatement, when `diagnosticsArePreFix` is true.',
           ),
@@ -177,7 +192,10 @@ export function register(server: ServerInstance, deps: LintDeps): void {
           .describe(
             'Fix mode only: the server-reported number of problems resolved by auto-fix, or 0 if omitted. When `diagnosticsArePreFix` is true, the post-fix result is unavailable; do not treat 0 as evidence that nothing was fixed.',
           ),
-        cwd: z.string().describe('Absolute directory the lint ran against.'),
+        cwd: z
+          .string()
+          .optional()
+          .describe('Absolute directory the lint ran against; absent when a fix did not land.'),
       }),
       annotations: {
         readOnlyHint: false,
@@ -225,7 +243,11 @@ async function fixLintDoc(
     docName: normalized.docName,
     ...agentIdentityFields(identity),
   });
-  if (!result.ok) return textResult(errorTextWithDetail(result), true);
+  const outcome = writeOutcomeOf(result);
+  if (!result.ok) return failedWriteResult(errorTextWithDetail(result), outcome);
+  if (refusedDespiteSuccess(outcome)) {
+    return refusedWriteResult(`The auto-fix of ${normalized.docName}`, outcome);
+  }
   const { ok: _ok, ...rest } = result;
   const data = rest as LintFixPayload;
   const file = data.file ?? normalized.docName;
@@ -274,6 +296,7 @@ async function fixLintDoc(
     ...(reLintFailure ? { reLintFailure } : {}),
     ...(data.ran === undefined ? {} : { ran: data.ran }),
     cwd,
+    ...writeOutcomeFields(outcome),
   };
 
   const header = diagnosticsArePreFix
@@ -291,11 +314,25 @@ async function fixLintDoc(
           `${diagnostics.length} problem${diagnostics.length === 1 ? '' : 's'} remain (${countSummary(errorCount, warningCount)}) — need content edits via \`edit\`/\`write\`.`,
         ]
       : [];
+  const outcomeLine =
+    outcome === undefined || outcome.outcome === 'applied' ? [] : [writeOutcomeLine(outcome) ?? ''];
+  const landedLine =
+    outcome !== undefined && landedWithoutSuccess(outcome)
+      ? [landedLead(outcome, `Applied auto-fixes to ${file}`)]
+      : [];
   const textLines =
     diagnostics.length === 0
-      ? [header, ...coverageLines, ...warningBlock]
-      : [header, ...lines, ...warningBlock, ...footer, ...coverageLines];
-  return textPlusStructured(textLines.join('\n'), structured);
+      ? [...landedLine, header, ...outcomeLine, ...coverageLines, ...warningBlock]
+      : [
+          ...landedLine,
+          header,
+          ...outcomeLine,
+          ...lines,
+          ...warningBlock,
+          ...footer,
+          ...coverageLines,
+        ];
+  return textPlusStructured(textLines.join('\n'), structured, needsAttention(outcome));
 }
 
 async function lintSingleDoc(document: string, url: string, cwd: string) {

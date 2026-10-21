@@ -1,50 +1,69 @@
-# Conflict-aware writes
+# Write outcomes and conflicts
 
-A doc can land in conflict through a Git merge, a pull that collides with a local overlay, or OK's own reconciliation of the editor against disk. Reconciliation also protects an acknowledged edit when another app restores the exact older file version; that `stale-external-write` path works with GitHub sync disabled. The MCP server refuses a mutating call against a conflicted doc with a structured RFC 9457 response:
+A document, template or skill write through `write` or `edit`, a document `restore_version` and a `lint` fix that changed the doc carry three fields once the server answers, success or not: `outcome` (what happened to the write), `saved` (whether its bytes were in the file when the server answered) and `nextStep` (what to do next). Read them before anything else in the result, and follow `nextStep`.
 
-```json
-{
-  "type": "urn:ok:error:doc-in-conflict",
-  "title": "Document is in conflict.",
-  "status": 409,
-  "detail": "The document is in a conflict state. Ask the user to resolve it in the OpenKnowledge app, then retry.",
-  "file": "notes/sso.md",
-  "conflict": { "kind": "reconcile", "reason": "disk-markers" },
-  "resolutionOptions": ["mine", "content", "delete"]
-}
-```
+| `outcome` | What happened | `saved` | Your move |
+| - | - | - | - |
+| `applied` | The write landed and is saved. | `true` | Carry on (`nextStep: none`); with a `content-divergence` warning `nextStep` is `re-read` (below). |
+| `merged-first` | An outside change to the file was handled before your write was saved: merged in, or saved to the doc's history when it could not be merged. Your write landed. | `true` | Re-read before the next edit (`exec("cat <path>")`). Never repeat the write. |
+| `both-kept` | Your write landed and is saved. A block was changed both here and outside, so both versions are in the doc, this doc's version first and the outside version directly under it. | `true` | Never repeat the write. Re-read, and remove the duplicate with an ordinary `edit` if your task calls for it. |
+| `refused` | Not saved. OpenKnowledge saves it only after someone acts: you, as `nextStep` says, or the user. | `false` | Follow `nextStep`: `retry` means send it again, corrected the way the detail says (a fixed path, quoted YAML, a different name) or after the wait it names; `re-read` means re-read, then re-apply only what is missing; `none` means nothing you send changes it, so tell the user (below). |
+| `projection-held` | Your write is in the doc but not yet in its file; OpenKnowledge saves it on its own. On OpenKnowledge Cloud the same outcome means the doc's file projection is held. | `false` | Never repeat the write. Re-read before the next edit. |
 
-The gate covers `write`, `edit`, `delete`, `move`, `restore_version`, and agent undo (the doc-CRDT write spine; template/folder ops are fs-direct). You cannot route around it by writing content that byte-matches one of the stages. The gate refuses on tracked state, not on body equality.
+A `both-kept` or `projection-held` result comes back as an error result because it is not plain success, but its text starts by saying the write landed: do not repeat it. A batch reports these per entry in `documents[]`, and a skill write per file in `skill.files[]`. If `outcome` holds a value you do not know, treat it as `merged-first` when `saved` is true and `refused` otherwise, and re-read; treat an unknown `nextStep` as `re-read`. If there is no `outcome`, the server predates the fields, or the doc is a Mermaid, Excalidraw, text, settings or global skill file whose save does not report back yet: read the result text. `retryWhen` and a warning's own `nextStep` are older fields; ignore them.
 
-A write that first detects a stale file during its final disk flush returns `urn:ok:error:stale-external-write` (409). The edit reached collaborative state and the recovery snapshot, but the disk write did not happen. Ask the user to resolve it in the app, then re-read. Do not repeat the operation: a retried append can duplicate content already retained in the current version.
+## What each result asks of you
 
-**You cannot resolve a conflict over MCP.** There is no conflict tool, and `exec` is read-only. On either 409, stop writing to that file, tell the user which file is in conflict, and ask them to resolve it in the OpenKnowledge app. After they confirm, re-read the document. For `doc-in-conflict`, the operation was refused; retry only if it is still needed. For `stale-external-write`, the operation already reached collaborative state; do not repeat it. Compare the resolved document with the intended result and make only any remaining edit.
+The fields come from one table on the server, and this one repeats it: for every result below, the move matches its `nextStep`. With `none`, nothing you send changes the result: stop writing to that file, tell the user which file it is and what the result says, and carry on with other work; do not wait on them. **You cannot resolve a conflict over MCP**: there is no conflict tool, no write tool takes a conflict parameter, and `exec` is read-only. Never work around a refusal by writing the same content somewhere else.
 
-## The three kinds
+| Result | `outcome` | `saved` | `nextStep` | Your move |
+| - | - | - | - | - |
+| `both-kept` (409) | `both-kept` | `true` | `re-read` | Never repeat the write. Re-read, and remove the duplicate with an ordinary edit if your task calls for it. |
+| `applied` (200) with a `content-divergence` warning | `applied` | `true` | `re-read` | The write landed and is saved, but the stored text differs from what you sent. Re-read before the next edit. |
+| `concurrent-overwrite-refused` (409) | `refused` | `false` | `retry` | Wait the seconds `retryAfterSeconds` names, then send the write again; an `append` or `prepend` is never refused this way. |
+| `too-many-agent-sessions` (503) | `refused` | `false` | `retry` | Wait the seconds it names, then send the write again. |
+| `doc-not-found` (404) | `refused` | `false` | `retry` | Send the edit again at the path the detail or `candidates` names. |
+| `reserved-doc-name` (400) | `refused` | `false` | `retry` | Send the write again under a different name. |
+| `frontmatter-malformed` (400) | `refused` | `false` | `retry` | Fix the YAML the detail points at, then send the write again. |
+| `frontmatter-edit-not-supported` (400) | `refused` | `false` | `retry` | Send the frontmatter change again as a frontmatter patch. |
+| `invalid-frontmatter-patch` (400) | `refused` | `false` | `retry` | Correct the patch the detail describes, then send it again. |
+| `target-not-found` (404) | `refused` | `false` | `re-read` | Re-read the document, then make the edit against text that is there. |
+| `stale-target` (409) | `refused` | `false` | `re-read` | Re-read the document, then make the edit against what is there now. |
+| `doc-in-conflict` (409) | `refused` | `false` | `none` | Tell the user which file it is. Write to it again only after they say the conflict is resolved. |
+| `stale-external-write` (409) | `refused` | `false` | `none` | Tell the user which file it is. Your edit is kept in the document and the recovery snapshot; do not repeat it. |
+| `save-held` (503) with `pending-conflict` | `refused` | `false` | `none` | Tell the user which file it is. The save runs once they deal with the file in the app; do not repeat the write. |
+| `save-held` (503) on a file with no agreed version | `refused` | `false` | `none` | Tell the user its file changed outside OpenKnowledge, and do not write to that document again: any write replaces it with the file on disk and moves your edit to its history. |
+| `save-held` (503) with any other `reason` | `projection-held` | `false` | `re-read` | Do not repeat the write. Re-read before the next edit; with `pending-rename`, re-read at the new name the detail gives. |
+| `doc-moved` (409) | `projection-held` | `false` | `re-read` | Do not repeat the edit. Re-read the document at the new name the detail gives. |
+| `branch-switched` (409) | `projection-held` | `false` | `re-read` | Do not repeat the edit. Re-read the document before the next edit. |
+| `doc-removed` (409) after a rename | `refused` | `false` | `re-read` | Re-read the document at the new path the detail names, and re-apply your change there if it is missing. |
+| `doc-removed` (409) after a delete | `refused` | `false` | `none` | Tell the user the file is gone; the edit is in the document's history (timeline). Do not re-create the document on your own. |
+| `server-stopped` (503) | `refused` | `false` | `none` | Tell the user; after the restart the edit is in the document's history (timeline). |
+| `server-stopped` (503) during a move | `refused` | `false` | `re-read` | After the restart, re-read the document at the new name the detail gives, and re-apply the edit only if it is missing. |
+| `path-escape` (400) | `refused` | `false` | `none` | Tell the user the document's path could not be resolved. |
+| `store-refused` (503) | `refused` | `false` | `re-read` | Do not repeat it now. Once the user has fixed the filesystem fault, re-read and re-apply only what is missing. |
+| `write-replaced` (409) | `refused` | `false` | `re-read` | Re-read: the document now holds the file as it is on disk, and your edit is in its history. Re-apply it if it is still needed. |
+| `storage-full` (507), `storage-readonly` or `storage-error` (500) | `refused` | `false` | `re-read` | Once the user has fixed the storage, re-read and re-apply only what is missing. |
+
+If you come back to that file later, re-read it first. For a refusal before anything was written (`doc-in-conflict`), write again only if the write is still needed; otherwise compare the doc with the intended result and make only the edit that is still missing.
+
+Stale-save recovery data lives in `.ok/local/stale-external-writes.json`, with owner-only permissions. Do not delete that file or restart with empty state when it is corrupt or unreadable; it may hold the only copy of protected edits. Preserve it, restore a known-good backup, and run `ok bug-report` from the project directory for diagnostics.
+
+## Git conflicts
+
+A Git merge or a pull that collides with local edits puts a doc in conflict until the user resolves it in the app. `conflict.kind` says which:
 
 | `conflict.kind` | Where it comes from | What a resolve does |
 | - | - | - |
 | `merge-native` | a git merge left unmerged stages in the index | stages your choice with git, and commits the merge once no `merge-native` conflict is left (other kinds do not hold the commit back) |
 | `working-tree` | a pull-only overlay collision, pinned to the origin blob it collided with | writes the chosen bytes to disk; nothing is committed |
-| `reconcile` | OK's own three-way merge of the editor against disk, including stale external saves. No git object holds the stages, so OK snapshots them at detection | writes the chosen bytes to disk and into the loaded document; no git command runs |
-
-A `reconcile` conflict carries a `reason`: `refused-conflict-markers` (the disk bytes already carried markers), `disk-markers` (markers landed on disk under an open doc), `refused-no-base` (there was no acknowledged version to merge against), `refused-too-large` (a merge past the size cap or one that failed OpenKnowledge's fidelity check, raised only when the outside version could not be saved to history), or `stale-external-write` (an older displaced version returned on disk). `merged-with-markers` appears only on entries recorded by earlier versions, or in the rare case where both versions were merged but could not be applied to the open document. An outside edit to the same block as edits made here is not a conflict: both versions are kept, this document's version first, and your write reports `disk-edit-reconciled` with `mergeOutcome: "both-kept"` (see `references/doc-editing.md`). The compatibility `conflictKind` field is `stale-external-write` for that last reason and `git` otherwise.
-
-## What the user chooses
 
 The controls depend on the conflict's shape:
 
 | Shape | What the app shows | Controls |
 | - | - | - |
-| Conflict markers (`resolutionOptions` includes `content`) | The Conflict view, comparing both sides | **Accept current**, **Accept incoming** and, where available, **Accept both** for each conflict; the user then applies the resolution |
-| Whole file, such as `refused-too-large` (no `content` option) | A preview of the user's version | **Keep my version**, plus **Use their version** and **Delete the file** when offered |
+| Conflict markers | The Conflict view, comparing both sides | **Accept current**, **Accept incoming** and, where available, **Accept both** for each conflict; the user then applies the resolution |
 | Deleted locally, modified upstream | A preview of the upstream version | **Keep file deleted**, plus **Restore with remote changes** when offered |
 | Modified locally, deleted upstream | A preview of the user's version | **Keep my version** or **Accept their deletion** |
 
-For a stale external write, Current is the version OpenKnowledge protected and Incoming is the restored older version. `resolutionOptions` lists the strategies the app offers for that file; no MCP tool accepts them, so never try to apply one yourself. Explain what each choice would keep, but leave the choice and application to the user.
-
-If applying a resolution fails, ask the user to inspect the remaining conflict in the app. OpenKnowledge retains unresolved conflict and recovery state. Wait for the user to finish, then re-read the document before deciding what work remains.
-
-A conflict can also close without you. Resolving a merge with raw git outside the app prunes the `merge-native` entry on the next disk change or HEAD move, and a `reconcile` conflict whose file comes back clean on disk dissolves on the next watcher pass.
-
-Stale-save recovery data lives in `.ok/local/stale-external-writes.json`, with owner-only permissions. Do not delete that file or restart with empty state when it is corrupt or unreadable; it may hold the only copy of protected edits. Preserve it, restore a known-good backup, and run `ok bug-report` from the project directory for diagnostics. An unresolved conflict does not expire with the displaced-hash window.
+Explain what each choice would keep, but leave the choice and its application to the user. If applying a resolution fails, ask the user to inspect the remaining conflict in the app; wait for them to finish, then re-read the doc before deciding what work remains. Resolving a merge with raw git outside the app prunes the `merge-native` entry on the next disk change or HEAD move.

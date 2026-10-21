@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { currentCliCommandName } from '@inkeep/open-knowledge-core';
+import { currentCliCommandName, type ReconcileMergeOutcome } from '@inkeep/open-knowledge-core';
 import { atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import { type Doc, getState } from 'yjs';
 import { type DiskReceipt, DiskReceiptLog, type FileObservation } from './disk-receipts.ts';
@@ -44,7 +44,27 @@ export function editWasCarried(
 
 export type RenameCarryAnswer =
   | { readonly kind: 'settled'; readonly carried: WrittenThrough | null }
-  | { readonly kind: 'unsettled' };
+  | { readonly kind: 'unsettled' }
+  | { readonly kind: 'stopped' };
+
+export type HeldSaveReason = StorePendingReason | 'pending-unsettled' | 'pending-rename';
+
+export type StoreIntakeMerge = ReconcileMergeOutcome | 'disk-replaced';
+
+const STORE_INTAKE_RECORDS_KEPT = 8;
+
+const STORE_INTAKE_STRENGTH: Readonly<Record<StoreIntakeMerge, number>> = {
+  clean: 0,
+  merged: 1,
+  'kept-live': 2,
+  'both-kept': 3,
+  'disk-replaced': 4,
+};
+
+interface StoreIntakeRecord {
+  readonly merge: StoreIntakeMerge;
+  readonly through: WrittenThrough;
+}
 
 type RenameCarry =
   | {
@@ -59,7 +79,7 @@ export interface StoreFailure {
   message: string;
   removal?: StoreFailureRemoval;
   held?: {
-    readonly reason: StorePendingReason;
+    readonly reason: HeldSaveReason;
     readonly causeCode?: string;
     readonly noBase?: true;
   };
@@ -113,6 +133,7 @@ export const OK_STORE_HELD = 'OK_STORE_HELD';
 export const OK_STORE_DISCARDED = 'OK_STORE_DISCARDED';
 export const OK_DOC_MOVED = 'OK_DOC_MOVED';
 export const OK_SERVER_STOPPED = 'OK_SERVER_STOPPED';
+export const OK_WRITE_REPLACED = 'OK_WRITE_REPLACED';
 
 const IN_FLIGHT_FLUSH_TTL_MS = 60_000;
 
@@ -341,6 +362,7 @@ export class DocumentDurabilityState {
   private readonly agentWriteStores = new Set<string>();
   private readonly refusedStoreDocNames = new Set<string>();
   private readonly storeFailures = new Map<string, StoreFailure>();
+  private readonly storeIntakes = new Map<string, StoreIntakeRecord[]>();
   private readonly staleExternalWriteFreezes = new Set<string>();
   private readonly persistencePath: string | undefined;
   private readonly fileForDocName: (docName: string) => string;
@@ -510,6 +532,7 @@ export class DocumentDurabilityState {
     this.receipts.forget(docName);
     this.refusedStoreDocNames.delete(docName);
     this.storeFailures.delete(docName);
+    this.storeIntakes.delete(docName);
     const persist = this.isPersistedDocument(docName);
     if (!persist) {
       this.reconciledBaseByBranch.get(this.activeBranch)?.delete(docName);
@@ -1005,7 +1028,7 @@ export class DocumentDurabilityState {
 
   endAllRenameCarries(): void {
     for (const current of this.renameCarries.values()) {
-      if (current.state === 'pending') current.answer.resolve({ kind: 'unsettled' });
+      if (current.state === 'pending') current.answer.resolve({ kind: 'stopped' });
     }
     this.renameCarries.clear();
   }
@@ -1176,6 +1199,32 @@ export class DocumentDurabilityState {
     const failure = this.storeFailures.get(docName) ?? null;
     this.storeFailures.delete(docName);
     return failure;
+  }
+
+  recordStoreIntake(docName: string, merge: StoreIntakeMerge, through: WrittenThrough): void {
+    const records = this.storeIntakes.get(docName) ?? [];
+    records.push({ merge, through });
+    if (records.length > STORE_INTAKE_RECORDS_KEPT) {
+      records.splice(0, records.length - STORE_INTAKE_RECORDS_KEPT);
+    }
+    this.storeIntakes.set(docName, records);
+  }
+
+  readStoreIntake(
+    docName: string,
+    write: WrittenThrough | undefined,
+  ): StoreIntakeMerge | undefined {
+    let strongest: StoreIntakeMerge | undefined;
+    for (const record of this.storeIntakes.get(docName) ?? []) {
+      if (!editWasCarried(write, record.through)) continue;
+      if (
+        strongest === undefined ||
+        STORE_INTAKE_STRENGTH[record.merge] > STORE_INTAKE_STRENGTH[strongest]
+      ) {
+        strongest = record.merge;
+      }
+    }
+    return strongest;
   }
 
   recordStaleExternalWriteFreeze(docName: string): void {

@@ -30,6 +30,11 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { AgentSessionManager } from '../agent-sessions.ts';
+import {
+  type AgentWriteFlushOutcome,
+  answeredWithSuccessOnAppRoutes,
+  outcomeOfSavedWrite,
+} from '../agent-write-outcome.ts';
 import { composeAndWriteRawBody } from '../bridge-intake.ts';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
 import type { ConflictAuthority } from '../conflict-authority.ts';
@@ -104,11 +109,7 @@ export interface FolderTemplateRouteDeps {
     previousPaths?: Array<{ from: string; to: string }>,
   ) => void;
   scheduleOkArtifactFlush: (context: string) => void;
-  flushDiskAndDetectOutcome: (
-    docName: string,
-  ) => Promise<
-    { kind: 'failure'; failure: StoreFailure } | { kind: 'stale-external-write' } | null
-  >;
+  flushDiskAndDetectOutcome: (docName: string) => Promise<AgentWriteFlushOutcome>;
   respondPersistenceFailure: (res: ServerResponse, failure: StoreFailure, handler: string) => void;
   respondStaleExternalWrite: (res: ServerResponse, handler: string, docName: string) => void;
   registerWrittenDocInFileIndex: (docName: string, content: string) => void;
@@ -698,7 +699,10 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         }, templateSession.origin);
 
         const templateFlush = await flushDiskAndDetectOutcome(templateDocName);
-        if (templateFlush?.kind === 'failure') {
+        if (
+          templateFlush?.kind === 'failure' &&
+          !answeredWithSuccessOnAppRoutes(templateFlush.failure)
+        ) {
           respondPersistenceFailure(res, templateFlush.failure, 'template-put');
           return;
         }
@@ -720,6 +724,7 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           200,
           TemplatePutSuccessSchema,
           {
+            ...outcomeOfSavedWrite(undefined, templateFlush),
             path: templateRelPath,
             created: templateCreated,
             warnings: composed.warnings,
@@ -1309,7 +1314,10 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         }, templateSession.origin);
 
         const templateFlush = await flushDiskAndDetectOutcome(templateDocName);
-        if (templateFlush?.kind === 'failure') {
+        if (
+          templateFlush?.kind === 'failure' &&
+          !answeredWithSuccessOnAppRoutes(templateFlush.failure)
+        ) {
           respondPersistenceFailure(res, templateFlush.failure, 'template-import');
           return;
         }
@@ -1348,6 +1356,7 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           200,
           TemplateImportSuccessSchema,
           {
+            ...outcomeOfSavedWrite(undefined, templateFlush),
             path: templateRelPath,
             created: templateCreated,
             warnings: composed.warnings,

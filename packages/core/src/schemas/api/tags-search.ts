@@ -13,6 +13,7 @@ import {
   checkAgentContent,
   summaryField,
 } from './_shared.ts';
+import { agentWriteOutcomeWireFields } from './agent-write-outcome.ts';
 
 export const TagSummaryEntrySchema = z
   .object({
@@ -145,6 +146,7 @@ export type TemplatePutRequest = z.infer<typeof TemplatePutRequestSchema>;
 
 export const TemplatePutSuccessSchema = z
   .object({
+    ...agentWriteOutcomeWireFields,
     path: z.string().min(1),
     created: z.boolean(),
     warnings: z.array(z.string()),
@@ -167,6 +169,7 @@ export type TemplateImportRequest = z.infer<typeof TemplateImportRequestSchema>;
 
 export const TemplateImportSuccessSchema = z
   .object({
+    ...agentWriteOutcomeWireFields,
     path: z.string().min(1),
     created: z.boolean(),
     warnings: z.array(z.string()),
@@ -398,6 +401,7 @@ const authoringWarningCodesField = z.array(z.enum(SKILL_AUTHORING_WARNING_CODES)
 
 export const SkillPutSuccessSchema = z
   .object({
+    ...agentWriteOutcomeWireFields,
     path: z.string().min(1),
     created: z.boolean(),
     warnings: z.array(z.string()),
@@ -693,6 +697,7 @@ export type SkillFilePutRequest = z.infer<typeof SkillFilePutRequestSchema>;
 
 export const SkillFilePutSuccessSchema = z
   .object({
+    ...agentWriteOutcomeWireFields,
     path: z.string().min(1),
     created: z.boolean(),
     kind: SkillFileKindSchema,

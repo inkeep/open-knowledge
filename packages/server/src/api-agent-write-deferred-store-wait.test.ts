@@ -129,7 +129,7 @@ function unsettledEvents(warn: { mock: { calls: unknown[][] } }): Array<Record<s
 }
 
 describe('agent-write flush: bounded wait for a deferred store', () => {
-  test('acknowledges once the bound elapses with the store still deferred, and reports it', async () => {
+  test('answers projection-held once the bound elapses with the store still deferred, and reports it', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const docName = 'held-store';
@@ -150,7 +150,14 @@ describe('agent-write flush: bounded wait for a deferred store', () => {
     await vi.advanceTimersByTimeAsync(1);
     const response = await responding;
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
+    expect(JSON.parse(response.body)).toMatchObject({
+      type: 'urn:ok:error:save-held',
+      reason: 'pending-unsettled',
+      outcome: 'projection-held',
+      saved: false,
+      nextStep: 're-read',
+    });
     expect(unsettledEvents(warn)).toEqual([
       expect.objectContaining({
         event: 'agent-write-deferred-store-unsettled',
@@ -182,8 +189,12 @@ describe('agent-write flush: bounded wait for a deferred store', () => {
     const response = await responding;
 
     expect(response.status).toBe(200);
-    const { results } = JSON.parse(response.body) as { results: Array<{ status: string }> };
-    expect(results.map((result) => result.status)).toEqual(['written', 'written', 'written']);
+    const { results } = JSON.parse(response.body) as {
+      results: Array<{ status: string; outcome?: string; error?: { reason?: string } }>;
+    };
+    expect(results.map((result) => [result.status, result.outcome, result.error?.reason])).toEqual(
+      docNames.map(() => ['error', 'projection-held', 'pending-unsettled']),
+    );
   });
 
   test('answers a native-route write within one budget when a branch switch outlives it', async () => {
@@ -213,7 +224,12 @@ describe('agent-write flush: bounded wait for a deferred store', () => {
     await vi.advanceTimersByTimeAsync(1);
     const response = await responding;
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
+    expect(JSON.parse(response.body)).toMatchObject({
+      type: 'urn:ok:error:save-held',
+      outcome: 'projection-held',
+      saved: false,
+    });
   });
 
   test('does not hold a write behind a Git operation that cannot discard it', async () => {
@@ -358,7 +374,7 @@ describe('agent-write flush: a document renamed outside the app while the write 
     expect(body.detail).toContain('re-apply your change there');
   });
 
-  test("a carry still running when the write's wait runs out is acknowledged, never re-applied", async () => {
+  test("a carry still running when the write's wait runs out answers projection-held, never re-applied", async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const docName = 'renamed-slow';
@@ -380,6 +396,69 @@ describe('agent-write flush: a document renamed outside the app while the write 
     await vi.advanceTimersByTimeAsync(1);
     const response = await responding;
 
+    expect(response.status).toBe(503);
+    expect(JSON.parse(response.body)).toMatchObject({
+      type: 'urn:ok:error:save-held',
+      reason: 'pending-rename',
+      outcome: 'projection-held',
+      saved: false,
+      nextStep: 're-read',
+    });
+    expect(JSON.parse(response.body).detail).toContain('moved-slow');
+  });
+
+  test('a write waiting on a carry when the server stops answers server-stopped at the new name', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const docName = 'renamed-at-shutdown';
+    durabilityState.holdStores(docName);
+    const deferral = durabilityState.openDeferredStore(docName);
+    const flushWaiting = whenFlushStartsWaiting();
+
+    const responding = postAgentWrite(docName);
+    await flushWaiting;
+    const carry = durabilityState.beginRenameCarry(docName);
+    deferral.settle({ kind: 'failed', failure: refusedAsRenamed(docName, 'moved-late', carry) });
+    durabilityState.endAllRenameCarries();
+    const response = await responding;
+
+    expect(response.status).toBe(503);
+    const body = JSON.parse(response.body) as { detail?: string };
+    expect(body).toMatchObject({
+      type: 'urn:ok:error:server-stopped',
+      outcome: 'refused',
+      saved: false,
+      nextStep: 're-read',
+    });
+    expect(body.detail).toContain('moved-late');
+    expect(body.detail).toContain('Do not re-create the document under its old name');
+  });
+});
+
+describe('a route the app also calls, when the save is still running at the end of the wait', () => {
+  test('agent undo keeps its 200 and says projection-held, so the app does not undo twice', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const docName = 'undo-held';
+    expect((await postAgentWrite(docName)).status).toBe(200);
+    durabilityState.holdWriteAdmission();
+    durabilityState.openDeferredStore(docName);
+    const flushWaiting = whenFlushStartsWaiting();
+
+    const responding = post('/api/agent-undo', {
+      docName,
+      connectionId: 'agent-claude-1',
+      scope: 'last',
+    });
+    await flushWaiting;
+    await vi.advanceTimersByTimeAsync(WRITE_WAIT_BUDGET_MS);
+    const response = await responding;
+
     expect(response.status).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      undone: true,
+      outcome: 'projection-held',
+      saved: false,
+      nextStep: 're-read',
+    });
   });
 });

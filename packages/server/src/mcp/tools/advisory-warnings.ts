@@ -133,7 +133,7 @@ export function formatAdvisoryBriefs(warnings: AdvisoryWarning[]): string[] {
 function formatIntegrityLine(d: WriteWarning): string {
   switch (d.kind) {
     case 'content-divergence':
-      return `⚠ Content divergence: ${d.actualBytes} actual bytes vs ${d.intendedBytes} intended (byteDelta=${d.byteDelta}). ${d.hint ?? 'currentState carries the converged content (re-read only if it is truncated).'}`;
+      return `⚠ Content divergence: ${d.actualBytes} actual bytes vs ${d.intendedBytes} intended (byteDelta=${d.byteDelta}). ${d.hint ?? 'The stored text differs from what you sent; re-read the document before the next edit.'}`;
     case 'disk-edit-reconciled':
       return `⚠ ${d.hint ?? 'An out-of-band edit was reconciled into this document before your edit landed on top — re-read for the combined result.'}`;
     default:

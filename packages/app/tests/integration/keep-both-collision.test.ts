@@ -170,7 +170,7 @@ describe('an outside edit to the block being edited here keeps both versions', (
 });
 
 describe('an agent write over an outside edit to the block being edited here', () => {
-  test('lands on both versions and reports both-kept with re-read as the next step', async () => {
+  test('lands on both versions and answers both-kept, saved, with re-read as the next step', async () => {
     const docName = `agent-keep-both-${randomUUID()}`;
     const { s, file } = await openWithUnsavedEdit(docName, SAVED, PARAGRAPH_EDIT);
     writeFileSync(file, EDITED_OUTSIDE);
@@ -180,13 +180,26 @@ describe('an agent write over an outside edit to the block being edited here', (
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ docName, markdown: 'Agent line.\n', position: 'append' }),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(409);
     const body = (await res.json()) as {
-      warnings?: Array<{ kind?: string; mergeOutcome?: string; nextStep?: string }>;
+      type?: string;
+      title?: string;
+      detail?: string;
+      outcome?: string;
+      saved?: boolean;
+      nextStep?: string;
+      warnings?: Array<{ kind?: string; mergeOutcome?: string }>;
     };
+    expect(body).toMatchObject({
+      type: 'urn:ok:error:both-kept',
+      outcome: 'both-kept',
+      saved: true,
+      nextStep: 're-read',
+    });
+    expect(body.detail).toContain('do not retry it');
+    expect(readFileSync(file, 'utf-8')).toContain('Agent line.');
     expect(body.warnings?.find((w) => w.kind === 'disk-edit-reconciled')).toMatchObject({
       mergeOutcome: 'both-kept',
-      nextStep: 're-read',
     });
 
     const live = liveText(s, docName);
@@ -200,7 +213,7 @@ describe('an agent write over an outside edit to the block being edited here', (
     ]);
   }, 60_000);
 
-  test('a merge that fails the fidelity check lands the write on the version here and reports kept-live', async () => {
+  test('a merge that fails the fidelity check lands the write on the version here and answers merged-first', async () => {
     const docName = `agent-keep-live-${randomUUID()}`;
     const { s, file } = await openWithUnsavedEdit(docName, CHECK_SAVED, CHECK_EDIT);
     writeFileSync(file, CHECK_OUTSIDE);
@@ -212,11 +225,14 @@ describe('an agent write over an outside edit to the block being edited here', (
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      warnings?: Array<{ kind?: string; mergeOutcome?: string; nextStep?: string }>;
+      outcome?: string;
+      saved?: boolean;
+      nextStep?: string;
+      warnings?: Array<{ kind?: string; mergeOutcome?: string }>;
     };
+    expect(body).toMatchObject({ outcome: 'merged-first', saved: true, nextStep: 're-read' });
     expect(body.warnings?.find((w) => w.kind === 'disk-edit-reconciled')).toMatchObject({
       mergeOutcome: 'kept-live',
-      nextStep: 're-read',
     });
 
     const live = liveText(s, docName);

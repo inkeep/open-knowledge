@@ -166,11 +166,15 @@ describe('concurrent whole-document replace refusal', () => {
       expect(problem.file).toBe(`${docName}.md`);
       expect(problem.retryAfterSeconds).toBe(3);
       expect(refused.headers.get('Retry-After')).toBe('3');
+      expect(problem).toMatchObject({ outcome: 'refused', saved: false, nextStep: 'retry' });
       expect(Object.keys(problem).sort()).toEqual([
         'detail',
         'file',
         'instance',
+        'nextStep',
+        'outcome',
         'retryAfterSeconds',
+        'saved',
         'status',
         'title',
         'type',

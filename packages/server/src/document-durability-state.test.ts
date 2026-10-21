@@ -36,6 +36,36 @@ import { getLogger } from './logger.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
 import { contentHash } from './version-hash.ts';
 
+describe('the merge a store recorded for agent writes', () => {
+  const at = (clock: number) => ({ clientId: 7, clock });
+
+  test('reaches every write the store carried, not only the first flush that reads it', () => {
+    const state = new DocumentDurabilityState();
+    state.recordStoreIntake('doc', 'both-kept', at(10));
+
+    expect(state.readStoreIntake('doc', at(4))).toBe('both-kept');
+    expect(state.readStoreIntake('doc', at(9))).toBe('both-kept');
+  });
+
+  test('never reaches a write that an earlier store did not carry', () => {
+    const state = new DocumentDurabilityState();
+    state.recordStoreIntake('doc', 'both-kept', at(5));
+    state.recordStoreIntake('doc', 'merged', at(12));
+
+    expect(state.readStoreIntake('doc', at(8))).toBe('merged');
+    expect(state.readStoreIntake('doc', at(13))).toBeUndefined();
+    expect(state.readStoreIntake('doc', { clientId: 8, clock: 1 })).toBeUndefined();
+  });
+
+  test('is cleared with the rest of the document state', () => {
+    const state = new DocumentDurabilityState();
+    state.recordStoreIntake('doc', 'kept-live', at(10));
+    state.deleteReconciledBase('doc');
+
+    expect(state.readStoreIntake('doc', at(4))).toBeUndefined();
+  });
+});
+
 describe('DocumentDurabilityState', () => {
   test('starts with an empty main scope and no transient coordination state', () => {
     const state = new DocumentDurabilityState();
@@ -1654,14 +1684,14 @@ describe('which edits a rename outside the app carried to the new name', () => {
     expect(state.renameCarryOf('archive')).toBeUndefined();
   });
 
-  test('ending every record at shutdown answers a waiting write as unsettled and leaves none', async () => {
+  test('ending every record at shutdown answers a waiting write as stopped and leaves none', async () => {
     const state = new DocumentDurabilityState();
     const { carried } = frozenDocWithCarriedAndLaterEdit();
     const pending = state.beginRenameCarry('notes');
     state.beginRenameCarry('archive');
     state.settleRenameCarry('archive', carried);
     state.endAllRenameCarries();
-    expect(await pending).toEqual({ kind: 'unsettled' });
+    expect(await pending).toEqual({ kind: 'stopped' });
     expect(state.renameCarryOf('notes')).toBeUndefined();
     expect(state.renameCarryOf('archive')).toBeUndefined();
   });

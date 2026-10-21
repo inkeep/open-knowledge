@@ -86,7 +86,9 @@ import {
   OK_STORE_REFUSED,
   type StoreFailure,
   type StoreFailureRemoval,
+  type StoreIntakeMerge,
   type StorePublishOutcome,
+  writtenThroughOf,
 } from './document-durability-state.ts';
 import { refuseStaleExternalWrite } from './external-change.ts';
 import { contentHash, registerWrite } from './file-watcher.ts';
@@ -276,7 +278,7 @@ interface StoreRunControl {
 }
 
 type StoreIntakeResult =
-  | { readonly kind: 'taken-in' }
+  | { readonly kind: 'taken-in'; readonly merge?: StoreIntakeMerge }
   | { readonly kind: 'conflict' }
   | { readonly kind: 'failed'; readonly error: unknown };
 
@@ -1445,6 +1447,13 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
     }
   }
 
+  function holdMeetsFileWithNoAgreedVersion(documentName: string): boolean {
+    return (
+      durabilityState.getReconciledBase(documentName) === undefined &&
+      (docsWithFileObservedOnDisk.has(documentName) || frozenPathOccupied(documentName))
+    );
+  }
+
   function frozenRemovalOf(
     document: Y.Doc,
     documentName: string,
@@ -1486,13 +1495,9 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
     documentName: string,
     reason: StorePendingReason,
     cause?: unknown,
+    noBase = holdMeetsFileWithNoAgreedVersion(documentName),
   ): never {
-    const held = new StoreHeldPendingError(
-      documentName,
-      reason,
-      durabilityState.getReconciledBase(documentName) === undefined,
-      cause,
-    );
+    const held = new StoreHeldPendingError(documentName, reason, noBase, cause);
     incrementStoreDiskCompare(reason);
     compareLog.warn(
       { documentName, reason, code: held.causeCode, err: cause },
@@ -2096,6 +2101,13 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
               const intake = await ingest(documentName, canonicalPath, compared.text);
               switch (intake.kind) {
                 case 'taken-in':
+                  if (agentTriggeredStore && intake.merge !== undefined) {
+                    durabilityState.recordStoreIntake(
+                      documentName,
+                      intake.merge,
+                      writtenThroughOf(document),
+                    );
+                  }
                   persistenceDeferCounts.delete(documentName);
                   control.rerun = 'disk-changed';
                   return;
@@ -2108,6 +2120,7 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
                       ? 'pending-intake-failed-no-base'
                       : 'pending-intake-failed',
                     intake.error,
+                    currentBase === undefined,
                   );
                 default:
                   return assertNeverStoreIntake(intake);

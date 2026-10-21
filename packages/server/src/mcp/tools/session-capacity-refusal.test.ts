@@ -156,7 +156,7 @@ describe('MCP write paths relaying an agent-session capacity refusal', () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toBe(
-      `Error: document created from template "note", but its frontmatter patch was refused, so the document exists without that frontmatter: ${REFUSAL_TEXT} Apply the frontmatter alone with edit({ document: { path: "notes/templated", frontmatter } }); do not repeat the templated write.`,
+      `Error: document created from template "note"; its body landed, but its frontmatter patch was refused, so the frontmatter was not applied: ${REFUSAL_TEXT} Re-read the document, then apply the frontmatter alone with edit({ document: { path: "notes/templated", frontmatter } }); do not repeat the templated write.`,
     );
   });
 
@@ -171,7 +171,7 @@ describe('MCP write paths relaying an agent-session capacity refusal', () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toBe(
-      `Error: document created from template "note", but its frontmatter patch failed, and this response does not show whether the frontmatter was applied: ${STALE_TITLE} (${STALE_DETAIL}) Re-read the document before changing it; do not repeat the templated write.`,
+      `Error: document created from template "note"; its body landed, but its frontmatter patch failed, and this response does not show whether the frontmatter was applied: ${STALE_TITLE} (${STALE_DETAIL}) Re-read the document, then apply only the missing frontmatter with edit({ document: { path: "notes/templated-stale", frontmatter } }); do not repeat the templated write.`,
     );
   });
 
@@ -186,7 +186,7 @@ describe('MCP write paths relaying an agent-session capacity refusal', () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toBe(
-      `Error: document created from template "note", but its frontmatter patch was refused, so the document exists without that frontmatter: ${INVALID_TITLE} Apply the frontmatter alone with edit({ document: { path: "notes/templated-invalid", frontmatter } }); do not repeat the templated write.`,
+      `Error: document created from template "note"; its body landed, but its frontmatter patch was refused, so the frontmatter was not applied: ${INVALID_TITLE} Re-read the document, then apply the frontmatter alone with edit({ document: { path: "notes/templated-invalid", frontmatter } }); do not repeat the templated write.`,
     );
   });
 

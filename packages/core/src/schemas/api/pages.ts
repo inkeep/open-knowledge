@@ -2,6 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 import { agentIdentityFields, summaryField } from './_shared.ts';
 import { AdvisoryWarningsSchema, SummaryResponseFieldSchema } from './agent-write.ts';
+import { agentWriteOutcomeWireFields } from './agent-write-outcome.ts';
 
 export const RenamedDocMappingSchema = z
   .object({
@@ -185,6 +186,7 @@ export type RollbackRequest = z.infer<typeof RollbackRequestSchema>;
 
 export const RollbackSuccessSchema = z
   .object({
+    ...agentWriteOutcomeWireFields,
     restoredFrom: z.string().min(1),
     timestamp: z.string().min(1),
     summary: SummaryResponseFieldSchema.optional(),

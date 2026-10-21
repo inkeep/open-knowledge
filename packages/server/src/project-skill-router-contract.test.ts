@@ -171,12 +171,13 @@ const routingRules = [
     required: ['write({ template })', 'Folder frontmatter does not cascade values into docs'],
   },
   {
-    name: 'tracked conflict recovery in the app',
-    anchor: 'For a conflict refusal,',
+    name: 'write outcomes, with unchangeable refusals reported to the user',
+    anchor: 'For every write result,',
     required: [
-      "follow the tool's recovery instructions",
+      'read `outcome` and follow `nextStep`',
       '`references/conflict-resolution.md`',
-      'ask the user to resolve tracked conflicts in the app',
+      'never repeat a write that landed',
+      'nothing you send changes it: tell the user which file',
     ],
   },
   {

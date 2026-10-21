@@ -1,4 +1,5 @@
 import type { ServerResponse } from 'node:http';
+import { REFUSAL_OUTCOMES } from './agent-write-outcome.ts';
 import type { Conflict, ConflictKind, ReconcileReason, ResolveStrategy } from './conflict-kinds.ts';
 import { strategiesFor } from './conflict-kinds.ts';
 import { stripDocExtension } from './doc-extensions.ts';
@@ -67,7 +68,11 @@ export function respondDocInConflict(
   errorResponse(res, 409, 'urn:ok:error:doc-in-conflict', 'Document is in conflict.', {
     handler,
     detail,
-    extensions: { file: conflict?.file ?? err.file, ...envelope },
+    extensions: {
+      file: conflict?.file ?? err.file,
+      ...envelope,
+      ...REFUSAL_OUTCOMES['urn:ok:error:doc-in-conflict'],
+    },
   });
 }
 

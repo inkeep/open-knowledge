@@ -15,6 +15,12 @@ import {
   skillFilePathSegments,
 } from '@inkeep/open-knowledge-core';
 import type { AgentSessionManager } from '../agent-sessions.ts';
+import {
+  type AgentWriteFlushOutcome,
+  answeredWithSuccessOnAppRoutes,
+  outcomeOfSavedWrite,
+  reportedOutcome,
+} from '../agent-write-outcome.ts';
 import { composeAndWriteRawBody } from '../bridge-intake.ts';
 import type { RemovalLifecycleStatus } from '../conflict-kinds.ts';
 import {
@@ -92,11 +98,7 @@ export interface SkillsFileRouteDeps {
   };
   sessionManager: AgentSessionManager;
   respondStaleExternalWrite: (res: ServerResponse, handler: string, docName: string) => void;
-  flushDiskAndDetectOutcome: (
-    docName: string,
-  ) => Promise<
-    { kind: 'failure'; failure: StoreFailure } | { kind: 'stale-external-write' } | null
-  >;
+  flushDiskAndDetectOutcome: (docName: string) => Promise<AgentWriteFlushOutcome>;
   respondPersistenceFailure: (res: ServerResponse, failure: StoreFailure, handler: string) => void;
   okArtifactKey: (
     kind: 'template' | 'folder-frontmatter' | 'folder' | 'skill',
@@ -408,6 +410,8 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
         )
           return;
         const routedThroughContent = isProjectMdReference(body.scope, kind, rel);
+        let fileFlushOutcome: AgentWriteFlushOutcome = null;
+        let fileDocName: string | undefined;
         let created: boolean;
 
         if (routedThroughContent) {
@@ -416,6 +420,7 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
            * (precedent #24 / #38), the same branch as the SKILL.md body.
            */
           const refDocName = `${skillDirRel}/${rel.replace(/\.mdx?$/i, '')}`;
+          fileDocName = refDocName;
           if (checkSkillDocConflictGate(refDocName, 'skill-file-put', res)) return;
           created = !existsSync(resolve(skillDirAbs, rel));
           if (created && countBundleFiles(skillDirAbs) >= BUNDLE_MAX_FILES) {
@@ -440,7 +445,11 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
             composeAndWriteRawBody(session.dc.document, body.content, 'agent');
           }, session.origin);
           const flushOutcome = await flushDiskAndDetectOutcome(refDocName);
-          if (flushOutcome?.kind === 'failure') {
+          fileFlushOutcome = flushOutcome;
+          if (
+            flushOutcome?.kind === 'failure' &&
+            !answeredWithSuccessOnAppRoutes(flushOutcome.failure)
+          ) {
             respondPersistenceFailure(res, flushOutcome.failure, 'skill-file-put');
             return;
           }
@@ -495,7 +504,15 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
           res,
           200,
           SkillFilePutSuccessSchema,
-          { path: rel, created, kind, content: routedThroughContent },
+          {
+            ...(fileDocName === undefined
+              ? outcomeOfSavedWrite(undefined, fileFlushOutcome)
+              : reportedOutcome(fileDocName, outcomeOfSavedWrite(undefined, fileFlushOutcome))),
+            path: rel,
+            created,
+            kind,
+            content: routedThroughContent,
+          },
           { handler: 'skill-file-put' },
         );
       } catch (e) {

@@ -16,6 +16,7 @@ import {
   safeDocNameField,
   summaryField,
 } from './_shared.ts';
+import { agentWriteOutcomeWireFields } from './agent-write-outcome.ts';
 
 export const AgentWriteRequestSchema = z
   .object({
@@ -124,7 +125,7 @@ export const DiskEditReconciledWarningSchema = z
     duplicatedBlocks: z.number().int().nonnegative().optional(),
     restoredDeletedHere: z.number().int().nonnegative().optional(),
     restoredDeletedOutside: z.number().int().nonnegative().optional(),
-    nextStep: z.string().optional(),
+    nextStep: z.string().optional().meta({ deprecated: true }),
     hint: z.string().optional(),
   })
   .loose() satisfies StandardSchemaV1;
@@ -250,6 +251,7 @@ export type BrokenLinkSuppression = z.infer<typeof BrokenLinkSuppressionSchema>;
 
 export const AgentWriteSuccessSchema = z
   .object({
+    ...agentWriteOutcomeWireFields,
     timestamp: z.string().min(1),
     summary: SummaryResponseFieldSchema.optional(),
     warnings: AdvisoryWarningsSchema.optional(),
@@ -259,6 +261,7 @@ export type AgentWriteSuccess = z.infer<typeof AgentWriteSuccessSchema>;
 
 export const AgentWriteMdSuccessSchema = z
   .object({
+    ...agentWriteOutcomeWireFields,
     timestamp: z.string().min(1),
     subscriberCount: z.number().int().nonnegative(),
     systemSubscriberCount: z.number().int().nonnegative(),
@@ -273,6 +276,7 @@ export type AgentWriteMdSuccess = z.infer<typeof AgentWriteMdSuccessSchema>;
 
 export const AgentPatchSuccessSchema = z
   .object({
+    ...agentWriteOutcomeWireFields,
     timestamp: z.string().min(1),
     subscriberCount: z.number().int().nonnegative(),
     systemSubscriberCount: z.number().int().nonnegative(),
@@ -286,6 +290,7 @@ export type AgentPatchSuccess = z.infer<typeof AgentPatchSuccessSchema>;
 
 export const AgentUndoSuccessSchema = z
   .object({
+    ...agentWriteOutcomeWireFields,
     docName: z.string().min(1),
     scope: z.enum(['last', 'session', 'count']),
     undone: z.boolean(),
@@ -328,6 +333,7 @@ export const AgentWriteBatchResultSchema = z.discriminatedUnion('status', [
     .object({
       status: z.literal('written'),
       docName: z.string().min(1),
+      ...agentWriteOutcomeWireFields,
       summary: SummaryResponseFieldSchema.optional(),
       warnings: AdvisoryWarningsSchema.optional(),
       brokenLinks: BrokenLinksSchema,
@@ -338,6 +344,7 @@ export const AgentWriteBatchResultSchema = z.discriminatedUnion('status', [
     .object({
       status: z.literal('error'),
       docName: z.string().min(1),
+      ...agentWriteOutcomeWireFields,
       error: BatchEntryErrorSchema,
     })
     .loose(),
@@ -367,6 +374,7 @@ export type FrontmatterPatchRequest = z.infer<typeof FrontmatterPatchRequestSche
 
 export const FrontmatterPatchSuccessSchema = z
   .object({
+    ...agentWriteOutcomeWireFields,
     timestamp: z.string().min(1),
     subscriberCount: z.number().int().nonnegative(),
     systemSubscriberCount: z.number().int().nonnegative(),

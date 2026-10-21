@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  type AgentWriteOutcomeFields,
   LINT_PLUGIN_IDS,
   OPEN_KNOWLEDGE_MCP_TOOLS,
   VALIDATION_SOURCES,
@@ -11,7 +12,23 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { afterAll, beforeAll, expect, test } from 'vitest';
+import {
+  outcomeOfSavedWrite,
+  outcomeOfStoreFailure,
+  REFUSAL_OUTCOMES,
+} from '../../agent-write-outcome.ts';
 import { ConfigSchema } from '../../config/schema.ts';
+import {
+  OK_DOC_MOVED,
+  OK_DOC_REMOVED,
+  OK_PATH_UNRESOLVABLE,
+  OK_SERVER_STOPPED,
+  OK_STORE_DISCARDED,
+  OK_STORE_HELD,
+  OK_STORE_REFUSED,
+  OK_WRITE_REPLACED,
+  type StoreFailure,
+} from '../../document-durability-state.ts';
 import { installJsonSchemaDialect, JSON_SCHEMA_DIALECT_2020_12 } from '../json-schema-dialect.ts';
 import { registerAllTools } from './index.ts';
 import { ROUTED_CWD_DESCRIPTION } from './shared.ts';
@@ -288,4 +305,173 @@ test('skill router and published reference names and counts equal the actual ser
   expect(referenceNames.sort()).toEqual(served);
   expect(reference).toContain(`**${tools.length} tools**`);
   expect(router).not.toMatch(/\bconflicts\s*\(|\bresolve_conflict\b/);
+});
+
+const resolveActionNames =
+  /\bresolve_conflict\b|\/api\/sync\/(?:resolve-conflict|conflict-content|conflicts)\b|\bresolutionOptions\b|\bKeep my version\b|\bUse their version\b/;
+const diskCollisionStateNames =
+  /\b(?:refused-too-large|refused-no-base|refused-conflict-markers|merged-with-markers|disk-markers|conflict-resolved)\b|"kind":\s*"reconcile"|`reconcile` conflict/;
+const residualDiskConflictStates = /\b(?:stale-external-write|pending-conflict)\b/;
+const RESIDUAL_STATES_RETIRED_WITH_THE_CONFLICT_ROUTE: ReadonlySet<string> = new Set([
+  'docs/content/reference/mcp.mdx',
+  'packages/server/assets/skills/project/references/conflict-resolution.md',
+]);
+
+function withoutGitConflictSections(markdown: string): string {
+  return markdown.replace(/^## Git conflicts\n[\s\S]*?(?=^## |(?![\s\S]))/m, '');
+}
+
+function agentFacingGuidance(root: string): Array<{ path: string; text: string }> {
+  const docs = [
+    'docs/content/reference/mcp.mdx',
+    'docs/content/features/agent-activity.mdx',
+    ...['docs/content/integrations', 'docs/content/remote-control'].flatMap((dir) =>
+      filesUnder(join(root, dir))
+        .filter((file) => /\.mdx?$/.test(file))
+        .map((file) => relative(root, file)),
+    ),
+  ];
+  const skills = filesUnder(join(root, 'packages/server/assets/skills'))
+    .filter((file) => /\.mdx?$/.test(file))
+    .map((file) => relative(root, file));
+  return [...docs, ...skills].map((path) => ({
+    path: path.replaceAll('\\', '/'),
+    text: withoutGitConflictSections(readFileSync(join(root, path), 'utf8')),
+  }));
+}
+
+test('no served tool names a resolve action or a disk-collision conflict state', () => {
+  for (const tool of tools) {
+    const served = JSON.stringify(tool);
+    expect(served, tool.name).not.toMatch(resolveActionNames);
+    expect(served, tool.name).not.toMatch(diskCollisionStateNames);
+    expect(served, tool.name).not.toMatch(residualDiskConflictStates);
+  }
+});
+
+test('no bundled skill or agent-facing doc names a resolve action or a disk-collision conflict state outside Git conflicts', () => {
+  for (const { path, text } of agentFacingGuidance(adviceRoot)) {
+    expect(text, path).not.toMatch(resolveActionNames);
+    expect(text, path).not.toMatch(diskCollisionStateNames);
+    if (!RESIDUAL_STATES_RETIRED_WITH_THE_CONFLICT_ROUTE.has(path)) {
+      expect(text, path).not.toMatch(residualDiskConflictStates);
+    }
+  }
+});
+
+test('each page allowed to name a residual disk-side conflict state still needs to', () => {
+  const guidance = new Map(agentFacingGuidance(adviceRoot).map(({ path, text }) => [path, text]));
+  for (const path of RESIDUAL_STATES_RETIRED_WITH_THE_CONFLICT_ROUTE) {
+    expect(guidance.get(path), path).toMatch(residualDiskConflictStates);
+  }
+});
+
+const RESULT_TABLE_HEADER = '| Result | `outcome` | `saved` | `nextStep` | Your move |';
+
+function guidedResultRows(text: string): Array<{ result: string; cells: string[] }> {
+  const start = text.indexOf(RESULT_TABLE_HEADER);
+  if (start === -1) return [];
+  const rows: Array<{ result: string; cells: string[] }> = [];
+  for (const line of text.slice(start).split('\n').slice(2)) {
+    if (!line.startsWith('|')) break;
+    const cells = line
+      .split('|')
+      .slice(1, -1)
+      .map((cell) => cell.trim());
+    rows.push({ result: cells[0] ?? '', cells });
+  }
+  return rows;
+}
+
+function held(reason: StoreFailure extends { held?: infer H } ? NonNullable<H>['reason'] : never) {
+  return outcomeOfStoreFailure({ code: OK_STORE_HELD, message: 'm', held: { reason } });
+}
+
+const SERVER_FIELDS_FOR_GUIDED_RESULT: Readonly<Record<string, AgentWriteOutcomeFields>> = {
+  '`applied` (200) with a `content-divergence` warning': outcomeOfSavedWrite(undefined, null, true),
+  '`both-kept` (409)': outcomeOfSavedWrite({ reconciled: true, mergeOutcome: 'both-kept' }, null),
+  '`concurrent-overwrite-refused` (409)':
+    REFUSAL_OUTCOMES['urn:ok:error:concurrent-overwrite-refused'],
+  '`too-many-agent-sessions` (503)': REFUSAL_OUTCOMES['urn:ok:error:too-many-agent-sessions'],
+  '`doc-not-found` (404)': REFUSAL_OUTCOMES['urn:ok:error:doc-not-found'],
+  '`reserved-doc-name` (400)': REFUSAL_OUTCOMES['urn:ok:error:reserved-doc-name'],
+  '`frontmatter-malformed` (400)': REFUSAL_OUTCOMES['urn:ok:error:frontmatter-malformed'],
+  '`frontmatter-edit-not-supported` (400)':
+    REFUSAL_OUTCOMES['urn:ok:error:frontmatter-edit-not-supported'],
+  '`invalid-frontmatter-patch` (400)': REFUSAL_OUTCOMES['urn:ok:error:invalid-frontmatter-patch'],
+  '`target-not-found` (404)': REFUSAL_OUTCOMES['urn:ok:error:target-not-found'],
+  '`stale-target` (409)': REFUSAL_OUTCOMES['urn:ok:error:stale-target'],
+  '`doc-in-conflict` (409)': REFUSAL_OUTCOMES['urn:ok:error:doc-in-conflict'],
+  '`stale-external-write` (409)': REFUSAL_OUTCOMES['urn:ok:error:stale-external-write'],
+  '`save-held` (503) with `pending-conflict`': held('pending-conflict'),
+  '`save-held` (503) on a file with no agreed version': outcomeOfStoreFailure({
+    code: OK_STORE_HELD,
+    message: 'm',
+    held: { reason: 'pending-intake-failed-no-base', noBase: true },
+  }),
+  '`save-held` (503) with any other `reason`': held('pending-unreadable'),
+  '`doc-moved` (409)': outcomeOfStoreFailure({ code: OK_DOC_MOVED, message: 'm' }),
+  '`branch-switched` (409)': outcomeOfStoreFailure({ code: OK_STORE_DISCARDED, message: 'm' }),
+  '`doc-removed` (409) after a rename': outcomeOfStoreFailure({
+    code: OK_DOC_REMOVED,
+    message: 'm',
+    removal: { kind: 'renamed', renamedTo: 'b' },
+  }),
+  '`doc-removed` (409) after a delete': outcomeOfStoreFailure({
+    code: OK_DOC_REMOVED,
+    message: 'm',
+    removal: { kind: 'deleted-outside' },
+  }),
+  '`server-stopped` (503)': outcomeOfStoreFailure({ code: OK_SERVER_STOPPED, message: 'm' }),
+  '`server-stopped` (503) during a move': outcomeOfStoreFailure({
+    code: OK_SERVER_STOPPED,
+    message: 'm',
+    removal: { kind: 'renamed', renamedTo: 'b' },
+  }),
+  '`path-escape` (400)': outcomeOfStoreFailure({ code: OK_PATH_UNRESOLVABLE, message: 'm' }),
+  '`store-refused` (503)': outcomeOfStoreFailure({ code: OK_STORE_REFUSED, message: 'm' }),
+  '`write-replaced` (409)': outcomeOfStoreFailure({ code: OK_WRITE_REPLACED, message: 'm' }),
+  '`storage-full` (507), `storage-readonly` or `storage-error` (500)': outcomeOfStoreFailure({
+    code: 'ENOSPC',
+    message: 'm',
+  }),
+};
+
+test('the per-result guidance in the bundled skill and the reference gives the fields the server sends', () => {
+  for (const path of [
+    'packages/server/assets/skills/project/references/conflict-resolution.md',
+    'docs/content/reference/mcp.mdx',
+  ]) {
+    const rows = guidedResultRows(readFileSync(join(adviceRoot, path), 'utf8'));
+    expect(rows.map((row) => row.result).sort(), path).toEqual(
+      Object.keys(SERVER_FIELDS_FOR_GUIDED_RESULT).sort(),
+    );
+    for (const { result, cells } of rows) {
+      const fields = SERVER_FIELDS_FOR_GUIDED_RESULT[result];
+      expect(cells.slice(1, 4), `${path}: ${result}`).toEqual([
+        `\`${fields?.outcome}\``,
+        `\`${fields?.saved}\``,
+        `\`${fields?.nextStep}\``,
+      ]);
+    }
+  }
+});
+
+test('the move for each guided result is the one its next step asks for', () => {
+  const rows = guidedResultRows(
+    readFileSync(
+      join(adviceRoot, 'packages/server/assets/skills/project/references/conflict-resolution.md'),
+      'utf8',
+    ),
+  );
+  for (const { result, cells } of rows) {
+    const nextStep = cells[3];
+    const move = cells[4] ?? '';
+    if (nextStep === '`retry`') expect(move, result).toMatch(/\bsend\b[^.]*\bagain\b/i);
+    if (nextStep === '`re-read`') expect(move, result).toMatch(/re-read/i);
+    if (nextStep === '`none`') {
+      expect(move, result).toMatch(/tell the user/i);
+      expect(move, result).not.toMatch(/re-read|\bsend\b[^.]*\bagain\b|re-apply/i);
+    }
+  }
 });

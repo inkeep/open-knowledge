@@ -4,6 +4,7 @@ import {
   BrokenLinkSuppressionSchema,
   LocalTargetDiagnosticEvidenceSchema,
 } from '../../schemas/api/agent-write.ts';
+import { agentWriteOutcomeWireFields } from '../../schemas/api/agent-write-outcome.ts';
 import { DEFAULT_MARKDOWNLINT_CONFIG } from './default-config.ts';
 import type { OkfRuleId } from './okf-rule-meta.ts';
 import { LINT_PLUGINS, type LinterConfig } from './plugins.ts';
@@ -274,6 +275,7 @@ export const ReLintFailureSchema = z.object({
 export type ReLintFailure = z.infer<typeof ReLintFailureSchema>;
 
 export const LintFixResultSchema = z.object({
+  ...agentWriteOutcomeWireFields,
   file: z.string(),
   fixedCount: z.number(),
   diagnostics: z.array(LintDiagnosticSchema),
