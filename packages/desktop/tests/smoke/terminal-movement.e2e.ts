@@ -590,6 +590,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await widenEditorWindow(app, page, 1900, 900);
+    await page.reload({ waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       window.location.hash = '#/start';
     });
