@@ -20,6 +20,7 @@ export default defineConfig({
       : caller?.startsWith('lifetime-')
         ? [lifetimeSetup]
         : [],
+  captureGitInfo: { commit: false, diff: false },
   globalTimeout: caller?.startsWith('lifetime-') ? 5_000 : 110_000,
   outputDir: join(runDir, 'test-results'),
   reporter: [['json', { outputFile: join(runDir, 'results.json') }]],
