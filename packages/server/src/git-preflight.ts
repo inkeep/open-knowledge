@@ -54,6 +54,21 @@ export class GitNotAvailableError extends Error {
   }
 }
 
+export class GitProbeTimeoutError extends Error {
+  readonly code = 'GIT_PROBE_TIMEOUT';
+  readonly platform: NodeJS.Platform;
+  readonly guidance: InstallGuidance;
+  readonly probe: GitProbeFailures;
+
+  constructor(platform: NodeJS.Platform, guidance: InstallGuidance, probe: GitProbeFailures) {
+    super(buildProbeTimeoutMessage(guidance, probe));
+    this.name = 'GitProbeTimeoutError';
+    this.platform = platform;
+    this.guidance = guidance;
+    this.probe = probe;
+  }
+}
+
 export class GitTooOldError extends Error {
   readonly code = 'GIT_TOO_OLD';
   readonly platform: NodeJS.Platform;
@@ -92,6 +107,7 @@ export function detectGit(): GitDetected {
   }
 
   let fallback: GitProbeFailureReason | null = null;
+  let fallbackTimedOut = false;
   for (const candidate of fallbackPaths(process.platform)) {
     if (!existsSync(candidate)) continue;
     const result = probeGit(candidate);
@@ -104,11 +120,17 @@ export function detectGit(): GitDetected {
       };
     }
     fallback = result.reason;
+    fallbackTimedOut ||= result.reason === 'timeout';
   }
 
-  throw new GitNotAvailableError(process.platform, buildGuidance(process.platform), {
-    probe: { path: stage1.reason, fallback },
-  });
+  const probe = {
+    path: stage1.reason,
+    fallback: fallbackTimedOut ? 'timeout' : fallback,
+  };
+  if (stage1.reason === 'timeout' || fallbackTimedOut) {
+    throw new GitProbeTimeoutError(process.platform, buildGuidance(process.platform), probe);
+  }
+  throw new GitNotAvailableError(process.platform, buildGuidance(process.platform), { probe });
 }
 
 export function assertGitAvailable(): GitDetected {
@@ -400,6 +422,16 @@ function buildMissingMessage(g: InstallGuidance): string {
     `Run \`${currentCliCommandName()} diagnose health --check git\` to verify your installation.`,
   );
   return lines.join('\n');
+}
+
+function buildProbeTimeoutMessage(g: InstallGuidance, probe: GitProbeFailures): string {
+  return [
+    `OpenKnowledge could not verify ${g.product} because the Git probe timed out. Git may be installed but unavailable while the machine is busy.`,
+    '',
+    `Probe results: PATH=${probe.path}, fallback=${probe.fallback ?? 'not attempted'}.`,
+    'Check that Git is installed and retry OpenKnowledge.',
+    `Run \`${currentCliCommandName()} diagnose health --check git\` to verify your installation.`,
+  ].join('\n');
 }
 
 function buildTooOldMessage(

@@ -728,6 +728,7 @@ export async function runStartCommand(configArg: Config, opts: StartCommandOptio
     const serverModule = await import('@inkeep/open-knowledge-server');
     if (
       err instanceof serverModule.GitNotAvailableError ||
+      err instanceof serverModule.GitProbeTimeoutError ||
       err instanceof serverModule.GitTooOldError
     ) {
       process.exit(78);

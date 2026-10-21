@@ -16,6 +16,7 @@ import {
   type CredentialUrlMatchReader,
   type GitHubAccountSource,
   GitNotAvailableError,
+  GitProbeTimeoutError,
   GitTooOldError,
   loginShapedUserinfoUser,
   redactShareSubprocessStderr,
@@ -586,7 +587,11 @@ export function cloneCommand(getConfig: () => Config): Command {
             await startCmd.parseAsync([], { from: 'user' });
           }
         } catch (err) {
-          if (err instanceof GitNotAvailableError || err instanceof GitTooOldError) {
+          if (
+            err instanceof GitNotAvailableError ||
+            err instanceof GitProbeTimeoutError ||
+            err instanceof GitTooOldError
+          ) {
             if (opts.json) {
               emit(true, { type: 'error', message: err.message });
             } else {

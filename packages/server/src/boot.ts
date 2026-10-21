@@ -38,9 +38,13 @@ import {
   assertGitAvailable,
   type GitDetected,
   GitNotAvailableError,
+  GitProbeTimeoutError,
   GitTooOldError,
 } from './git-preflight.ts';
-import { emitPreflightFailureSpan } from './git-preflight-telemetry.ts';
+import {
+  describeGitPreflightFailure,
+  emitPreflightFailureSpan,
+} from './git-preflight-telemetry.ts';
 import { createShellHeaderSetter } from './http/shell-csp.ts';
 import {
   attachCollabClientCounter,
@@ -349,18 +353,21 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   try {
     if (opts.gitEnabled !== false) preflight();
   } catch (err) {
-    if (err instanceof GitNotAvailableError || err instanceof GitTooOldError) {
-      const detectedVersion = err instanceof GitTooOldError ? err.detected : '';
-      const reason = err instanceof GitTooOldError ? 'too_old' : 'not_available';
+    if (
+      err instanceof GitNotAvailableError ||
+      err instanceof GitProbeTimeoutError ||
+      err instanceof GitTooOldError
+    ) {
+      const failure = describeGitPreflightFailure(err);
       emitPreflightFailureSpan(err);
       log.warn(
         {
           event: 'git_preflight_fail',
           platform: err.platform,
-          reason,
-          detectedVersion,
+          reason: failure.reason,
+          detectedVersion: failure.detectedVersion,
         },
-        reason === 'not_available' ? 'git binary not found' : 'git binary too old',
+        failure.logMessage,
       );
       process.stderr.write(`${err.message}\n`);
     }

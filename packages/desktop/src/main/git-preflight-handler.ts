@@ -2,6 +2,7 @@ import {
   emitPreflightFailureSpan,
   type GitDetected,
   GitNotAvailableError,
+  GitProbeTimeoutError,
   GitTooOldError,
 } from '@inkeep/open-knowledge-server';
 
@@ -31,19 +32,59 @@ export interface EnsureGitDeps {
   };
 }
 
-const BUTTON_OPEN_INSTALL_PAGE = 0;
-const BUTTON_RETRY = 1;
-const BUTTON_QUIT = 2;
+type DialogAction = 'open-install-page' | 'retry' | 'quit';
 
-const BUTTON_LABELS = ['Open Install Page', "I've Installed Git — Retry", 'Quit'] as const;
+interface DialogButton {
+  readonly action: DialogAction;
+  readonly label: string;
+}
 
-const BUTTON_NAMES: Readonly<Partial<Record<number, string>>> = {
-  [BUTTON_OPEN_INSTALL_PAGE]: 'open-install-page',
-  [BUTTON_RETRY]: 'retry',
-  [BUTTON_QUIT]: 'quit',
-};
+const INSTALL_BUTTONS = [
+  { action: 'open-install-page', label: 'Open Install Page' },
+  { action: 'retry', label: "I've Installed Git — Retry" },
+  { action: 'quit', label: 'Quit' },
+] as const satisfies readonly DialogButton[];
 
-function preflightFailureFields(err: GitNotAvailableError | GitTooOldError) {
+const PROBE_TIMEOUT_BUTTONS = [
+  { action: 'retry', label: 'Retry' },
+  { action: 'quit', label: 'Quit' },
+] as const satisfies readonly DialogButton[];
+
+interface PreflightDialog {
+  readonly title: string;
+  readonly message: string;
+  readonly waitingLog: string;
+  readonly buttons: readonly DialogButton[];
+}
+
+function preflightDialog(
+  err: GitNotAvailableError | GitProbeTimeoutError | GitTooOldError,
+): PreflightDialog {
+  if (err instanceof GitProbeTimeoutError) {
+    return {
+      title: 'Git probe timed out',
+      message: `OpenKnowledge could not verify ${err.guidance.product} because the Git probe timed out.`,
+      waitingLog: 'ensureGitAvailable: git probe timed out, startup is waiting on the retry dialog',
+      buttons: PROBE_TIMEOUT_BUTTONS,
+    };
+  }
+  if (err instanceof GitTooOldError) {
+    return {
+      title: 'Git too old',
+      message: `OpenKnowledge requires ${err.guidance.product} ${err.required} or newer.`,
+      waitingLog: 'ensureGitAvailable: git unavailable, startup is waiting on the install dialog',
+      buttons: INSTALL_BUTTONS,
+    };
+  }
+  return {
+    title: 'Git not found',
+    message: `OpenKnowledge needs ${err.guidance.product} to track changes to your knowledge base.`,
+    waitingLog: 'ensureGitAvailable: git unavailable, startup is waiting on the install dialog',
+    buttons: INSTALL_BUTTONS,
+  };
+}
+
+function preflightFailureFields(err: GitNotAvailableError | GitProbeTimeoutError | GitTooOldError) {
   if (err instanceof GitTooOldError) {
     return {
       code: err.code,
@@ -51,6 +92,14 @@ function preflightFailureFields(err: GitNotAvailableError | GitTooOldError) {
       detected: err.detected,
       required: err.required,
       resolvedPath: err.resolvedPath,
+    };
+  }
+  if (err instanceof GitProbeTimeoutError) {
+    return {
+      code: err.code,
+      platform: err.platform,
+      pathProbe: err.probe.path,
+      fallbackProbe: err.probe.fallback,
     };
   }
   return {
@@ -63,7 +112,7 @@ function preflightFailureFields(err: GitNotAvailableError | GitTooOldError) {
 
 type PreflightAttempt =
   | { kind: 'ok'; detection: GitDetected }
-  | { kind: 'typed'; err: GitNotAvailableError | GitTooOldError }
+  | { kind: 'typed'; err: GitNotAvailableError | GitProbeTimeoutError | GitTooOldError }
   | { kind: 'unknown'; err: Error };
 
 async function showUnknownErrorDialog(deps: EnsureGitDeps, err: Error): Promise<void> {
@@ -88,7 +137,11 @@ function tryPreflight(fn: () => GitDetected): PreflightAttempt {
   try {
     return { kind: 'ok', detection: fn() };
   } catch (err) {
-    if (err instanceof GitNotAvailableError || err instanceof GitTooOldError) {
+    if (
+      err instanceof GitNotAvailableError ||
+      err instanceof GitProbeTimeoutError ||
+      err instanceof GitTooOldError
+    ) {
       return { kind: 'typed', err };
     }
     return { kind: 'unknown', err: err instanceof Error ? err : new Error(String(err)) };
@@ -110,33 +163,30 @@ export async function ensureGitAvailable(deps: EnsureGitDeps): Promise<EnsureGit
   let currentErr = first.err;
   let failedInstallUrl: string | null = null;
   while (true) {
-    const title = currentErr instanceof GitTooOldError ? 'Git too old' : 'Git not found';
-    const message =
-      currentErr instanceof GitTooOldError
-        ? `OpenKnowledge requires ${currentErr.guidance.product} ${currentErr.required} or newer.`
-        : `OpenKnowledge needs ${currentErr.guidance.product} to track changes to your knowledge base.`;
+    const dialog = preflightDialog(currentErr);
+    const offersInstallPage = dialog.buttons.some(
+      (button) => button.action === 'open-install-page',
+    );
     const detail =
-      failedInstallUrl === null
+      failedInstallUrl === null || !offersInstallPage
         ? currentErr.message
         : `${currentErr.message}\n\nCould not open browser automatically. Please visit: ${failedInstallUrl}`;
-    deps.log?.warn(
-      'ensureGitAvailable: git unavailable, startup is waiting on the install dialog',
-      preflightFailureFields(currentErr),
-    );
+    deps.log?.warn(dialog.waitingLog, preflightFailureFields(currentErr));
     const result = await deps.showMessageBox({
       type: 'warning',
-      buttons: BUTTON_LABELS,
-      defaultId: BUTTON_RETRY,
-      cancelId: BUTTON_QUIT,
-      title,
-      message,
+      buttons: dialog.buttons.map((button) => button.label),
+      defaultId: dialog.buttons.findIndex((button) => button.action === 'retry'),
+      cancelId: dialog.buttons.findIndex((button) => button.action === 'quit'),
+      title: dialog.title,
+      message: dialog.message,
       detail,
     });
+    const action = dialog.buttons[result.response]?.action;
     deps.log?.info?.('ensureGitAvailable: install dialog answered', {
-      response: BUTTON_NAMES[result.response] ?? result.response,
+      response: action ?? result.response,
     });
 
-    if (result.response === BUTTON_OPEN_INSTALL_PAGE) {
+    if (action === 'open-install-page') {
       try {
         await deps.openExternal(currentErr.guidance.url);
         failedInstallUrl = null;
@@ -150,7 +200,7 @@ export async function ensureGitAvailable(deps: EnsureGitDeps): Promise<EnsureGit
       continue;
     }
 
-    if (result.response === BUTTON_RETRY) {
+    if (action === 'retry') {
       const retry = tryPreflight(deps.assertGitAvailable);
       if (retry.kind === 'ok') return 'recovered';
       if (retry.kind === 'typed') {
@@ -165,7 +215,7 @@ export async function ensureGitAvailable(deps: EnsureGitDeps): Promise<EnsureGit
       return 'aborted';
     }
 
-    if (result.response === BUTTON_QUIT) {
+    if (action === 'quit') {
       return 'aborted';
     }
 

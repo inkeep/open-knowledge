@@ -26,6 +26,7 @@ import {
   ensureProjectGit,
   FilesystemRootProjectError,
   GitNotAvailableError,
+  GitProbeTimeoutError,
   GitTooOldError,
   HomeProjectRootError,
   initContent,
@@ -2046,7 +2047,11 @@ export function initCommand(): Command {
               process.exitCode = 64;
               return;
             }
-            if (err instanceof GitNotAvailableError || err instanceof GitTooOldError) {
+            if (
+              err instanceof GitNotAvailableError ||
+              err instanceof GitProbeTimeoutError ||
+              err instanceof GitTooOldError
+            ) {
               process.stderr.write(`${err.message}\n`);
               process.exitCode = 78;
               return;

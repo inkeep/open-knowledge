@@ -5,7 +5,12 @@ import {
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { GitNotAvailableError, GitTooOldError, type InstallGuidance } from './git-preflight.ts';
+import {
+  GitNotAvailableError,
+  GitProbeTimeoutError,
+  GitTooOldError,
+  type InstallGuidance,
+} from './git-preflight.ts';
 import {
   emitPreflightFailureSpan,
   GIT_PREFLIGHT_FAIL_SPAN_NAME,
@@ -93,6 +98,21 @@ describe('emitPreflightFailureSpan — GitTooOldError', () => {
     emitPreflightFailureSpan(err);
     const [span] = exporter.getFinishedSpans();
     expect(span?.attributes['ok.platform']).toBe('win32');
+  });
+});
+
+describe('emitPreflightFailureSpan — GitProbeTimeoutError', () => {
+  test('emits reason=probe_timeout', () => {
+    const err = new GitProbeTimeoutError('win32', makeGuidance(), {
+      path: 'timeout',
+      fallback: 'timeout',
+    });
+    emitPreflightFailureSpan(err);
+
+    const [span] = exporter.getFinishedSpans();
+    expect(span?.attributes['ok.platform']).toBe('win32');
+    expect(span?.attributes['ok.preflight.git.reason']).toBe('probe_timeout');
+    expect(span?.attributes['ok.preflight.git.detected_version']).toBe('');
   });
 });
 

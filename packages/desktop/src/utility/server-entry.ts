@@ -333,7 +333,9 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
         errMsg.kind = 'authority-registry';
       }
       const isGitPreflightFailure =
-        errName === 'GitNotAvailableError' || errName === 'GitTooOldError';
+        errName === 'GitNotAvailableError' ||
+        errName === 'GitProbeTimeoutError' ||
+        errName === 'GitTooOldError';
       deps.parentPort?.postMessage(errMsg);
       rejectReady(err as Error);
       deps.exit(isGitPreflightFailure ? 78 : 1);

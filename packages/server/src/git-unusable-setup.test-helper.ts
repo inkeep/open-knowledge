@@ -62,12 +62,19 @@ export async function withUnusableGitEverywhere(fn: () => Promise<void>): Promis
 export function isRecoverableGitSignal(value: unknown): boolean {
   if (value == null) return false;
   const code = (value as { code?: unknown }).code;
-  if (code === 'GIT_NOT_AVAILABLE' || code === 'GIT_TOO_OLD') return true;
+  if (code === 'GIT_NOT_AVAILABLE' || code === 'GIT_PROBE_TIMEOUT' || code === 'GIT_TOO_OLD')
+    return true;
   const name = (value as { name?: unknown }).name;
-  if (name === 'GitNotAvailableError' || name === 'GitTooOldError') return true;
+  if (
+    name === 'GitNotAvailableError' ||
+    name === 'GitProbeTimeoutError' ||
+    name === 'GitTooOldError'
+  )
+    return true;
   const msg = value instanceof Error ? value.message : typeof value === 'string' ? value : '';
   return (
     msg.includes('GIT_NOT_AVAILABLE') ||
+    msg.includes('GIT_PROBE_TIMEOUT') ||
     msg.includes('GIT_TOO_OLD') ||
     msg.includes('OpenKnowledge needs Git') ||
     msg.includes('OpenKnowledge requires Git') ||

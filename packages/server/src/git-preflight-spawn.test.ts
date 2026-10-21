@@ -165,4 +165,55 @@ describe('bootServer() preflight survives the subprocess boundary (FR6 / US-005)
       await rm(projectDir, { recursive: true, force: true });
     }
   }, 30_000);
+
+  test('subprocess that throws GitProbeTimeoutError exits 78 with timeout guidance', async () => {
+    const projectDir = await mkdtemp(resolve(tmpdir(), 'ok-spawn-preflight-timeout-'));
+    try {
+      seedOkScaffold(projectDir);
+
+      const inlineDriver = `
+        const { bootServer } = await import('./src/boot.ts');
+        const { ConfigSchema } = await import('./src/config/schema.ts');
+        const { GitProbeTimeoutError } = await import('./src/git-preflight.ts');
+        const projectDir = process.env.OK_TEST_PROJECT_DIR;
+        const guidance = { product: 'Git for Windows', url: 'https://gitforwindows.org/', options: [] };
+        try {
+          await bootServer({
+            config: ConfigSchema.parse({}),
+            contentDir: projectDir,
+            port: 0,
+            quiet: true,
+            gitEnabled: true,
+            idleShutdownMs: null,
+            gitPreflight: () => {
+              throw new GitProbeTimeoutError('win32', guidance, { path: 'timeout', fallback: null });
+            },
+          });
+        } catch (err) {
+          if (err instanceof GitProbeTimeoutError) process.exit(78);
+          console.error('UNEXPECTED-CATCH: ' + (err && err.message));
+          process.exit(97);
+        }
+        process.exit(96);
+      `;
+
+      const result = Bun.spawnSync({
+        cmd: ['node', '--import', 'tsx', '--conditions=development', '-e', inlineDriver],
+        cwd: SERVER_PACKAGE_ROOT,
+        env: {
+          ...process.env,
+          NO_COLOR: '1',
+          OK_TEST_PROJECT_DIR: projectDir,
+          OTEL_SDK_DISABLED: 'true',
+        },
+      });
+
+      const stderr = result.stderr.toString();
+      expect(result.exitCode).toBe(78);
+      expect(stderr).toContain('could not verify Git for Windows');
+      expect(stderr).not.toContain('UNEXPECTED-CATCH');
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });

@@ -243,6 +243,7 @@ export {
   fallbackPaths,
   type GitDetected,
   GitNotAvailableError,
+  GitProbeTimeoutError,
   GitTooOldError,
   type InstallGuidance,
   type InstallOption,

@@ -3,6 +3,7 @@ import {
   compareSemver,
   type GitDetected,
   GitNotAvailableError,
+  GitProbeTimeoutError,
   GitTooOldError,
   MIN_GIT_VERSION,
   SYMLINK_MERGE_MIN_GIT_LABEL,
@@ -32,6 +33,15 @@ export function makeGitCheck(deps: GitCheckDeps = {}): CheckDefinition {
         }
         return { name: 'git', status: 'pass', summary };
       } catch (err) {
+        if (err instanceof GitProbeTimeoutError) {
+          return {
+            name: 'git',
+            status: 'fail',
+            summary: 'git probe timed out',
+            remediation: 'Check that Git is installed and retry',
+            detail: err.message,
+          };
+        }
         if (err instanceof GitNotAvailableError) {
           return {
             name: 'git',

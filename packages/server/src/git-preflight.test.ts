@@ -11,6 +11,7 @@ import {
   fallbackPaths,
   type GitDetected,
   GitNotAvailableError,
+  GitProbeTimeoutError,
   GitTooOldError,
   type InstallGuidance,
   type LinuxFamily,
@@ -264,6 +265,20 @@ describe('GitNotAvailableError', () => {
     const err = new GitNotAvailableError('darwin', buildGuidance('darwin'));
     expect(err instanceof GitNotAvailableError).toBe(true);
     expect(err instanceof Error).toBe(true);
+  });
+});
+
+describe('GitProbeTimeoutError', () => {
+  test('carries a distinct code and avoids missing-Git guidance', () => {
+    const err = new GitProbeTimeoutError('win32', buildGuidance('win32'), {
+      path: 'timeout',
+      fallback: 'timeout',
+    });
+    expect(err.code).toBe('GIT_PROBE_TIMEOUT');
+    expect(err.name).toBe('GitProbeTimeoutError');
+    expect(err.probe).toEqual({ path: 'timeout', fallback: 'timeout' });
+    expect(err.message).toContain('could not verify Git for Windows');
+    expect(err.message).not.toContain("isn't installed");
   });
 });
 

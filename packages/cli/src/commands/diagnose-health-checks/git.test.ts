@@ -1,6 +1,7 @@
 import {
   type GitDetected,
   GitNotAvailableError,
+  GitProbeTimeoutError,
   GitTooOldError,
   type InstallGuidance,
 } from '@inkeep/open-knowledge-server';
@@ -55,6 +56,19 @@ describe('git check', () => {
     expect(result.summary).toBe('git not found');
     expect(result.remediation).toContain('sudo apt install git');
     expect(result.detail).toContain('OpenKnowledge needs Git');
+  });
+
+  test('fails distinctly when the Git probe times out', async () => {
+    const def = makeGitCheck({
+      assert: () => {
+        throw new GitProbeTimeoutError('linux', guidance, { path: 'timeout', fallback: null });
+      },
+    });
+    const result = await def.run(ctx);
+    expect(result.status).toBe('fail');
+    expect(result.summary).toBe('git probe timed out');
+    expect(result.remediation).toContain('retry');
+    expect(result.detail).toContain('could not verify Git');
   });
 
   test('fails when assert throws GitTooOldError; surfaces detected + required', async () => {

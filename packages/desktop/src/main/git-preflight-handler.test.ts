@@ -1,5 +1,6 @@
 import {
   GitNotAvailableError,
+  GitProbeTimeoutError,
   GitTooOldError,
   type InstallGuidance,
 } from '@inkeep/open-knowledge-server';
@@ -42,6 +43,30 @@ function showMessageBoxSequence(responses: readonly number[]) {
       throw new Error(`showMessageBox called more times than queued (call #${calls.length})`);
     }
     return { response: next };
+  });
+  return { fn, calls };
+}
+
+const WINDOWS_GUIDANCE: InstallGuidance = {
+  product: 'Git for Windows',
+  url: 'https://gitforwindows.org/',
+  options: [],
+};
+
+function probeTimeout(): GitProbeTimeoutError {
+  return new GitProbeTimeoutError('win32', WINDOWS_GUIDANCE, {
+    path: 'timeout',
+    fallback: 'timeout',
+  });
+}
+
+function showMessageBoxChoosing(chooseLabel: (opts: MessageBoxOptions, call: number) => string) {
+  const calls: MessageBoxOptions[] = [];
+  const fn = vi.fn(async (opts: MessageBoxOptions) => {
+    calls.push(opts);
+    const label = chooseLabel(opts, calls.length);
+    expect(opts.buttons, `buttons of dialog #${calls.length}`).toContain(label);
+    return { response: opts.buttons.indexOf(label) };
   });
   return { fn, calls };
 }
@@ -185,6 +210,213 @@ describe('ensureGitAvailable', () => {
     expect(boxCalls[0]?.title).toBe('Git too old');
     expect(boxCalls[0]?.message).toBe('OpenKnowledge requires Git 2.31.0 or newer.');
     expect(boxCalls[0]?.detail).toContain('detected 2.20.0 at /usr/bin/git');
+  });
+
+  test('GitProbeTimeoutError uses timeout guidance instead of Git-not-found guidance', async () => {
+    const assertGitAvailable = vi.fn(() => {
+      throw new GitProbeTimeoutError(
+        'win32',
+        {
+          product: 'Git for Windows',
+          url: 'https://gitforwindows.org/',
+          options: [],
+        },
+        { path: 'timeout', fallback: 'timeout' },
+      );
+    });
+    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxChoosing(() => 'Quit');
+    const outcome = await ensureGitAvailable({
+      assertGitAvailable,
+      showMessageBox,
+      openExternal: vi.fn(async () => {}),
+    });
+
+    expect(outcome).toBe('aborted');
+    expect(boxCalls[0]?.title).toBe('Git probe timed out');
+    expect(boxCalls[0]?.message).toContain('could not verify Git for Windows');
+    expect(boxCalls[0]?.message).not.toContain('Git not found');
+    const buttons = boxCalls[0]?.buttons ?? [];
+    expect(buttons).toEqual(['Retry', 'Quit']);
+    expect(buttons[boxCalls[0]?.defaultId ?? -1]).toBe('Retry');
+    expect(buttons[boxCalls[0]?.cancelId ?? -1]).toBe('Quit');
+  });
+
+  test('no button on a probe-timeout dialog opens the install page', async () => {
+    const discovery = showMessageBoxChoosing(() => 'Quit');
+    await ensureGitAvailable({
+      assertGitAvailable: vi.fn(() => {
+        throw probeTimeout();
+      }),
+      showMessageBox: discovery.fn,
+      openExternal: vi.fn(async () => {}),
+    });
+    const timeoutButtons = discovery.calls[0]?.buttons ?? [];
+    expect(timeoutButtons.length).toBeGreaterThan(0);
+
+    for (const [index, label] of timeoutButtons.entries()) {
+      const openExternal = vi.fn(async (_url: string) => {});
+      const answers: number[] = [];
+      const showMessageBox = vi.fn(async (opts: MessageBoxOptions) => {
+        const response = answers.length === 0 ? index : opts.buttons.indexOf('Quit');
+        answers.push(response);
+        return { response };
+      });
+
+      const outcome = await ensureGitAvailable({
+        assertGitAvailable: vi.fn(() => {
+          throw probeTimeout();
+        }),
+        showMessageBox,
+        openExternal,
+      });
+
+      expect(outcome, `pressing ${label}`).toBe('aborted');
+      expect(openExternal, `pressing ${label}`).not.toHaveBeenCalled();
+    }
+  });
+
+  test('Retry on a probe-timeout dialog re-runs the probe and logs a retry', async () => {
+    let attempts = 0;
+    const assertGitAvailable = vi.fn(() => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw probeTimeout();
+      }
+      return {
+        ok: true as const,
+        version: '2.56.0',
+        resolvedPath: 'C:\\Program Files\\Git\\cmd\\git.exe',
+        source: 'PATH' as const,
+      };
+    });
+    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxChoosing(() => 'Retry');
+    const openExternal = vi.fn(async (_url: string) => {});
+    const info = vi.fn((_msg: string, _obj?: unknown) => {});
+
+    const outcome = await ensureGitAvailable({
+      assertGitAvailable,
+      showMessageBox,
+      openExternal,
+      log: { warn: vi.fn(), info },
+    });
+
+    expect(outcome).toBe('recovered');
+    expect(attempts).toBe(2);
+    expect(boxCalls).toHaveLength(1);
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info.mock.calls[0]?.[1]).toEqual({ response: 'retry' });
+  });
+
+  test('a response outside the probe-timeout button set aborts as unexpected', async () => {
+    const discovery = showMessageBoxChoosing(() => 'Quit');
+    await ensureGitAvailable({
+      assertGitAvailable: vi.fn(() => {
+        throw probeTimeout();
+      }),
+      showMessageBox: discovery.fn,
+      openExternal: vi.fn(async () => {}),
+    });
+    const outOfRange = discovery.calls[0]?.buttons.length ?? 0;
+    expect(outOfRange).toBeGreaterThan(0);
+
+    const assertGitAvailable = vi.fn(() => {
+      throw probeTimeout();
+    });
+    const openExternal = vi.fn(async (_url: string) => {});
+    const warn = vi.fn((_msg: string, _obj?: unknown) => {});
+
+    const outcome = await ensureGitAvailable({
+      assertGitAvailable,
+      showMessageBox: vi.fn(async () => ({ response: outOfRange })),
+      openExternal,
+      log: { warn },
+    });
+
+    expect(outcome).toBe('aborted');
+    expect(assertGitAvailable).toHaveBeenCalledTimes(1);
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(warn.mock.calls.at(-1)?.[0]).toContain('unexpected dialog response');
+    expect(warn.mock.calls.at(-1)?.[1]).toEqual({ response: outOfRange });
+  });
+
+  test('a probe timeout after a failed install-page open omits the browser fallback note', async () => {
+    let attempts = 0;
+    const assertGitAvailable = vi.fn(() => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new GitNotAvailableError('darwin', MAC_GUIDANCE);
+      }
+      throw probeTimeout();
+    });
+    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxChoosing((_opts, call) => {
+      if (call === 1) return 'Open Install Page';
+      if (call === 2) return "I've Installed Git — Retry";
+      return 'Quit';
+    });
+    const openExternal = vi.fn(async (_url: string) => {
+      throw new Error('no default browser configured');
+    });
+
+    const outcome = await ensureGitAvailable({
+      assertGitAvailable,
+      showMessageBox,
+      openExternal,
+      log: { warn: vi.fn() },
+    });
+
+    expect(outcome).toBe('aborted');
+    expect(boxCalls).toHaveLength(3);
+    expect(boxCalls[1]?.title).toBe('Git not found');
+    expect(boxCalls[1]?.detail).toContain('Could not open browser automatically');
+    expect(boxCalls[2]?.title).toBe('Git probe timed out');
+    expect(boxCalls[2]?.detail).not.toContain('Could not open browser');
+    expect(boxCalls[2]?.detail).not.toContain(MAC_GUIDANCE.url);
+  });
+
+  test('a probe timeout logs its probe results without install wording', async () => {
+    const { fn: showMessageBox } = showMessageBoxChoosing(() => 'Quit');
+    const warn = vi.fn((_msg: string, _obj?: unknown) => {});
+
+    await ensureGitAvailable({
+      assertGitAvailable: vi.fn(() => {
+        throw probeTimeout();
+      }),
+      showMessageBox,
+      openExternal: vi.fn(async () => {}),
+      log: { warn },
+    });
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const [message, fields] = warn.mock.calls[0] ?? [];
+    expect(fields).toEqual({
+      code: 'GIT_PROBE_TIMEOUT',
+      platform: 'win32',
+      pathProbe: 'timeout',
+      fallbackProbe: 'timeout',
+    });
+    expect(message).not.toMatch(/git unavailable/i);
+    expect(message).not.toMatch(/install dialog/i);
+  });
+
+  test('a too-old Git keeps the install-page, installed-retry and quit buttons', async () => {
+    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxChoosing(() => 'Quit');
+
+    await ensureGitAvailable({
+      assertGitAvailable: vi.fn(() => {
+        throw new GitTooOldError('linux', '2.20.0', '2.31.0', '/usr/bin/git', LINUX_GUIDANCE);
+      }),
+      showMessageBox,
+      openExternal: vi.fn(async () => {}),
+    });
+
+    expect(boxCalls[0]?.buttons).toEqual([
+      'Open Install Page',
+      "I've Installed Git — Retry",
+      'Quit',
+    ]);
+    expect(boxCalls[0]?.defaultId).toBe(1);
+    expect(boxCalls[0]?.cancelId).toBe(2);
   });
 
   test("non-typed error from preflight shows error dialog before 'aborted'", async () => {

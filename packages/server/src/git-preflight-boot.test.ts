@@ -15,6 +15,7 @@ import { ConfigSchema } from './config/schema.ts';
 import {
   type GitDetected,
   GitNotAvailableError,
+  GitProbeTimeoutError,
   GitTooOldError,
   type InstallGuidance,
 } from './git-preflight.ts';
@@ -176,6 +177,59 @@ describe('bootServer git-preflight', () => {
     expect(entry?.fields.reason).toBe('too_old');
     expect(entry?.fields.detectedVersion).toBe('2.20.0');
     expect(entry?.msg).toBe('git binary too old');
+  });
+
+  test('GitProbeTimeoutError → structured log carries reason=probe_timeout + empty detectedVersion', async () => {
+    const projectDir = await mkdtemp(resolve(tmpDir, 'state-'));
+    seedOkScaffold(projectDir);
+
+    const { entries, logger } = createCaptureLogger();
+
+    let capturedStderr = '';
+    const originalStderrWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: unknown) => {
+      capturedStderr += String(chunk);
+      return true;
+    }) as never;
+
+    const thrown = new GitProbeTimeoutError('win32', makeGuidance(), {
+      path: 'timeout',
+      fallback: 'timeout',
+    });
+
+    let caught: unknown;
+    try {
+      await bootServer({
+        config: TEST_CONFIG,
+        contentDir: projectDir,
+        port: 0,
+        quiet: true,
+        gitEnabled: true,
+        idleShutdownMs: null,
+        log: logger,
+        gitPreflight: () => {
+          throw thrown;
+        },
+      });
+    } catch (err) {
+      caught = err;
+    } finally {
+      process.stderr.write = originalStderrWrite;
+    }
+
+    expect(caught).toBe(thrown);
+    expect(caught).toBeInstanceOf(GitProbeTimeoutError);
+
+    expect(capturedStderr).toContain('the Git probe timed out');
+    expect(capturedStderr).toContain('PATH=timeout, fallback=timeout');
+
+    expect(entries).toHaveLength(1);
+    const [entry] = entries;
+    expect(entry?.fields.event).toBe('git_preflight_fail');
+    expect(entry?.fields.platform).toBe('win32');
+    expect(entry?.fields.reason).toBe('probe_timeout');
+    expect(entry?.fields.detectedVersion).toBe('');
+    expect(entry?.msg).toBe('git probe timed out');
   });
 
   test('non-typed error from preflight propagates unchanged — no log, no stderr', async () => {
