@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { HocuspocusProvider } from '@hocuspocus/provider';
-import { describe, expect, test } from 'vitest';
+import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
+import { describe, expect, onTestFinished, test, vi } from 'vitest';
 
 const PACKAGE_NAME = '@hocuspocus/provider';
 const PATCH_FILE = '@hocuspocus%2Fprovider@4.0.0-rc.1.patch';
@@ -132,5 +132,83 @@ describe('@hocuspocus/provider forced-close patch verification', () => {
         provider.destroy();
       } catch {}
     }
+  });
+});
+
+class OwnedWebSocket {
+  static instances: OwnedWebSocket[] = [];
+  readonly listeners = new Map<string, Set<(payload: unknown) => void>>();
+  readonly url: string;
+  readyState = 0;
+  binaryType = 'arraybuffer';
+  identifier = '';
+  closed = false;
+
+  constructor(url: string) {
+    this.url = url;
+    OwnedWebSocket.instances.push(this);
+  }
+
+  addEventListener(name: string, handler: (payload: unknown) => void): void {
+    const handlers = this.listeners.get(name) ?? new Set();
+    handlers.add(handler);
+    this.listeners.set(name, handlers);
+  }
+
+  removeEventListener(name: string, handler: (payload: unknown) => void): void {
+    this.listeners.get(name)?.delete(handler);
+  }
+
+  close(): void {
+    this.closed = true;
+    this.readyState = 3;
+  }
+
+  emit(name: string, payload: unknown = {}): void {
+    for (const handler of this.listeners.get(name) ?? []) handler(payload);
+  }
+}
+
+describe('@hocuspocus/provider destroy-reconnect patch verification', () => {
+  test('destroy prevents a queued reconnect from creating another socket', async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    OwnedWebSocket.instances = [];
+    const websocket = new HocuspocusProviderWebsocket({
+      url: 'ws://localhost:1/collab',
+      autoConnect: false,
+      WebSocketPolyfill: OwnedWebSocket,
+      delay: 1_000,
+      initialDelay: 0,
+      minDelay: 1_000,
+      maxDelay: 1_000,
+      jitter: false,
+      maxAttempts: 1,
+    });
+    onTestFinished(() => {
+      websocket.destroy();
+    });
+
+    void websocket.connect();
+    await Promise.resolve();
+    const first = OwnedWebSocket.instances[0];
+    if (!first) throw new Error('expected first socket');
+    first.emit('open', {});
+    const timersBeforeClose = vi.getTimerCount();
+    first.emit('close', { code: 1006, reason: 'fixture-drop' });
+    expect(
+      vi.getTimerCount() - timersBeforeClose,
+      `closing an open socket should queue exactly one reconnect timer; re-derive this fixture against patches/${PATCH_FILE}`,
+    ).toBe(1);
+
+    websocket.destroy();
+    await vi.runOnlyPendingTimersAsync();
+    expect(
+      OwnedWebSocket.instances,
+      `destroy() left the queued reconnect armed; check the reconnect-timer hunks in patches/${PATCH_FILE}`,
+    ).toHaveLength(1);
+    expect(websocket.shouldConnect).toBe(false);
   });
 });

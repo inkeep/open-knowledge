@@ -147,7 +147,7 @@ packageExtensionsChecksum: sha256-dqn6jwuY3uAC75dMPBWd+w9GVkhNUrdfgRsY6AOXEhY=
 
 patchedDependencies:
   '@handlewithcare/remark-prosemirror@0.1.5': a6b60cc8640e04973be2c8123e0dbd73156b54388a57cd2b76191c2fd8ac2865
-  '@hocuspocus/provider@4.0.0-rc.1': 3e4275acfde912e2ad1bfb9a78db31a311e239d733af8a78dc6b3038343287fd
+  '@hocuspocus/provider@4.0.0-rc.1': ccc5d9846f114c5d0feb696dbe4a9432804b6f5de734bb70d2d6f138b2353b95
   '@lingui/core@6.5.0': 126db40cb2224e90abf5f063d3aa005eb1bc84796d77216d5a9e52d5cd28a656
   '@pierre/diffs@1.3.6': c823ecf3ff76ff3c3e71f441f2a7286aa2aae8e91b4d5e5a10554d8441d6c739
   '@pierre/trees@1.0.0-beta.4': 86ac804ac75d9f365ee9ef918460463a211ac5201ebc3cf04fc0534c5b3adf88
@@ -444,7 +444,7 @@ importers:
         version: 5.2.8
       '@hocuspocus/provider':
         specifier: 4.0.0-rc.1
-        version: 4.0.0-rc.1(patch_hash=3e4275acfde912e2ad1bfb9a78db31a311e239d733af8a78dc6b3038343287fd)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
+        version: 4.0.0-rc.1(patch_hash=ccc5d9846f114c5d0feb696dbe4a9432804b6f5de734bb70d2d6f138b2353b95)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
       '@hookform/resolvers':
         specifier: ^5.0.0
         version: 5.4.0(react-hook-form@7.81.0(react@19.2.5))(zod@4.4.3)
@@ -13425,7 +13425,7 @@ snapshots:
     dependencies:
       lib0: 0.2.117
 
-  '@hocuspocus/provider@4.0.0-rc.1(patch_hash=3e4275acfde912e2ad1bfb9a78db31a311e239d733af8a78dc6b3038343287fd)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)':
+  '@hocuspocus/provider@4.0.0-rc.1(patch_hash=ccc5d9846f114c5d0feb696dbe4a9432804b6f5de734bb70d2d6f138b2353b95)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)':
     dependencies:
       '@hocuspocus/common': 4.3.0
       '@lifeomic/attempt': 3.1.0
