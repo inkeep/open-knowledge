@@ -40,6 +40,7 @@ function evidence(utilityRecords) {
 }
 
 const startup = [
+  { phase: 'utility-entry', edge: 'point' },
   { phase: 'module-entry', edge: 'point' },
   { phase: 'logger-import', edge: 'begin' },
   { phase: 'logger-import', edge: 'end' },
@@ -80,8 +81,35 @@ test('rejects a retained renderer session with no utility phase evidence', () =>
 
 test('rejects utility output without its earliest startup evidence', () => {
   expect(() => assertPackagedPtyPhaseEvidence(evidence(session))).toThrow(
+    'Packaged PTY phase evidence is missing utility utility-entry/point',
+  );
+});
+
+test('rejects utility startup whose process never marked the diagnostic entry', () => {
+  const withoutEntry = startup.filter((record) => record.phase !== 'utility-entry');
+  expect(() => assertPackagedPtyPhaseEvidence(evidence([...withoutEntry, ...session]))).toThrow(
+    'Packaged PTY phase evidence is missing utility utility-entry/point',
+  );
+});
+
+test('rejects utility startup without the host module entry', () => {
+  const withoutModule = startup.filter((record) => record.phase !== 'module-entry');
+  expect(() => assertPackagedPtyPhaseEvidence(evidence([...withoutModule, ...session]))).toThrow(
     'Packaged PTY phase evidence is missing utility module-entry/point',
   );
+});
+
+const rendererTraceUnavailable = `${JSON.stringify({
+  event: 'pty-phase-trace-unavailable',
+  errorType: 'TimeoutError',
+  error: 'the original echo budget is exhausted',
+})}\n`;
+
+test('rejects an unavailable renderer trace whose utility process stopped after its diagnostic entry, naming the host module entry', () => {
+  const entryOnly = startup.filter((record) => record.phase === 'utility-entry');
+  expect(() =>
+    assertPackagedPtyPhaseEvidence(evidence(entryOnly), rendererTraceUnavailable),
+  ).toThrow('Packaged PTY phase evidence is missing utility module-entry/point');
 });
 
 test('rejects utility records belonging to a different terminal session', () => {
@@ -94,7 +122,7 @@ test('rejects utility records belonging to a different terminal session', () => 
 test('rejects startup records from a different utility process', () => {
   const otherProcess = startup.map((record) => ({ ...record, pid: 43 }));
   expect(() => assertPackagedPtyPhaseEvidence(evidence([...otherProcess, ...session]))).toThrow(
-    'Packaged PTY phase evidence is missing utility module-entry/point',
+    'Packaged PTY phase evidence is missing utility utility-entry/point',
   );
 });
 

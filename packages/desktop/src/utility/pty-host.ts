@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { basename, win32 } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import {
   composeWindowsShellLaunchArgs,
   isTerminalLaunchEnvName,
@@ -27,7 +28,7 @@ import {
   okManagedBinDirs,
   okPackagedCliBinDir,
 } from '../shared/ok-child-env.ts';
-import { createPtyPhaseTrace, type PtyPhaseTrace } from '../shared/pty-phase-trace.ts';
+import { type PtyPhaseTrace, takeUtilityPtyPhaseTrace } from '../shared/pty-phase-trace.ts';
 import {
   commandWithManagedPath,
   interactiveShellArgs,
@@ -40,12 +41,11 @@ import {
   TERMINAL_SUPPORT_FILE_ESCAPE_CODE,
 } from './support-file-write.ts';
 
-const utilityPhaseTrace = (process as NodeJS.Process & { parentPort?: unknown }).parentPort
-  ? createPtyPhaseTrace(process.env, 'utility', (record) => {
-      process.stderr.write(`${JSON.stringify(record)}\n`);
-    })
-  : undefined;
-utilityPhaseTrace?.mark('module-entry', 'point');
+const utilityPhaseTrace = takeUtilityPtyPhaseTrace();
+utilityPhaseTrace?.mark('module-entry', 'point', {
+  processUptimeMs: Math.round(process.uptime() * 1000),
+  nodeStartMs: performance.nodeTiming.nodeStart,
+});
 
 const DARWIN_FALLBACK_SHELL = '/bin/zsh';
 const KILL_ESCALATE_MS = 250;

@@ -86,7 +86,7 @@ export default defineConfig({
             'src/main/desktop-uninstall-result-window.ts',
           ),
           'utility/server-entry': resolve(__dirname, 'src/utility/server-entry.ts'),
-          'utility/pty-host': resolve(__dirname, 'src/utility/pty-host.ts'),
+          'utility/pty-host': resolve(__dirname, 'src/utility/pty-host-entry.ts'),
         },
         output: { format: 'es', entryFileNames: '[name].js' },
       },

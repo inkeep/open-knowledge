@@ -142,6 +142,7 @@ test('reports verified retained utility phases after a successful packaged echo'
   writeFileSync(join(root, 'OpenKnowledge.exe'), 'fixture');
   const ptyId = 'echo-session';
   const startup = [
+    ['utility-entry', 'point'],
     ['module-entry', 'point'],
     ['logger-import', 'begin'],
     ['logger-import', 'end'],
@@ -226,6 +227,7 @@ const echoSessionId = 'echo-session';
 const echoObserved =
   'PTY echo marker observed: OK_PTY_SMOKE; timings={}; endings=null; notices=null\n';
 const retainedUtility = [
+  ['utility-entry', 'point'],
   ['module-entry', 'point'],
   ['logger-import', 'begin'],
   ['logger-import', 'end'],
@@ -377,6 +379,11 @@ test.each([
     retained: 'lacks the utility listener-ready point',
     utility: retainedUtility.filter((record) => record.phase !== 'listener-ready'),
     rejection: 'Packaged PTY phase evidence is missing utility listener-ready/point',
+  },
+  {
+    retained: 'lacks the utility diagnostic entry point',
+    utility: retainedUtility.filter((record) => record.phase !== 'utility-entry'),
+    rejection: 'Packaged PTY phase evidence is missing utility utility-entry/point',
   },
   {
     retained: 'splits the utility startup across two processes',

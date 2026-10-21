@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { readPtyPhaseRecords } from './pty-phase-evidence.mjs';
 
 const UTILITY_STARTUP_PHASES = [
+  ['utility-entry', 'point'],
   ['module-entry', 'point'],
   ['logger-import', 'begin'],
   ['native-import', 'begin'],
@@ -58,10 +59,11 @@ function missingUtilityStartup(utility) {
 }
 
 function assertSomeUtilityProcessStarted(records) {
+  const [entryPhase, entryEdge] = UTILITY_STARTUP_PHASES[0];
   const failures = records
     .filter(
       (record) =>
-        record.producer === 'utility' && record.phase === 'module-entry' && record.edge === 'point',
+        record.producer === 'utility' && record.phase === entryPhase && record.edge === entryEdge,
     )
     .map((entry) => missingUtilityStartup(utilityProcessRecords(records, entry)));
   assert.ok(failures.includes(undefined), failures[0] ?? missingUtilityStartup([]));

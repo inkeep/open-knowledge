@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { observePtyFork } from '../main/pty-phase-observation.ts';
-import { createPtyPhaseTrace, type PtyPhaseRecord } from './pty-phase-trace.ts';
+import {
+  createPtyPhaseTrace,
+  installUtilityPtyPhaseTrace,
+  type PtyPhaseRecord,
+  takeUtilityPtyPhaseTrace,
+} from './pty-phase-trace.ts';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -64,6 +69,35 @@ test('bounds an enabled trace with an explicit limit record', () => {
     edge: 'point',
     sequence: records.length,
   });
+});
+
+test('passes the entry trace to the host once', () => {
+  const trace = createPtyPhaseTrace({ OK_PTY_PHASE_TRACE: '1' }, 'utility', () => {});
+  installUtilityPtyPhaseTrace(trace);
+
+  expect(takeUtilityPtyPhaseTrace()).toBe(trace);
+  expect(takeUtilityPtyPhaseTrace()).toBeUndefined();
+});
+
+test('records utility process origin context on the module entry mark', () => {
+  const write = vi.fn();
+  const trace = createPtyPhaseTrace({ OK_PTY_PHASE_TRACE: '1' }, 'utility', write);
+
+  trace?.mark('utility-entry', 'point');
+  trace?.mark('module-entry', 'point', {
+    processUptimeMs: 17425,
+    nodeStartMs: 26.8,
+  });
+
+  expect(write.mock.calls.map(([record]) => record)).toEqual([
+    expect.objectContaining({ phase: 'utility-entry', edge: 'point' }),
+    expect.objectContaining({
+      phase: 'module-entry',
+      edge: 'point',
+      processUptimeMs: 17425,
+      nodeStartMs: 26.8,
+    }),
+  ]);
 });
 
 test('a failed diagnostic write cannot replace an operation error', () => {
