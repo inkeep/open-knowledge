@@ -61,8 +61,17 @@
       "dependsOn": []
     },
     "lint": {},
+    "types": {
+      "dependsOn": ["^types"]
+    },
+    "@inkeep/open-knowledge#types": {
+      "dependsOn": ["^types", "build"]
+    },
+    "@inkeep/open-knowledge-native-config#types": {
+      "dependsOn": ["^types", "build"]
+    },
     "typecheck": {
-      "dependsOn": ["^build", "//#typecheck:no-net-connect"]
+      "dependsOn": ["^types", "//#typecheck:no-net-connect"]
     },
     "//#typecheck:no-net-connect": {
       "inputs": [
