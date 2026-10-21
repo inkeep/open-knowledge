@@ -45,7 +45,11 @@ import {
 } from '@/components/FrontmatterRow';
 import { useProperties } from '@/components/PropertyContext';
 import { PropertyDisclosure } from '@/components/PropertyDisclosure';
-import { coerceValue, DEFAULT_VALUE_FOR_TYPE } from '@/components/PropertyWidgets';
+import {
+  coerceValue,
+  DEFAULT_VALUE_FOR_TYPE,
+  defaultValueForType,
+} from '@/components/PropertyWidgets';
 import { usePropertiesCollapsed } from '@/components/properties-collapsed-store';
 import { Button } from '@/components/ui/button';
 import { useDocLintConfig } from '@/editor/lint-config-client';
@@ -244,10 +248,6 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
     }
   }
 
-  function defaultValueFor(type: FrontmatterType): FrontmatterValue {
-    return type === 'date' ? new Date().toISOString().slice(0, 10) : DEFAULT_VALUE_FOR_TYPE[type];
-  }
-
   function blankDraft(): StagedDraft {
     blankDraftSeq.current += 1;
     return {
@@ -319,7 +319,7 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
     updateDraft(id, (draft) => ({
       ...draft,
       type: nextType,
-      value: defaultValueFor(nextType),
+      value: defaultValueForType(nextType),
       error: null,
     }));
   }
@@ -337,7 +337,7 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
       ...draft,
       name: suggestion.name,
       type: suggestion.type,
-      value: defaultValueFor(suggestion.type),
+      value: defaultValueForType(suggestion.type),
       error: null,
     }));
   }

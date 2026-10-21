@@ -87,6 +87,7 @@ docker run --rm -p 8080:8080 -e OK_ALLOW_EXTERNAL=1 -v ok-data:/data open-knowle
 | `OK_BIND` | `0.0.0.0` | Bind address list. On an IPv6-only network, use `::` instead. It also serves IPv4. Do not combine `0.0.0.0 ::` on one port because the listeners conflict. |
 | `OK_ALLOW_EXTERNAL` | unset | Run-time exposure consent. Without it the interlock refuses to boot. |
 | `OK_EXTERNAL_URL` | unset | The public origin the deployment is reached at. Required behind any real domain, or hostname requests are rejected with `403`. |
+| `TZ` | unset (UTC) | Time zone for the date `{{date}}` fills in when a document is created from a template, as an IANA name such as `America/Los_Angeles`. |
 | `OK_IDLE_SHUTDOWN` | unset | Idle shutdown defaults to `off` on a non-loopback bind. Set a duration such as `30m` to turn it back on. |
 
 Health endpoints for platform checks: `GET /healthz` (liveness) and `GET /readyz` (readiness).

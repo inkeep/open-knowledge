@@ -15,11 +15,7 @@ import {
   FrontmatterRow,
   type RenameDraft,
 } from '@/components/FrontmatterRow';
-import {
-  coerceValue,
-  DEFAULT_VALUE_FOR_TYPE,
-  resolveWidgetType,
-} from '@/components/PropertyWidgets';
+import { coerceValue, defaultValueForType, resolveWidgetType } from '@/components/PropertyWidgets';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -101,11 +97,7 @@ export function FolderPropertiesCard({ folderPath, state, onChange }: Props) {
   function changeAddType(nextType: FrontmatterType) {
     setAdding((prev) => {
       if (!prev) return prev;
-      const defaultValue =
-        nextType === 'date'
-          ? new Date().toISOString().slice(0, 10)
-          : DEFAULT_VALUE_FOR_TYPE[nextType];
-      return { ...prev, type: nextType, value: defaultValue, error: null };
+      return { ...prev, type: nextType, value: defaultValueForType(nextType), error: null };
     });
   }
 

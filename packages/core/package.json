@@ -755,6 +755,12 @@
       "types": "./dist/utils-link-targets.d.mts",
       "default": "./dist/utils-link-targets.mjs"
     },
+    "./utils/local-iso-date": {
+      "@inkeep/source": "./src/utils/local-iso-date.ts",
+      "development": "./src/utils/local-iso-date.ts",
+      "types": "./dist/utils-local-iso-date.d.mts",
+      "default": "./dist/utils-local-iso-date.mjs"
+    },
     "./utils/loom-embed": {
       "@inkeep/source": "./src/utils/loom-embed.ts",
       "development": "./src/utils/loom-embed.ts",

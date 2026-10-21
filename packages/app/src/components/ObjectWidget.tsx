@@ -33,7 +33,7 @@ import {
   type RenameDraft,
 } from '@/components/FrontmatterRow';
 import { describeError } from '@/components/frontmatter-error-utils';
-import { coerceValue, DEFAULT_VALUE_FOR_TYPE } from '@/components/PropertyWidgets';
+import { coerceValue, defaultValueForType } from '@/components/PropertyWidgets';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
@@ -150,11 +150,7 @@ export function ObjectWidget({ keyName, value, path, depth = 0 }: ObjectWidgetPr
   function changeAddType(nextType: FrontmatterType) {
     setAdding((prev) => {
       if (!prev) return prev;
-      const defaultValue =
-        nextType === 'date'
-          ? new Date().toISOString().slice(0, 10)
-          : DEFAULT_VALUE_FOR_TYPE[nextType];
-      return { ...prev, type: nextType, value: defaultValue, error: null };
+      return { ...prev, type: nextType, value: defaultValueForType(nextType), error: null };
     });
   }
 

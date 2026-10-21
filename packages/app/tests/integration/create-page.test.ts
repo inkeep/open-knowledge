@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, onTestFinished, test } from 'vitest';
 
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestServer, type TestServer } from './test-harness';
@@ -162,6 +162,35 @@ describe('/api/create-page — template seeding', () => {
     expect(created).not.toContain('title: Meeting');
     expect(created).not.toContain('{{date}}');
     expect(created).toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+
+  test('fills {{date}} with the local calendar date, not the UTC date', async () => {
+    const now = new Date();
+    const zone = now.getUTCHours() < 11 ? 'Etc/GMT+12' : 'Etc/GMT-14';
+    const localDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: zone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(now);
+    expect(localDate).not.toBe(now.toISOString().slice(0, 10));
+
+    seedRootTemplate(
+      'dated-tpl',
+      '---\ntemplate:\n  title: Dated\ndate: {{date}}\n---\n# {{date}}\n',
+    );
+    const originalTz = process.env.TZ;
+    onTestFinished(() => {
+      if (originalTz === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTz;
+    });
+    process.env.TZ = zone;
+    const { status } = await createPageWithTemplate('from-dated-tpl.md', 'dated-tpl');
+    expect(status).toBe(200);
+
+    const created = readFileSync(join(server.contentDir, 'from-dated-tpl.md'), 'utf-8');
+    expect(created).toContain(`date: ${localDate}`);
+    expect(created).toContain(`# ${localDate}`);
   });
 
   test('single-block template: strips `template:` identity, keeps doc-frontmatter, substitutes tokens', async () => {

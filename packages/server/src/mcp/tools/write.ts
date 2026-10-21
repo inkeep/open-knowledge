@@ -6,6 +6,7 @@ import {
   type FrontmatterPatch,
   findTemplateByName,
   instantiateDoc,
+  localIsoDate,
   normalizeBridge,
   type ProblemType,
   parseFrontmatterYaml,
@@ -26,7 +27,7 @@ import { CONCURRENT_OVERWRITE_REFUSED_TYPE } from '../../concurrent-overwrite-re
 import { resolveContentDir, resolveLockDir } from '../../config/paths.ts';
 import { mergePatch } from '../../content/frontmatter-merge.ts';
 import { parentFolderOf } from '../../content/nested-folder-rules.ts';
-import { applySubstitution, todayIsoUtc } from '../../content/substitution.ts';
+import { applySubstitution } from '../../content/substitution.ts';
 import { resolveTemplatesAvailable } from '../../content/templates-resolver.ts';
 import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
 import { splitPayloadFrontmatter } from '../../payload-frontmatter.ts';
@@ -318,7 +319,7 @@ async function writeOneDoc(
     }
     const templateBody = instantiateDoc(templateContent);
     effectiveMarkdown = applySubstitution(templateBody, {
-      date: todayIsoUtc(),
+      date: localIsoDate(),
       user: identity?.displayName ?? '',
     });
     effectivePosition = 'replace';

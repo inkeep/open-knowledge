@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { type AddDraft, AddPropertyRow } from './FrontmatterRow';
-import { DEFAULT_VALUE_FOR_TYPE } from './PropertyWidgets';
+import { defaultValueForType } from './PropertyWidgets';
 
 const TYPE_PICKER_LABEL: Record<FrontmatterType, string> = {
   text: 'Text',
@@ -35,9 +35,7 @@ function PropertyPanelHarness({
       draft={draft}
       onChangeName={(name) => setDraft((p) => ({ ...p, name, error: null }))}
       onChangeType={(type) => {
-        const defaultValue =
-          type === 'date' ? new Date().toISOString().slice(0, 10) : DEFAULT_VALUE_FOR_TYPE[type];
-        setDraft((p) => ({ ...p, type, value: defaultValue, error: null }));
+        setDraft((p) => ({ ...p, type, value: defaultValueForType(type), error: null }));
       }}
       onChangeValue={(value) => setDraft((p) => ({ ...p, value }))}
       onCommit={() => {}}
@@ -62,9 +60,7 @@ function FolderDefaultsHarness({
       draft={draft}
       onChangeName={(name) => setDraft((p) => ({ ...p, name, error: null }))}
       onChangeType={(type) => {
-        const defaultValue =
-          type === 'date' ? new Date().toISOString().slice(0, 10) : DEFAULT_VALUE_FOR_TYPE[type];
-        setDraft((p) => ({ ...p, type, value: defaultValue, error: null }));
+        setDraft((p) => ({ ...p, type, value: defaultValueForType(type), error: null }));
       }}
       onChangeValue={(value) => setDraft((p) => ({ ...p, value }))}
       onCommit={() => {}}

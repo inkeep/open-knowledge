@@ -2200,6 +2200,7 @@ export {
   type ResolveAssetProjectPathOptions,
   resolveAssetProjectPath,
 } from './utils/link-targets.ts';
+export { localIsoDate } from './utils/local-iso-date.ts';
 export {
   isLoomUrl,
   type ParsedLoomUrl,

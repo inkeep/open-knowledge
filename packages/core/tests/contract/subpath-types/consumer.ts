@@ -799,6 +799,7 @@ export type {
   isExternalHref,
   resolveAssetProjectPath,
 } from '@inkeep/open-knowledge-core/utils/link-targets';
+export type { localIsoDate } from '@inkeep/open-knowledge-core/utils/local-iso-date';
 export type { isLoomUrl, parseLoomUrl } from '@inkeep/open-knowledge-core/utils/loom-embed';
 export type { parsePdfAnchor } from '@inkeep/open-knowledge-core/utils/pdf-anchor';
 export type { randomUUID } from '@inkeep/open-knowledge-core/utils/random-uuid';

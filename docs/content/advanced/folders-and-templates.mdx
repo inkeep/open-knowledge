@@ -52,7 +52,7 @@ When you create a new file, the **New file** dialog shows a **Start from** picke
 
 A template body may use two placeholders, filled in automatically when a document is created:
 
-- `{{date}}`: today's date, in `YYYY-MM-DD` form.
+- `{{date}}`: today's date in the time zone of the computer running OpenKnowledge, in `YYYY-MM-DD` form. A self-hosted server uses its [`TZ` environment variable](/docs/remote-control/methods/docker#the-environment-surface).
 - `{{user}}`: the display name of the person or agent creating the document.
 
 ```md title=".ok/templates/standup.md"

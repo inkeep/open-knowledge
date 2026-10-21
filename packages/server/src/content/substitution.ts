@@ -36,10 +36,3 @@ export function applySubstitution(body: string, ctx: SubstitutionContext): strin
 function isAllowedToken(token: string): token is SubstitutionToken {
   return (SUBSTITUTION_ALLOWLIST as readonly string[]).includes(token);
 }
-
-export function todayIsoUtc(now: Date = new Date()): string {
-  const yyyy = now.getUTCFullYear().toString().padStart(4, '0');
-  const mm = (now.getUTCMonth() + 1).toString().padStart(2, '0');
-  const dd = now.getUTCDate().toString().padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}

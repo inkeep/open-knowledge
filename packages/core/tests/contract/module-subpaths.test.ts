@@ -111,6 +111,7 @@ import * as utilsGraphemeClipSubpath from '@inkeep/open-knowledge-core/utils/gra
 import * as utilsHeadingScanSubpath from '@inkeep/open-knowledge-core/utils/heading-scan';
 import * as utilsIdentitySubpath from '@inkeep/open-knowledge-core/utils/identity';
 import * as utilsLinkTargetsSubpath from '@inkeep/open-knowledge-core/utils/link-targets';
+import * as utilsLocalIsoDateSubpath from '@inkeep/open-knowledge-core/utils/local-iso-date';
 import * as utilsLoomEmbedSubpath from '@inkeep/open-knowledge-core/utils/loom-embed';
 import * as utilsPdfAnchorSubpath from '@inkeep/open-knowledge-core/utils/pdf-anchor';
 import * as utilsRandomUuidSubpath from '@inkeep/open-knowledge-core/utils/random-uuid';
@@ -254,6 +255,7 @@ const MODULE_SUBPATHS: Record<string, object> = {
   './utils/heading-scan': utilsHeadingScanSubpath,
   './utils/identity': utilsIdentitySubpath,
   './utils/link-targets': utilsLinkTargetsSubpath,
+  './utils/local-iso-date': utilsLocalIsoDateSubpath,
   './utils/loom-embed': utilsLoomEmbedSubpath,
   './utils/pdf-anchor': utilsPdfAnchorSubpath,
   './utils/random-uuid': utilsRandomUuidSubpath,

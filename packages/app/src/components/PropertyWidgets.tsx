@@ -11,6 +11,7 @@ import {
   FRONTMATTER_TAG_VALUE_RE,
   isValidFrontmatterTagValue,
 } from '@inkeep/open-knowledge-core/frontmatter/tags';
+import { localIsoDate } from '@inkeep/open-knowledge-core/utils/local-iso-date';
 import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -558,6 +559,10 @@ export const DEFAULT_VALUE_FOR_TYPE: Record<FrontmatterType, FrontmatterValue> =
   object: {},
 };
 
+export function defaultValueForType(type: FrontmatterType): FrontmatterValue {
+  return type === 'date' ? localIsoDate() : DEFAULT_VALUE_FOR_TYPE[type];
+}
+
 interface TypeIconButtonProps {
   keyName: string;
   type: FrontmatterType;
@@ -668,8 +673,7 @@ export function coerceValue(value: FrontmatterValue, target: FrontmatterType): F
     }
     case 'date': {
       if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-      const today = new Date().toISOString().slice(0, 10);
-      return today;
+      return localIsoDate();
     }
     case 'list': {
       if (Array.isArray(value)) return value;

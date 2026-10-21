@@ -126,6 +126,7 @@ const entry = {
   'utils-heading-scan': 'src/utils/heading-scan.ts',
   'utils-identity': 'src/utils/identity.ts',
   'utils-link-targets': 'src/utils/link-targets.ts',
+  'utils-local-iso-date': 'src/utils/local-iso-date.ts',
   'utils-loom-embed': 'src/utils/loom-embed.ts',
   'utils-pdf-anchor': 'src/utils/pdf-anchor.ts',
   'utils-random-uuid': 'src/utils/random-uuid.ts',

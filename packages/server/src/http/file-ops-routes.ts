@@ -22,6 +22,7 @@ import {
   instantiateDoc,
   isManagedArtifactDocName,
   LINKABLE_ASSET_EXTENSIONS,
+  localIsoDate,
   type Principal,
   type ProblemType,
   RenamePathRequestSchema,
@@ -40,7 +41,7 @@ import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
 import type { ConflictAuthority } from '../conflict-authority.ts';
 import { DocInConflictError, respondDocInConflict } from '../conflict-errors.ts';
 import { isReservedProjectStatePath } from '../content/managed-doc-enum.ts';
-import { applySubstitution, todayIsoUtc } from '../content/substitution.ts';
+import { applySubstitution } from '../content/substitution.ts';
 import { resolveTemplatesAvailable } from '../content/templates-resolver.ts';
 import type { ContentFilter } from '../content-filter.ts';
 import { recordContributor } from '../contributor-tracker.ts';
@@ -597,7 +598,7 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
           const userDisplayName =
             actor.kind === 'agent' || actor.kind === 'principal' ? (actor.displayName ?? '') : '';
           initialContent = applySubstitution(templateStarter, {
-            date: todayIsoUtc(),
+            date: localIsoDate(),
             user: userDisplayName,
           });
           templateScopeForLog = matched.scope;

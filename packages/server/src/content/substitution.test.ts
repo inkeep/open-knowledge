@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  applySubstitution,
-  SUBSTITUTION_ALLOWLIST,
-  todayIsoUtc,
-  validateSubstitution,
-} from './substitution.ts';
+import { applySubstitution, SUBSTITUTION_ALLOWLIST, validateSubstitution } from './substitution.ts';
 
 describe('SUBSTITUTION_ALLOWLIST', () => {
   it('contains the two v1 tokens', () => {
@@ -86,19 +81,5 @@ describe('applySubstitution', () => {
     expect(applySubstitution('Signed, {{user}}', { date: '2026-05-03', user: '' })).toBe(
       'Signed, ',
     );
-  });
-});
-
-describe('todayIsoUtc', () => {
-  it('formats a fixed UTC date as YYYY-MM-DD', () => {
-    expect(todayIsoUtc(new Date('2026-05-03T12:00:00Z'))).toBe('2026-05-03');
-  });
-
-  it('zero-pads month and day', () => {
-    expect(todayIsoUtc(new Date('2026-01-09T00:00:00Z'))).toBe('2026-01-09');
-  });
-
-  it('uses UTC, not local time', () => {
-    expect(todayIsoUtc(new Date('2026-01-01T00:30:00Z'))).toBe('2026-01-01');
   });
 });
