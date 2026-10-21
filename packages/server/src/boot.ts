@@ -156,6 +156,7 @@ export interface BootServerOptions
     | 'acpRegistryFetchImpl'
     | 'watcherBackend'
     | 'watcherClock'
+    | 'freshnessIntervalMs'
   > {
   config: Config;
   skipAutoInit?: boolean;
@@ -417,6 +418,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     configHomedirOverride: opts.configHomedirOverride,
     watcherBackend: opts.watcherBackend,
     watcherClock: opts.watcherClock,
+    freshnessIntervalMs: opts.freshnessIntervalMs,
   });
 
   const {

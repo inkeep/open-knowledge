@@ -146,6 +146,11 @@ import {
   type StaleExternalWriteConflict,
 } from './document-durability-state.ts';
 import {
+  createReconnectRefreshExtension,
+  type DocumentRefreshResult,
+  type DocumentRefreshTrigger,
+} from './document-refresh.ts';
+import {
   type Embedder,
   type EmbeddingsKeyStore,
   type LoadOpenAiEmbedderInput,
@@ -346,7 +351,8 @@ import { createSyncHandshakeSpanExtension } from './sync-handshake-span-extensio
 import { initTelemetry, shutdownTelemetry, withSpan } from './telemetry.ts';
 import { trustSystemCertificates } from './trust-system-ca.ts';
 import { cleanupOrphanUploadTempfiles } from './upload-streaming.ts';
-import type { WatcherClock } from './watcher-clock.ts';
+import { type WatcherClock, watcherClock } from './watcher-clock.ts';
+import { FRESHNESS_BASE_INTERVAL_MS } from './watcher-freshness.ts';
 
 export interface ServerOptions {
   acpRegistryFetchImpl?: typeof fetch;
@@ -395,6 +401,7 @@ export interface ServerOptions {
   ephemeral?: boolean;
   watcherBackend?: NativeWatcherBackend;
   watcherClock?: WatcherClock;
+  freshnessIntervalMs?: number | null;
   mergeHistoryWriter?: MergeHistoryWriter;
   generatedIndexTestHooks?: {
     beforePlan?: (context: { fullSweep: boolean; signal: AbortSignal }) => Promise<void> | void;
@@ -2684,6 +2691,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       getSyncEngine: () => syncEngine,
       conflicts,
       setBatchInProgress: setBatchInProgressAndDrain,
+      refreshDocumentsFromDisk,
       localOpCliArgs,
       authStreamHeartbeatMs,
       projectDir,
@@ -2731,6 +2739,12 @@ export function createServer(options: ServerOptions): ServerInstance {
       },
     });
     hocuspocus.configuration.extensions.push(apiExtension);
+    hocuspocus.configuration.extensions.push(
+      createReconnectRefreshExtension({
+        clock: options.watcherClock ?? watcherClock(),
+        refresh: refreshDocumentsFromDisk,
+      }),
+    );
     nativeApi = apiExtension.nativeApi;
     localApi = apiExtension.localApi;
     shutdownLocalOps = apiExtension.shutdownLocalOps;
@@ -3669,6 +3683,40 @@ export function createServer(options: ServerOptions): ServerInstance {
   }
 
   let watcher: WatcherHandle | null = null;
+
+  async function refreshDocumentsFromDisk(
+    docNames: readonly string[],
+    trigger: DocumentRefreshTrigger,
+  ): Promise<DocumentRefreshResult> {
+    if (!watcher) return { checked: 0, found: 0 };
+    const aliases = watcher.getAliasMap();
+    const index = watcher.getFileIndex();
+    const paths: string[] = [];
+    for (const requested of new Set(docNames)) {
+      const docName = aliases.get(requested) ?? requested;
+      if (isReservedForUserTree(docName)) continue;
+      const indexed = index.get(docName)?.canonicalPath;
+      if (indexed !== undefined) {
+        paths.push(indexed);
+        continue;
+      }
+      try {
+        paths.push(safeContentPath(docName, contentDir));
+      } catch (err) {
+        log.debug(
+          { err, trigger },
+          '[reconcile] skipped a re-read for a name outside the content tree',
+        );
+      }
+    }
+    if (paths.length === 0) return { checked: 0, found: 0 };
+    const result = await watcher.recheckPaths(paths);
+    const summary = { trigger, ...result };
+    if (result.found > 0)
+      log.info(summary, `[reconcile] re-read on ${trigger} found outside changes`);
+    else log.debug(summary, `[reconcile] re-read on ${trigger} found nothing new`);
+    return result;
+  }
   let syncEngine: SyncEngine | null = null;
   let inflightDestroy: Promise<void> | null = null;
 
@@ -4792,6 +4840,10 @@ export function createServer(options: ServerOptions): ServerInstance {
             onRecoveryComplete: () => derivedDocumentIndex.recordInventoryReconciled(),
             nativeBackend: options.watcherBackend,
             clock: options.watcherClock,
+            freshnessIntervalMs:
+              options.freshnessIntervalMs === undefined
+                ? FRESHNESS_BASE_INTERVAL_MS
+                : options.freshnessIntervalMs,
           }),
         );
         void resyncRecordedSkillCopies(projectDir, contentDir)
@@ -5286,7 +5338,17 @@ export function createServer(options: ServerOptions): ServerInstance {
             }
           }
         },
-        { nativeBackend: options.watcherBackend, clock: options.watcherClock },
+        {
+          nativeBackend: options.watcherBackend,
+          clock: options.watcherClock,
+          onGaveUp: () => {
+            if (!degraded.includes('head-watcher')) degraded.push('head-watcher');
+          },
+          onBack: () => {
+            const at = degraded.indexOf('head-watcher');
+            if (at !== -1) degraded.splice(at, 1);
+          },
+        },
       );
     } catch (err) {
       log.error({ err }, '[server] HEAD watcher failed to start');

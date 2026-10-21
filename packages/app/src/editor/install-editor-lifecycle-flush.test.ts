@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { installEditorLifecycleFlush } from './install-editor-lifecycle-flush';
+import { installEditorLifecycleFlush, RESUME_THROTTLE_MS } from './install-editor-lifecycle-flush';
 
 type Listener = (event: Event) => void;
 
@@ -128,5 +128,76 @@ describe('installEditorLifecycleFlush', () => {
     const uninstall = installEditorLifecycleFlush({ onHide, onVisible });
     expect(() => uninstall()).not.toThrow();
     expect(onHide).not.toHaveBeenCalled();
+  });
+
+  it('asks for a re-read from disk when the window regains focus', () => {
+    const onResume = vi.fn();
+    const win = makeFakeTarget();
+    const doc = makeFakeDoc('visible');
+    let clock = 10_000;
+    installEditorLifecycleFlush({
+      onHide: vi.fn(),
+      onVisible: vi.fn(),
+      onResume,
+      now: () => clock,
+      win,
+      doc,
+    });
+
+    win.emit('focus');
+    expect(onResume).toHaveBeenCalledTimes(1);
+
+    clock += RESUME_THROTTLE_MS;
+    win.emit('focus');
+    expect(onResume).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks once when the tab becomes visible and the window takes focus together', () => {
+    const onResume = vi.fn();
+    const onVisible = vi.fn();
+    const win = makeFakeTarget();
+    const doc = makeFakeDoc('visible');
+    installEditorLifecycleFlush({
+      onHide: vi.fn(),
+      onVisible,
+      onResume,
+      now: () => 10_000,
+      win,
+      doc,
+    });
+
+    doc.emit('visibilitychange');
+    win.emit('focus');
+
+    expect(onVisible).toHaveBeenCalledTimes(1);
+    expect(onResume).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not ask while the page is hidden, and stops asking once uninstalled', () => {
+    const onResume = vi.fn();
+    const win = makeFakeTarget();
+    const doc = makeFakeDoc('hidden');
+    let clock = 10_000;
+    const uninstall = installEditorLifecycleFlush({
+      onHide: vi.fn(),
+      onVisible: vi.fn(),
+      onResume,
+      now: () => clock,
+      win,
+      doc,
+    });
+
+    win.emit('focus');
+    expect(onResume).not.toHaveBeenCalled();
+
+    doc.setVisibility('visible');
+    win.emit('focus');
+    expect(onResume).toHaveBeenCalledTimes(1);
+
+    uninstall();
+    clock += RESUME_THROTTLE_MS;
+    expect(win.has('focus')).toBe(false);
+    win.emit('focus');
+    expect(onResume).toHaveBeenCalledTimes(1);
   });
 });

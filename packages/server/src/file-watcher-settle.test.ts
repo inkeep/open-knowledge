@@ -183,7 +183,7 @@ test('settle rejects when the watcher stops before its fence arrives, and leaves
   expect(fencesOnDisk()).toEqual([]);
 });
 
-test('a watcher error that ends the subscription fails a pending settle and every later one, and leaves no fence behind', async () => {
+test('a watcher error that ends the subscription fails a pending settle and later ones until it is subscribed again, and leaves no fence behind', async () => {
   const { watcher } = await watchContent('parcel');
   const pending = observed(watcher.settle());
   expect(fencesOnDisk()).toHaveLength(1);
@@ -191,7 +191,7 @@ test('a watcher error that ends the subscription fails a pending settle and ever
   const failure = `inotify_add_watch on '${join(contentDir, 'guides')}' failed: No space left on device`;
   await nativeSubscriptionOn(contentDir).deliver([], new Error(failure));
 
-  const refusal = `the file watcher failed before it saw its settle fence: ${failure}`;
+  const refusal = `the file watcher is subscribing again after an error and cannot settle until it is back: ${failure}`;
   expect(pending()).toEqual({ rejected: refusal });
   expect(fencesOnDisk()).toEqual([]);
   const later = observed(watcher.settle());

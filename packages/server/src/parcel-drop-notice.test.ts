@@ -712,7 +712,7 @@ test.each(notices)('empty HEAD notice restores an omitted branch change: %s', as
   expectHeadSettled(watched);
 });
 
-test('fatal Parcel errors remain observable for both watchers', async () => {
+test('a fatal Parcel error is logged, and both watchers subscribe again and re-read what changed', async () => {
   const diagnostics: Array<{ name: string; err: unknown }> = [];
   for (const name of ['file-watcher', 'head-watcher']) {
     const logger = getLogger(name);
@@ -737,12 +737,15 @@ test('fatal Parcel errors remain observable for both watchers', async () => {
   for (const name of ['file-watcher', 'head-watcher']) {
     expect(diagnostics).toContainEqual({ name, err: fatal });
   }
-  expect(events).toEqual([]);
-  expect(rawBatches).toEqual([]);
-  expect([...watcher.getFileIndex().keys()]).toEqual([]);
-  expect(watched.begins).toEqual([]);
-  expect(watched.ends).toEqual([]);
-  expect(watched.watcher.getLastKnownBranch()).toBe('main');
+  expect(rawBatches).not.toContainEqual([announced]);
+  await vi.waitFor(() => {
+    expect([...watcher.getFileIndex().keys()].sort()).toEqual(['announced', 'hidden']);
+  });
+  expect(
+    events.flatMap((event) => (event.kind === 'create' ? [event.docName] : [])).sort(),
+  ).toEqual(['announced', 'hidden']);
+  await vi.waitFor(() => expect(watched.ends).toHaveLength(1));
+  expectHeadSettled(watched);
 });
 
 test('repeated content notices do not repeat effects already applied from a supplied batch and disk scan', async () => {

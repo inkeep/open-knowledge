@@ -234,6 +234,7 @@ import {
   OK_STORE_REFUSED,
   type StoreFailure,
 } from './document-durability-state.ts';
+import type { RefreshDocumentsFromDisk } from './document-refresh.ts';
 import {
   buildReconcileWarning,
   reconcileDiskBeforeAgentWrite,
@@ -272,6 +273,7 @@ import { createAssetRoutes } from './http/asset-routes.ts';
 import { createCommentRoutes } from './http/comment-routes.ts';
 import { createConfigSystemRoutes } from './http/config-system-routes.ts';
 import { createDocNoticeRoutes } from './http/doc-notice-routes.ts';
+import { createDocumentRefreshRoutes } from './http/document-refresh-routes.ts';
 import { createDocumentRoutes } from './http/document-routes.ts';
 import {
   type ErrorExtensions,
@@ -1334,6 +1336,7 @@ interface ApiExtensionBaseOptions {
   resolveSyncCredentialConfig?: () => Promise<string[]>;
   conflicts: ConflictAuthority;
   setBatchInProgress?: (value: boolean) => void;
+  refreshDocumentsFromDisk: RefreshDocumentsFromDisk;
   localOpCliArgs?: string[];
   authStreamHeartbeatMs?: number;
   projectDir?: string;
@@ -5476,6 +5479,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     agentIntegrations,
   });
   const handoffInstallRoutes = createHandoffInstallRoutes({ checkLocalOpSecurity });
+  const documentRefreshRoutes = createDocumentRefreshRoutes({
+    refreshDocumentsFromDisk: options.refreshDocumentsFromDisk,
+  });
   const skillsInstallRoutes = createSkillsInstallRoutes({
     resolveSkillsRoot,
     validateSkillName,
@@ -5613,6 +5619,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     linkGraphRoutes,
     metricsRoutes,
     documentRoutes,
+    documentRefreshRoutes,
     configSystemRoutes,
     lintRoutes,
     lintWriteRoutes,

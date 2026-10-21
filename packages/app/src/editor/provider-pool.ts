@@ -1973,6 +1973,14 @@ export class ProviderPool {
     return false;
   }
 
+  openDocNames(): string[] {
+    const docNames: string[] = [];
+    for (const [docName, entry] of this._entries) {
+      if (entry.kind === 'active') docNames.push(docName);
+    }
+    return docNames;
+  }
+
   docNamesToOpenForReplay(): string[] {
     const docNames: string[] = [];
     for (const [docName, buffered] of this.bufferedUpdates) {

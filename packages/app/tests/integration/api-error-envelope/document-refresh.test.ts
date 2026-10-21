@@ -1,0 +1,56 @@
+import { DocumentRefreshSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
+import { createTestServer, type TestServer } from '../test-harness';
+
+let server: TestServer;
+
+beforeAll(async () => {
+  server = await createTestServer();
+}, HARNESS_BOOT_TIMEOUT_MS);
+
+afterAll(async () => {
+  await server.cleanup();
+});
+
+function refresh(body: unknown, method = 'POST'): Promise<Response> {
+  return fetch(`http://127.0.0.1:${server.port}/api/documents/refresh`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
+  });
+}
+
+describe('document-refresh envelope (RFC 9457)', () => {
+  test('happy path emits a flat counts body with application/json', async () => {
+    const res = await refresh({ docNames: ['test-doc'] });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/json');
+
+    const body = await res.json();
+    expect(DocumentRefreshSuccessSchema.safeParse(body).success).toBe(true);
+    expect((body as Record<string, unknown>).ok).toBeUndefined();
+    expect(body).toMatchObject({ checked: 1 });
+  });
+
+  test('an empty list emits problem+json invalid-request', async () => {
+    const res = await refresh({ docNames: [] });
+    expect(res.status).toBe(400);
+    expect(res.headers.get('content-type')).toBe('application/problem+json');
+
+    const parsed = ProblemDetailsSchema.safeParse(await res.json());
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.type).toBe('urn:ok:error:invalid-request');
+  });
+
+  test('method-not-allowed on GET emits problem+json with Allow: POST', async () => {
+    const res = await refresh(undefined, 'GET');
+    expect(res.status).toBe(405);
+    expect(res.headers.get('allow')).toBe('POST');
+    expect(res.headers.get('content-type')).toBe('application/problem+json');
+
+    const parsed = ProblemDetailsSchema.safeParse(await res.json());
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.type).toBe('urn:ok:error:method-not-allowed');
+  });
+});

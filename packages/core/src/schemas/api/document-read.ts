@@ -228,3 +228,20 @@ export const LinkGraphSuccessSchema = z
   })
   .loose() satisfies StandardSchemaV1;
 export type LinkGraphSuccess = z.infer<typeof LinkGraphSuccessSchema>;
+
+export const DOCUMENT_REFRESH_MAX_DOCS = 64;
+
+export const DocumentRefreshRequestSchema = z
+  .object({
+    docNames: z.array(z.string().min(1).max(1024)).min(1).max(DOCUMENT_REFRESH_MAX_DOCS),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type DocumentRefreshRequest = z.infer<typeof DocumentRefreshRequestSchema>;
+
+export const DocumentRefreshSuccessSchema = z
+  .object({
+    checked: z.number().int().nonnegative(),
+    found: z.number().int().nonnegative(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type DocumentRefreshSuccess = z.infer<typeof DocumentRefreshSuccessSchema>;

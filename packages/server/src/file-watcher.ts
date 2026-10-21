@@ -13,7 +13,7 @@ import {
 } from 'node:fs';
 import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
-import { LINKABLE_ASSET_EXTENSIONS } from '@inkeep/open-knowledge-core';
+import { DOCUMENT_OPEN_BYTE_LIMIT, LINKABLE_ASSET_EXTENSIONS } from '@inkeep/open-knowledge-core';
 import { filesystemIdentity, statMtime } from '@inkeep/open-knowledge-core/server';
 import { isConfigDoc, isReservedForUserTree, isSystemDoc } from './cc1-broadcast.ts';
 import { type ContentFilter, WATCHER_STRUCTURAL_IGNORE_DIRS } from './content-filter.ts';
@@ -39,6 +39,15 @@ import {
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 import {
+  addFreshnessCarryOver,
+  addFreshnessFilesHashed,
+  addFreshnessFinds,
+  incrementFreshnessPasses,
+  incrementFreshnessPassesIncomplete,
+  incrementWatcherErrors,
+  incrementWatcherUnreadableEntries,
+} from './metrics.ts';
+import {
   extractPageDescription,
   extractPageIcon,
   extractPageTitle,
@@ -48,6 +57,7 @@ import { classifyParcelNotification } from './parcel-recovery.ts';
 import { type NativeWatcherBackend, subscribeParcel } from './parcel-subscription.ts';
 import { toPosix } from './path-utils.ts';
 import { containsConflictMarkers } from './reconciliation.ts';
+import { isRacyStat, sampleWallClockNs, statSignature } from './stat-signature.ts';
 import { getMeter, withSpan } from './telemetry.ts';
 import { contentHash } from './version-hash.ts';
 import {
@@ -56,6 +66,15 @@ import {
   type WatcherTimer,
   watcherClock,
 } from './watcher-clock.ts';
+import {
+  createResubscriber,
+  FRESHNESS_HASH_BUDGET,
+  FRESHNESS_MAX_INTERVAL_MS,
+  nextFreshnessDelayMs,
+  RESUBSCRIBE_SLOW_RETRY_MS,
+  type RecoveryMode,
+  resolveFreshnessInterval,
+} from './watcher-freshness.ts';
 
 export type { NativeWatcherBackend } from './parcel-subscription.ts';
 export { contentHash } from './version-hash.ts';
@@ -237,12 +256,19 @@ function derivePageMeta(
   description: string | undefined;
   type: string | undefined;
 } {
+  const icon = extractPageIcon(content);
+  const description = extractPageDescription(content);
+  const type = extractPageType(content);
   return {
-    title: extractPageTitle(content, docName),
-    icon: extractPageIcon(content),
-    description: extractPageDescription(content),
-    type: extractPageType(content),
+    title: copyDetachedFromSource(extractPageTitle(content, docName)),
+    icon: icon === undefined ? undefined : copyDetachedFromSource(icon),
+    description: description === undefined ? undefined : copyDetachedFromSource(description),
+    type: type === undefined ? undefined : copyDetachedFromSource(type),
   };
+}
+
+function copyDetachedFromSource(value: string): string {
+  return Buffer.from(value, 'utf16le').toString('utf16le');
 }
 
 function markdownIndexView(
@@ -266,6 +292,7 @@ export interface RecheckResult {
 interface RecoveryOutcome {
   completed: boolean;
   candidates: number;
+  partial?: boolean;
 }
 
 interface DispatchCounter {
@@ -275,6 +302,7 @@ interface DispatchCounter {
 export interface WatcherHandle {
   unsubscribe: () => Promise<void>;
   recheck: () => Promise<RecheckResult>;
+  recheckPaths: (paths: readonly string[]) => Promise<{ checked: number; found: number }>;
   getFileIndex: () => ReadonlyMap<string, FileIndexEntry>;
   getAllFilesIndex: () => AllFileEntries;
   getFileIndexGeneration: () => number;
@@ -648,14 +676,127 @@ function extractDocExtension(path: string): string | null {
 
 export const lastKnownHash = new Map<string, string>();
 
+const lastKnownStat = new Map<string, string>();
+
+let intakeEpoch = 0;
+let openObservationWindows = 0;
+const intakeEpochByPath = new Map<string, number>();
+
+function noteIntakeMutation(path: string): void {
+  intakeEpoch++;
+  if (openObservationWindows > 0) intakeEpochByPath.set(path, intakeEpoch);
+}
+
+function openObservationWindow(): number {
+  openObservationWindows++;
+  return intakeEpoch;
+}
+
+function closeObservationWindow(): void {
+  openObservationWindows--;
+  if (openObservationWindows === 0) intakeEpochByPath.clear();
+}
+
+function changedSince(epoch: number, contentDir: string): ((path: string) => boolean) | undefined {
+  const changed = new Set<string>();
+  for (const [path, at] of intakeEpochByPath) if (at > epoch) changed.add(path);
+  if (changed.size === 0) return undefined;
+  return (path) => {
+    let current = path;
+    while (true) {
+      if (changed.has(current)) return true;
+      if (current === contentDir) return false;
+      const parent = dirname(current);
+      if (parent === current) return false;
+      current = parent;
+    }
+  };
+}
+
 export function updateLastKnownHash(filePath: string, hash: string): void {
+  noteIntakeMutation(filePath);
   lastKnownHash.set(filePath, hash);
+  lastKnownStat.delete(filePath);
 }
 
 export function removeLastKnownHash(filePath: string): string | undefined {
+  noteIntakeMutation(filePath);
   const hash = lastKnownHash.get(filePath);
   lastKnownHash.delete(filePath);
+  lastKnownStat.delete(filePath);
   return hash;
+}
+
+function recordObservedHash(filePath: string, hash: string, signature: string | undefined): void {
+  lastKnownHash.set(filePath, hash);
+  if (signature === undefined) lastKnownStat.delete(filePath);
+  else lastKnownStat.set(filePath, signature);
+}
+
+interface FreshnessReuse {
+  readonly previousByPath: ReadonlyMap<string, FileIndexEntry>;
+  readonly carriedOver: ReadonlySet<string>;
+  readonly deferred: Set<string>;
+  carriedSlots: number;
+  freeSlots: number;
+  bytesLeft: number;
+  hashed: number;
+}
+
+type MarkdownReadDecision =
+  | { kind: 'read' }
+  | { kind: 'reuse'; entry: FileIndexEntry; hash: string }
+  | { kind: 'defer'; entry: FileIndexEntry | undefined; hash: string | undefined };
+
+function beginFreshnessReuse(
+  mode: RecoveryMode,
+  fileIndex: ReadonlyMap<string, FileIndexEntry>,
+  carryOver: Set<string>,
+): FreshnessReuse | undefined {
+  const carriedOver = new Set(carryOver);
+  carryOver.clear();
+  if (mode === 'full') return undefined;
+  const previousByPath = new Map<string, FileIndexEntry>();
+  for (const entry of fileIndex.values()) {
+    if (entry.kind === 'markdown') previousByPath.set(entry.canonicalPath, entry);
+  }
+  const carriedSlots = Math.min(carriedOver.size, FRESHNESS_HASH_BUDGET.files);
+  return {
+    previousByPath,
+    carriedOver,
+    deferred: carryOver,
+    carriedSlots,
+    freeSlots: FRESHNESS_HASH_BUDGET.files - carriedSlots,
+    bytesLeft: FRESHNESS_HASH_BUDGET.bytes,
+    hashed: 0,
+  };
+}
+
+function decideMarkdownRead(
+  reuse: FreshnessReuse | undefined,
+  path: string,
+  stats: BigIntStats,
+  signature: string,
+): MarkdownReadDecision {
+  if (reuse === undefined) return { kind: 'read' };
+  const previous = reuse.previousByPath.get(path);
+  const hash = lastKnownHash.get(path);
+  if (previous !== undefined && hash !== undefined && lastKnownStat.get(path) === signature) {
+    return { kind: 'reuse', entry: previous, hash };
+  }
+  const size = Number(stats.size);
+  const carried = reuse.carriedOver.has(path);
+  const slotFree = carried ? reuse.carriedSlots > 0 : reuse.freeSlots > 0;
+  const indexedWithoutHash = previous !== undefined && hash === undefined;
+  if (indexedWithoutHash || (slotFree && (reuse.hashed === 0 || size <= reuse.bytesLeft))) {
+    if (carried) reuse.carriedSlots--;
+    else reuse.freeSlots--;
+    reuse.bytesLeft -= size;
+    reuse.hashed++;
+    return { kind: 'read' };
+  }
+  reuse.deferred.add(path);
+  return { kind: 'defer', entry: previous, hash };
 }
 
 interface RawFileEvent {
@@ -1070,11 +1211,72 @@ interface DiskObservation {
   aliasPaths: Map<string, string>;
   folderAliasIndex: Map<string, string>;
   hashes: Map<string, string>;
+  unreadable: Map<string, string>;
+  signatures: Map<string, string>;
+  sampledAtNs: bigint;
+  reuse: FreshnessReuse | undefined;
   extensions: Array<{ docName: string; ext: string }>;
   preferredExtensions: Map<string, string>;
   structuralIgnoreDirs: Set<string>;
   paths: Set<string>;
   complete: boolean;
+  stopped?: () => boolean;
+}
+
+const reportedUnreadable = new Map<string, string>();
+
+function markUnreadable(
+  observation: DiskObservation,
+  path: string,
+  code: string | undefined,
+): void {
+  observation.unreadable.set(path, code ?? 'unknown');
+}
+
+function reportUnreadableEntries(observation: DiskObservation): void {
+  for (const [path, code] of observation.unreadable) {
+    if (reportedUnreadable.has(path)) continue;
+    reportedUnreadable.set(path, code);
+    incrementWatcherUnreadableEntries();
+    log.warn(
+      { path, code },
+      `Cannot read ${path} (${code}); it keeps its last known state until it can be read`,
+    );
+  }
+  for (const path of reportedUnreadable.keys()) {
+    if (!observation.unreadable.has(path)) reportedUnreadable.delete(path);
+  }
+}
+
+function isUnderUnreadable(observation: DiskObservation, path: string): boolean {
+  for (const unreadable of observation.unreadable.keys()) {
+    if (path === unreadable || path.startsWith(`${unreadable}${sep}`)) return true;
+  }
+  return false;
+}
+
+function observeMarkdownSignature(
+  observation: DiskObservation,
+  path: string,
+  stats: BigIntStats,
+  signature: string,
+): void {
+  if (!isRacyStat(stats, observation.sampledAtNs)) observation.signatures.set(path, signature);
+}
+
+function reusedMarkdownEntry(
+  decision: Exclude<MarkdownReadDecision, { kind: 'read' }>,
+  observation: DiskObservation,
+  path: string,
+  identity: string,
+  aliases: string[],
+  signature: string,
+): FileIndexEntry | undefined {
+  if (decision.entry === undefined || decision.hash === undefined) return undefined;
+  observation.hashes.set(path, decision.hash);
+  observation.paths.add(path);
+  if (decision.kind === 'reuse') observation.signatures.set(path, signature);
+  return { ...decision.entry, canonicalPath: path, inode: identity, aliases };
 }
 
 type GeneralIdentity = ReturnType<typeof filesystemIdentity>;
@@ -1841,6 +2043,10 @@ async function scanDisk(
 ): Promise<void> {
   const visited = visitedInodes ?? new Set<string>();
   const generalVisited = generalVisitedInodes ?? new Set<string>();
+  if (observation.stopped?.()) {
+    observation.complete = false;
+    return;
+  }
   try {
     const entries = await readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
@@ -1850,10 +2056,7 @@ async function scanDisk(
         lst = await lstat(fullPath, { bigint: true });
       } catch (e) {
         const code = errnoCode(e);
-        if (code !== 'ENOENT') {
-          observation.complete = false;
-          log.warn({ path: fullPath, err: e }, `Failed to lstat ${fullPath}, skipping`);
-        }
+        if (code !== 'ENOENT') markUnreadable(observation, fullPath, code);
         continue;
       }
       const lstIdentity = filesystemIdentity(lst);
@@ -1867,8 +2070,7 @@ async function scanDisk(
           if (code === 'ENOENT' || code === 'ELOOP') {
             log.warn({ path: fullPath, code }, `Broken/cyclic symlink at ${fullPath}, skipping`);
           } else {
-            observation.complete = false;
-            log.warn({ path: fullPath, err: e }, `Failed to resolve symlink ${fullPath}`);
+            markUnreadable(observation, fullPath, code);
           }
           continue;
         }
@@ -1972,10 +2174,28 @@ async function scanDisk(
             observation.aliasPaths.set(aliasDocName, fullPath);
             observation.paths.add(fullPath);
 
+            const signature = statSignature(canonStat);
+            const decision = decideMarkdownRead(observation.reuse, canonical, canonStat, signature);
+            if (decision.kind !== 'read') {
+              const reused = reusedMarkdownEntry(
+                decision,
+                observation,
+                canonical,
+                canonIdentity,
+                [aliasDocName],
+                signature,
+              );
+              if (reused === undefined) continue;
+              const ext = extractDocExtension(canonical);
+              if (ext && !recordObservedExtension(observation, canonicalDocName, ext)) continue;
+              observation.fileIndex.set(canonicalDocName, reused);
+              continue;
+            }
             try {
               const content = await readFile(canonical, 'utf-8');
               const hash = contentHash(content);
               observation.hashes.set(canonical, hash);
+              observeMarkdownSignature(observation, canonical, canonStat, signature);
               observation.paths.add(canonical);
               const ext = extractDocExtension(canonical);
               if (ext && !recordObservedExtension(observation, canonicalDocName, ext)) continue;
@@ -1990,18 +2210,16 @@ async function scanDisk(
               });
             } catch (err) {
               const code = errnoCode(err);
-              if (code !== 'ENOENT') {
-                observation.complete = false;
-                log.warn({ path: canonical, err }, `Failed to seed hash for ${canonical}`);
-              }
+              if (code !== 'ENOENT') markUnreadable(observation, canonical, code);
             }
           }
         } catch (e) {
           const code = errnoCode(e);
           if (code !== 'ENOENT' && code !== 'ENOTDIR') {
-            observation.complete = false;
+            markUnreadable(observation, fullPath, code);
+          } else {
+            log.warn({ path: canonical, err: e }, `Failed to stat symlink target ${canonical}`);
           }
-          log.warn({ path: canonical, err: e }, `Failed to stat symlink target ${canonical}`);
         }
       } else if (lst.isDirectory()) {
         const relPath = contentRelativePath(contentDir, fullPath);
@@ -2031,9 +2249,28 @@ async function scanDisk(
           const relPath = toPosix(relative(contentDir, fullPath));
           if (contentFilter.isExcluded(relPath)) continue;
         }
+        const signature = statSignature(lst);
+        const decision = decideMarkdownRead(observation.reuse, fullPath, lst, signature);
+        if (decision.kind !== 'read') {
+          const reused = reusedMarkdownEntry(
+            decision,
+            observation,
+            fullPath,
+            lstIdentity,
+            [],
+            signature,
+          );
+          if (reused === undefined) continue;
+          const docName = pathToDocName(fullPath, contentDir);
+          const ext = extractDocExtension(fullPath);
+          if (ext && !recordObservedExtension(observation, docName, ext)) continue;
+          observation.fileIndex.set(docName, reused);
+          continue;
+        }
         try {
           const content = await readFile(fullPath, 'utf-8');
           observation.hashes.set(fullPath, contentHash(content));
+          observeMarkdownSignature(observation, fullPath, lst, signature);
           observation.paths.add(fullPath);
 
           const docName = pathToDocName(fullPath, contentDir);
@@ -2050,16 +2287,7 @@ async function scanDisk(
           });
         } catch (err) {
           const code = errnoCode(err);
-          if (code === 'EACCES') {
-            observation.complete = false;
-            log.warn(
-              { path: fullPath, code },
-              `Permission denied reading ${fullPath}, file excluded from index`,
-            );
-          } else if (code !== 'ENOENT') {
-            observation.complete = false;
-            log.warn({ path: fullPath, err }, `Failed to seed hash for ${fullPath}`);
-          }
+          if (code !== 'ENOENT') markUnreadable(observation, fullPath, code);
         }
       } else if (lst.isFile()) {
         if (contentFilter) {
@@ -2088,9 +2316,11 @@ async function scanDisk(
     }
   } catch (err) {
     const code = errnoCode(err);
-    if (code !== 'ENOENT' && code !== 'ENOTDIR') {
+    if (dir === contentDir) {
       observation.complete = false;
-      log.warn({ dir, err }, `Failed to read directory ${dir}`);
+      log.warn({ dir, err }, `Failed to read the content directory ${dir}`);
+    } else if (code !== 'ENOENT' && code !== 'ENOTDIR') {
+      markUnreadable(observation, dir, code);
     }
   }
 }
@@ -2098,6 +2328,8 @@ async function scanDisk(
 async function observeDisk(
   contentDir: string,
   contentFilter: ContentFilter | undefined,
+  reuse?: FreshnessReuse,
+  stopped?: () => boolean,
 ): Promise<DiskObservation> {
   const observation: DiskObservation = {
     fileIndex: new Map(),
@@ -2107,17 +2339,27 @@ async function observeDisk(
     aliasPaths: new Map(),
     folderAliasIndex: new Map(),
     hashes: new Map(),
+    unreadable: new Map(),
+    signatures: new Map(),
+    sampledAtNs: sampleWallClockNs(),
+    reuse,
     extensions: [],
     preferredExtensions: new Map(),
     structuralIgnoreDirs: new Set(),
     paths: new Set(),
     complete: true,
+    stopped,
   };
   const generalScan: GeneralScanAccumulator = {
     facts: new Map(),
     metadataEffects: new Map(),
   };
   await scanDisk(contentDir, contentDir, contentFilter, observation, generalScan);
+  if (observation.stopped?.()) {
+    observation.complete = false;
+    return observation;
+  }
+  reportUnreadableEntries(observation);
   materializeScanGeneralIndex(observation, contentDir, generalScan);
   for (const [name, entry] of new Map(observation.generalFileIndex)) {
     const state = knownGeneralState(entry);
@@ -2202,7 +2444,9 @@ function publishDiskObservation(
       );
     }
   }
-  for (const [path, hash] of observation.hashes) lastKnownHash.set(path, hash);
+  for (const [path, hash] of observation.hashes) {
+    recordObservedHash(path, hash, observation.signatures.get(path));
+  }
   for (const [docName, entry] of inventory.fileIndex) {
     if (getDocExtension(docName).toLowerCase() !== extname(entry.canonicalPath).toLowerCase()) {
       continue;
@@ -2507,6 +2751,7 @@ async function handleRawEventsInternal(
   generalFileIndex?: GeneralFileIndex,
   aliasPaths?: Map<string, string>,
 ): Promise<void> {
+  for (const event of rawEvents) noteIntakeMutation(event.path);
   const declaredBeforeBatch: ReadonlySet<string> = new Set(removalTracker.keys());
   const safeEvents = rawEvents.filter((e) => {
     if (!eventEscapesContentDir(e.path, contentDir)) return true;
@@ -3058,6 +3303,43 @@ type RecoveredAliasCandidate =
       targetIdentity: GeneralIdentity;
     };
 
+function protectedGeneralNames(
+  observed: DiskObservation,
+  contentDir: string,
+  previousGeneralFacts: ReadonlyMap<string, GeneralPathFact>,
+  observedGeneralFacts: ReadonlyMap<string, GeneralPathFact>,
+  changedDuringWalk: ((path: string) => boolean) | undefined,
+): Set<string> {
+  const names = new Set<string>();
+  if (observed.unreadable.size === 0 && changedDuringWalk === undefined) return names;
+  const keepKnownAt = (name: string): boolean => {
+    const path = join(contentDir, name);
+    return isUnderUnreadable(observed, path) || changedDuringWalk?.(path) === true;
+  };
+  const identities = new Set<GeneralIdentity>();
+  for (const [name, fact] of previousGeneralFacts) {
+    if (fact.kind !== 'unresolved' && keepKnownAt(name)) identities.add(fact.identity);
+  }
+  for (const [name, fact] of previousGeneralFacts) {
+    if (
+      keepKnownAt(name) ||
+      (fact.kind !== 'unresolved' && identities.has(fact.identity)) ||
+      (fact.kind === 'symlink' && keepKnownAt(fact.targetPath))
+    ) {
+      names.add(name);
+    }
+  }
+  for (const name of observedGeneralFacts.keys()) {
+    if (keepKnownAt(name)) names.add(name);
+  }
+  return names;
+}
+
+interface HandedObservation {
+  readonly observed: DiskObservation;
+  readonly sinceEpoch: number;
+}
+
 async function recoverDiskChanges(
   contentDir: string,
   contentFilter: ContentFilter | undefined,
@@ -3073,6 +3355,8 @@ async function recoverDiskChanges(
   getFileIndexGeneration: () => number,
   counter: DispatchCounter,
   onRawBatch?: (absPaths: readonly string[]) => void,
+  reuse?: FreshnessReuse,
+  handed?: HandedObservation,
 ): Promise<RecoveryOutcome> {
   const countingOnDiskEvent = async (event: DiskEvent): Promise<void> => {
     counter.dispatched++;
@@ -3095,18 +3379,35 @@ async function recoverDiskChanges(
   const previousAliasPaths = new Map(aliasPaths);
   const previousFolderAliases = new Map(folderAliasIndex);
 
-  contentFilter?.refreshInPlaceSkillDirs();
-  const observed = await observeDisk(contentDir, contentFilter);
+  let observed: DiskObservation;
+  if (handed) {
+    observed = handed.observed;
+  } else {
+    contentFilter?.refreshInPlaceSkillDirs();
+    observed = await observeDisk(contentDir, contentFilter, reuse);
+  }
   if (!observed.complete) return { completed: false, candidates: 0 };
+  const changedDuringWalk = handed ? changedSince(handed.sinceEpoch, contentDir) : undefined;
+  const intakeOwns = (path: string): boolean => changedDuringWalk?.(path) === true;
 
   const markdownPublicMutationFor = (name: string, entry: FileIndexEntry): boolean => {
     const names = publicMutations.markdownNames;
+    if (names.size === 0) return false;
     if (names.has(name)) return true;
     const canonicalName = pathToDocName(entry.canonicalPath, contentDir);
     return names.has(canonicalName) || entry.aliases.some((alias) => names.has(alias));
   };
   const previousGeneralFacts = generalPathFacts(previousGeneralFiles);
   const observedGeneralFacts = generalPathFacts(observed.generalFileIndex);
+  const unreadableAt = (path: string): boolean =>
+    (observed.unreadable.size > 0 && isUnderUnreadable(observed, path)) || intakeOwns(path);
+  const protectedGeneral = protectedGeneralNames(
+    observed,
+    contentDir,
+    previousGeneralFacts,
+    observedGeneralFacts,
+    changedDuringWalk,
+  );
 
   const rawEvents: RecoveredFileEvent[] = [];
   for (const [docName, previous] of previousFiles) {
@@ -3116,6 +3417,10 @@ async function recoverDiskChanges(
       (current && markdownPublicMutationFor(docName, current))
     )
       continue;
+    if (current === undefined && unreadableAt(previous.canonicalPath)) continue;
+    if (intakeOwns(previous.canonicalPath) || (current && intakeOwns(current.canonicalPath))) {
+      continue;
+    }
     if (current?.canonicalPath !== previous.canonicalPath) {
       const removal: KnownDeletion = {
         type: 'delete',
@@ -3138,7 +3443,12 @@ async function recoverDiskChanges(
     }
   }
   for (const [name, previous] of previousGeneralFacts) {
-    if (previous.kind === 'symlink' || publicMutations.generalEffects.has(name)) continue;
+    if (
+      previous.kind === 'symlink' ||
+      publicMutations.generalEffects.has(name) ||
+      protectedGeneral.has(name)
+    )
+      continue;
     const current = observedGeneralFacts.get(name);
     if (current === undefined) {
       rawEvents.push({ type: 'delete', path: join(contentDir, name), entryKind: 'file' });
@@ -3157,7 +3467,9 @@ async function recoverDiskChanges(
     const previous = previousFiles.get(docName);
     if (
       markdownPublicMutationFor(docName, current) ||
-      (previous && markdownPublicMutationFor(docName, previous))
+      (previous && markdownPublicMutationFor(docName, previous)) ||
+      intakeOwns(current.canonicalPath) ||
+      (previous && intakeOwns(previous.canonicalPath))
     )
       continue;
     if (current.canonicalPath !== previous?.canonicalPath) {
@@ -3165,7 +3477,12 @@ async function recoverDiskChanges(
     }
   }
   for (const [name, current] of observedGeneralFacts) {
-    if (current.kind !== 'regular' || publicMutations.generalEffects.has(name)) continue;
+    if (
+      current.kind !== 'regular' ||
+      publicMutations.generalEffects.has(name) ||
+      protectedGeneral.has(name)
+    )
+      continue;
     const previous = previousGeneralFacts.get(name);
     if (previous === undefined) {
       rawEvents.push({ type: 'create', path: join(contentDir, name) });
@@ -3175,17 +3492,25 @@ async function recoverDiskChanges(
   }
   for (const [relativePath, previous] of folderIndex) {
     if (!observed.folderIndex.has(relativePath)) {
+      if (unreadableAt(join(contentDir, relativePath))) continue;
       rawEvents.push({ type: 'delete', path: join(contentDir, relativePath), entryKind: 'folder' });
-    } else if (observed.folderIndex.get(relativePath)?.canonicalPath !== previous.canonicalPath) {
+    } else if (
+      observed.folderIndex.get(relativePath)?.canonicalPath !== previous.canonicalPath &&
+      !intakeOwns(join(contentDir, relativePath))
+    ) {
       rawEvents.push({ type: 'update', path: join(contentDir, relativePath) });
     }
   }
   for (const [relativePath, current] of observed.folderIndex) {
-    if (!folderIndex.has(relativePath))
+    if (
+      !folderIndex.has(relativePath) &&
+      !intakeOwns(join(contentDir, relativePath)) &&
+      !intakeOwns(current.canonicalPath)
+    )
       rawEvents.push({ type: 'create', path: current.canonicalPath });
   }
   for (const [alias, path] of aliasPaths) {
-    if (!observed.aliasPaths.has(alias))
+    if (!observed.aliasPaths.has(alias) && !unreadableAt(path))
       rawEvents.push({ type: 'delete', path, entryKind: 'file' });
   }
 
@@ -3240,21 +3565,26 @@ async function recoverDiskChanges(
     );
   }
 
+  const publishedDuringPass = (path: string): boolean =>
+    publicMutations.markdownNames.size > 0 &&
+    publicMutations.markdownNames.has(pathToDocName(path, contentDir));
   for (const [path, prior] of previousHashes) {
     if (
-      isWithinContentDir(path, contentDir) &&
-      !publicMutations.markdownNames.has(pathToDocName(path, contentDir)) &&
       !observed.hashes.has(path) &&
-      lastKnownHash.get(path) === prior
+      lastKnownHash.get(path) === prior &&
+      !unreadableAt(path) &&
+      isWithinContentDir(path, contentDir) &&
+      !publishedDuringPass(path)
     ) {
-      lastKnownHash.delete(path);
+      removeLastKnownHash(path);
     }
   }
   for (const [path, hash] of observed.hashes) {
-    if (publicMutations.markdownNames.has(pathToDocName(path, contentDir))) continue;
+    if (publishedDuringPass(path) || intakeOwns(path)) continue;
     const current = lastKnownHash.get(path);
-    if (current === undefined || current === previousHashes.get(path))
-      lastKnownHash.set(path, hash);
+    if (current === undefined || current === previousHashes.get(path) || current === hash) {
+      recordObservedHash(path, hash, observed.signatures.get(path));
+    }
   }
 
   for (const [name, prior] of previousFiles) {
@@ -3262,7 +3592,8 @@ async function recoverDiskChanges(
     if (
       !markdownPublicMutationFor(name, prior) &&
       !observed.fileIndex.has(name) &&
-      current === prior
+      current === prior &&
+      !unreadableAt(prior.canonicalPath)
     ) {
       fileIndex.delete(name);
       forgetDocExtension(name);
@@ -3271,10 +3602,17 @@ async function recoverDiskChanges(
   const inventory = selectObservedInventory(observed, contentDir, contentFilter);
   for (const [name, entry] of observed.fileIndex) {
     if (markdownPublicMutationFor(name, entry)) continue;
+    const live = fileIndex.get(name);
+    if (intakeOwns(entry.canonicalPath) || (live && intakeOwns(live.canonicalPath))) continue;
     if (inventory.fileIndex.has(name)) fileIndex.set(name, entry);
     else if (fileIndex.get(name)?.canonicalPath === entry.canonicalPath) fileIndex.delete(name);
   }
   const selectedGeneralFacts = inventory.generalFacts;
+  for (const name of protectedGeneral) {
+    const fact = previousGeneralFacts.get(name);
+    if (fact) selectedGeneralFacts.set(name, fact);
+    else selectedGeneralFacts.delete(name);
+  }
   for (const [path, effect] of publicMutations.generalEffects) {
     if (effect) selectedGeneralFacts.set(path, effect);
     else selectedGeneralFacts.delete(path);
@@ -3288,10 +3626,15 @@ async function recoverDiskChanges(
   );
 
   for (const [path, prior] of previousFolders) {
-    if (!observed.folderIndex.has(path) && folderIndex.get(path) === prior)
+    if (
+      !observed.folderIndex.has(path) &&
+      folderIndex.get(path) === prior &&
+      !unreadableAt(join(contentDir, path))
+    )
       folderIndex.delete(path);
   }
   for (const [path, entry] of inventory.folderIndex) {
+    if (intakeOwns(join(contentDir, path))) continue;
     const current = folderIndex.get(path);
     if (
       current === undefined ||
@@ -3304,28 +3647,38 @@ async function recoverDiskChanges(
     }
   }
   for (const [alias, prior] of previousAliases) {
+    const aliasPath = previousAliasPaths.get(alias);
+    if (aliasPath !== undefined && unreadableAt(aliasPath)) continue;
     if (!observed.aliasMap.has(alias) && aliasMap.get(alias) === prior) aliasMap.delete(alias);
   }
   for (const [alias, canonical] of observed.aliasMap) {
+    const aliasPath = observed.aliasPaths.get(alias) ?? previousAliasPaths.get(alias);
+    if (aliasPath !== undefined && intakeOwns(aliasPath)) continue;
     const current = aliasMap.get(alias);
     if (current === undefined || current === previousAliases.get(alias))
       aliasMap.set(alias, canonical);
   }
   for (const [alias, prior] of previousAliasPaths) {
-    if (!observed.aliasPaths.has(alias) && aliasPaths.get(alias) === prior)
+    if (!observed.aliasPaths.has(alias) && aliasPaths.get(alias) === prior && !unreadableAt(prior))
       aliasPaths.delete(alias);
   }
   for (const [alias, path] of observed.aliasPaths) {
+    if (intakeOwns(path)) continue;
     const current = aliasPaths.get(alias);
     if (current === undefined || current === previousAliasPaths.get(alias))
       aliasPaths.set(alias, path);
   }
   for (const [alias, prior] of previousFolderAliases) {
-    if (!observed.folderAliasIndex.has(alias) && folderAliasIndex.get(alias) === prior) {
+    if (
+      !observed.folderAliasIndex.has(alias) &&
+      folderAliasIndex.get(alias) === prior &&
+      !unreadableAt(join(contentDir, alias))
+    ) {
       folderAliasIndex.delete(alias);
     }
   }
   for (const [alias, canonical] of inventory.folderAliasIndex) {
+    if (intakeOwns(join(contentDir, alias))) continue;
     const current = folderAliasIndex.get(alias);
     if (current === undefined || current === previousFolderAliases.get(alias)) {
       folderAliasIndex.set(alias, canonical);
@@ -3456,8 +3809,16 @@ async function recoverDiskChanges(
       await countingOnDiskEvent(event);
     }
   }
-  onRawBatch?.([...new Set([...observed.paths, ...knownPaths])]);
-  return { completed: true, candidates: deduplicated.length };
+  if (handed) {
+    if (deduplicated.length > 0) onRawBatch?.(deduplicated.map((event) => event.path));
+  } else {
+    onRawBatch?.([...new Set([...observed.paths, ...knownPaths])]);
+  }
+  return {
+    completed: true,
+    candidates: deduplicated.length,
+    partial: observed.unreadable.size > 0,
+  };
 }
 
 export function toParcelIgnorePaths(
@@ -3484,6 +3845,8 @@ interface RecoveryDriverDeps {
   recover: (
     mutations: RecoveryPublicMutations,
     counter: DispatchCounter,
+    mode: RecoveryMode,
+    handed: HandedObservation | undefined,
   ) => Promise<RecoveryOutcome>;
   setActivePublicMutations: (mutations: RecoveryPublicMutations | null) => void;
   onAfterMutation: () => void;
@@ -3491,15 +3854,24 @@ interface RecoveryDriverDeps {
   backendName: WatcherBackend;
 }
 
-function createRecoveryDriver(deps: RecoveryDriverDeps): {
-  requestRecovery: () => Promise<RecheckResult>;
-} {
+interface RecoveryDriver {
+  requestRecovery: (mode: RecoveryMode, handed?: HandedObservation) => Promise<RecheckResult>;
+  isIdle: () => boolean;
+}
+
+function createRecoveryDriver(deps: RecoveryDriverDeps): RecoveryDriver {
   let recoveryRunning = false;
   let nextRecovery: Promise<RecheckResult> | undefined;
+  let nextMode: RecoveryMode = 'metadata';
+  let nextHanded: HandedObservation | undefined;
   let followUpRecovery: PromiseWithResolvers<RecheckResult> | undefined;
   const closed = (): RecheckResult => ({ status: 'closed', candidates: 0, dispatched: 0 });
   const recoverOnce = async (): Promise<RecheckResult> => {
+    const mode = nextMode;
+    const handed = nextHanded;
     nextRecovery = undefined;
+    nextMode = 'metadata';
+    nextHanded = undefined;
     if (deps.isClosed()) return closed();
     recoveryRunning = true;
     const recoveryMutations: RecoveryPublicMutations = {
@@ -3513,19 +3885,26 @@ function createRecoveryDriver(deps: RecoveryDriverDeps): {
     let result: RecheckResult = { status: 'failed', candidates: 0, dispatched: 0 };
     try {
       deps.setActivePublicMutations(recoveryMutations);
-      const outcome = await deps.recover(recoveryMutations, counter);
+      const outcome = await deps.recover(recoveryMutations, counter, mode, handed);
       deps.onAfterMutation();
       if (outcome.completed) {
-        await deps.onRecoveryComplete?.();
+        if (!outcome.partial) await deps.onRecoveryComplete?.();
         result = {
           status: 'completed',
           candidates: outcome.candidates,
           dispatched: counter.dispatched,
         };
-        log.info(
-          { candidates: outcome.candidates, dispatched: counter.dispatched },
-          `${deps.backendName} watcher recovery finished`,
-        );
+        const finished = {
+          mode: handed ? 'timed' : mode,
+          candidates: outcome.candidates,
+          dispatched: counter.dispatched,
+          partial: outcome.partial === true,
+        };
+        if (mode === 'full' || counter.dispatched > 0) {
+          log.info(finished, `${deps.backendName} watcher recovery finished`);
+        } else {
+          log.debug(finished, `${deps.backendName} watcher recovery finished`);
+        }
       } else {
         result = { status: 'incomplete', candidates: 0, dispatched: counter.dispatched };
         log.warn(
@@ -3560,8 +3939,16 @@ function createRecoveryDriver(deps: RecoveryDriverDeps): {
       })
       .then(() => settled);
   };
-  const requestRecovery = (): Promise<RecheckResult> => {
-    if (nextRecovery) return nextRecovery;
+  const requestRecovery = (
+    mode: RecoveryMode,
+    handed?: HandedObservation,
+  ): Promise<RecheckResult> => {
+    if (mode === 'full') nextMode = 'full';
+    if (nextRecovery) {
+      nextHanded = undefined;
+      return nextRecovery;
+    }
+    nextHanded = mode === 'full' ? undefined : handed;
     if (recoveryRunning) {
       followUpRecovery = Promise.withResolvers<RecheckResult>();
       nextRecovery = followUpRecovery.promise;
@@ -3570,7 +3957,14 @@ function createRecoveryDriver(deps: RecoveryDriverDeps): {
     }
     return nextRecovery;
   };
-  return { requestRecovery };
+  return { requestRecovery, isIdle: () => !recoveryRunning && nextRecovery === undefined };
+}
+
+interface WatcherBackendSubscription extends AsyncSubscription {
+  runOrdered(work: () => Promise<void>): Promise<void>;
+  requestRecovery(mode: RecoveryMode, handed?: HandedObservation): Promise<RecheckResult>;
+  isRecoveryIdle(): boolean;
+  noticeRootMissing(): void;
 }
 
 async function startParcelWatcher(
@@ -3592,14 +3986,9 @@ async function startParcelWatcher(
   onRecoveryComplete?: () => Promise<void>,
   clock: WatcherClock = watcherClock(),
   nativeBackend?: NativeWatcherBackend,
-): Promise<
-  | (AsyncSubscription & {
-      runOrdered(work: () => Promise<void>): Promise<void>;
-      requestRecovery(): Promise<RecheckResult>;
-      settle(): Promise<void>;
-    })
-  | null
-> {
+  carryOver: Set<string> = new Set(),
+  coverageWhileLost: string = coverageWithoutWatcher(null),
+): Promise<(WatcherBackendSubscription & { settle(): Promise<void> }) | null> {
   let parcel: NativeWatcherBackend;
   if (nativeBackend) {
     parcel = nativeBackend;
@@ -3616,14 +4005,15 @@ async function startParcelWatcher(
   }
 
   try {
-    const subscribeOpts = contentFilter
-      ? {
-          ignore: toParcelIgnorePaths(
-            contentFilter.getWatcherIgnoreGlobs(),
-            discoveredStructuralDirs ?? [],
-          ),
-        }
-      : undefined;
+    const subscribeOpts = () =>
+      contentFilter
+        ? {
+            ignore: toParcelIgnorePaths(
+              contentFilter.getWatcherIgnoreGlobs(),
+              discoveredStructuralDirs ?? [],
+            ),
+          }
+        : undefined;
 
     let closed = false;
     let failure: Error | undefined;
@@ -3642,10 +4032,10 @@ async function startParcelWatcher(
         });
       return next;
     };
-    const { requestRecovery } = createRecoveryDriver({
+    const { requestRecovery, isIdle } = createRecoveryDriver({
       runOrdered,
       isClosed: () => closed,
-      recover: (recoveryMutations, counter) =>
+      recover: (recoveryMutations, counter, mode, handed) =>
         recoverDiskChanges(
           contentDir,
           contentFilter,
@@ -3661,24 +4051,27 @@ async function startParcelWatcher(
           getFileIndexGeneration,
           counter,
           onRawBatch,
+          handed ? undefined : beginFreshnessReuse(mode, fileIndex, carryOver),
+          handed,
         ),
       setActivePublicMutations,
       onAfterMutation,
       onRecoveryComplete,
       backendName: 'parcel',
     });
-    const subscription = await subscribeParcel(
-      parcel,
-      contentDir,
+    const notificationsFor =
+      (generation: number): Parameters<typeof subscribeParcel>[2] =>
       (err, events) => {
-        if (closed) return;
+        if (closed || !resubscriber.isLive(generation)) return;
         const notification = classifyParcelNotification(err, events);
         if (notification.kind === 'error') {
           log.error({ err: notification.error }, 'parcel watcher callback error');
           failure = new Error(
-            `the file watcher failed before it saw its settle fence: ${notification.error.message}`,
+            `the file watcher is subscribing again after an error and cannot settle until it is back: ${notification.error.message}`,
           );
           for (const fence of settleFences.values()) fence.reject(failure);
+          incrementWatcherErrors();
+          resubscriber.lost('error', generation, notification.error);
           return;
         }
         if (notification.kind === 'rescan') {
@@ -3710,22 +4103,52 @@ async function startParcelWatcher(
           for (const event of notification.events)
             settleFences.get(basename(event.path))?.resolve();
         });
+        if (
+          notification.events.some((event) => event.type === 'delete' && event.path === contentDir)
+        ) {
+          resubscriber.lost('root-delete', generation);
+        }
         if (notification.kind !== 'rescan') return records;
         const fencesBeforeRescan = [...settleFences.values()];
         return Promise.all([
           records,
-          requestRecovery().then(() => {
+          requestRecovery('full').then(() => {
             for (const fence of fencesBeforeRescan) fence.resolve();
           }),
         ]);
+      };
+    const resubscriber = createResubscriber({
+      clock,
+      root: contentDir,
+      backendName: 'parcel',
+      coverageWhileLost,
+      onGaveUp: (err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        failure = new Error(
+          `the file watcher gave up subscribing after repeated failures (${message}); it tries again every ${RESUBSCRIBE_SLOW_RETRY_MS / 60_000} minutes and cannot settle until it is back`,
+        );
+        for (const fence of settleFences.values()) fence.reject(failure);
       },
-      subscribeOpts,
-      platform,
-    );
+      subscribe: (generation) =>
+        subscribeParcel(
+          parcel,
+          contentDir,
+          notificationsFor(generation),
+          subscribeOpts(),
+          platform,
+        ),
+      onResubscribed: () => {
+        failure = undefined;
+        void requestRecovery('full');
+      },
+    });
+    await resubscriber.start();
 
     return {
       runOrdered,
       requestRecovery,
+      isRecoveryIdle: isIdle,
+      noticeRootMissing: () => resubscriber.noticeRootMissing(),
       async settle() {
         if (closed) return;
         if (failure) throw failure;
@@ -3764,7 +4187,7 @@ async function startParcelWatcher(
         for (const fence of settleFences.values()) {
           fence.reject(new Error('the file watcher stopped before it saw its settle fence'));
         }
-        await subscription.unsubscribe();
+        await resubscriber.close();
         await workTail;
       },
     };
@@ -3821,6 +4244,14 @@ function waitForPendingFsEventsRegistrations(dir: string, platform: NodeJS.Platf
   }
 }
 
+const CHOKIDAR_NON_FATAL_ERROR_CODES: ReadonlySet<string> = new Set([
+  'EACCES',
+  'EPERM',
+  'ENOSPC',
+  'EMFILE',
+  'ENFILE',
+]);
+
 async function startChokidarWatcher(
   contentDir: string,
   contentFilter: ContentFilter | undefined,
@@ -3838,19 +4269,10 @@ async function startChokidarWatcher(
   clock: WatcherClock,
   onRawBatch?: (absPaths: readonly string[]) => void,
   onRecoveryComplete?: () => Promise<void>,
-): Promise<AsyncSubscription & { requestRecovery(): Promise<RecheckResult> }> {
+  carryOver: Set<string> = new Set(),
+  coverageWhileLost: string = coverageWithoutWatcher(null),
+): Promise<WatcherBackendSubscription> {
   const { watch } = await import('chokidar');
-
-  const watcher = watch(contentDir, {
-    ignoreInitial: true,
-    followSymlinks: false,
-    ignored: contentFilter
-      ? (filePath: string, stats?: Stats) =>
-          isChokidarPathIgnored(contentDir, contentFilter, filePath, stats)
-      : undefined,
-  });
-
-  watcher.on('error', (err) => log.error({ err }, 'chokidar error'));
 
   let closed = false;
   let workTail = Promise.resolve();
@@ -3862,10 +4284,10 @@ async function startChokidarWatcher(
     });
     return next;
   };
-  const { requestRecovery } = createRecoveryDriver({
+  const { requestRecovery, isIdle } = createRecoveryDriver({
     runOrdered,
     isClosed: () => closed,
-    recover: (recoveryMutations, counter) =>
+    recover: (recoveryMutations, counter, mode, handed) =>
       recoverDiskChanges(
         contentDir,
         contentFilter,
@@ -3881,6 +4303,8 @@ async function startChokidarWatcher(
         getFileIndexGeneration,
         counter,
         onRawBatch,
+        handed ? undefined : beginFreshnessReuse(mode, fileIndex, carryOver),
+        handed,
       ),
     setActivePublicMutations,
     onAfterMutation,
@@ -3920,27 +4344,78 @@ async function startChokidarWatcher(
     }, CHOKIDAR_BATCH_WINDOW_MS);
   }
 
-  watcher.on('add', (path) => queueEvent({ type: 'create', path }));
-  watcher.on('change', (path) => queueEvent({ type: 'update', path }));
-  watcher.on('unlink', (path) => queueEvent({ type: 'delete', path, entryKind: 'file' }));
-  watcher.on('addDir', (path) => queueEvent({ type: 'create', path }));
-  watcher.on('unlinkDir', (path) => queueEvent({ type: 'delete', path, entryKind: 'folder' }));
-
-  await new Promise<void>((resolveReady) => {
-    let settled = false;
-    const settle = () => {
-      if (settled) return;
-      settled = true;
-      resolveReady();
+  const reportedNonFatalCodes = new Set<string>();
+  const watchAs = async (generation: number): Promise<AsyncSubscription> => {
+    const watcher = watch(contentDir, {
+      ignoreInitial: true,
+      followSymlinks: false,
+      ignored: contentFilter
+        ? (filePath: string, stats?: Stats) =>
+            isChokidarPathIgnored(contentDir, contentFilter, filePath, stats)
+        : undefined,
+    });
+    const live = (): boolean => !closed && resubscriber.isLive(generation);
+    const queueLive = (event: InternalRawFileEvent): void => {
+      if (live()) queueEvent(event);
     };
-    watcher.once('ready', settle);
-    clock.setTimeout(settle, CHOKIDAR_READY_TIMEOUT_MS).unref();
-  });
 
-  waitForPendingFsEventsRegistrations(contentDir, platform);
+    watcher.on('error', (err) => {
+      if (!live()) return;
+      incrementWatcherErrors();
+      const code = errnoCode(err);
+      if (code !== undefined && CHOKIDAR_NON_FATAL_ERROR_CODES.has(code)) {
+        if (reportedNonFatalCodes.has(code)) return;
+        reportedNonFatalCodes.add(code);
+        log.warn(
+          { err, code },
+          `chokidar reported ${code}; the watcher stays up, and for what it cannot watch ${coverageWhileLost}`,
+        );
+        return;
+      }
+      log.error({ err }, 'chokidar error');
+      resubscriber.lost('error', generation, err);
+    });
+    watcher.on('add', (path) => queueLive({ type: 'create', path }));
+    watcher.on('change', (path) => queueLive({ type: 'update', path }));
+    watcher.on('unlink', (path) => queueLive({ type: 'delete', path, entryKind: 'file' }));
+    watcher.on('addDir', (path) => queueLive({ type: 'create', path }));
+    watcher.on('unlinkDir', (path) => {
+      queueLive({ type: 'delete', path, entryKind: 'folder' });
+      if (path === contentDir && live()) resubscriber.lost('root-delete', generation);
+    });
+
+    await new Promise<void>((resolveReady) => {
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        resolveReady();
+      };
+      watcher.once('ready', settle);
+      clock.setTimeout(settle, CHOKIDAR_READY_TIMEOUT_MS).unref();
+    });
+
+    waitForPendingFsEventsRegistrations(contentDir, platform);
+    return { unsubscribe: () => watcher.close() };
+  };
+
+  const resubscriber = createResubscriber({
+    clock,
+    root: contentDir,
+    backendName: 'chokidar',
+    coverageWhileLost,
+    subscribe: watchAs,
+    onResubscribed: () => {
+      void requestRecovery('full');
+    },
+  });
+  await resubscriber.start();
 
   return {
+    runOrdered,
     requestRecovery,
+    isRecoveryIdle: isIdle,
+    noticeRootMissing: () => resubscriber.noticeRootMissing(),
     unsubscribe: async () => {
       closed = true;
       if (batchTimer) {
@@ -3948,10 +4423,19 @@ async function startChokidarWatcher(
         batchTimer = null;
         pendingEvents = [];
       }
-      await watcher.close();
+      await resubscriber.close();
       await workTail;
     },
   };
+}
+
+function coverageWithoutWatcher(freshnessIntervalMs: number | null): string {
+  if (freshnessIntervalMs === null) {
+    return 'changes made outside the app are found only by an explicit re-check';
+  }
+  const fastest = freshnessIntervalMs / 1000;
+  const slowest = Math.max(freshnessIntervalMs, FRESHNESS_MAX_INTERVAL_MS) / 1000;
+  return `the timed re-check still finds changes made outside the app, every ${fastest} to ${slowest} seconds`;
 }
 
 export interface StartWatcherOptions {
@@ -3961,6 +4445,7 @@ export interface StartWatcherOptions {
   platform?: NodeJS.Platform;
   nativeBackend?: NativeWatcherBackend;
   clock?: WatcherClock;
+  freshnessIntervalMs?: number | null;
 }
 
 export async function startWatcher(
@@ -4044,8 +4529,10 @@ async function startWatcherWithClock(
     WATCHER_DROP_SUMMARY_INTERVAL_MS,
   );
 
-  let subscription: AsyncSubscription;
-  let requestRecovery: () => Promise<RecheckResult>;
+  const freshnessIntervalMs = resolveFreshnessInterval(opts.freshnessIntervalMs);
+  const coverageWhileLost = coverageWithoutWatcher(freshnessIntervalMs);
+  const carryOver = new Set<string>();
+  let subscription: WatcherBackendSubscription;
   let runOrderedRescan: ((work: () => Promise<void>) => Promise<void>) | undefined;
   let settleSubscription: (() => Promise<void>) | undefined;
   let backend: WatcherBackend;
@@ -4076,10 +4563,11 @@ async function startWatcherWithClock(
             onRecoveryComplete,
             clock,
             opts.nativeBackend,
+            carryOver,
+            coverageWhileLost,
           );
     if (parcelSub) {
       subscription = parcelSub;
-      requestRecovery = parcelSub.requestRecovery;
       runOrderedRescan = parcelSub.runOrdered;
       settleSubscription = () => parcelSub.settle();
       backend = 'parcel';
@@ -4106,9 +4594,10 @@ async function startWatcherWithClock(
         clock,
         onRawBatch,
         onRecoveryComplete,
+        carryOver,
+        coverageWhileLost,
       );
       subscription = chokidarSub;
-      requestRecovery = chokidarSub.requestRecovery;
       backend = 'chokidar';
     }
   } catch (e) {
@@ -4117,26 +4606,178 @@ async function startWatcherWithClock(
     throw e;
   }
 
-  const originalUnsubscribe = subscription.unsubscribe.bind(subscription);
+  const backendSubscription = subscription;
+  let handleClosed = false;
+  let freshnessTimer: WatcherTimer | null = null;
+  let freshnessPassInFlight: Promise<void> | null = null;
+  const scheduleFreshnessPass = (baseMs: number, delayMs: number): void => {
+    if (handleClosed) return;
+    freshnessTimer = clock.setTimeout(() => {
+      freshnessTimer = null;
+      const pass = runFreshnessPass(baseMs);
+      freshnessPassInFlight = pass;
+      void pass.finally(() => {
+        if (freshnessPassInFlight === pass) freshnessPassInFlight = null;
+      });
+    }, delayMs);
+    freshnessTimer.unref();
+  };
+  const walkForFreshness = async (): Promise<DiskObservation | null> => {
+    contentFilter?.refreshInPlaceSkillDirs();
+    const reuse = beginFreshnessReuse('metadata', fileIndex, carryOver);
+    const observed = await observeDisk(contentDir, contentFilter, reuse, () => handleClosed);
+    if (handleClosed) return null;
+    if (reuse) {
+      addFreshnessFilesHashed(reuse.hashed);
+      addFreshnessCarryOver(reuse.deferred.size);
+    }
+    return observed;
+  };
+  const runFreshnessPass = async (baseMs: number): Promise<void> => {
+    if (handleClosed) return;
+    if (!existsSync(contentDir)) {
+      backendSubscription.noticeRootMissing();
+      scheduleFreshnessPass(baseMs, baseMs);
+      return;
+    }
+    if (!backendSubscription.isRecoveryIdle()) {
+      scheduleFreshnessPass(baseMs, baseMs);
+      return;
+    }
+    const startedAt = clock.now();
+    let elapsedMs = 0;
+    const sinceEpoch = openObservationWindow();
+    try {
+      const observed = await walkForFreshness();
+      if (observed === null) return;
+      const result = observed.complete
+        ? await backendSubscription.requestRecovery('metadata', { observed, sinceEpoch })
+        : { status: 'incomplete' as const, candidates: 0, dispatched: 0 };
+      if (handleClosed) return;
+      elapsedMs = clock.now() - startedAt;
+      addFreshnessFinds(result.dispatched);
+      if (result.status === 'incomplete' || result.status === 'failed') {
+        incrementFreshnessPassesIncomplete();
+      }
+      log.debug({ ...result, elapsedMs }, 'freshness re-check pass finished');
+    } catch (err) {
+      if (handleClosed) return;
+      incrementFreshnessPassesIncomplete();
+      log.warn({ err }, 'freshness re-check pass failed');
+    } finally {
+      closeObservationWindow();
+      if (!handleClosed) {
+        incrementFreshnessPasses();
+        scheduleFreshnessPass(baseMs, nextFreshnessDelayMs(elapsedMs, baseMs));
+      }
+    }
+  };
+  if (freshnessIntervalMs !== null) scheduleFreshnessPass(freshnessIntervalMs, freshnessIntervalMs);
 
-  log.info({ contentDir, backend }, 'watching for external .md changes');
+  log.info({ contentDir, backend, freshnessIntervalMs }, 'watching for external .md changes');
 
   return {
     async unsubscribe() {
+      handleClosed = true;
+      clock.clearTimeout(freshnessTimer);
+      freshnessTimer = null;
       clock.clearInterval(evictionInterval);
       clock.clearInterval(dropSummaryInterval);
       try {
-        await originalUnsubscribe();
+        await backendSubscription.unsubscribe();
       } finally {
+        await freshnessPassInFlight;
         writeTracker.clear();
         removalTracker.clear();
         lastKnownHash.clear();
+        lastKnownStat.clear();
+        reportedUnreadable.clear();
         resetWatcherDecisionDiagnostics();
         restoreClock();
       }
     },
     recheck() {
-      return requestRecovery();
+      return backendSubscription.requestRecovery('full');
+    },
+    async recheckPaths(paths) {
+      const unique = [...new Set(paths)];
+      if (unique.length === 0) return { checked: 0, found: 0 };
+      let found = 0;
+      let checked = unique.length;
+      const rootMissing = (): boolean => {
+        if (existsSync(contentDir)) return false;
+        checked = 0;
+        found = 0;
+        log.warn(
+          { contentDir, paths: unique.length },
+          `skipped re-reading ${unique.length} documents: the content folder ${contentDir} is missing`,
+        );
+        backendSubscription.noticeRootMissing();
+        return true;
+      };
+      await backendSubscription.runOrdered(async () => {
+        if (rootMissing()) return;
+        const indexedPaths = new Set<string>();
+        for (const entry of fileIndex.values()) indexedPaths.add(entry.canonicalPath);
+        const changed: InternalRawFileEvent[] = [];
+        for (const path of unique) {
+          const known = lastKnownHash.get(path);
+          const tracked = known !== undefined || indexedPaths.has(path);
+          try {
+            lstatSync(path);
+          } catch (err) {
+            const code = errnoCode(err);
+            if (code === 'ENOENT' || code === 'ENOTDIR') {
+              if (rootMissing()) return;
+              if (tracked) changed.push({ type: 'delete', path, entryKind: 'file' });
+            } else {
+              log.warn({ err, path, code }, `could not re-read ${path}`);
+            }
+            continue;
+          }
+          if (
+            !hasAdmittedMarkdownFile(
+              pathToDocName(path, contentDir),
+              path,
+              contentDir,
+              contentFilter,
+            )
+          ) {
+            log.debug({ path }, `skipped a re-read of ${path}: not an admitted Markdown file`);
+            continue;
+          }
+          let content: string;
+          try {
+            if (statSync(path).size > DOCUMENT_OPEN_BYTE_LIMIT) {
+              log.debug({ path }, `skipped a re-read of ${path}: larger than an open document`);
+              continue;
+            }
+            content = await readFile(path, 'utf-8');
+          } catch (err) {
+            log.warn({ err, path }, `could not re-read ${path}`);
+            continue;
+          }
+          if (contentHash(content) === known) continue;
+          changed.push({ type: tracked ? 'update' : 'create', path });
+        }
+        found = changed.length;
+        if (changed.length === 0) return;
+        onRawBatch?.(changed.map((event) => event.path));
+        await handleRawEventsInternal(
+          changed,
+          contentDir,
+          contentFilter,
+          fileIndex,
+          folderIndex,
+          onDiskEvent,
+          aliasMap,
+          undefined,
+          generalFileIndex,
+          aliasPaths,
+        );
+        bumpFileIndexGeneration();
+      });
+      return { checked, found };
     },
     getFileIndex() {
       if (cachedMarkdownView && cachedMarkdownViewGeneration === fileIndexGeneration) {
@@ -4166,6 +4807,12 @@ async function startWatcherWithClock(
     },
     mutateFileIndex(reportedEvent) {
       const event = declaredDiskEvent(reportedEvent);
+      if (event.kind === 'rename') {
+        noteIntakeMutation(event.oldPath);
+        noteIntakeMutation(event.newPath);
+      } else {
+        noteIntakeMutation(event.path);
+      }
       if (event.kind === 'rename') {
         activePublicMutations?.markdownNames.add(event.oldDocName);
         activePublicMutations?.markdownNames.add(event.newDocName);
@@ -4296,6 +4943,7 @@ async function startWatcherWithClock(
     },
     pruneFileIndexNowExcluded() {
       if (!contentFilter) return 0;
+      noteIntakeMutation(contentDir);
       let pruned = 0;
       let changed = false;
       const removedGeneralPaths = new Set<string>();
@@ -4361,6 +5009,7 @@ async function startWatcherWithClock(
     },
     pruneFolderIndexNowExcluded() {
       if (!contentFilter) return 0;
+      noteIntakeMutation(contentDir);
       let pruned = 0;
       let aliasesChanged = false;
       for (const folderPath of folderIndex.keys()) {
@@ -4388,6 +5037,7 @@ async function startWatcherWithClock(
     },
     async rescanFromDisk() {
       const reseed = async () => {
+        noteIntakeMutation(contentDir);
         const mutations: GeneralMutationRecord = {
           generalNames: new Set(),
           generalEffects: new Map(),
@@ -4426,6 +5076,7 @@ async function startWatcherWithClock(
           );
           for (const [alias, path] of observation.aliasPaths) aliasPaths.set(alias, path);
           bumpFileIndexGeneration();
+          noteIntakeMutation(contentDir);
         } finally {
           activeReseedMutations = null;
         }

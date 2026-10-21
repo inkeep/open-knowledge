@@ -3,9 +3,11 @@ import {
   type GitRepository,
 } from '@inkeep/open-knowledge-core/git-repository';
 import { getLogger } from './logger.ts';
+import { incrementWatcherErrors } from './metrics.ts';
 import { classifyParcelNotification } from './parcel-recovery.ts';
 import { type NativeWatcherBackend, subscribeParcel } from './parcel-subscription.ts';
 import { type WatcherClock, type WatcherTimer, watcherClock } from './watcher-clock.ts';
+import { createResubscriber } from './watcher-freshness.ts';
 
 const log = getLogger('head-watcher');
 
@@ -27,6 +29,11 @@ interface BatchBeginInfo {
 
 type OnBatchBegin = (info: BatchBeginInfo) => void | Promise<void>;
 type OnBatchEnd = (info: BatchEndInfo) => void | Promise<void>;
+
+interface HeadWatcherCoverage {
+  readonly onGaveUp?: (err: unknown) => void;
+  readonly onBack?: () => void;
+}
 
 export interface HeadWatcherHandle {
   unsubscribe: () => Promise<void>;
@@ -74,6 +81,8 @@ async function tryStartParcelHeadWatcher(
   dispatch: (rawPath: string) => boolean,
   recover: () => void,
   platform: NodeJS.Platform,
+  clock: WatcherClock,
+  coverage: HeadWatcherCoverage,
   nativeBackend?: NativeWatcherBackend,
 ): Promise<(() => Promise<void>) | null> {
   let parcel: NativeWatcherBackend;
@@ -91,13 +100,15 @@ async function tryStartParcelHeadWatcher(
     }
   }
   try {
-    const subscription = await subscribeParcel(
-      parcel,
-      gitDir,
+    const notificationsFor =
+      (generation: number): Parameters<typeof subscribeParcel>[2] =>
       (err, events) => {
+        if (!resubscriber.isLive(generation)) return;
         const notification = classifyParcelNotification(err, events);
         if (notification.kind === 'error') {
           log.warn({ err: notification.error }, '[head-watcher] parcel subscription error');
+          incrementWatcherErrors();
+          resubscriber.lost('error', generation, notification.error);
           return;
         }
         if (notification.kind === 'rescan') {
@@ -111,11 +122,21 @@ async function tryStartParcelHeadWatcher(
           if (dispatch(event.path)) hadWatchedRecord = true;
         }
         if (notification.kind === 'rescan' && !hadWatchedRecord) recover();
-      },
-      undefined,
-      platform,
-    );
-    return () => subscription.unsubscribe();
+      };
+    const resubscriber = createResubscriber({
+      clock,
+      root: gitDir,
+      backendName: 'head-parcel',
+      coverageWhileLost:
+        'branch switches, pulls and other HEAD moves go unnoticed and the server reports head-watcher as degraded',
+      subscribe: (generation) =>
+        subscribeParcel(parcel, gitDir, notificationsFor(generation), undefined, platform),
+      onResubscribed: recover,
+      onGaveUp: coverage.onGaveUp,
+      onBack: coverage.onBack,
+    });
+    await resubscriber.start();
+    return () => resubscriber.close();
   } catch (err) {
     log.debug(
       { err: err instanceof Error ? err.message : String(err) },
@@ -151,6 +172,8 @@ export async function startHeadWatcher(
     platform?: NodeJS.Platform;
     nativeBackend?: NativeWatcherBackend;
     clock?: WatcherClock;
+    onGaveUp?: (err: unknown) => void;
+    onBack?: () => void;
     subscribeForTest?: (
       gitDir: string,
       dispatch: HeadEventDispatch,
@@ -304,6 +327,8 @@ export async function startHeadWatcher(
       dispatch,
       recover,
       opts.platform ?? process.platform,
+      clock,
+      { onGaveUp: opts.onGaveUp, onBack: opts.onBack },
       opts.nativeBackend,
     );
     if (resolvedUnsub) backend = 'parcel';

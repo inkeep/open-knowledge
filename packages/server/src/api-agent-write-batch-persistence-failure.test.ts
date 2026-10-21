@@ -73,6 +73,7 @@ afterEach(async () => {
 function createExtension() {
   return createApiExtension({
     hocuspocus,
+    refreshDocumentsFromDisk: async () => ({ checked: 0, found: 0 }),
     durabilityState,
     sessionManager,
     contentDir,

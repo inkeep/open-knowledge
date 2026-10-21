@@ -252,6 +252,7 @@ export function createApiExtension(
     | 'conflicts'
     | 'getProjectConfigEpoch'
     | 'getLinkAdvisoryPolicy'
+    | 'refreshDocumentsFromDisk'
   > &
     LegacyIndexOptions & {
       conflicts?: ApiExtensionOptions['conflicts'];
@@ -260,6 +261,7 @@ export function createApiExtension(
       signalChannel?: LegacySignalChannel;
       getProjectConfigEpoch?: () => number;
       getLinkAdvisoryPolicy?: () => LinkAdvisoryPolicy;
+      refreshDocumentsFromDisk?: ApiExtensionOptions['refreshDocumentsFromDisk'];
     },
 ): ReturnType<typeof createApiExtensionBase> {
   const {
@@ -268,6 +270,7 @@ export function createApiExtension(
     derivedDocumentIndex,
     durabilityState = new DocumentDurabilityState(),
     getProjectConfigEpoch = () => 0,
+    refreshDocumentsFromDisk = async () => ({ checked: 0, found: 0 }),
     getLinkAdvisoryPolicy = () => ({
       links: DEFAULT_LINKS_VALIDATION,
       suppressLogLinkAdvisories: DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES,
@@ -277,6 +280,7 @@ export function createApiExtension(
   const pendingLegacyWrites = new Set<Promise<unknown>>();
   const extension = createApiExtensionBase({
     ...apiOptions,
+    refreshDocumentsFromDisk,
     getProjectConfigEpoch,
     getLinkAdvisoryPolicy,
     conflicts:

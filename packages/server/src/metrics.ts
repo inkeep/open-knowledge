@@ -172,6 +172,16 @@ export interface ReconciliationMetrics {
   removalRedirectChainCycles: number;
   authDocLineageMismatchCount: number;
   authDocLineageGuardErrors: number;
+  freshnessPasses: number;
+  freshnessPassesIncomplete: number;
+  freshnessFinds: number;
+  freshnessFilesHashed: number;
+  freshnessCarryOver: number;
+  watcherErrors: number;
+  watcherResubscribes: number;
+  watcherRootMissing: number;
+  watcherUnreadableEntries: number;
+  watcherResubscribesAbandoned: number;
 }
 
 const counters: ReconciliationMetrics = {
@@ -294,6 +304,16 @@ const counters: ReconciliationMetrics = {
   removalRedirectChainCycles: 0,
   authDocLineageMismatchCount: 0,
   authDocLineageGuardErrors: 0,
+  freshnessPasses: 0,
+  freshnessPassesIncomplete: 0,
+  freshnessFinds: 0,
+  freshnessFilesHashed: 0,
+  freshnessCarryOver: 0,
+  watcherErrors: 0,
+  watcherResubscribes: 0,
+  watcherRootMissing: 0,
+  watcherUnreadableEntries: 0,
+  watcherResubscribesAbandoned: 0,
 };
 
 export function incrementReconcile(): void {
@@ -731,6 +751,46 @@ export function incrementAuthDocLineageGuardError(): void {
   counters.authDocLineageGuardErrors++;
 }
 
+export function incrementFreshnessPasses(): void {
+  counters.freshnessPasses++;
+}
+
+export function incrementFreshnessPassesIncomplete(): void {
+  counters.freshnessPassesIncomplete++;
+}
+
+export function addFreshnessFinds(count: number): void {
+  counters.freshnessFinds += count;
+}
+
+export function addFreshnessFilesHashed(count: number): void {
+  counters.freshnessFilesHashed += count;
+}
+
+export function addFreshnessCarryOver(count: number): void {
+  counters.freshnessCarryOver += count;
+}
+
+export function incrementWatcherErrors(): void {
+  counters.watcherErrors++;
+}
+
+export function incrementWatcherResubscribes(): void {
+  counters.watcherResubscribes++;
+}
+
+export function incrementWatcherRootMissing(): void {
+  counters.watcherRootMissing++;
+}
+
+export function incrementWatcherUnreadableEntries(): void {
+  counters.watcherUnreadableEntries++;
+}
+
+export function incrementWatcherResubscribesAbandoned(): void {
+  counters.watcherResubscribesAbandoned++;
+}
+
 export function incrementCollabSocketFilteredError(code: 'EPIPE' | 'ECONNRESET'): void {
   if (code === 'EPIPE') counters.collabSocketEpipeCount++;
   else counters.collabSocketEconnresetCount++;
@@ -912,4 +972,14 @@ export function resetMetrics(): void {
   counters.removalRedirectChainCycles = 0;
   counters.authDocLineageMismatchCount = 0;
   counters.authDocLineageGuardErrors = 0;
+  counters.freshnessPasses = 0;
+  counters.freshnessPassesIncomplete = 0;
+  counters.freshnessFinds = 0;
+  counters.freshnessFilesHashed = 0;
+  counters.freshnessCarryOver = 0;
+  counters.watcherErrors = 0;
+  counters.watcherResubscribes = 0;
+  counters.watcherRootMissing = 0;
+  counters.watcherUnreadableEntries = 0;
+  counters.watcherResubscribesAbandoned = 0;
 }
