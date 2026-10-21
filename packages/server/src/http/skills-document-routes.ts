@@ -39,7 +39,6 @@ import {
   type AgentWriteFlushOutcome,
   answeredWithSuccessOnAppRoutes,
   outcomeOfSavedWrite,
-  reportedOutcome,
 } from '../agent-write-outcome.ts';
 import { composeAndWriteRawBody } from '../bridge-intake.ts';
 import { isLinkIndexExcludedDoc } from '../cc1-broadcast.ts';
@@ -165,6 +164,7 @@ export interface SkillsDocumentRouteDeps {
   sessionManager: AgentSessionManager;
   respondStaleExternalWrite: (res: ServerResponse, handler: string, docName: string) => void;
   flushDiskAndDetectOutcome: (docName: string) => Promise<AgentWriteFlushOutcome>;
+  markAgentWriteStore: (docName: string) => void;
   respondPersistenceFailure: (res: ServerResponse, failure: StoreFailure, handler: string) => void;
   okArtifactKey: (
     kind: 'template' | 'folder-frontmatter' | 'folder' | 'skill',
@@ -237,6 +237,7 @@ export function createSkillsDocumentRoutes(deps: SkillsDocumentRouteDeps): ApiRo
     extractAgentIdentity,
     sessionManager,
     flushDiskAndDetectOutcome,
+    markAgentWriteStore,
     respondStaleExternalWrite,
     respondPersistenceFailure,
     okArtifactKey,
@@ -586,6 +587,7 @@ export function createSkillsDocumentRoutes(deps: SkillsDocumentRouteDeps): ApiRo
             200,
             SkillPutSuccessSchema,
             {
+              ...outcomeOfSavedWrite(undefined, null),
               path: `${homeRel}/${body.name}/SKILL.md`,
               created: true,
               warnings: wr.warnings,
@@ -619,6 +621,7 @@ export function createSkillsDocumentRoutes(deps: SkillsDocumentRouteDeps): ApiRo
         session.dc.document.transact(() => {
           composeAndWriteRawBody(session.dc.document, composed.content, 'agent');
         }, session.origin);
+        markAgentWriteStore(docName);
 
         const flushOutcome = await flushDiskAndDetectOutcome(docName);
         if (
@@ -648,7 +651,7 @@ export function createSkillsDocumentRoutes(deps: SkillsDocumentRouteDeps): ApiRo
           200,
           SkillPutSuccessSchema,
           {
-            ...reportedOutcome(docName, outcomeOfSavedWrite(undefined, flushOutcome)),
+            ...outcomeOfSavedWrite(undefined, flushOutcome),
             path: relPath,
             created,
             warnings: composed.warnings,

@@ -80,7 +80,11 @@ const baseHocuspocus = () =>
     documents: new Map(),
     closeConnections() {},
     unloadDocument: async () => {},
-    debouncer: { isDebounced: () => false, executeNow: async () => undefined },
+    debouncer: {
+      isDebounced: () => false,
+      isCurrentlyExecuting: () => false,
+      executeNow: async () => undefined,
+    },
   }) as unknown as Options['hocuspocus'];
 
 let contentDir: string;

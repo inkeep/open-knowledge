@@ -79,10 +79,18 @@ export interface ManagedArtifactCtx {
 
 type SettledMergeOutcome = Exclude<ManagedArtifactMergeOutcome, 'held'>;
 
+export type ManagedArtifactDrop =
+  | 'dropped-legacy-name'
+  | 'dropped-unresolvable'
+  | 'dropped-container-gone'
+  | 'dropped-intake-landed';
+
 export type StoreManagedArtifactOutcome =
   | 'persisted'
   | 'no-op'
   | 'write-failed'
+  | 'outside-taken-in'
+  | ManagedArtifactDrop
   | SettledMergeOutcome
   | SaveHold;
 
@@ -99,6 +107,11 @@ export function storeManagedArtifactWroteFile(outcome: StoreManagedArtifactOutco
     case 'write-failed':
     case 'applied':
     case 'unchanged':
+    case 'outside-taken-in':
+    case 'dropped-legacy-name':
+    case 'dropped-unresolvable':
+    case 'dropped-container-gone':
+    case 'dropped-intake-landed':
       return false;
     default:
       return assertNeverStoreOutcome(outcome);
@@ -501,25 +514,32 @@ export async function storeManagedArtifactDoc(
   ctx: ManagedArtifactCtx,
 ): Promise<StoreManagedArtifactOutcome> {
   const parsedStore = parseManagedArtifactName(documentName);
-  if (parsedStore?.kind === 'skill' && parsedStore.scope === 'project') return 'no-op';
+  if (parsedStore?.kind === 'skill' && parsedStore.scope === 'project') {
+    return 'dropped-legacy-name';
+  }
 
-  if (documentName.startsWith(MANAGED_ARTIFACT_PREFIX_TEMPLATE)) return 'no-op';
+  if (documentName.startsWith(MANAGED_ARTIFACT_PREFIX_TEMPLATE)) return 'dropped-legacy-name';
 
   const extStore = parseExternalSkillDocName(documentName);
-  if (extStore && externalSkillAbsPath(extStore.name, extStore.rel) === null) return 'no-op';
+  if (extStore && externalSkillAbsPath(extStore.name, extStore.rel) === null) {
+    return 'dropped-unresolvable';
+  }
 
-  if (lastTransactionOrigin === FILE_WATCHER_ORIGIN) return 'no-op';
+  const current = document.getText('source').toString() === ctx.lkgCache.get(documentName);
+  if (lastTransactionOrigin === FILE_WATCHER_ORIGIN) {
+    return current ? 'outside-taken-in' : 'dropped-intake-landed';
+  }
 
-  if (document.getText('source').toString() === ctx.lkgCache.get(documentName)) return 'no-op';
+  if (current) return 'no-op';
 
   const containerDir = managedArtifactContainerDir(documentName, ctx);
-  if (containerDir === null) return 'no-op';
+  if (containerDir === null) return 'dropped-unresolvable';
   if (!existsSync(containerDir)) {
     log.warn(
       { documentName, containerDir },
       'store: artifact container is gone (deleted or moved); dropping the write rather than resurrecting it',
     );
-    return 'no-op';
+    return 'dropped-container-gone';
   }
 
   const filePath = managedArtifactAbsPath(documentName, ctx);

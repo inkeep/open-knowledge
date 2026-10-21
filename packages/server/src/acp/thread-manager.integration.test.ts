@@ -32,6 +32,7 @@ import codexFixture from '../../../../test-support/fixtures/codex-legacy-warning
 import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { resolveBundledSkillDir } from '../build-skill-zip.ts';
+import type { LocalApiDispatch } from '../http/local-api-dispatch.ts';
 import { getLogger, type PinoLogger } from '../logger.ts';
 import { RUNTIME_VERSION } from '../version-constants.ts';
 import { withLocalAcquisitionRegistry } from './acquisition-contract.test-helper.ts';
@@ -60,6 +61,7 @@ import {
   AcpThreadManager,
   type AcpThreadManagerOptions,
   buildEnvironmentNote,
+  confineToContentDir,
   MAX_QUEUED_PROMPTS,
 } from './thread-manager.ts';
 
@@ -105,11 +107,13 @@ function makeManager(
     unwatchedTurnKillMs?: number;
     turnStallMs?: number;
     isIgnoredPath?: (relPosix: string) => boolean;
+    isExcludedPath?: (relPosix: string) => boolean;
     registry?: AcpRegistry;
     runtimeInstall?: AcpThreadManagerOptions['runtimeInstall'];
     resolveLoginShellPath?: () => Promise<string | null>;
     agentPresenceBroadcaster?: AgentPresenceBroadcaster;
     sessionManager?: AgentSessionManager;
+    localApi?: LocalApiDispatch;
     log?: PinoLogger;
     projectSkillSourceDir?: string | null;
     autoApproveOkTools?: () => boolean;
@@ -1845,14 +1849,16 @@ describe('AcpThreadManager persistence + resume', () => {
 });
 
 describe('handleFsWrite exclusion gate', () => {
-  test('non-markdown writes into ignored namespaces are rejected; plain asset writes land', async () => {
+  test('writes into ignored namespaces are rejected; a file that is not a document is written as is', async () => {
     const contentDir = tmp();
     const localDir = tmp();
+    const ignored = (rel: string) => rel.startsWith('.ok/') || rel.startsWith('.git/');
     const manager = makeManager(contentDir, localDir, {
-      isIgnoredPath: (rel) => rel.startsWith('.ok/') || rel.startsWith('.git/'),
+      isIgnoredPath: ignored,
+      isExcludedPath: ignored,
     });
     const m = manager as unknown as {
-      handleFsWrite: (record: unknown, path: string, content: string) => Promise<void>;
+      handleFsWrite: (record: unknown, path: string, content: string) => Promise<unknown>;
     };
     const record = { info: { lastActivityAt: 0 } };
 
@@ -1863,57 +1869,182 @@ describe('handleFsWrite exclusion gate', () => {
       m.handleFsWrite(record, join(contentDir, '.git', 'hooks', 'pre-commit'), '#!/bin/sh'),
     ).rejects.toThrow(/excluded from the project content scope/);
 
-    await m.handleFsWrite(record, join(contentDir, 'assets', 'note.txt'), 'hi');
-    expect(readFileSync(join(contentDir, 'assets', 'note.txt'), 'utf8')).toBe('hi');
+    const answer = await m.handleFsWrite(record, join(contentDir, 'assets', 'logo.png'), 'png');
+    expect(answer).toEqual({});
+    expect(readFileSync(join(contentDir, 'assets', 'logo.png'), 'utf8')).toBe('png');
   });
 });
 
-describe('handleFsWrite concurrent replace guard', () => {
-  test('returns one small ACP error and keeps the peer content', async () => {
+describe('confineToContentDir', () => {
+  test('names a document for Markdown, Mermaid, Excalidraw and text files, and none for other files', async () => {
     const contentDir = tmp();
-    const docs = new Map<string, Y.Doc>();
-    const sessionManager = {
-      getSession: async (docName: string, agentId: string) => {
-        let document = docs.get(docName);
-        if (document === undefined) {
-          document = new Y.Doc();
-          Object.assign(document, { name: docName });
-          docs.set(docName, document);
-        }
-        return { dc: { document }, origin: { agentId }, agentId, docName };
-      },
-      closeAllForAgent: async () => {},
-    } as unknown as AgentSessionManager;
-    const manager = makeManager(contentDir, tmp(), { sessionManager });
-    const fsWrite = (
+    const docNameOf = async (rel: string) =>
+      (await confineToContentDir(contentDir, join(contentDir, rel), () => false)).docName;
+
+    expect(await docNameOf('notes/a.md')).toBe('notes/a');
+    expect(await docNameOf('notes/b.mdx')).toBe('notes/b');
+    expect(await docNameOf('diagrams/flow.mmd')).toBe('diagrams/flow.mmd');
+    expect(await docNameOf('boards/plan.excalidraw')).toBe('boards/plan.excalidraw');
+    expect(await docNameOf('notes/todo.txt')).toBe('notes/todo.txt');
+    expect(await docNameOf('assets/logo.png')).toBeNull();
+  });
+
+  test('names no document for a path the content filter excludes', async () => {
+    const contentDir = tmp();
+    const confined = await confineToContentDir(
+      contentDir,
+      join(contentDir, '.github', 'notes.md'),
+      (rel) => rel.startsWith('.github/'),
+    );
+    expect(confined.docName).toBeNull();
+  });
+});
+
+describe('handleFsWrite through the agent write route', () => {
+  interface RouteCall {
+    method: string;
+    path: string;
+    body: Record<string, unknown>;
+  }
+
+  function routeAnswering(
+    status: number,
+    body: Record<string, unknown>,
+    calls: RouteCall[] = [],
+  ): LocalApiDispatch {
+    return async (method, path, options) => {
+      calls.push({ method, path, body: JSON.parse(String(options?.body)) });
+      return { status, bodyText: JSON.stringify(body) };
+    };
+  }
+
+  function fsWriteOf(
+    manager: AcpThreadManager,
+  ): (record: unknown, path: string, content: string) => Promise<unknown> {
+    return (
       manager as unknown as {
-        handleFsWrite: (record: unknown, path: string, content: string) => Promise<void>;
+        handleFsWrite: (record: unknown, path: string, content: string) => Promise<unknown>;
       }
     ).handleFsWrite.bind(manager);
-    const path = join(contentDir, 'notes', 'shared.md');
-    const record = (agentSessionId: string) => ({
-      agentSessionId,
-      info: { lastActivityAt: 0, agent: { id: 'codex', name: agentSessionId } },
-    });
+  }
 
-    await fsWrite(record('agent-a'), path, '# From A\n');
-    const before = docs.get('notes/shared')?.getText('source').toString();
-    const error = await fsWrite(record('agent-b'), path, '# From B\n').then(
-      () => undefined,
+  const record = {
+    agentSessionId: 'acp-thread-1',
+    info: { lastActivityAt: 0, agent: { id: 'codex-acp', name: 'Codex' } },
+  };
+
+  async function refusal(
+    pending: Promise<unknown>,
+  ): Promise<{ code?: number; message?: string; data?: unknown }> {
+    return pending.then(
+      () => ({}),
       (reason: unknown) => reason as { code?: number; message?: string; data?: unknown },
     );
+  }
 
-    expect(error?.code).toBe(-32009);
-    expect(error?.message).toBe(
+  test('a saved write returns its outcome under _meta, sent as a whole-document replace', async () => {
+    const contentDir = tmp();
+    const calls: RouteCall[] = [];
+    const localApi = routeAnswering(
+      200,
+      { outcome: 'merged-first', saved: true, nextStep: 're-read' },
+      calls,
+    );
+    const manager = makeManager(contentDir, tmp(), { localApi });
+
+    const result = await fsWriteOf(manager)(
+      record,
+      join(contentDir, 'notes', 'shared.mdx'),
+      '# Shared\n',
+    );
+
+    expect(result).toEqual({
+      _meta: { openknowledge: { outcome: 'merged-first', saved: true, nextStep: 're-read' } },
+    });
+    expect(calls).toEqual([
+      {
+        method: 'POST',
+        path: '/internal/acp/document-write',
+        body: {
+          docName: 'notes/shared',
+          file: 'notes/shared.mdx',
+          markdown: '# Shared\n',
+          extension: '.mdx',
+          agentId: 'acp-thread-1',
+          agentName: 'Codex',
+          clientName: 'codex-acp',
+        },
+      },
+    ]);
+  });
+
+  test('a concurrent replace keeps code -32009 and its data, with the outcome added', async () => {
+    const contentDir = tmp();
+    const localApi = routeAnswering(409, {
+      type: 'urn:ok:error:concurrent-overwrite-refused',
+      title: 'Concurrent overwrite refused.',
+      file: 'notes/shared.md',
+      retryAfterSeconds: 3,
+      outcome: 'refused',
+      saved: false,
+      nextStep: 'retry',
+    });
+    const manager = makeManager(contentDir, tmp(), { localApi });
+
+    const error = await refusal(
+      fsWriteOf(manager)(record, join(contentDir, 'notes', 'shared.md'), '# From B\n'),
+    );
+
+    expect(error.code).toBe(-32009);
+    expect(error.message).toBe(
       'Another writer changed this document recently. Wait a few seconds and retry.',
     );
-    expect(error?.data).toEqual({
+    expect(error.data).toEqual({
       type: 'urn:ok:error:concurrent-overwrite-refused',
       file: 'notes/shared.md',
       retryable: true,
       retryAfterSeconds: 3,
+      outcome: 'refused',
+      saved: false,
+      nextStep: 'retry',
     });
-    expect(docs.get('notes/shared')?.getText('source').toString()).toBe(before);
+  });
+
+  test.each([
+    [409, 'urn:ok:error:both-kept', 'both-kept', true, 're-read'],
+    [503, 'urn:ok:error:save-held', 'projection-held', false, 're-read'],
+    [409, 'urn:ok:error:doc-in-conflict', 'refused', false, 'none'],
+  ] as const)(
+    'a %i %s returns code -32010 naming the outcome',
+    async (status, type, outcome, saved, nextStep) => {
+      const contentDir = tmp();
+      const localApi = routeAnswering(status, {
+        type,
+        title: 'Edit title.',
+        detail: 'What happened and what to do.',
+        outcome,
+        saved,
+        nextStep,
+      });
+      const manager = makeManager(contentDir, tmp(), { localApi });
+
+      const error = await refusal(
+        fsWriteOf(manager)(record, join(contentDir, 'notes', 'shared.md'), '# Shared\n'),
+      );
+
+      expect(error.code).toBe(-32010);
+      expect(error.message).toBe('Edit title. What happened and what to do.');
+      expect(error.data).toEqual({ type, file: 'notes/shared.md', outcome, saved, nextStep });
+    },
+  );
+
+  test('a document write with no route to send it to fails instead of answering success', async () => {
+    const contentDir = tmp();
+    const manager = makeManager(contentDir, tmp());
+
+    await expect(
+      fsWriteOf(manager)(record, join(contentDir, 'notes', 'shared.md'), '# Shared\n'),
+    ).rejects.toThrow(/document writes are not available/);
   });
 });
 
@@ -2719,7 +2850,9 @@ describe('AcpThreadManager terminals + permission effects', () => {
     const contentDir = tmp();
     const localDir = tmp();
     writePlantingAgentEntry(localDir);
-    const manager = makeManager(contentDir, localDir);
+    const manager = makeManager(contentDir, localDir, {
+      isExcludedPath: (rel) => !/\.mdx?$/.test(rel),
+    });
     const info = await manager.createThread({ agent: { source: 'custom', id: 'planting-agent' } });
     const events: Collected = [];
     await manager.subscribe(info.threadId, 0, collect(events));
@@ -6109,6 +6242,10 @@ process.stdin.on('data', (chunk) => {
     const manager = makeManager(contentDir, localDir, {
       agentPresenceBroadcaster: recordingBroadcaster(published),
       sessionManager: stubSessionManager(new Map()),
+      localApi: async () => ({
+        status: 200,
+        bodyText: JSON.stringify({ outcome: 'applied', saved: true, nextStep: 'none' }),
+      }),
     });
 
     const info = await manager.createThread({ agent: { source: 'custom', id: 'codex-acp' } });

@@ -145,6 +145,7 @@ describe('handleRollback — rename history mitigation (US-005)', () => {
       unloadDocument: async () => {},
       debouncer: {
         isDebounced: () => false,
+        isCurrentlyExecuting: () => false,
         executeNow: async () => undefined,
       },
     };

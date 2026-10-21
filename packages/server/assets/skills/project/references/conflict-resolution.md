@@ -10,7 +10,7 @@ A document, template or skill write through `write` or `edit`, a document `resto
 | `refused` | Not saved. OpenKnowledge saves it only after someone acts: you, as `nextStep` says, or the user. | `false` | Follow `nextStep`: `retry` means send it again, corrected the way the detail says (a fixed path, quoted YAML, a different name) or after the wait it names; `re-read` means re-read, then re-apply only what is missing; `none` means nothing you send changes it, so tell the user (below). |
 | `projection-held` | Your write is in the doc but not yet in its file; OpenKnowledge saves it on its own. On OpenKnowledge Cloud the same outcome means the doc's file projection is held. | `false` | Never repeat the write. Re-read before the next edit. |
 
-A `both-kept` or `projection-held` result comes back as an error result because it is not plain success, but its text starts by saying the write landed: do not repeat it. A batch reports these per entry in `documents[]`, and a skill write per file in `skill.files[]`. If `outcome` holds a value you do not know, treat it as `merged-first` when `saved` is true and `refused` otherwise, and re-read; treat an unknown `nextStep` as `re-read`. If there is no `outcome`, the server predates the fields, or the doc is a Mermaid, Excalidraw, text, settings or global skill file whose save does not report back yet: read the result text. `retryWhen` and a warning's own `nextStep` are older fields; ignore them.
+A `both-kept` or `projection-held` result comes back as an error result because it is not plain success, but its text starts by saying the write landed: do not repeat it. A batch reports these per entry in `documents[]`, and a skill write per file in `skill.files[]`. If `outcome` holds a value you do not know, treat it as `merged-first` when `saved` is true and `refused` otherwise, and re-read; treat an unknown `nextStep` as `re-read`. If there is no `outcome`, the server predates the fields: read the result text. `retryWhen` and a warning's own `nextStep` are older fields; ignore them.
 
 ## What each result asks of you
 
@@ -33,6 +33,7 @@ The fields come from one table on the server, and this one repeats it: for every
 | `stale-external-write` (409) | `refused` | `false` | `none` | Tell the user which file it is. Your edit is kept in the document and the recovery snapshot; do not repeat it. |
 | `save-held` (503) with `pending-conflict` | `refused` | `false` | `none` | Tell the user which file it is. The save runs once they deal with the file in the app; do not repeat the write. |
 | `save-held` (503) on a file with no agreed version | `refused` | `false` | `none` | Tell the user its file changed outside OpenKnowledge, and do not write to that document again: any write replaces it with the file on disk and moves your edit to its history. |
+| `save-held` (503) with `pending-not-utf8` | `refused` | `false` | `none` | Tell the user which file it is: it now holds bytes that are not text, so it is not written over, and no save runs until someone saves it as text again. Do not repeat the write. |
 | `save-held` (503) with any other `reason` | `projection-held` | `false` | `re-read` | Do not repeat the write. Re-read before the next edit; with `pending-rename`, re-read at the new name the detail gives. |
 | `doc-moved` (409) | `projection-held` | `false` | `re-read` | Do not repeat the edit. Re-read the document at the new name the detail gives. |
 | `branch-switched` (409) | `projection-held` | `false` | `re-read` | Do not repeat the edit. Re-read the document before the next edit. |
@@ -43,6 +44,9 @@ The fields come from one table on the server, and this one repeats it: for every
 | `path-escape` (400) | `refused` | `false` | `none` | Tell the user the document's path could not be resolved. |
 | `store-refused` (503) | `refused` | `false` | `re-read` | Do not repeat it now. Once the user has fixed the filesystem fault, re-read and re-apply only what is missing. |
 | `write-replaced` (409) | `refused` | `false` | `re-read` | Re-read: the document now holds the file as it is on disk, and your edit is in its history. Re-apply it if it is still needed. |
+| `write-dropped` (409) for a name with no file of its own | `refused` | `false` | `retry` | Send the write again by the skill's or template's file path. |
+| `write-dropped` (409) while an outside change was being taken in | `refused` | `false` | `re-read` | Re-read the document, which now holds the outside change, and re-apply the edit if it is still missing. |
+| `write-dropped` (409) for a skill folder that is gone or a path that does not resolve | `refused` | `false` | `none` | Tell the user which skill it is: its folder was deleted or moved, or its path no longer resolves. |
 | `storage-full` (507), `storage-readonly` or `storage-error` (500) | `refused` | `false` | `re-read` | Once the user has fixed the storage, re-read and re-apply only what is missing. |
 
 If you come back to that file later, re-read it first. For a refusal before anything was written (`doc-in-conflict`), write again only if the write is still needed; otherwise compare the doc with the intended result and make only the edit that is still missing.

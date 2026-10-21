@@ -30,6 +30,7 @@ function buildGroup() {
     }),
     sessionManager: new AgentSessionManager(new Hocuspocus({ quiet: true })),
     flushDiskAndDetectOutcome: () => Promise.resolve(null),
+    markAgentWriteStore: () => {},
     respondStaleExternalWrite: () => {},
     respondPersistenceFailure: () => {},
     okArtifactKey: () => '',

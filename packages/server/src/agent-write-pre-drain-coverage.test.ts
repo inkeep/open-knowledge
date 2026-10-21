@@ -69,7 +69,7 @@ describe('agent-write pre-drain coverage', () => {
         .getDescendantsOfKind(SyntaxKind.CallExpression)
         .filter((c) => calleeName(c) === 'applyAgentMarkdownWrite'),
     );
-    expect(spineCalls.length).toBeGreaterThanOrEqual(6);
+    expect(spineCalls.length).toBeGreaterThanOrEqual(5);
 
     const preDrainable = spineCalls.filter((call) => {
       const positions = positionLiterals(call);

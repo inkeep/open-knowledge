@@ -47,6 +47,7 @@ function buildGroup(overrides: Partial<Deps> = {}) {
     agentPresenceBroadcaster: undefined,
     buildAgentActor: notDispatched,
     flushDiskAndDetectOutcome: notDispatched,
+    markAgentWriteStore: notDispatched,
     respondPersistenceFailure: notDispatched,
     respondStaleExternalWrite: notDispatched,
     flushDocToDisk: notDispatched,

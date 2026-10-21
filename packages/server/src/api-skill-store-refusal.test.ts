@@ -88,7 +88,11 @@ async function callApi(method: string, url: string, body?: unknown): Promise<Cap
       documents: new Map(),
       closeConnections() {},
       unloadDocument: async () => {},
-      debouncer: { isDebounced: () => false, executeNow: async () => undefined },
+      debouncer: {
+        isDebounced: () => false,
+        isCurrentlyExecuting: () => false,
+        executeNow: async () => undefined,
+      },
     } as unknown as Parameters<typeof createApiExtension>[0]['hocuspocus'],
     sessionManager: {
       closeSession: async () => {},

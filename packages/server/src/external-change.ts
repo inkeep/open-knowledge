@@ -465,7 +465,7 @@ export function buildReconcileWarning(
   };
 }
 
-const NOT_RECONCILED: ReconcileBeforeWriteResult = {
+export const NOT_RECONCILED: ReconcileBeforeWriteResult = {
   reconciled: false,
   baseBytes: 0,
   diskBytes: 0,

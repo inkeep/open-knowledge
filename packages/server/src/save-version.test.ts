@@ -274,6 +274,7 @@ describe('PRD-6716: save-version + rollback do not mutate parent git', () => {
       unloadDocument: async () => {},
       debouncer: {
         isDebounced: () => false,
+        isCurrentlyExecuting: () => false,
         executeNow: async () => undefined,
       },
     };

@@ -31,6 +31,7 @@ function buildGroup() {
     attributeOkArtifactWrite: () => {},
     scheduleOkArtifactFlush: () => {},
     flushDiskAndDetectOutcome: () => Promise.resolve(null),
+    markAgentWriteStore: () => {},
     respondPersistenceFailure: () => {},
     respondStaleExternalWrite: () => {},
     registerWrittenDocInFileIndex: () => {},

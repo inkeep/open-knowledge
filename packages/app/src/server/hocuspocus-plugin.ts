@@ -242,7 +242,7 @@ async function attachOkServer(
         permissions: currentSrv.acpPermissions,
         sessionManager,
         agentPresenceBroadcaster,
-        resolveEmbed: currentSrv.resolveEmbed,
+        localApi: currentSrv.localApi,
         isExcludedPath: (rel) => currentSrv.contentFilter.isExcluded(rel),
         isIgnoredPath: (rel) => currentSrv.contentFilter.isPathIgnored(rel),
         getLoadedDocText: (docName) =>

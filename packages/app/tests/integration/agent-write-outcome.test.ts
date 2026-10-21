@@ -1,5 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AGENT_WRITE_NEXT_STEPS, AGENT_WRITE_OUTCOMES } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -212,22 +222,34 @@ describe('what each refusal and each kind of document reports', () => {
     });
   }, 60_000);
 
-  test('a write to a Mermaid document, and its undo, carry no outcome until the save reports back', async () => {
+  test('a Mermaid write is applied, then merged first when its file changed outside, and its undo reports too', async () => {
     const server = await boot();
     const docName = `diagrams/outcome-${randomUUID()}.mmd`;
     const file = join(server.contentDir, docName);
     mkdirSync(join(server.contentDir, 'diagrams'), { recursive: true });
     writeFileSync(file, 'graph TD\n  A-->B\n');
-    const answer = await post(server, '/api/agent-write-md', {
-      docName,
-      markdown: 'graph TD\n  A-->C\n',
-      position: 'replace',
-      agentId: 'outcome-agent',
+    const write = (markdown: string) =>
+      post(server, '/api/agent-write-md', {
+        docName,
+        markdown,
+        position: 'replace',
+        agentId: 'outcome-agent',
+      });
+
+    const first = await write('graph TD\n  A-->C\n');
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({ outcome: 'applied', saved: true, nextStep: 'none' });
+    writeFileSync(file, 'graph TD\n  A-->Outside\n');
+
+    const second = await write('graph TD\n  A-->Agent\n');
+    expect(second.status).toBe(200);
+    expect(second.body).toMatchObject({
+      outcome: 'merged-first',
+      saved: true,
+      nextStep: 're-read',
     });
-    expect(answer.status).toBe(200);
-    expect(answer.body).not.toHaveProperty('outcome');
-    expect(answer.body).not.toHaveProperty('saved');
-    expect(answer.body).not.toHaveProperty('nextStep');
+    expectInClosedSets(second);
+    expect(disk(file)).toBe('graph TD\n  A-->Agent\n');
 
     const undo = await post(server, '/api/agent-undo', {
       docName,
@@ -235,8 +257,203 @@ describe('what each refusal and each kind of document reports', () => {
       agentId: 'outcome-agent',
     });
     expect(undo.status).toBe(200);
-    expect(undo.body).not.toHaveProperty('outcome');
-    expect(undo.body).not.toHaveProperty('saved');
+    expectInClosedSets(undo);
+  }, 60_000);
+
+  test('a Mermaid write over a file that no longer holds text is not saved, and says to tell the user', async () => {
+    const server = await boot();
+    const docName = `diagrams/outcome-${randomUUID()}.mmd`;
+    const file = join(server.contentDir, docName);
+    mkdirSync(join(server.contentDir, 'diagrams'), { recursive: true });
+    writeFileSync(file, 'graph TD\n  A-->B\n');
+    const write = (markdown: string) =>
+      post(server, '/api/agent-write-md', {
+        docName,
+        markdown,
+        position: 'replace',
+        agentId: 'outcome-agent',
+      });
+    expect((await write('graph TD\n  A-->C\n')).status).toBe(200);
+    const notText = Buffer.from([0x67, 0x72, 0xff, 0xfe, 0x0a]);
+    writeFileSync(file, notText);
+
+    const answer = await write('graph TD\n  A-->Agent\n');
+    expect(answer.status).toBe(503);
+    expect(answer.body).toMatchObject({
+      type: 'urn:ok:error:save-held',
+      reason: 'pending-not-utf8',
+      outcome: 'refused',
+      saved: false,
+      nextStep: 'none',
+    });
+    expect(String(answer.body.detail)).toContain(
+      'no save runs until someone saves the file as text again. Tell the user which file it is.',
+    );
+    expect(answer.body).not.toHaveProperty('retryWhen');
+    expectInClosedSets(answer);
+    expect(readFileSync(file).equals(notText)).toBe(true);
+    expect(liveText(server, docName)).toBe('graph TD\n  A-->Agent\n');
+  }, 60_000);
+
+  test.skipIf(process.getuid?.() === 0)(
+    'a Mermaid write whose save runs at once reports that save: merged first, then held',
+    async () => {
+      const server = await createTestServer({
+        gitEnabled: true,
+        watcherBackend: createWatcherDouble().backend,
+        debounce: 300_000,
+        maxDebounce: 0,
+      });
+      cleanups.push(() => server.cleanup());
+      const docName = `diagrams/outcome-${randomUUID()}.mmd`;
+      const file = join(server.contentDir, docName);
+      mkdirSync(join(server.contentDir, 'diagrams'), { recursive: true });
+      writeFileSync(file, 'graph TD\n  A-->B\n');
+      const write = (markdown: string) =>
+        post(server, '/api/agent-write-md', {
+          docName,
+          markdown,
+          position: 'replace',
+          agentId: 'outcome-agent',
+        });
+      expect((await write('graph TD\n  A-->C\n')).body).toMatchObject({ outcome: 'applied' });
+
+      writeFileSync(file, 'graph TD\n  A-->Outside\n');
+      const merged = await write('graph TD\n  A-->Agent\n');
+      expect(merged.status).toBe(200);
+      expect(merged.body).toMatchObject({ outcome: 'merged-first', saved: true });
+
+      chmodSync(file, 0o000);
+      cleanups.push(() => chmodSync(file, 0o644));
+      const held = await write('graph TD\n  A-->Held\n');
+      expect(held.status).toBe(503);
+      expect(held.body).toMatchObject({
+        type: 'urn:ok:error:save-held',
+        reason: 'pending-unreadable',
+        outcome: 'projection-held',
+        saved: false,
+        nextStep: 're-read',
+      });
+    },
+    60_000,
+  );
+
+  test('a Mermaid undo whose save runs at once reports that save, never applied', async () => {
+    const server = await createTestServer({
+      gitEnabled: true,
+      watcherBackend: createWatcherDouble().backend,
+      debounce: 300_000,
+      maxDebounce: 0,
+    });
+    cleanups.push(() => server.cleanup());
+    const docName = `diagrams/outcome-${randomUUID()}.mmd`;
+    const file = join(server.contentDir, docName);
+    mkdirSync(join(server.contentDir, 'diagrams'), { recursive: true });
+    writeFileSync(file, 'graph TD\n  A-->B\n');
+    const written = await post(server, '/api/agent-write-md', {
+      docName,
+      markdown: 'graph TD\n  A-->C\n',
+      position: 'replace',
+      agentId: 'outcome-agent',
+    });
+    expect(written.body).toMatchObject({ outcome: 'applied' });
+    const notText = Buffer.from([0x67, 0x72, 0xff, 0xfe, 0x0a]);
+    writeFileSync(file, notText);
+
+    const undo = await post(server, '/api/agent-undo', {
+      docName,
+      connectionId: 'agent-outcome-agent',
+      agentId: 'outcome-agent',
+    });
+    expect(undo.status).toBe(503);
+    expect(undo.body).toMatchObject({
+      type: 'urn:ok:error:save-held',
+      reason: 'pending-not-utf8',
+      outcome: 'refused',
+      saved: false,
+      nextStep: 'none',
+    });
+    expect(undo.body).not.toHaveProperty('retryWhen');
+    expect(readFileSync(file).equals(notText)).toBe(true);
+  }, 60_000);
+
+  test('a write under a template name that has no file is refused, with the file path to use instead', async () => {
+    const server = await boot();
+    const answer = await post(server, '/api/agent-write-md', {
+      docName: `__template__/notes/daily-${randomUUID()}`,
+      markdown: '# Daily\n',
+      position: 'replace',
+      agentId: 'outcome-agent',
+    });
+    expect(answer.status).toBe(409);
+    expect(answer.body).toMatchObject({
+      type: 'urn:ok:error:write-dropped',
+      outcome: 'refused',
+      saved: false,
+      nextStep: 'retry',
+    });
+    expect(String(answer.body.detail)).toContain('Write the skill or template by its file path');
+  }, 60_000);
+
+  test('a global skill write is merged first, or keeps both, when its file changed outside', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'outcome-skill-home-'));
+    cleanups.push(() => rmSync(home, { recursive: true, force: true }));
+    mkdirSync(join(home, '.agents', 'skills'), { recursive: true });
+    const server = await createTestServer({
+      gitEnabled: true,
+      watcherBackend: createWatcherDouble().backend,
+      debounce: 300_000,
+      maxDebounce: 600_000,
+      configHomedirOverride: home,
+    });
+    cleanups.push(() => server.cleanup());
+    const name = `outcome-skill-${randomUUID().slice(0, 8)}`;
+    const file = join(home, '.agents', 'skills', name, 'SKILL.md');
+    const put = async (body: string): Promise<Answer> => {
+      const response = await fetch(`${server.baseUrl}/api/skill`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'global',
+          name,
+          body,
+          frontmatter: { name, description: 'Use when checking write outcomes.' },
+          agentId: 'outcome-agent',
+        }),
+      });
+      return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+    };
+    const outside = (find: string, replace: string) =>
+      writeFileSync(file, readFileSync(file, 'utf-8').replace(find, replace));
+
+    const created = await put('## Alpha\n\nAlpha paragraph.\n\n## Beta\n\nBeta paragraph.\n');
+    expect(created.body).toMatchObject({ created: true, outcome: 'applied', saved: true });
+    const edited = await put(
+      '## Alpha\n\nAlpha paragraph.\n\n## Beta\n\nBeta paragraph.\n\n## Gamma\n\nGamma paragraph.\n',
+    );
+    expect(edited.body).toMatchObject({ created: false, outcome: 'applied', saved: true });
+
+    outside('Beta paragraph.', 'Beta paragraph, edited outside.');
+    const merged = await put(
+      '## Alpha\n\nAlpha paragraph, edited by the agent.\n\n## Beta\n\nBeta paragraph.\n\n## Gamma\n\nGamma paragraph.\n',
+    );
+    expect(merged.status).toBe(200);
+    expect(merged.body).toMatchObject({
+      outcome: 'merged-first',
+      saved: true,
+      nextStep: 're-read',
+    });
+    expect(disk(file)).toContain('Alpha paragraph, edited by the agent.');
+    expect(disk(file)).toContain('Beta paragraph, edited outside.');
+
+    outside('Gamma paragraph.', 'Gamma paragraph, edited outside.');
+    const bothKept = await put(
+      '## Alpha\n\nAlpha paragraph, edited by the agent.\n\n## Beta\n\nBeta paragraph, edited outside.\n\n## Gamma\n\nGamma paragraph, edited by the agent.\n',
+    );
+    expect(bothKept.status).toBe(200);
+    expect(bothKept.body).toMatchObject({ outcome: 'both-kept', saved: true, nextStep: 're-read' });
+    expect(disk(file)).toContain('Gamma paragraph, edited by the agent.');
+    expect(disk(file)).toContain('Gamma paragraph, edited outside.');
   }, 60_000);
 });
 

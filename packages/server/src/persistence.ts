@@ -80,14 +80,17 @@ import {
   type DeferredStoreOutcome,
   type DeferredStoreSettlement,
   DocumentDurabilityState,
+  type HeldSaveReason,
   OK_DOC_REMOVED,
   OK_PATH_UNRESOLVABLE,
   OK_STORE_HELD,
   OK_STORE_REFUSED,
+  OK_WRITE_DROPPED,
   type StoreFailure,
   type StoreFailureRemoval,
   type StoreIntakeMerge,
   type StorePublishOutcome,
+  type WriteDropCause,
   writtenThroughOf,
 } from './document-durability-state.ts';
 import { refuseStaleExternalWrite } from './external-change.ts';
@@ -114,6 +117,7 @@ import {
 import {
   loadManagedArtifactDoc,
   type ManagedArtifactCtx,
+  type ManagedArtifactDrop,
   managedArtifactContributorAttribution,
   managedArtifactTimelinePaths,
   type StoreManagedArtifactOutcome,
@@ -228,9 +232,14 @@ function managedArtifactSettlement(
     case 'applied':
       return 'resolved';
     case 'no-op':
+    case 'outside-taken-in':
+    case 'dropped-legacy-name':
+    case 'dropped-unresolvable':
+    case 'dropped-container-gone':
       return retry ? 'resolved' : 'neutral';
     case 'unchanged':
     case 'write-failed':
+    case 'dropped-intake-landed':
       return 'neutral';
     default:
       return assertNeverStoreOutcome(outcome);
@@ -297,6 +306,50 @@ const STORE_PENDING_DESCRIPTIONS: Readonly<Record<StorePendingReason, string>> =
   'pending-intake-failed-no-base':
     'its file changed and taking the outside version in failed, with no agreed version to merge against',
   'pending-conflict': 'its file changed and could not be merged, so a conflict was raised',
+};
+
+const OUTSIDE_STORE_HOLDS: Readonly<
+  Record<SaveHold['cause'], { readonly reason: HeldSaveReason; readonly description: string }>
+> = {
+  unreadable: {
+    reason: 'pending-unreadable',
+    description: STORE_PENDING_DESCRIPTIONS['pending-unreadable'],
+  },
+  'keeps-changing': {
+    reason: 'pending-exhausted',
+    description: STORE_PENDING_DESCRIPTIONS['pending-exhausted'],
+  },
+  'edits-changing': {
+    reason: 'pending-exhausted',
+    description: 'its edits kept changing while it was being saved',
+  },
+  'no-history-or-backup': {
+    reason: 'pending-no-history-or-backup',
+    description:
+      'its file changed outside and that version could be saved neither to history nor to the backup folder',
+  },
+  'not-utf8': {
+    reason: 'pending-not-utf8',
+    description: 'its file changed outside to bytes that are not UTF-8 text',
+  },
+};
+
+const OUTSIDE_STORE_DROPS: Readonly<
+  Record<ManagedArtifactDrop, { readonly cause: WriteDropCause; readonly description: string }>
+> = {
+  'dropped-legacy-name': { cause: 'legacy-name', description: 'this name has no file of its own' },
+  'dropped-unresolvable': {
+    cause: 'unresolvable',
+    description: 'its file path could not be resolved',
+  },
+  'dropped-container-gone': {
+    cause: 'container-gone',
+    description: 'its skill folder is gone (deleted or moved)',
+  },
+  'dropped-intake-landed': {
+    cause: 'intake-landed',
+    description: 'an outside change to its file was being taken in when the save ran',
+  },
 };
 
 function assertNeverStoreIntake(intake: never): never {
@@ -2698,6 +2751,7 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
       }
       return;
     }
+    const agentTriggered = durabilityState.consumeAgentWriteStore(documentName);
     if (isManagedArtifactDoc(documentName)) {
       const outcome = await storeManagedArtifactDoc(
         document,
@@ -2705,6 +2759,7 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
         lastTransactionOrigin,
         managedArtifactCtx,
       );
+      if (agentTriggered) recordOutsideStoreForAgentWrite(document, documentName, outcome);
       settleHeldSave(documentName, managedArtifactSettlement(outcome, retry));
       if (storeManagedArtifactWroteFile(outcome)) {
         const writer = resolveWriterFromOrigin(lastTransactionOrigin, getPrincipal);
@@ -2736,7 +2791,61 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
       lastTransactionOrigin,
       mermaidPersistenceCtx,
     );
+    if (agentTriggered) recordOutsideStoreForAgentWrite(document, documentName, outcome);
     settleHeldSave(documentName, enginelessSettlement(outcome, retry));
+  }
+
+  function recordOutsideStoreForAgentWrite(
+    document: Y.Doc,
+    documentName: string,
+    outcome: StoreMermaidOutcome | StoreManagedArtifactOutcome,
+  ): void {
+    if (typeof outcome === 'object') {
+      const hold = OUTSIDE_STORE_HOLDS[outcome.cause];
+      durabilityState.recordStoreFailure(documentName, {
+        code: OK_STORE_HELD,
+        message: `${documentName} was not saved: ${hold.description}`,
+        held: { reason: hold.reason },
+      });
+      return;
+    }
+    switch (outcome) {
+      case 'persisted':
+      case 'no-op':
+      case 'unchanged':
+        return;
+      case 'applied':
+      case 'outside-taken-in':
+        durabilityState.recordStoreIntake(documentName, 'clean', writtenThroughOf(document));
+        return;
+      case 'dropped-legacy-name':
+      case 'dropped-unresolvable':
+      case 'dropped-container-gone':
+      case 'dropped-intake-landed': {
+        const drop = OUTSIDE_STORE_DROPS[outcome];
+        durabilityState.recordStoreFailure(documentName, {
+          code: OK_WRITE_DROPPED,
+          message: `${documentName} was not saved: ${drop.description}`,
+          dropped: drop.cause,
+        });
+        return;
+      }
+      case 'merged':
+      case 'both-kept':
+        durabilityState.recordStoreIntake(documentName, outcome, writtenThroughOf(document));
+        return;
+      case 'kept-live':
+      case 'stash-fallback':
+        durabilityState.recordStoreIntake(documentName, 'kept-live', writtenThroughOf(document));
+        return;
+      case 'write-failed':
+        durabilityState.recordStoreFailure(documentName, {
+          message: `${documentName} was not saved: its file could not be written`,
+        });
+        return;
+      default:
+        assertNeverStoreOutcome(outcome);
+    }
   }
 
   async function retryHeldSave(document: Y.Doc, documentName: string): Promise<void> {

@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import { Readable } from 'node:stream';
 import { Hocuspocus } from '@hocuspocus/server';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { sessionWriterId } from '../agent-id.ts';
 import { AgentSessionManager } from '../agent-sessions.ts';
 import { makeCaptureRes } from '../composition-rig.test-helper.ts';
@@ -206,6 +206,69 @@ describe('edit routes refuse a document path that has nothing behind it', () => 
       expect(problem.title).toContain('No document at "wiki/new"');
       expect(problem.title).toContain('use write(');
       expect(problem.title).not.toContain('Did you mean');
+    } finally {
+      await sessionManager.closeAll();
+    }
+  });
+});
+
+describe('the in-app agent write runs under its own route name', () => {
+  function acpWriteGroup(overrides: Partial<Deps>) {
+    const hocuspocus = new Hocuspocus({ quiet: true });
+    const sessionManager = new AgentSessionManager(hocuspocus);
+    const gateHandlers: string[] = [];
+    const summaryCounts: unknown[] = [];
+    const group = buildGroup({
+      hocuspocus,
+      sessionManager,
+      durabilityState: { markAgentWriteStore: () => {} } as unknown as DocumentDurabilityState,
+      recordContentDivergenceGate: (handler) => {
+        gateHandlers.push(handler);
+      },
+      countNormalizedSummary: (normalized) => {
+        summaryCounts.push(normalized);
+      },
+      buildAgentActor: () => ({}),
+      flushDiskAndDetectOutcome: () => Promise.resolve(null),
+      flushDocToDisk: () => {},
+      registerWrittenDocInFileIndex: () => {},
+      ...overrides,
+    });
+    return { group, sessionManager, gateHandlers, summaryCounts };
+  }
+
+  const acpBody = { docName: 'note', file: 'note.md', markdown: '# Note\n', agentId: 'acp-agent' };
+
+  test('labels the divergence gate with the ACP route, counts no summary, and skips the MCP report', async () => {
+    const { group, sessionManager, gateHandlers, summaryCounts } = acpWriteGroup({});
+    try {
+      const { res, captured } = makeCaptureRes();
+      await group.acpDocumentWrite(makeReq('/internal/acp/document-write', acpBody), res);
+      expect(captured.status).toBe(200);
+      expect(JSON.parse(captured.body)).toMatchObject({
+        outcome: 'applied',
+        saved: true,
+        nextStep: 'none',
+      });
+      expect(gateHandlers).toEqual(['acp-document-write']);
+      expect(summaryCounts).toEqual([]);
+    } finally {
+      await sessionManager.closeAll();
+    }
+  });
+
+  test('logs a failure under the ACP route name', async () => {
+    const log = loggerFactory.getLogger('acp-document-write-test');
+    const logged = vi.spyOn(log, 'error').mockImplementation(() => {});
+    const { group, sessionManager } = acpWriteGroup({
+      log,
+      flushDiskAndDetectOutcome: () => Promise.reject(new Error('flush failed')),
+    });
+    try {
+      const { res, captured } = makeCaptureRes();
+      await group.acpDocumentWrite(makeReq('/internal/acp/document-write', acpBody), res);
+      expect(captured.status).toBe(500);
+      expect(logged).toHaveBeenCalledWith(expect.anything(), '[acp-document-write] handler failed');
     } finally {
       await sessionManager.closeAll();
     }

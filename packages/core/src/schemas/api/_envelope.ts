@@ -91,6 +91,7 @@ export const ProblemTypeSchema = z.enum([
   'urn:ok:error:server-stopped',
   'urn:ok:error:both-kept',
   'urn:ok:error:write-replaced',
+  'urn:ok:error:write-dropped',
   'urn:ok:error:doc-not-found',
   'urn:ok:error:doc-already-exists',
   'urn:ok:error:doc-not-open',

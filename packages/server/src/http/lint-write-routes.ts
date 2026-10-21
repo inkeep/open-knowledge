@@ -103,6 +103,7 @@ export interface LintWriteRouteDeps {
     label?: string;
   };
   flushDiskAndDetectOutcome: (docName: string) => Promise<AgentWriteFlushOutcome>;
+  markAgentWriteStore: (docName: string) => void;
   respondPersistenceFailure: (res: ServerResponse, failure: StoreFailure, handler: string) => void;
   respondStaleExternalWrite: (res: ServerResponse, handler: string, docName: string) => void;
   flushDocToDisk: (docName: string, label: string) => void;
@@ -128,6 +129,7 @@ export function createLintWriteRoutes(deps: LintWriteRouteDeps): ApiRouteGroup {
     agentPresenceBroadcaster,
     buildAgentActor,
     flushDiskAndDetectOutcome,
+    markAgentWriteStore,
     respondPersistenceFailure,
     respondStaleExternalWrite,
     flushDocToDisk,
@@ -364,6 +366,7 @@ export function createLintWriteRoutes(deps: LintWriteRouteDeps): ApiRouteGroup {
                   suppliedWriterId,
                 );
               }, session.origin);
+              markAgentWriteStore(resolvedDocName);
 
               if (actor.kind !== 'anonymous') {
                 recordContributor(

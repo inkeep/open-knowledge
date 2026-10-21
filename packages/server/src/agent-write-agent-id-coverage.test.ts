@@ -41,7 +41,7 @@ describe('agent-write writer-identity coverage', () => {
         .getDescendantsOfKind(SyntaxKind.CallExpression)
         .filter((c) => calleeName(c) === 'applyAgentMarkdownWrite'),
     );
-    expect(spineCalls.length).toBeGreaterThanOrEqual(6);
+    expect(spineCalls.length).toBeGreaterThanOrEqual(5);
     const missing = spineCalls
       .filter((c) => !threadsWriterIdentity(c))
       .map((c) => `${basename(c.getSourceFile().getFilePath())}:${c.getStartLineNumber()}`);

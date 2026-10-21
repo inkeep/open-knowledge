@@ -26,6 +26,7 @@ import {
   OK_STORE_DISCARDED,
   OK_STORE_HELD,
   OK_STORE_REFUSED,
+  OK_WRITE_DROPPED,
   OK_WRITE_REPLACED,
   type StoreFailure,
 } from '../../document-durability-state.ts';
@@ -409,7 +410,20 @@ const SERVER_FIELDS_FOR_GUIDED_RESULT: Readonly<Record<string, AgentWriteOutcome
     message: 'm',
     held: { reason: 'pending-intake-failed-no-base', noBase: true },
   }),
+  '`save-held` (503) with `pending-not-utf8`': held('pending-not-utf8'),
   '`save-held` (503) with any other `reason`': held('pending-unreadable'),
+  '`write-dropped` (409) for a name with no file of its own': outcomeOfStoreFailure({
+    code: OK_WRITE_DROPPED,
+    message: 'm',
+    dropped: 'legacy-name',
+  }),
+  '`write-dropped` (409) while an outside change was being taken in': outcomeOfStoreFailure({
+    code: OK_WRITE_DROPPED,
+    message: 'm',
+    dropped: 'intake-landed',
+  }),
+  '`write-dropped` (409) for a skill folder that is gone or a path that does not resolve':
+    outcomeOfStoreFailure({ code: OK_WRITE_DROPPED, message: 'm', dropped: 'container-gone' }),
   '`doc-moved` (409)': outcomeOfStoreFailure({ code: OK_DOC_MOVED, message: 'm' }),
   '`branch-switched` (409)': outcomeOfStoreFailure({ code: OK_STORE_DISCARDED, message: 'm' }),
   '`doc-removed` (409) after a rename': outcomeOfStoreFailure({

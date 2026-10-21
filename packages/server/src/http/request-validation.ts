@@ -11,9 +11,9 @@ const MAX_BODY_BYTES = 1_048_576;
 
 const REQUEST_BODY_TIMEOUT_MS = 30_000;
 
-function readRequestBody(req: IncomingMessage): Promise<Buffer> {
+function readRequestBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
   return readBoundedJsonBody(req, {
-    maxBytes: MAX_BODY_BYTES,
+    maxBytes,
     timeoutMs: REQUEST_BODY_TIMEOUT_MS,
   });
 }
@@ -111,6 +111,7 @@ export interface WithValidationOptions {
   skipBodyParse?: boolean;
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   preBodyGate?: (req: IncomingMessage, res: ServerResponse) => boolean;
+  maxBodyBytes?: number;
 }
 
 export function validateBody<T>(
@@ -182,7 +183,7 @@ export function withValidation<T>(
 
     let raw: Buffer;
     try {
-      raw = await readRequestBody(req);
+      raw = await readRequestBody(req, options.maxBodyBytes ?? MAX_BODY_BYTES);
     } catch (err) {
       if (err instanceof UnsupportedMediaTypeError) {
         respondUnsupportedMediaType(res, options.handler);

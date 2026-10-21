@@ -108,6 +108,7 @@ async function callApi(
       unloadDocument: async () => {},
       debouncer: {
         isDebounced: () => false,
+        isCurrentlyExecuting: () => false,
         executeNow: async () => undefined,
       },
     } as unknown as Parameters<typeof createApiExtension>[0]['hocuspocus'],

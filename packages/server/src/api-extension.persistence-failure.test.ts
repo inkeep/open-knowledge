@@ -181,6 +181,27 @@ describe('respondPersistenceFailure: a held save', () => {
     expect(String(body.detail)).not.toContain(neverSays);
   });
 
+  test('a not-UTF-8 hold says only a person ends it, in every field, and carries no retryWhen', () => {
+    const { res, endCalls } = makeMockRes();
+    respondPersistenceFailure(
+      res,
+      { code: OK_STORE_HELD, message: 'chart was not saved', held: { reason: 'pending-not-utf8' } },
+      'agent-write-md',
+    );
+    const body = JSON.parse(endCalls[0] ?? '{}') as Record<string, unknown>;
+    expect(body).toMatchObject({
+      reason: 'pending-not-utf8',
+      outcome: 'refused',
+      saved: false,
+      nextStep: 'none',
+    });
+    expect(body).not.toHaveProperty('retryWhen');
+    expect(String(body.detail)).toContain(
+      'no save runs until someone saves the file as text again',
+    );
+    expect(String(body.detail)).not.toContain('re-read the document before editing it further');
+  });
+
   test('a held save with no errno names its reason and carries no cause code', () => {
     const { res, endCalls } = makeMockRes();
     const failure: StoreFailure = {

@@ -114,6 +114,7 @@ describe('Finding 1 — folder-rename enumeration races concurrent index updates
         unloadDocument: async () => {},
         debouncer: {
           isDebounced: () => false,
+          isCurrentlyExecuting: () => false,
           executeNow: async () => undefined,
         },
       } as unknown as Parameters<typeof createApiExtension>[0]['hocuspocus'],
@@ -174,6 +175,7 @@ describe('Finding 2 — admission check uses on-disk source extension', () => {
         unloadDocument: async () => {},
         debouncer: {
           isDebounced: () => false,
+          isCurrentlyExecuting: () => false,
           executeNow: async () => undefined,
         },
       } as unknown as Parameters<typeof createApiExtension>[0]['hocuspocus'],

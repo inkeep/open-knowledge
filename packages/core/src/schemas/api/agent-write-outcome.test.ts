@@ -65,9 +65,10 @@ describe('the agent write outcome contract', () => {
     ).toBe(true);
   });
 
-  test('the both-kept and write-replaced problem types are registered', () => {
+  test('the both-kept, write-replaced and write-dropped problem types are registered', () => {
     expect(ProblemTypeSchema.safeParse('urn:ok:error:both-kept').success).toBe(true);
     expect(ProblemTypeSchema.safeParse('urn:ok:error:write-replaced').success).toBe(true);
+    expect(ProblemTypeSchema.safeParse('urn:ok:error:write-dropped').success).toBe(true);
   });
 });
 

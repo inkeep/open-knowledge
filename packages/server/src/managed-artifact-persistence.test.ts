@@ -269,11 +269,19 @@ describe('store/load round-trip', () => {
     expect(readFileSync(managedArtifactAbsPath(docName, ctx), 'utf-8')).toBe(awkward);
   });
 
-  test('store is a no-op for the load/reconcile origin', async () => {
+  test('a store after an outside version was taken in writes nothing, and drops the write when that version is not on disk yet', async () => {
     const ctx = makeCtx();
     const doc = new Y.Doc();
     doc.transact(() => doc.getText('source').insert(0, SRC), 'agent');
-    expect(await storeManagedArtifactDoc(doc, docName, FILE_WATCHER_ORIGIN, ctx)).toBe('no-op');
+    expect(await storeManagedArtifactDoc(doc, docName, FILE_WATCHER_ORIGIN, ctx)).toBe(
+      'dropped-intake-landed',
+    );
+    expect(existsSync(managedArtifactAbsPath(docName, ctx))).toBe(false);
+
+    ctx.lkgCache.set(docName, SRC);
+    expect(await storeManagedArtifactDoc(doc, docName, FILE_WATCHER_ORIGIN, ctx)).toBe(
+      'outside-taken-in',
+    );
     expect(existsSync(managedArtifactAbsPath(docName, ctx))).toBe(false);
   });
 
@@ -284,7 +292,9 @@ describe('store/load round-trip', () => {
 
     const doc = new Y.Doc();
     doc.transact(() => doc.getText('source').insert(0, SRC), 'agent');
-    expect(await storeManagedArtifactDoc(doc, projectDocName, 'agent', ctx)).toBe('no-op');
+    expect(await storeManagedArtifactDoc(doc, projectDocName, 'agent', ctx)).toBe(
+      'dropped-legacy-name',
+    );
     expect(existsSync(projectPath)).toBe(false);
 
     mkdirSync(resolve(projectPath, '..'), { recursive: true });
@@ -301,7 +311,9 @@ describe('store/load round-trip', () => {
 
     const doc = new Y.Doc();
     doc.transact(() => doc.getText('source').insert(0, SRC), 'agent');
-    expect(await storeManagedArtifactDoc(doc, templateDocName, 'agent', ctx)).toBe('no-op');
+    expect(await storeManagedArtifactDoc(doc, templateDocName, 'agent', ctx)).toBe(
+      'dropped-legacy-name',
+    );
 
     const fresh = new Y.Doc();
     expect(() => loadManagedArtifactDoc(fresh, templateDocName, ctx)).not.toThrow();
@@ -1040,7 +1052,7 @@ describe('__extskill__ editable-unmanaged skill — guarded external write-back'
     loadManagedArtifactDoc(doc, docName, ctx);
     expect(doc.getText('source').length).toBe(0);
     doc.transact(() => doc.getText('source').insert(0, 'edit'), 'agent');
-    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('no-op');
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('dropped-unresolvable');
   });
 
   test('load seeds from the real harness file; store writes back byte-identical', async () => {
@@ -1128,7 +1140,9 @@ describe('a skill doc never RESURRECTS a bundle that is gone', () => {
     rmSync(bundleDir, { recursive: true, force: true });
 
     editLive(doc, '---\nname: code-mode\n---\n\n# Code mode edited\n');
-    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('no-op');
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe(
+      'dropped-container-gone',
+    );
     expect(existsSync(bundleDir)).toBe(false);
   });
 
@@ -1142,7 +1156,9 @@ describe('a skill doc never RESURRECTS a bundle that is gone', () => {
     rmSync(bundleDir, { recursive: true, force: true });
 
     editLive(doc, '# Patterns edited\n');
-    expect(await storeManagedArtifactDoc(doc, fileDoc, 'agent', ctx)).toBe('no-op');
+    expect(await storeManagedArtifactDoc(doc, fileDoc, 'agent', ctx)).toBe(
+      'dropped-container-gone',
+    );
     expect(existsSync(bundleDir)).toBe(false);
   });
 
@@ -1189,7 +1205,9 @@ describe('the liveness rule covers external skills too', () => {
       rmSync(dir, { recursive: true, force: true });
 
       editLive(doc, '---\nname: borrowed\n---\n\n# Resurrected\n');
-      expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('no-op');
+      expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe(
+        'dropped-container-gone',
+      );
       expect(existsSync(dir)).toBe(false);
     } finally {
       unregisterExternalSkill('borrowed');

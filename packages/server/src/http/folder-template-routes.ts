@@ -110,6 +110,7 @@ export interface FolderTemplateRouteDeps {
   ) => void;
   scheduleOkArtifactFlush: (context: string) => void;
   flushDiskAndDetectOutcome: (docName: string) => Promise<AgentWriteFlushOutcome>;
+  markAgentWriteStore: (docName: string) => void;
   respondPersistenceFailure: (res: ServerResponse, failure: StoreFailure, handler: string) => void;
   respondStaleExternalWrite: (res: ServerResponse, handler: string, docName: string) => void;
   registerWrittenDocInFileIndex: (docName: string, content: string) => void;
@@ -157,6 +158,7 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
     attributeOkArtifactWrite,
     scheduleOkArtifactFlush,
     flushDiskAndDetectOutcome,
+    markAgentWriteStore,
     respondPersistenceFailure,
     respondStaleExternalWrite,
     registerWrittenDocInFileIndex,
@@ -697,6 +699,7 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         templateSession.dc.document.transact(() => {
           composeAndWriteRawBody(templateSession.dc.document, composed.content, 'agent');
         }, templateSession.origin);
+        markAgentWriteStore(templateDocName);
 
         const templateFlush = await flushDiskAndDetectOutcome(templateDocName);
         if (
@@ -1312,6 +1315,7 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         templateSession.dc.document.transact(() => {
           composeAndWriteRawBody(templateSession.dc.document, composed.content, 'agent');
         }, templateSession.origin);
+        markAgentWriteStore(templateDocName);
 
         const templateFlush = await flushDiskAndDetectOutcome(templateDocName);
         if (

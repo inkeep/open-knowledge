@@ -47,7 +47,12 @@ export type RenameCarryAnswer =
   | { readonly kind: 'unsettled' }
   | { readonly kind: 'stopped' };
 
-export type HeldSaveReason = StorePendingReason | 'pending-unsettled' | 'pending-rename';
+export type HeldSaveReason =
+  | StorePendingReason
+  | 'pending-unsettled'
+  | 'pending-rename'
+  | 'pending-no-history-or-backup'
+  | 'pending-not-utf8';
 
 export type StoreIntakeMerge = ReconcileMergeOutcome | 'disk-replaced';
 
@@ -83,7 +88,10 @@ export interface StoreFailure {
     readonly causeCode?: string;
     readonly noBase?: true;
   };
+  dropped?: WriteDropCause;
 }
+
+export type WriteDropCause = 'legacy-name' | 'unresolvable' | 'container-gone' | 'intake-landed';
 
 export type StoreFailureRemoval =
   | { kind: 'renamed'; renamedTo: string; carry?: Promise<RenameCarryAnswer> }
@@ -134,6 +142,7 @@ export const OK_STORE_DISCARDED = 'OK_STORE_DISCARDED';
 export const OK_DOC_MOVED = 'OK_DOC_MOVED';
 export const OK_SERVER_STOPPED = 'OK_SERVER_STOPPED';
 export const OK_WRITE_REPLACED = 'OK_WRITE_REPLACED';
+export const OK_WRITE_DROPPED = 'OK_WRITE_DROPPED';
 
 const IN_FLIGHT_FLUSH_TTL_MS = 60_000;
 

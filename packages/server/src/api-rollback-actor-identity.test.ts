@@ -62,6 +62,7 @@ interface RollbackHarness {
     unloadDocument: (doc: Y.Doc) => Promise<void>;
     debouncer: {
       isDebounced: () => boolean;
+      isCurrentlyExecuting: () => boolean;
       executeNow: () => Promise<void>;
     };
   };
@@ -114,6 +115,7 @@ async function setupRollback(tmpDir: string): Promise<RollbackHarness> {
     unloadDocument: async () => {},
     debouncer: {
       isDebounced: () => false,
+      isCurrentlyExecuting: () => false,
       executeNow: async () => undefined,
     },
   };

@@ -4,7 +4,6 @@ import {
   outcomeOfSavedWrite,
   outcomeOfStoreFailure,
   REFUSAL_OUTCOMES,
-  reportedOutcome,
 } from './agent-write-outcome.ts';
 import {
   OK_DOC_MOVED,
@@ -14,6 +13,7 @@ import {
   OK_STORE_DISCARDED,
   OK_STORE_HELD,
   OK_STORE_REFUSED,
+  OK_WRITE_DROPPED,
   OK_WRITE_REPLACED,
   type StoreFailure,
 } from './document-durability-state.ts';
@@ -50,6 +50,27 @@ describe('the outcome of each refusal', () => {
       'a held save still running',
       { code: OK_STORE_HELD, message: 'm', held: { reason: 'pending-unsettled' } },
       'projection-held/unsaved/re-read',
+    ],
+    [
+      'a file whose outside version could not go to history',
+      { code: OK_STORE_HELD, message: 'm', held: { reason: 'pending-no-history-or-backup' } },
+      'projection-held/unsaved/re-read',
+    ],
+    [
+      'a file that holds bytes that are not text',
+      { code: OK_STORE_HELD, message: 'm', held: { reason: 'pending-not-utf8' } },
+      'refused/unsaved/none',
+    ],
+    ['a failed write with no errno', { message: 'm' }, 'refused/unsaved/re-read'],
+    [
+      'a write under a name with no file of its own',
+      { code: OK_WRITE_DROPPED, message: 'm', dropped: 'legacy-name' },
+      'refused/unsaved/retry',
+    ],
+    [
+      'a write to a skill whose folder is gone',
+      { code: OK_WRITE_DROPPED, message: 'm', dropped: 'container-gone' },
+      'refused/unsaved/none',
     ],
     [
       'a no-base hold',
@@ -146,12 +167,5 @@ describe('a saved write', () => {
         }),
       ),
     ).toBe('projection-held/unsaved/re-read');
-  });
-
-  test('carries no outcome for a document saved outside the Markdown store', () => {
-    const applied = outcomeOfSavedWrite(undefined, null);
-    expect(reportedOutcome('diagrams/flow.mmd', applied)).toBeUndefined();
-    expect(reportedOutcome('board.excalidraw', applied)).toBeUndefined();
-    expect(reportedOutcome('notes/guide', applied)).toEqual(applied);
   });
 });

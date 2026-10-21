@@ -70,6 +70,7 @@ import {
   pluginRepositoryUrl,
   type SkillsLock,
 } from '@inkeep/open-knowledge-core/skills-catalog';
+import { ACP_DOCUMENT_WRITE_PATH } from './acp/document-write.ts';
 import {
   type AcpHarnessAvailability,
   createAcpHarnessAvailabilityProbe,
@@ -183,10 +184,10 @@ import {
 } from './agent-id.ts';
 import {
   type AgentWriteFlushOutcome,
+  heldSaveEndsOnlyByAPerson,
   outcomeOfSavedWrite,
   outcomeOfStoreFailure,
   REFUSAL_OUTCOMES,
-  reportedOutcome,
 } from './agent-write-outcome.ts';
 import {
   applyRenameMap,
@@ -244,8 +245,10 @@ import {
   OK_STORE_DISCARDED,
   OK_STORE_HELD,
   OK_STORE_REFUSED,
+  OK_WRITE_DROPPED,
   OK_WRITE_REPLACED,
   type StoreFailure,
+  type WriteDropCause,
   type WrittenThrough,
   writtenThroughOf,
 } from './document-durability-state.ts';
@@ -422,7 +425,7 @@ let _agentWriteGateFiredCounter: ReturnType<ReturnType<typeof getMeter>['createC
 function agentWriteGateFiredCounter(): ReturnType<ReturnType<typeof getMeter>['createCounter']> {
   _agentWriteGateFiredCounter ||= getMeter().createCounter('ok.agent_write.gate_fired_total', {
     description:
-      'Count of agent writes that ran the Site A content-divergence gate (denominator for the divergence rate). Bounded label: handler ∈ {agent-write-md, agent-write-batch, agent-patch, rollback}.',
+      'Count of agent writes that ran the Site A content-divergence gate (denominator for the divergence rate). Bounded label: handler ∈ {agent-write-md, acp-document-write, agent-write-batch, agent-patch, rollback}.',
   });
   return _agentWriteGateFiredCounter;
 }
@@ -437,13 +440,18 @@ function agentWriteContentDivergenceCounter(): ReturnType<
     'ok.agent_write.content_divergence_total',
     {
       description:
-        'Count of agent writes whose converged Y.Text diverged from the composed intent (numerator for the divergence rate). Bounded labels: handler ∈ {agent-write-md, agent-write-batch, agent-patch, rollback}, divergence_type.',
+        'Count of agent writes whose converged Y.Text diverged from the composed intent (numerator for the divergence rate). Bounded labels: handler ∈ {agent-write-md, acp-document-write, agent-write-batch, agent-patch, rollback}, divergence_type.',
     },
   );
   return _agentWriteContentDivergenceCounter;
 }
 
-type DivergenceHandler = 'agent-write-md' | 'agent-write-batch' | 'agent-patch' | 'rollback';
+type DivergenceHandler =
+  | 'agent-write-md'
+  | 'acp-document-write'
+  | 'agent-write-batch'
+  | 'agent-patch'
+  | 'rollback';
 
 function recordContentDivergenceGate(
   handler: DivergenceHandler,
@@ -1500,6 +1508,29 @@ function pathFaultProblem(failure: StoreFailure) {
   } satisfies BatchEntryError;
 }
 
+const DROPPED_WRITE_ADVICE: Readonly<Record<WriteDropCause, string>> = {
+  'legacy-name':
+    'Write the skill or template by its file path instead; that write is saved to the file.',
+  unresolvable:
+    'Retrying will not help until the path resolves again. Tell the user which document it is.',
+  'container-gone':
+    'OpenKnowledge does not re-create a skill folder that was deleted or moved. Tell the user which skill it is.',
+  'intake-landed':
+    'Re-read the document, which now holds the outside change, and re-apply the edit if it is still missing.',
+};
+
+function droppedWriteProblem(failure: StoreFailure) {
+  const advice =
+    failure.dropped === undefined
+      ? DROPPED_WRITE_ADVICE.unresolvable
+      : DROPPED_WRITE_ADVICE[failure.dropped];
+  return {
+    type: 'urn:ok:error:write-dropped' as const,
+    title: "Edit not saved: OpenKnowledge did not write this document's file.",
+    detail: `${failure.message}. The edit is only in the open document. ${advice}`,
+  } satisfies BatchEntryError;
+}
+
 function replacedWriteProblem(failure: StoreFailure) {
   return {
     type: 'urn:ok:error:write-replaced' as const,
@@ -1555,7 +1586,10 @@ function discardedStoreProblem(failure: StoreFailure) {
 type HeldSaveRetry = 'next-save' | 'next-edit' | 'conflict-resolved' | 'replaced-on-next-edit';
 
 const HELD_SAVE_RULES: Readonly<
-  Record<HeldSaveReason, { readonly retryWhen: HeldSaveRetry; readonly sentence: string }>
+  Record<
+    HeldSaveReason,
+    { readonly retryWhen: HeldSaveRetry | undefined; readonly sentence: string }
+  >
 > = {
   'pending-unreadable': {
     retryWhen: 'next-save',
@@ -1591,6 +1625,16 @@ const HELD_SAVE_RULES: Readonly<
     sentence:
       'It is saved once the user has dealt with the file in the OpenKnowledge app; tell the user which file it is.',
   },
+  'pending-no-history-or-backup': {
+    retryWhen: 'next-save',
+    sentence:
+      'The file is not written over until its outside version is saved to the document history or the backup folder; a later save tries again: the next edit to this document, or the idle save within a few minutes.',
+  },
+  'pending-not-utf8': {
+    retryWhen: undefined,
+    sentence:
+      'OpenKnowledge does not write over it, and no save runs until someone saves the file as text again. Tell the user which file it is.',
+  },
   'pending-unsettled': {
     retryWhen: 'next-save',
     sentence:
@@ -1610,7 +1654,7 @@ function heldSaveDetail(failure: StoreFailure, reason: HeldSaveReason, noBase: b
   if (noBase) return `${failure.message}. ${NO_BASE_HOLD_SENTENCE}`;
   const { sentence } = HELD_SAVE_RULES[reason];
   if (reason === 'pending-rename') return `${failure.message}. ${sentence}`;
-  if (reason === 'pending-conflict') {
+  if (heldSaveEndsOnlyByAPerson(reason)) {
     return `${failure.message}. The edit is kept in the document. ${sentence} Do not repeat this write.`;
   }
   return `${failure.message}. The edit is kept in the document. ${sentence} Do not repeat this write: re-read the document before editing it further.`;
@@ -1619,12 +1663,13 @@ function heldSaveDetail(failure: StoreFailure, reason: HeldSaveReason, noBase: b
 function heldSaveProblem(failure: StoreFailure) {
   const reason = failure.held?.reason ?? 'pending-unreadable';
   const noBase = failure.held?.noBase === true;
+  const retryWhen = noBase ? 'replaced-on-next-edit' : HELD_SAVE_RULES[reason].retryWhen;
   return {
     type: 'urn:ok:error:save-held' as const,
     title: 'Edit applied in memory; its save to disk is held.',
     detail: heldSaveDetail(failure, reason, noBase),
     reason,
-    retryWhen: noBase ? ('replaced-on-next-edit' as const) : HELD_SAVE_RULES[reason].retryWhen,
+    ...(retryWhen === undefined ? {} : { retryWhen }),
     ...(failure.held?.causeCode === undefined ? {} : { causeCode: failure.held.causeCode }),
   } satisfies BatchEntryError;
 }
@@ -1663,6 +1708,8 @@ function storeFailureProblem(
       return withOutcome(400, pathFaultProblem(failure));
     case OK_WRITE_REPLACED:
       return withOutcome(409, replacedWriteProblem(failure));
+    case OK_WRITE_DROPPED:
+      return withOutcome(409, droppedWriteProblem(failure));
     default:
       return undefined;
   }
@@ -2176,19 +2223,34 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     return resident ? writtenThroughOf(resident) : undefined;
   }
 
-  function markPendingAgentStore(docName: string): boolean {
-    const debounceId = `onStoreDocument-${docName}`;
-    if (!hocuspocus.debouncer.isDebounced(debounceId)) return false;
-    durabilityState.markAgentWriteStore(docName);
-    return true;
+  async function storeAgainAfterRunningStore(docName: string): Promise<void> {
+    const resident = hocuspocus.documents.get(docName);
+    if (resident === undefined) return;
+    await hocuspocus.storeDocumentHooks(
+      resident,
+      {
+        instance: hocuspocus,
+        clientsCount: resident.getConnectionsCount(),
+        document: resident,
+        documentName: docName,
+        lastContext: {},
+        lastTransactionOrigin: null,
+      },
+      true,
+    );
   }
 
   async function flushDiskAndDetectOutcome(
     docName: string,
     writtenThrough: WrittenThrough | undefined = writtenThroughOfResident(docName),
   ): Promise<FlushOutcome> {
-    if (markPendingAgentStore(docName)) {
-      await hocuspocus.debouncer.executeNow(`onStoreDocument-${docName}`);
+    const debounceId = `onStoreDocument-${docName}`;
+    if (hocuspocus.debouncer.isDebounced(debounceId)) {
+      durabilityState.markAgentWriteStore(docName);
+      await hocuspocus.debouncer.executeNow(debounceId);
+    } else if (hocuspocus.debouncer.isCurrentlyExecuting(debounceId)) {
+      durabilityState.markAgentWriteStore(docName);
+      await storeAgainAfterRunningStore(docName);
     }
     const deferredWaitStarted = Date.now();
     const deferredWait = await durabilityState.awaitDeferredStoreOutcome(docName);
@@ -2226,6 +2288,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     }
     failure ??= durabilityState.takeStoreFailure(docName) ?? undefined;
     const atSave = durabilityState.readStoreIntake(docName, writtenThrough);
+    durabilityState.consumeAgentWriteStore(docName);
     if (failure) return answerForCarriedEdit(docName, failure, writtenThrough);
     if (durabilityState.takeStaleExternalWriteFreeze(docName)) {
       return { kind: 'stale-external-write' };
@@ -3932,6 +3995,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
             });
           }, session.origin);
           writtenThrough = writtenThroughOf(session.dc.document);
+          durabilityState.markAgentWriteStore(docName);
           recordContributor(
             docName,
             agentId,
@@ -3966,11 +4030,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
           ...(summaryResponse ? { summary: summaryResponse } : {}),
           ...(agentWriteWarning ? { warnings: [agentWriteWarning] } : {}),
         };
-        const agentWriteOutcome = reportedOutcome(
-          docName,
-          outcomeOfSavedWrite(agentWriteReconcile, flushOutcome),
-        );
-        if (agentWriteOutcome?.outcome === 'both-kept') {
+        const agentWriteOutcome = outcomeOfSavedWrite(agentWriteReconcile, flushOutcome);
+        if (agentWriteOutcome.outcome === 'both-kept') {
           respondBothKept(res, 'agent-write', agentWriteBody, agentWriteOutcome);
           return;
         }
@@ -4240,7 +4301,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
                     resolvedDocName,
                     session.dc.document.getText('source').toString(),
                   );
-                  markPendingAgentStore(resolvedDocName);
+                  durabilityState.markAgentWriteStore(resolvedDocName);
                 } finally {
                   disposeEntryEffectCapture();
                 }
@@ -4332,10 +4393,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
               results[p.index] = {
                 status: 'written',
                 docName: p.docName,
-                ...reportedOutcome(
-                  p.docName,
-                  outcomeOfSavedWrite(p.reconcile, flushOutcome, p.diverged),
-                ),
+                ...outcomeOfSavedWrite(p.reconcile, flushOutcome, p.diverged),
                 ...(p.summaryResponse ? { summary: p.summaryResponse } : {}),
                 ...(warnings.length > 0 ? { warnings } : {}),
                 ...linkAdvisory.links,
@@ -5395,6 +5453,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     agentPresenceBroadcaster,
     buildAgentActor,
     flushDiskAndDetectOutcome,
+    markAgentWriteStore: (docName) => durabilityState.markAgentWriteStore(docName),
     respondPersistenceFailure,
     respondStaleExternalWrite,
     flushDocToDisk,
@@ -5426,6 +5485,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     extractAgentIdentity,
     sessionManager,
     flushDiskAndDetectOutcome,
+    markAgentWriteStore: (docName) => durabilityState.markAgentWriteStore(docName),
     respondStaleExternalWrite,
     respondPersistenceFailure,
     attributeOkArtifactWrite,
@@ -5474,6 +5534,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     extractAgentIdentity,
     sessionManager,
     flushDiskAndDetectOutcome,
+    markAgentWriteStore: (docName) => durabilityState.markAgentWriteStore(docName),
     respondStaleExternalWrite,
     respondPersistenceFailure,
     okArtifactKey,
@@ -5662,6 +5723,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     attributeOkArtifactWrite,
     scheduleOkArtifactFlush,
     flushDiskAndDetectOutcome,
+    markAgentWriteStore: (docName) => durabilityState.markAgentWriteStore(docName),
     respondPersistenceFailure,
     respondStaleExternalWrite,
     registerWrittenDocInFileIndex,
@@ -5897,8 +5959,16 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
       throw new Error(`MCP_LOCAL_API_PATHS has no handler for ${path}`);
     }
   }
+  const inProcessOnlyRoutes: ReadonlyMap<
+    string,
+    (req: IncomingMessage, res: ServerResponse) => Promise<void> | void
+  > = new Map([[ACP_DOCUMENT_WRITE_PATH, agentWriteRoutes.acpDocumentWrite]]);
   const localApi = createLocalApiDispatch({
     resolve: (pathname) => {
+      const inProcessOnly = inProcessOnlyRoutes.get(pathname);
+      if (inProcessOnly !== undefined) {
+        return (req, res) => dispatchMutation(async () => inProcessOnly(req, res), pathname);
+      }
       if (!MCP_LOCAL_API_PATHS.has(pathname)) return undefined;
       const legacy = routes[pathname];
       if (legacy !== undefined) {

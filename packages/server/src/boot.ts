@@ -496,7 +496,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         permissions: serverInstance.acpPermissions,
         sessionManager,
         agentPresenceBroadcaster,
-        resolveEmbed: serverInstance.resolveEmbed,
+        localApi: serverInstance.localApi,
         isExcludedPath: (rel) => serverInstance.contentFilter.isExcluded(rel),
         isIgnoredPath: (rel) => serverInstance.contentFilter.isPathIgnored(rel),
         getLoadedDocText: (docName) =>

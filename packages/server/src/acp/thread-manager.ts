@@ -21,7 +21,6 @@ import {
   type PermissionOption,
   PROTOCOL_VERSION,
   type PromptCapabilities,
-  RequestError,
   type RequestPermissionResponse,
   type SessionConfigOption,
   type SessionNotification,
@@ -30,11 +29,11 @@ import {
   type SetSessionConfigOptionResponse,
   type StopReason,
   type ToolCallUpdate,
+  type WriteTextFileResponse,
 } from '@agentclientprotocol/sdk';
 import {
   AGENT_ICON_COLORS,
   agentIdForAcpAgent,
-  changedBlockRange,
   colorFromSeed,
   currentMcpServerName,
   type EditorId,
@@ -62,26 +61,21 @@ import type {
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { THREAD_REOPEN_OP_TIMEOUT_MS } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { asRecord } from '@inkeep/open-knowledge-core/acp/tool-call-input';
-import { sessionWriterId, toBroadcasterKey } from '../agent-id.ts';
+import { toBroadcasterKey } from '../agent-id.ts';
 import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import { observeReadiness } from '../agent-registry-gate.ts';
-import {
-  type AgentSessionManager,
-  agentWriteLossDetect,
-  applyAgentMarkdownWrite,
-  snapshotBlocks,
-} from '../agent-sessions.ts';
+import type { AgentSessionManager } from '../agent-sessions.ts';
 import { resolveBundledSkillDir } from '../build-skill-zip.ts';
-import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
 import {
-  CONCURRENT_OVERWRITE_REFUSED_DETAIL,
-  CONCURRENT_OVERWRITE_REFUSED_TYPE,
-  CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS,
-  ConcurrentOverwriteRefusedError,
-  logConcurrentOverwriteRefusal,
-} from '../concurrent-overwrite-refused-error.ts';
+  isConfigDoc,
+  isEditableTextDoc,
+  isExcalidrawDoc,
+  isMermaidDoc,
+  isSystemDoc,
+} from '../cc1-broadcast.ts';
 import { tracedRm } from '../fs-traced.ts';
 import { resolveOnPath } from '../git-preflight.ts';
+import type { LocalApiDispatch } from '../http/local-api-dispatch.ts';
 import type { PinoLogger } from '../logger.ts';
 import { MCP_HOSTED_AGENT_HEADER } from '../mcp/agent-identity.ts';
 import { RUNTIME_VERSION } from '../version-constants.ts';
@@ -108,6 +102,7 @@ import {
   createDiagnosticStderrCapture,
   redactDiagnostic,
 } from './diagnostics.ts';
+import { writeDocumentThroughRoute } from './document-write.ts';
 import { boundSessionUpdateForLog, coalesceChunkInto } from './event-log-bounds.ts';
 import { exitFailureDetail } from './exit-diagnosis.ts';
 import {
@@ -217,7 +212,6 @@ const SIGN_IN_OUTPUT_LINES = 6;
 const RESUME_REPLAY_QUIESCENCE_MS = 300;
 const RESUME_REPLAY_MAX_WAIT_MS = 3_000;
 const AUTH_REQUIRED_CODE = -32000;
-const CONCURRENT_OVERWRITE_REFUSED_CODE = -32009;
 
 type AcquisitionPolicy = 'reuse' | 'reacquire';
 
@@ -456,7 +450,7 @@ export interface AcpThreadManagerOptions {
   permissions: AcpPermissionStore;
   sessionManager: AgentSessionManager;
   agentPresenceBroadcaster?: AgentPresenceBroadcaster | null;
-  resolveEmbed?: (basename: string, sourcePath: string) => string | null;
+  localApi?: LocalApiDispatch;
   isExcludedPath: (relPath: string) => boolean;
   isIgnoredPath: (relPosix: string) => boolean;
   getLoadedDocText?: (docName: string) => string | null;
@@ -1118,8 +1112,7 @@ export class AcpThreadManager {
       })
       .onRequest(acpMethods.client.fs.writeTextFile, async (ctx) => {
         try {
-          await this.handleFsWrite(record, ctx.params.path, ctx.params.content);
-          return {};
+          return await this.handleFsWrite(record, ctx.params.path, ctx.params.content);
         } catch (err) {
           this.opts.log.warn(
             {
@@ -3581,9 +3574,11 @@ export class AcpThreadManager {
     await t.terminals?.disposeAll();
     t.terminals = null;
     this.opts.agentPresenceBroadcaster?.clearPresence(toBroadcasterKey(t.agentSessionId));
-    await this.opts.sessionManager.closeAllForAgent(t.agentSessionId).catch((err) => {
-      this.opts.log.warn({ err, threadId }, '[acp-threads] session cleanup failed');
-    });
+    await this.opts.sessionManager
+      .closeAllForAgent(toBroadcasterKey(t.agentSessionId))
+      .catch((err) => {
+        this.opts.log.warn({ err, threadId }, '[acp-threads] session cleanup failed');
+      });
     const failedStart = t.info.status === 'error' || t.info.status === 'auth_required';
     if (!t.hadUserMessage && !failedStart) {
       this.threads.delete(threadId);
@@ -3799,72 +3794,31 @@ export class AcpThreadManager {
     record: ThreadRecord,
     requestedPath: string,
     content: string,
-  ): Promise<void> {
+  ): Promise<WriteTextFileResponse> {
     this.touchTurnActivity(record);
     const target = await this.confinePath(requestedPath);
     if (target.docName !== null) {
-      const session = await this.opts.sessionManager.getSession(
-        target.docName,
-        record.agentSessionId,
-        {
-          displayName: record.info.agent.name,
-          colorSeed: record.agentSessionId,
-          clientName: record.info.agent.id,
-        },
-      );
-      const embedResolver =
-        this.opts.resolveEmbed !== undefined
-          ? { resolveEmbed: this.opts.resolveEmbed, sourcePath: target.rel }
-          : undefined;
-      const suppliedWriterId = sessionWriterId(session);
-      try {
-        session.dc.document.transact(() => {
-          const beforeBlocks = snapshotBlocks(session.dc.document);
-          applyAgentMarkdownWrite(
-            session.dc.document,
-            content,
-            'replace',
-            embedResolver,
-            undefined,
-            agentWriteLossDetect(session),
-            suppliedWriterId,
-          );
-          const changedBlocks =
-            changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
-          const activityMap = session.dc.document.getMap('agent-flash');
-          activityMap.set(record.agentSessionId, {
-            agentId: record.agentSessionId,
-            timestamp: Date.now(),
-            type: 'insert',
-            description: `Added (${record.info.agent.name}): ${content.slice(0, 50)}`,
-            ...(changedBlocks !== undefined ? { changedBlocks } : {}),
-          });
-        }, session.origin);
-      } catch (error) {
-        if (error instanceof ConcurrentOverwriteRefusedError) {
-          logConcurrentOverwriteRefusal(error, 'acp-fs-write');
-          throw new RequestError(
-            CONCURRENT_OVERWRITE_REFUSED_CODE,
-            CONCURRENT_OVERWRITE_REFUSED_DETAIL,
-            {
-              type: CONCURRENT_OVERWRITE_REFUSED_TYPE,
-              file: error.file,
-              retryable: true,
-              retryAfterSeconds: CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS,
-            },
-          );
-        }
-        throw error;
+      if (this.opts.localApi === undefined) {
+        throw new Error(`document writes are not available here: ${requestedPath}`);
       }
+      const result = await writeDocumentThroughRoute(this.opts.localApi, {
+        docName: target.docName,
+        file: target.rel,
+        markdown: content,
+        agentId: record.agentSessionId,
+        agentName: record.info.agent.name,
+        clientName: record.info.agent.id,
+      });
       this.setPresence(record, target.docName);
-    } else {
-      if (this.opts.isIgnoredPath(target.rel)) {
-        throw new Error(`path is excluded from the project content scope: ${requestedPath}`);
-      }
-      const { tracedMkdir, tracedWriteFile } = await import('../fs-traced.ts');
-      await tracedMkdir(dirname(target.abs), { recursive: true });
-      await tracedWriteFile(target.abs, content);
+      return result;
     }
+    if (this.opts.isIgnoredPath(target.rel)) {
+      throw new Error(`path is excluded from the project content scope: ${requestedPath}`);
+    }
+    const { tracedMkdir, tracedWriteFile } = await import('../fs-traced.ts');
+    await tracedMkdir(dirname(target.abs), { recursive: true });
+    await tracedWriteFile(target.abs, content);
+    return {};
   }
 
   private confinePath(
@@ -4212,16 +4166,22 @@ export async function confineToContentDir(
       if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
         throw new Error(`path escapes the content directory: ${requestedPath}`);
       }
-      const mdMatch = /\.(md|mdx)$/.exec(rel);
-      let docName: string | null = null;
-      if (mdMatch !== null) {
-        const candidate = rel.slice(0, -mdMatch[0].length).split(sep).join('/');
-        const relPosix = rel.split(sep).join('/');
-        if (!isSystemDoc(candidate) && !isConfigDoc(candidate) && !isExcludedPath(relPosix)) {
-          docName = candidate;
-        }
-      }
-      return { abs: resolved, rel: rel.split(sep).join('/'), docName };
+      const relPosix = rel.split(sep).join('/');
+      const mdMatch = /\.(md|mdx)$/.exec(relPosix);
+      const candidate =
+        mdMatch !== null
+          ? relPosix.slice(0, -mdMatch[0].length)
+          : isMermaidDoc(relPosix) || isExcalidrawDoc(relPosix) || isEditableTextDoc(relPosix)
+            ? relPosix
+            : null;
+      const docName =
+        candidate !== null &&
+        !isSystemDoc(candidate) &&
+        !isConfigDoc(candidate) &&
+        !isExcludedPath(relPosix)
+          ? candidate
+          : null;
+      return { abs: resolved, rel: relPosix, docName };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
       const parent = dirname(existing);
