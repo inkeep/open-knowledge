@@ -56,7 +56,7 @@ describe('globals.css — the desk token follows the active colour theme', () =>
     const dark = CSS.match(/\n\.dark\s*\{([\s\S]*?)\n\}/)?.[1] ?? '';
     expect(dark).not.toMatch(/--desk\s*:/);
     expect(CSS).toMatch(
-      /html\.dark:not\(\[data-color-theme\]\)\s*\{[^}]*--desk:\s*oklch\(0\.28 0 0\)/,
+      /html\.dark:not\(\[data-color-theme\]\)\s*\{[^}]*--desk:\s*oklch\(0\.15 0 0\)/,
     );
     expect(themedDeskSelectors(CSS)).toEqual([]);
     expect(themedDeskSelectors('html.dark[data-color-theme="dracula"] { --desk: red; }')).toEqual([

@@ -29,7 +29,10 @@ export {
   readCardSurface,
   readContrastPair,
   readRootColor,
+  relativeLuminance,
+  rgbaBytesOf,
   type ScreenClip,
+  screenshotBrightness,
 } from './card-surface.ts';
 export { simulateCopyAndRead, simulateCutAndRead } from './clipboard.ts';
 export { resetContentToFixtureBaseline } from './content-reset.ts';

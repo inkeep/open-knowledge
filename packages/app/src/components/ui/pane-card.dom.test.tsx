@@ -18,6 +18,13 @@ function card(container: HTMLElement): HTMLElement {
 const SHAPE_TOKENS = [
   'rounded-xl',
   'shadow-[0_2px_8px_0_rgb(0_0_0/0.08),0_1px_2px_-1px_rgb(0_0_0/0.1)]',
+  'dark:after:pointer-events-none',
+  'dark:after:absolute',
+  'dark:after:inset-0',
+  'dark:after:z-30',
+  'dark:after:ring-1',
+  'dark:after:ring-inset',
+  'dark:after:ring-foreground/15',
 ];
 const FILL_TOKENS = [
   'relative',

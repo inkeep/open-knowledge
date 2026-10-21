@@ -32,8 +32,10 @@ export function paneCardDividerClass(
 
 const PANE_CARD_BASE_CLASS =
   'relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background';
-const PANE_CARD_SHAPE_CLASS =
-  'rounded-xl shadow-[0_2px_8px_0_rgb(0_0_0/0.08),0_1px_2px_-1px_rgb(0_0_0/0.1)]';
+const PANE_CARD_SHAPE_CLASS = cn(
+  'rounded-xl shadow-[0_2px_8px_0_rgb(0_0_0/0.08),0_1px_2px_-1px_rgb(0_0_0/0.1)]',
+  'dark:after:pointer-events-none dark:after:absolute dark:after:inset-0 dark:after:z-30 dark:after:rounded-[inherit] dark:after:ring-1 dark:after:ring-foreground/15 dark:after:ring-inset',
+);
 
 interface PaneCardProps extends React.ComponentProps<'div'> {
   readonly pane: PaneId;

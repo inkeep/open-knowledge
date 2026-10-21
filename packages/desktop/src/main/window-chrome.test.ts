@@ -68,7 +68,7 @@ describe('computeTitleBarOverlay', () => {
 
   test('chrome tokens stay in lockstep with the committed FOUC-guard values', () => {
     expect(CHROME_BG.light).toBe('#f5f5f5');
-    expect(CHROME_BG.dark).toBe('#292929');
+    expect(CHROME_BG.dark).toBe('#0b0b0b');
   });
 
   test("the renderer's live colors take precedence over the default-theme snapshot", () => {

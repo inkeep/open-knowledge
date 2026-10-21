@@ -11,7 +11,7 @@ const RESTING_LINE_ALPHA = 0.7;
 
 const CANVASES = {
   light: { rgb: [255, 255, 255], decl: 'oklch(1 0 0)' },
-  dark: { rgb: [21, 21, 21], decl: 'oklch(0.195 0 0)' },
+  dark: { rgb: [24, 24, 24], decl: 'oklch(0.21 0 0)' },
 } as const;
 
 type Rgb = readonly [number, number, number] | number[];

@@ -309,7 +309,7 @@ test('default light and dark modes fade surfaces without losing selection', asyn
     `the settled surface equals the light one — the mode never switched.${detail}`,
   ).not.toBe(fade.beforeClick.body);
   expect(fade.afterSettle.sidebar, `the settled token is not dark --sidebar.${detail}`).toBe(
-    'oklch(0.21 0 0)',
+    'oklch(0.185 0 0)',
   );
   expect(
     fade.connected,

@@ -35,7 +35,7 @@ const OPAQUE = 255;
 
 const ANTIALIAS_MARGIN_PX = 1;
 
-async function rgbaBytesOf(page: Page, colors: readonly string[]): Promise<RgbaBytes[]> {
+export async function rgbaBytesOf(page: Page, colors: readonly string[]): Promise<RgbaBytes[]> {
   return await page.evaluate((list) => {
     const context = new OffscreenCanvas(1, 1).getContext('2d', { willReadFrequently: true });
     if (!context) throw new Error('Could not create a color conversion context');
@@ -173,7 +173,7 @@ function linearChannel(channel: number): number {
   return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
 }
 
-function relativeLuminance([red, green, blue]: RgbaBytes): number {
+export function relativeLuminance([red, green, blue]: RgbaBytes): number {
   return 0.2126 * linearChannel(red) + 0.7152 * linearChannel(green) + 0.0722 * linearChannel(blue);
 }
 
@@ -218,6 +218,29 @@ export async function innerClipsOf(card: Locator): Promise<readonly ScreenClip[]
     return { x, y, width: right - x, height: bottom - y };
   };
   return [band(geometry.radius, geometry.border), band(geometry.border, geometry.radius)];
+}
+
+export async function screenshotBrightness(page: Page, png: Buffer): Promise<number[]> {
+  return await page.evaluate(async (base64) => {
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }), {
+      colorSpaceConversion: 'none',
+      premultiplyAlpha: 'none',
+    });
+    const context = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d', {
+      willReadFrequently: true,
+    });
+    if (!context) throw new Error('Could not create an image decoding context');
+    context.drawImage(bitmap, 0, 0);
+    const { data } = context.getImageData(0, 0, bitmap.width, bitmap.height);
+    const brightness: number[] = [];
+    for (let offset = 0; offset < data.length; offset += 4) {
+      brightness.push(
+        ((data[offset] ?? 0) + (data[offset + 1] ?? 0) + (data[offset + 2] ?? 0)) / 3,
+      );
+    }
+    return brightness;
+  }, png.toString('base64'));
 }
 
 export async function countDifferingPixels(

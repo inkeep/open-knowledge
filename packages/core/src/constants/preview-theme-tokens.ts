@@ -13,7 +13,7 @@ export const PREVIEW_THEME_TOKENS: readonly PreviewThemeToken[] = [
   { name: '--primary', light: 'oklch(0.5621 0.1983 259.59)', dark: '#69a3ff' },
   { name: '--primary-foreground', light: 'oklch(0.985 0 0)', dark: 'oklch(0.205 0 0)' },
   { name: '--foreground', light: 'oklch(0.145 0 0)', dark: 'oklch(0.985 0 0)' },
-  { name: '--background', light: 'oklch(1 0 0)', dark: 'oklch(0.195 0 0)' },
+  { name: '--background', light: 'oklch(1 0 0)', dark: 'oklch(0.21 0 0)' },
   { name: '--card', light: 'oklch(1 0 0)', dark: 'oklch(0.245 0 0)' },
   { name: '--card-foreground', light: 'oklch(0.145 0 0)', dark: 'oklch(0.985 0 0)' },
   { name: '--muted-foreground', light: 'oklch(0.556 0 0)', dark: 'oklch(0.708 0 0)' },

@@ -1,8 +1,8 @@
 export const CHROME_BG_LIGHT = '#f5f5f5' as const;
-export const CHROME_BG_DARK = '#292929' as const;
+export const CHROME_BG_DARK = '#0b0b0b' as const;
 export const SIDEBAR_BG_LIGHT = '#fafafa' as const;
-export const SIDEBAR_BG_DARK = '#181818' as const;
-export const CANVAS_BG_DARK = '#151515' as const;
+export const SIDEBAR_BG_DARK = '#131313' as const;
+export const CANVAS_BG_DARK = '#181818' as const;
 
 const ROOT_FONT_SIZE_PX = 16;
 
