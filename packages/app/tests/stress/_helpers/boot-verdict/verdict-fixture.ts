@@ -37,6 +37,10 @@ const verdictTest = stressTest.extend({
     },
     { scope: 'worker' },
   ],
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright fixture contract
+  templateInventory: async ({}, use) => {
+    await use(undefined);
+  },
 });
 
 export const bootFailureTest = verdictTest.extend({

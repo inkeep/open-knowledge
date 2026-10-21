@@ -1,6 +1,68 @@
 import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  TemplateDeleteSuccessSchema,
+  TemplatesListSuccessSchema,
+} from '@inkeep/open-knowledge-core/schemas/api';
 import { REQUIRED_FIXTURE_DOC_NAMES, REQUIRED_FIXTURE_ENTRY_NAMES } from './fixtures.ts';
+
+async function readTemplateInventory(baseURL: string, requestTimeoutMs: number) {
+  const res = await fetch(`${baseURL}/api/templates`, {
+    signal: AbortSignal.timeout(requestTimeoutMs),
+  });
+  if (!res.ok) {
+    throw new Error(`GET /api/templates failed: ${res.status} ${await res.text()}`);
+  }
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch (error) {
+    throw new Error(`GET /api/templates returned invalid JSON: ${String(error)}`);
+  }
+  const parsed = TemplatesListSuccessSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new Error(`GET /api/templates returned an invalid response: ${parsed.error.message}`);
+  }
+  if (parsed.data.truncated) {
+    throw new Error('GET /api/templates returned a truncated inventory');
+  }
+  return parsed.data.templates;
+}
+
+async function deleteTemplate(
+  baseURL: string,
+  folder: string,
+  name: string,
+  requestTimeoutMs: number,
+): Promise<void> {
+  const query = new URLSearchParams({ folder, name });
+  const res = await fetch(`${baseURL}/api/template?${query}`, {
+    method: 'DELETE',
+    signal: AbortSignal.timeout(requestTimeoutMs),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `DELETE /api/template failed for ${folder}/${name}: ${res.status} ${await res.text()}`,
+    );
+  }
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch (error) {
+    throw new Error(
+      `DELETE /api/template returned invalid JSON for ${folder}/${name}: ${String(error)}`,
+    );
+  }
+  const parsed = TemplateDeleteSuccessSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new Error(
+      `DELETE /api/template returned an invalid response for ${folder}/${name}: ${parsed.error.message}`,
+    );
+  }
+  if (!parsed.data.existed) {
+    throw new Error(`DELETE /api/template made no progress for ${folder}/${name}`);
+  }
+}
 
 async function deletePathIfExists(
   baseURL: string,
@@ -44,6 +106,24 @@ export async function resetContentToFixtureBaseline(
   contentDir: string,
 ): Promise<void> {
   await removeEntriesOutside(baseURL, contentDir, '', new Set(REQUIRED_FIXTURE_ENTRY_NAMES));
+}
+
+export async function resetTemplateInventory(
+  baseURL: string,
+  requestTimeoutMs: number,
+): Promise<void> {
+  const templates = await readTemplateInventory(baseURL, requestTimeoutMs);
+  if (templates.length === 0) return;
+  for (const template of templates) {
+    await deleteTemplate(baseURL, template.source_folder, template.name, requestTimeoutMs);
+  }
+  const remaining = await readTemplateInventory(baseURL, requestTimeoutMs);
+  if (remaining.length > 0) {
+    const names = remaining.map((template) => `${template.source_folder}/${template.name}`);
+    throw new Error(
+      `template inventory reset did not reach an empty inventory: ${names.join(', ')} remain`,
+    );
+  }
 }
 
 export async function resetFixtureFolders(baseURL: string, contentDir: string): Promise<void> {

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProblemType } from '@inkeep/open-knowledge-core';
 import { test as base } from '@playwright/test';
-import { resetContentToFixtureBaseline } from './content-reset.ts';
+import { resetContentToFixtureBaseline, resetTemplateInventory } from './content-reset.ts';
 import { coverageFixture, type E2eCoverage } from './e2e-coverage/e2e-coverage.ts';
 import { gotoWhileLoadProgresses, requireDeadlineAt } from './load-progress.ts';
 import { type WorkerServing, workerServingFor } from './prebuilt/prebuilt-serving.ts';
@@ -108,9 +108,11 @@ type TestFixtures = {
   api: ApiHelpers;
   serverLeaseCheck: undefined;
   e2eCoverage: E2eCoverage;
+  templateInventory: undefined;
 };
 
 export const WORKER_SERVER_BUDGET_TOTAL_MS = 240_000;
+const API_CALL_TIMEOUT_MS = 30_000;
 
 export const WORKER_SERVER_BUDGET_RESERVES = {
   apiConfig: 2_000,
@@ -525,6 +527,13 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   serverLease: [leaseWorkerServer, { scope: 'worker', timeout: WORKER_SERVER_BUDGET_TOTAL_MS }],
   serverLeaseCheck: [checkServerLease, { auto: true }],
   e2eCoverage: [coverageFixture, { auto: true }],
+  templateInventory: [
+    async ({ workerServer }, use) => {
+      await resetTemplateInventory(workerServer.baseURL, API_CALL_TIMEOUT_MS);
+      await use(undefined);
+    },
+    { auto: true },
+  ],
   page: async ({ page, e2eCoverage }, use) => {
     e2eCoverage.watchContext(page.context());
     await e2eCoverage.watchPage(page);
@@ -676,7 +685,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
   api: async ({ workerServer }, use) => {
     const { baseURL } = workerServer;
-    const API_CALL_TIMEOUT_MS = 30_000;
     async function post(path: string, body?: unknown): Promise<Response> {
       try {
         return await fetch(`${baseURL}${path}`, {
