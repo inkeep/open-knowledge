@@ -49,6 +49,7 @@ export const MENU_LABELS = {
   sidebarHide: 'Hide sidebar',
   docPanelShow: 'Show document panel',
   docPanelHide: 'Hide document panel',
+  swapEditorSidebars: 'Swap file sidebar and document panel',
   back: 'Back',
   forward: 'Forward',
   terminalShow: 'Show Terminal',

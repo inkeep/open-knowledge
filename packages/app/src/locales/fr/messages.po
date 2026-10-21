@@ -10127,6 +10127,9 @@ msgstr "Menu de suggestions ouvert"
 msgid "Summarize everything I changed this week"
 msgstr "Résume tout ce que j'ai changé cette semaine"
 
+msgid "Swap file sidebar and document panel"
+msgstr "Intervertir la barre latérale des fichiers et le panneau du document"
+
 msgid "Switch and update branch"
 msgstr "Changer de branche et mettre à jour"
 
@@ -11291,14 +11294,14 @@ msgstr "Bascule la mise en forme barrée."
 msgid "Toggle Terminal in its current dock."
 msgstr "Affichez ou masquez Terminal dans son panneau actuel."
 
-msgid "Toggle the left file sidebar."
-msgstr "Affiche ou masque la barre latérale des fichiers, à gauche."
+msgid "Toggle the document panel."
+msgstr "Affiche ou masque le panneau du document."
+
+msgid "Toggle the file sidebar."
+msgstr "Affiche ou masque la barre latérale des fichiers."
 
 msgid "Toggle the right agents panel, where agent conversations live."
 msgstr "Affiche ou masque le panneau des agents, à droite, où résident les conversations d'agents."
-
-msgid "Toggle the right document panel."
-msgstr "Affiche ou masque le panneau du document, à droite."
 
 msgid "Toggle thumbnails"
 msgstr "Basculer les miniatures"

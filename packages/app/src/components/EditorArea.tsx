@@ -85,6 +85,7 @@ import { type DockLayout, dockPaneMinExtent, EMPTY_DOCK_LAYOUT } from '@/lib/doc
 import type { DockNode } from '@/lib/dock-tree';
 import { focusAwayFromHiddenEditor, focusWaitsForEditor } from '@/lib/editor-hidden-focus';
 import { type EditorSidebar, resolveEditorSidebarFit } from '@/lib/editor-sidebar-fit';
+import { documentPanelSide, useFileSidebarSide } from '@/lib/editor-sidebar-side-store';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { isNoteWindow } from '@/lib/note-window-mode';
@@ -438,8 +439,10 @@ function hasExtent(element: HTMLElement | null): boolean {
   return width > 0 && height > 0;
 }
 
-interface WorkspaceHeaderChrome {
+export interface WorkspaceHeaderChrome {
+  readonly leading: ReactNode;
   readonly trailing: ReactNode;
+  readonly sidebarSwap: boolean;
 }
 
 interface EditorAreaProps {
@@ -462,6 +465,7 @@ interface EditorAreaProps {
 function renderTabsWithoutHeader(tabs: ReactNode, chrome: WorkspaceHeaderChrome): ReactNode {
   return (
     <>
+      {chrome.leading}
       {tabs}
       {chrome.trailing}
     </>
@@ -743,6 +747,8 @@ function EditorAreaInner({
     width: filesDockWidth,
   } = useSidebar();
   const fileListHost = useFileListHost();
+  const fileSidebarSide = useFileSidebarSide();
+  const docPanelSide = fileListHost != null ? documentPanelSide(fileSidebarSide) : 'end';
   const [filesCoverTarget, setFilesCoverTarget] = useState<HTMLDivElement | null>(null);
 
   const [agentsContainer, setAgentsContainer] = useState<HTMLElement | null>(null);
@@ -836,6 +842,19 @@ function EditorAreaInner({
   const [initialDocPanelWidthPx] = useState(() => getInitialDocPanelWidth());
   const docPanelWidthPxRef = useRef(initialDocPanelWidthPx);
   const [preferredDocPanelWidthPx, setPreferredDocPanelWidthPx] = useState(initialDocPanelWidthPx);
+  const [docPanelSeed, setDocPanelSeed] = useState(() => ({
+    side: docPanelSide,
+    collapsed: initialRightCollapsed,
+    widthPx: initialDocPanelWidthPx,
+  }));
+  if (docPanelSeed.side !== docPanelSide) {
+    setDocPanelSeed({
+      side: docPanelSide,
+      collapsed: isCollapsed,
+      widthPx: preferredDocPanelWidthPx,
+    });
+  }
+  const [docPanelEl, setDocPanelEl] = useState<HTMLElement | null>(null);
   const writeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   function debouncedWriteDocPanelWidth(px: number) {
     if (writeTimerRef.current != null) clearTimeout(writeTimerRef.current);
@@ -1286,7 +1305,6 @@ function EditorAreaInner({
   useEffect(() => {
     if (innerContainerEl == null) return;
     if (isEmbedded) return;
-    const docPanel = innerContainerEl.querySelector<HTMLElement>(`#${DOC_PANEL_ID}`);
     let docSettlementFrame = 0;
     const observer = new ResizeObserver(() => {
       if (docSettlementFrame !== 0) return;
@@ -1296,13 +1314,13 @@ function EditorAreaInner({
       });
     });
     observer.observe(innerContainerEl);
-    if (docPanel != null) observer.observe(docPanel);
+    if (docPanelEl != null) observer.observe(docPanelEl);
     return () => {
       observer.disconnect();
       if (docSettlementFrame !== 0) cancelAnimationFrame(docSettlementFrame);
       cancelRailLayoutRetry(observedDocWidthRetryRef);
     };
-  }, [innerContainerEl, isEmbedded]);
+  }, [innerContainerEl, isEmbedded, docPanelEl]);
 
   const openRequestedDocPanelTab = useEffectEvent((tab: PanelTab) => {
     revealEditor();
@@ -1663,14 +1681,18 @@ function EditorAreaInner({
   }, [sidebarFit.mode, preferredSidebar]);
   const showDocPanelToggle =
     !noteWindow && renderFocusedDocument != null && activeDocConflict === null;
+  const docPanelToggle = showDocPanelToggle ? (
+    <DocPanelToggle
+      isPanelCollapsed={!docPanelOnScreen}
+      onTogglePanel={togglePanel}
+      panelId={docPanelCover ? 'doc-panel-cover' : DOC_PANEL_ID}
+      side={docPanelSide}
+    />
+  ) : null;
   const workspaceHeaderChrome: WorkspaceHeaderChrome = {
-    trailing: showDocPanelToggle ? (
-      <DocPanelToggle
-        isPanelCollapsed={!docPanelOnScreen}
-        onTogglePanel={togglePanel}
-        panelId={docPanelCover ? 'doc-panel-cover' : DOC_PANEL_ID}
-      />
-    ) : null,
+    leading: docPanelSide === 'start' ? docPanelToggle : null,
+    trailing: docPanelSide === 'end' ? docPanelToggle : null,
+    sidebarSwap: fileListHost != null,
   };
 
   const returnFocusFromDocPanelCoverEvent = useEffectEvent(returnFocusFromDocPanelCover);
@@ -2004,48 +2026,61 @@ function EditorAreaInner({
     </div>
   );
 
-  const docSlot = (
-    <>
-      <ResizableHandle
-        data-doc-panel-handle=""
-        aria-controls={DOC_PANEL_ID}
-        aria-label={t`Resize document panel`}
-        withHandle={docSlotPresent && !isCollapsed && !docPanelCover}
-        disabled={!docSlotPresent || isCollapsed || docPanelCover}
-        className={docSlotPresent ? undefined : 'pointer-events-none'}
-        style={docSlotPresent && !isCollapsed && !docPanelCover ? undefined : { display: 'none' }}
-        onPointerDown={(event) => {
-          beginDocHandleDrag(event.pointerId);
-        }}
-      />
-      <ResizablePanel
-        id={DOC_PANEL_ID}
-        role="region"
-        aria-label={t`Document panel`}
-        panelRef={panelRef}
-        defaultSize={!docSlotPresent || initialRightCollapsed ? 0 : `${initialDocPanelWidthPx}px`}
-        minSize={DOC_PANEL_MIN_SIZE}
-        maxSize={docSlotPresent ? DOC_PANEL_MAX_SIZE : '0px'}
-        collapsible
-        collapsedSize={0}
-        onResize={(size) => {
-          if (docSlotPresent) {
-            setIsCollapsed(size.asPercentage === 0);
-          }
-          if (size.inPixels > 0 && isDraggingDocHandleRef.current) {
-            docPanelWidthPxRef.current = size.inPixels;
-            adoptDraggedDocPanelWidth(size.inPixels);
-            debouncedWriteDocPanelWidth(size.inPixels);
-          }
-          reclaimHiddenDocPanel(docSlotPresent, size.inPixels);
-        }}
-        inert={!docSlotPresent || isCollapsed}
-        className={cn('flex flex-col', SECONDARY_PANEL_SURFACE_CLASS)}
-      >
-        <div ref={docPanelDockRef} className="flex h-full min-h-0 w-full flex-col" />
-      </ResizablePanel>
-    </>
+  const docHandle = (
+    <ResizableHandle
+      data-doc-panel-handle=""
+      aria-controls={DOC_PANEL_ID}
+      aria-label={t`Resize document panel`}
+      withHandle={docSlotPresent && !isCollapsed && !docPanelCover}
+      disabled={!docSlotPresent || isCollapsed || docPanelCover}
+      className={docSlotPresent ? undefined : 'pointer-events-none'}
+      style={docSlotPresent && !isCollapsed && !docPanelCover ? undefined : { display: 'none' }}
+      onPointerDown={(event) => {
+        beginDocHandleDrag(event.pointerId);
+      }}
+    />
   );
+  const docPanelSlot = (
+    <ResizablePanel
+      id={DOC_PANEL_ID}
+      role="region"
+      aria-label={t`Document panel`}
+      panelRef={panelRef}
+      defaultSize={!docSlotPresent || docPanelSeed.collapsed ? 0 : `${docPanelSeed.widthPx}px`}
+      elementRef={setDocPanelEl}
+      minSize={DOC_PANEL_MIN_SIZE}
+      maxSize={docSlotPresent ? DOC_PANEL_MAX_SIZE : '0px'}
+      collapsible
+      collapsedSize={0}
+      onResize={(size) => {
+        if (docSlotPresent) {
+          setIsCollapsed(size.asPercentage === 0);
+        }
+        if (size.inPixels > 0 && isDraggingDocHandleRef.current) {
+          docPanelWidthPxRef.current = size.inPixels;
+          adoptDraggedDocPanelWidth(size.inPixels);
+          debouncedWriteDocPanelWidth(size.inPixels);
+        }
+        reclaimHiddenDocPanel(docSlotPresent, size.inPixels);
+      }}
+      inert={!docSlotPresent || isCollapsed}
+      className={cn('flex flex-col', SECONDARY_PANEL_SURFACE_CLASS)}
+    >
+      <div ref={docPanelDockRef} className="flex h-full min-h-0 w-full flex-col" />
+    </ResizablePanel>
+  );
+  const docSlot =
+    docPanelSide === 'start' ? (
+      <>
+        {docPanelSlot}
+        {docHandle}
+      </>
+    ) : (
+      <>
+        {docHandle}
+        {docPanelSlot}
+      </>
+    );
 
   const chatAlone = !editorVisible && agentsShowing && !terminalShowing;
   const nothingOpen = !editorVisible && !agentsVisible && !terminalVisible;
@@ -2058,6 +2093,17 @@ function EditorAreaInner({
     />
   );
 
+  const fileListSlot =
+    fileListHost != null ? (
+      <div
+        data-editor-file-list-slot=""
+        data-side={fileSidebarSide}
+        inert={docPanelCover}
+        className="relative flex shrink-0"
+        ref={fileListSlotRef}
+      />
+    ) : null;
+
   const editorUnit = (
     <PaneCard
       ref={editorCardRef}
@@ -2067,14 +2113,7 @@ function EditorAreaInner({
       inert={!editorVisible}
       data-editor-hidden={editorVisible ? undefined : ''}
     >
-      {fileListHost != null ? (
-        <div
-          data-editor-file-list-slot=""
-          inert={docPanelCover}
-          className="relative flex shrink-0"
-          ref={fileListSlotRef}
-        />
-      ) : null}
+      {fileSidebarSide === 'start' ? fileListSlot : null}
       <SidebarInset inert={docPanelCover || filesCover} className="min-w-0 overflow-hidden">
         <div
           data-editor-inner-panels=""
@@ -2091,6 +2130,7 @@ function EditorAreaInner({
             onLayoutChange={adoptLibraryDrag}
             data-dragging={isDraggingDocHandle || undefined}
           >
+            {docPanelSide === 'start' ? docSlot : null}
             <ResizablePanel
               minSize={docSlotPresent && !isCollapsed ? `${DOC_USABLE_MIN_WIDTH_PX}px` : '0%'}
               {...(workspaceAbsorbsResidual ? {} : { defaultSize: '100%' })}
@@ -2104,10 +2144,11 @@ function EditorAreaInner({
                 {documentArea}
               </main>
             </ResizablePanel>
-            {docSlot}
+            {docPanelSide === 'end' ? docSlot : null}
           </ResizablePanelGroup>
         </div>
       </SidebarInset>
+      {fileSidebarSide === 'end' ? fileListSlot : null}
       {filesCover && fileListHost != null ? (
         <section
           aria-label={t`Files`}

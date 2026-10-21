@@ -10123,6 +10123,9 @@ msgstr "सुझाव मेन्यू खुला"
 msgid "Summarize everything I changed this week"
 msgstr "इस सप्ताह मैंने जो कुछ बदला उसका सारांश दें"
 
+msgid "Swap file sidebar and document panel"
+msgstr "फ़ाइल साइडबार और दस्तावेज़ पैनल की जगह बदलें"
+
 msgid "Switch and update branch"
 msgstr "ब्रांच बदलें और अपडेट करें"
 
@@ -11287,14 +11290,14 @@ msgstr "काटी हुई फ़ॉर्मैटिंग चालू �
 msgid "Toggle Terminal in its current dock."
 msgstr "Terminal को उसके मौजूदा डॉक में दिखाएँ या छिपाएँ।"
 
-msgid "Toggle the left file sidebar."
-msgstr "बाईं फ़ाइल साइडबार चालू या बंद करें।"
+msgid "Toggle the document panel."
+msgstr "दस्तावेज़ पैनल चालू या बंद करें।"
+
+msgid "Toggle the file sidebar."
+msgstr "फ़ाइल साइडबार चालू या बंद करें।"
 
 msgid "Toggle the right agents panel, where agent conversations live."
 msgstr "दायाँ एजेंट पैनल चालू या बंद करें, जहाँ एजेंट की बातचीत रहती है।"
-
-msgid "Toggle the right document panel."
-msgstr "दायाँ दस्तावेज़ पैनल चालू या बंद करें।"
 
 msgid "Toggle thumbnails"
 msgstr "थंबनेल चालू या बंद करें"

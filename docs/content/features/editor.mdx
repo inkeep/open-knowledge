@@ -369,7 +369,7 @@ A `tag:` prefix searches by tag: `tag:` alone lists every tag, `tag:fr` narrows 
 
 ## Sidebars and window width
 
-The editor has two sidebars: the file sidebar on the left and the document panel on the right (Outline, Links, Graph, Timeline, Problems and Comments; single-file windows show Outline, Problems and Comments). Both adapt to the window:
+The editor has two sidebars on opposite sides of the document: the file sidebar, on the left by default, and the document panel, on the right by default (Outline, Links, Graph, Timeline, Problems and Comments; single-file windows show Outline, Problems and Comments). To swap them, right-click an empty part of the editor's tab row and choose **Swap file sidebar and document panel**, or search the command palette for it. The choice is remembered, in the desktop app for every project, and each sidebar's show and hide button moves with it, to the side its sidebar opens from. Single-file windows have no file sidebar, so their document panel stays on its default side. Both sidebars adapt to the window:
 
 - At comfortable widths (1280px and up) both sidebars open by default.
 - Between 1024px and 1279px the document panel defaults to collapsed so the editor keeps its breathing room; the file sidebar stays open.
@@ -389,8 +389,8 @@ Keyboard shortcuts (on Windows / Linux, use `Ctrl` in place of `Cmd` and `Alt` i
 | `Cmd+9` | Jump to the last editor tab. |
 | `Cmd+Shift+T` | Reopen the most recently closed editor tab. |
 | `Cmd+K` | Command palette — or, with text selected in the visual editor, add a link (cursor inside a link edits it). |
-| `Cmd+Option+S` | Show / Hide the file sidebar (left). Matches Apple's standard sidebar accelerator. |
-| `Cmd+Option+B` | Show / Hide the document panel (right). Matches VS Code's Secondary Side Bar accelerator. |
+| `Cmd+Option+S` | Show / Hide the file sidebar. Matches Apple's standard sidebar accelerator. |
+| `Cmd+Option+B` | Show / Hide the document panel. Matches VS Code's Secondary Side Bar accelerator. |
 | `Cmd+Option+M` | Toggle between the visual and source editors, keeping your place. |
 | `Cmd+Option+E` | **View in source** — jump from the visual editor to the Markdown for the block at the cursor, centered and highlighted (visual editor only). |
 | `Cmd+J` / `Ctrl+J` | Show / Hide the Terminal in its current placement (macOS / Windows and Linux desktop apps). |
@@ -450,8 +450,8 @@ Before the existing Zoom and Toggle Fullscreen items, the View menu gets:
 
 | Item | Accelerator | Bound to |
 | --- | --- | --- |
-| **Show / Hide Sidebar** | `Cmd+Option+S` | Toggles the file sidebar (left). Label flips between Show and Hide based on current state, matching Finder. |
-| **Show / Hide Document Panel** | `Cmd+Option+B` | Toggles the document panel (right). |
+| **Show / Hide Sidebar** | `Cmd+Option+S` | Toggles the file sidebar. Label flips between Show and Hide based on current state, matching Finder. |
+| **Show / Hide Document Panel** | `Cmd+Option+B` | Toggles the document panel. |
 | **Show / Hide Editor** | (none) | Toggles the editor, in project windows only (see [Hide the editor](#hide-the-editor)). Label flips between Show and Hide like the other toggles. |
 | **Show / Hide Terminal** | `Cmd+J` / `Ctrl+J` | Toggles the Terminal in its current placement. (`` Ctrl+` `` toggles it too, though that chord has no menu accelerator.) |
 | **Show / Hide Agents** | `Cmd+L` | macOS View menu only: the Windows and Linux title-bar menus have no Agents item, so there use `Ctrl+L`, the header **Agents** button or the command palette. Toggles the Agents panel. With text selected in the editor, and the editor shown, the item reads **Ask AI About Selection** and stages the selection in the Agents panel instead. |

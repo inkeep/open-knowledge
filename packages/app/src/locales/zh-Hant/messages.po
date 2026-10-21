@@ -10127,6 +10127,9 @@ msgstr "建議選單已開啟"
 msgid "Summarize everything I changed this week"
 msgstr "總結我這週改了哪些東西"
 
+msgid "Swap file sidebar and document panel"
+msgstr "交換檔案側邊欄與文件面板的位置"
+
 msgid "Switch and update branch"
 msgstr "切換並更新分支"
 
@@ -11291,14 +11294,14 @@ msgstr "切換刪除線格式。"
 msgid "Toggle Terminal in its current dock."
 msgstr "在目前的停靠位置顯示或隱藏 Terminal。"
 
-msgid "Toggle the left file sidebar."
-msgstr "顯示或隱藏左側的檔案側邊欄。"
+msgid "Toggle the document panel."
+msgstr "顯示或隱藏文件面板。"
+
+msgid "Toggle the file sidebar."
+msgstr "顯示或隱藏檔案側邊欄。"
 
 msgid "Toggle the right agents panel, where agent conversations live."
 msgstr "顯示或隱藏右側的代理面板，代理對話就在那裡。"
-
-msgid "Toggle the right document panel."
-msgstr "顯示或隱藏右側的文件面板。"
 
 msgid "Toggle thumbnails"
 msgstr "切換縮圖"

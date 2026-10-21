@@ -10127,6 +10127,9 @@ msgstr "Otwarcie menu podpowiedzi"
 msgid "Summarize everything I changed this week"
 msgstr "Podsumuj wszystko, co zmieniłem w tym tygodniu"
 
+msgid "Swap file sidebar and document panel"
+msgstr "Zamień miejscami panel plików i panel dokumentu"
+
 msgid "Switch and update branch"
 msgstr "Przełącz i zaktualizuj gałąź"
 
@@ -11291,14 +11294,14 @@ msgstr "Przełącz formatowanie przekreślenia."
 msgid "Toggle Terminal in its current dock."
 msgstr "Przełącz Terminal w jego bieżącym doku."
 
-msgid "Toggle the left file sidebar."
-msgstr "Przełącz lewy panel plików."
+msgid "Toggle the document panel."
+msgstr "Przełącz panel dokumentu."
+
+msgid "Toggle the file sidebar."
+msgstr "Przełącz panel plików."
 
 msgid "Toggle the right agents panel, where agent conversations live."
 msgstr "Przełącz prawy panel agentów, w którym znajdują się rozmowy z agentami."
-
-msgid "Toggle the right document panel."
-msgstr "Przełącz prawy panel dokumentu."
 
 msgid "Toggle thumbnails"
 msgstr "Przełącz miniatury"

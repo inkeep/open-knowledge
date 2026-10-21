@@ -15,6 +15,7 @@ import {
 import type { MessageDescriptor } from '@lingui/core';
 import { msg, t } from '@lingui/core/macro';
 import {
+  ArrowLeftRight,
   Blocks,
   BookOpen,
   Bug,
@@ -61,6 +62,7 @@ import { PANE_ICON } from '@/components/pane-icons';
 import { requestSkillsDockExpanded } from '@/components/skills-dock-expanded-store';
 import type { OkDesktopBridge, OkMenuAction } from '@/lib/desktop-bridge-types';
 import { requestDockPaneMove } from '@/lib/dock-move-requests';
+import { swapEditorSidebars } from '@/lib/editor-sidebar-side-store';
 import { i18n } from '@/lib/i18n';
 import type { KeyboardShortcutId } from '@/lib/keyboard-shortcuts';
 import { openDocInNoteWindow } from '@/lib/open-note-window';
@@ -161,6 +163,7 @@ const PALETTE_COMMAND_LABELS = {
   sidebarHide: msg`Hide sidebar`,
   docPanelShow: msg`Show document panel`,
   docPanelHide: msg`Hide document panel`,
+  swapEditorSidebars: msg`Swap file sidebar and document panel`,
   editorShow: msg`Show Editor`,
   editorHide: msg`Hide Editor`,
   terminalShow: msg`Show Terminal`,
@@ -270,6 +273,7 @@ const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'switch-worktree': GitBranch,
   'toggle-sidebar': PanelLeft,
   'toggle-doc-panel': PanelRight,
+  'swap-editor-sidebars': ArrowLeftRight,
   'toggle-terminal': PANE_ICON.terminal,
   'move-terminal': SquareTerminal,
   'toggle-agent-panel': PANE_ICON.agents,
@@ -300,6 +304,10 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
       },
     ]),
   ),
+  'swap-editor-sidebars': (ctx) => {
+    ctx.closePalette();
+    swapEditorSidebars();
+  },
   'open-blob-run': (ctx) => ctx.openBlobRun(),
   'new-file': (ctx) => {
     ctx.closePalette();

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { EditorPaneState } from '@/editor/editor-panes';
+import { swapEditorSidebars } from '@/lib/editor-sidebar-side-store';
 import { OK_SIDEBAR_DRAG_MIME, serializeSidebarDragPayload } from '@/lib/sidebar-drag';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import {
@@ -176,21 +177,24 @@ vi.doMock('./EditorTabs', () => ({
     dropIndicatorIndex,
     leading,
     paneId,
+    trailing,
   }: {
     dropIndicatorIndex?: number | null;
     leading?: ReactNode;
     paneId: string;
+    trailing?: ReactNode;
   }) => (
     <div data-editor-pane-tabs={paneId} data-drop-indicator-index={dropIndicatorIndex ?? undefined}>
       {leading}
       Tabs {paneId}
+      {trailing}
     </div>
   ),
 }));
 
 vi.doMock('./FileListToggle', () => ({
-  FileListToggle: () => (
-    <button type="button" data-testid="file-list-toggle">
+  FileListToggle: ({ side }: { side?: 'start' | 'end' }) => (
+    <button type="button" data-testid="file-list-toggle" data-side={side}>
       Files
     </button>
   ),
@@ -402,6 +406,25 @@ describe('EditorWorkspace', () => {
     workspace.scrollLeft = 96;
     fireEvent.scroll(workspace);
     expect(headerCanvas.style.transform).toBe('translateX(-96px)');
+  });
+
+  test('with the file sidebar at the end, the one Files toggle closes the last pane strip', () => {
+    swapEditorSidebars();
+    try {
+      const { container } = renderWorkspace();
+      const toggles = screen.getAllByTestId('file-list-toggle');
+      expect(toggles).toHaveLength(1);
+      expect(toggles[0]?.dataset.side).toBe('end');
+      const lastStrip = container.querySelector('[data-editor-pane-tabs="pane-b"]');
+      expect(lastStrip?.lastElementChild).toBe(toggles[0]);
+      expect(
+        container.querySelector(
+          '[data-editor-pane-tabs="pane-a"] [data-testid="file-list-toggle"]',
+        ),
+      ).toBeNull();
+    } finally {
+      swapEditorSidebars();
+    }
   });
 
   test('resizes header tab groups continuously before persisting the panel layout', () => {

@@ -10123,6 +10123,9 @@ msgstr "পরামর্শ মেনু খোলা"
 msgid "Summarize everything I changed this week"
 msgstr "এই সপ্তাহে আমি যা যা বদলেছি তার সারসংক্ষেপ দিন"
 
+msgid "Swap file sidebar and document panel"
+msgstr "ফাইল সাইডবার ও নথি প্যানেলের জায়গা বদলান"
+
 msgid "Switch and update branch"
 msgstr "ব্রাঞ্চ বদলে হালনাগাদ করুন"
 
@@ -11287,14 +11290,14 @@ msgstr "কাটা দাগের বিন্যাস চালু বা �
 msgid "Toggle Terminal in its current dock."
 msgstr "Terminal-কে তার বর্তমান ডকে দেখান বা লুকান।"
 
-msgid "Toggle the left file sidebar."
-msgstr "বাঁ দিকের ফাইল সাইডবার চালু বা বন্ধ করুন।"
+msgid "Toggle the document panel."
+msgstr "নথি প্যানেল চালু বা বন্ধ করুন।"
+
+msgid "Toggle the file sidebar."
+msgstr "ফাইল সাইডবার চালু বা বন্ধ করুন।"
 
 msgid "Toggle the right agents panel, where agent conversations live."
 msgstr "ডান দিকের এজেন্ট প্যানেল চালু বা বন্ধ করুন, যেখানে এজেন্টের কথোপকথন থাকে।"
-
-msgid "Toggle the right document panel."
-msgstr "ডান দিকের নথি প্যানেল চালু বা বন্ধ করুন।"
 
 msgid "Toggle thumbnails"
 msgstr "থাম্বনেইল চালু বা বন্ধ করুন"

@@ -15,6 +15,7 @@ const AppMenubar = lazy(() =>
 
 interface EditorHeaderProps {
   children?: ReactNode;
+  leading?: ReactNode;
   trailing?: ReactNode;
   noteModeToggle?: ReactNode;
 }
@@ -80,7 +81,7 @@ function ReducedChromeZones({
 
 const TRAILING_WIDTH_CLASS = '@[15rem]/editor-header:[--editor-header-trailing-width:2rem]';
 
-export function EditorHeader({ children, trailing, noteModeToggle }: EditorHeaderProps) {
+export function EditorHeader({ children, leading, trailing, noteModeToggle }: EditorHeaderProps) {
   const singleFile = useSingleFileMode();
   const noteWindow = isNoteWindow();
   const { activeDocName } = useDocumentContext();
@@ -113,6 +114,14 @@ export function EditorHeader({ children, trailing, noteModeToggle }: EditorHeade
           !reducedChrome && trailing != null && TRAILING_WIDTH_CLASS,
         )}
       >
+        {reducedChrome || leading == null ? null : (
+          <div
+            data-editor-header-leading=""
+            className="hidden shrink-0 items-center ps-1 @[15rem]/editor-header:flex"
+          >
+            {leading}
+          </div>
+        )}
         {singleFile ? (
           <div className="flex min-w-0 items-center px-3">
             <EditorBreadcrumb docName={activeDocName} includeCurrentPage />

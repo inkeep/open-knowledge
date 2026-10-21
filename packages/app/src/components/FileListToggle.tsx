@@ -3,11 +3,14 @@ import { Kbd } from '@/components/ui/kbd';
 import { Separator } from '@/components/ui/separator';
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { physicalSide } from '@/lib/editor-sidebar-side-store';
 import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
+import { useDocumentDirection } from '@/lib/use-document-direction';
 import { cn } from '@/lib/utils';
 
-export function FileListToggle() {
+export function FileListToggle({ side = 'start' }: { readonly side?: 'start' | 'end' }) {
   const { t } = useLingui();
+  const direction = useDocumentDirection();
   const { state } = useSidebar();
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
 
@@ -16,13 +19,15 @@ export function FileListToggle() {
       data-file-list-toggle=""
       data-electron-drag={isElectronHost ? '' : undefined}
       className={cn(
-        'flex h-full shrink-0 items-center gap-1 pe-1',
+        'flex h-full shrink-0 items-center gap-1',
+        side === 'start' ? 'pe-1' : 'flex-row-reverse ps-1',
         isElectronHost && '[-webkit-app-region:drag]',
       )}
     >
       <Tooltip>
         <TooltipTrigger asChild>
           <SidebarTrigger
+            side={physicalSide(side, direction)}
             className={cn(
               'shrink-0 text-muted-foreground',
               isElectronHost && '[-webkit-app-region:no-drag]',

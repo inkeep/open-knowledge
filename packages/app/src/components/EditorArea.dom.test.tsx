@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { DEFAULT_DOCK_TREE, type DockNode, moveDockPane } from '@/lib/dock-tree';
+import { swapEditorSidebars } from '@/lib/editor-sidebar-side-store';
 import {
   __resetPaneVisibilityStoreForTests,
   type PaneId,
@@ -2771,5 +2772,47 @@ describe('EditorArea with the editor hidden', () => {
     expect(unitPx('terminal', 'height')).toBe(WORKSPACE_HEIGHT_PX);
     expect(unitPx('terminal', 'width')).toBe(columnWidth);
     expect(dockUnit('agents').getAttribute('style')).toBe(agentsStyle);
+  });
+});
+
+describe('the document panel side', () => {
+  const settle = () => act(async () => {});
+
+  function docPanelFollowsColumn(): boolean {
+    const column = document.querySelector('[data-editor-workspace-column]');
+    const docPanel = document.querySelector('#doc-panel');
+    if (column === null || docPanel === null)
+      throw new Error('the editor column or doc panel is absent');
+    return (column.compareDocumentPosition(docPanel) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  }
+
+  beforeEach(() => {
+    cleanup();
+    localStorage.clear();
+  });
+
+  test('a swap puts the document panel before the editor column in a window with a file sidebar, and a window without one keeps it after', async () => {
+    swapEditorSidebars();
+    try {
+      const view = render(
+        <FileListHostProvider enabled>
+          <EditorArea
+            editorMode="wysiwyg"
+            onModeChange={() => {}}
+            activeTab="timeline"
+            onActiveTabChange={() => {}}
+          />
+        </FileListHostProvider>,
+      );
+      await settle();
+      expect(docPanelFollowsColumn()).toBe(false);
+      view.unmount();
+
+      renderEditorArea();
+      await settle();
+      expect(docPanelFollowsColumn()).toBe(true);
+    } finally {
+      swapEditorSidebars();
+    }
   });
 });

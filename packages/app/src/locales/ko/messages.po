@@ -10127,6 +10127,9 @@ msgstr "제안 메뉴 열기"
 msgid "Summarize everything I changed this week"
 msgstr "이번 주 변경한 내용 모두 요약"
 
+msgid "Swap file sidebar and document panel"
+msgstr "파일 사이드바와 문서 패널 위치 바꾸기"
+
 msgid "Switch and update branch"
 msgstr "브랜치 전환 및 업데이트"
 
@@ -11291,14 +11294,14 @@ msgstr "취소선 서식을 전환합니다."
 msgid "Toggle Terminal in its current dock."
 msgstr "현재 도크에서 터미널 전환"
 
-msgid "Toggle the left file sidebar."
-msgstr "왼쪽 파일 사이드바 전환"
+msgid "Toggle the document panel."
+msgstr "문서 패널 전환"
+
+msgid "Toggle the file sidebar."
+msgstr "파일 사이드바 전환"
 
 msgid "Toggle the right agents panel, where agent conversations live."
 msgstr "에이전트 대화가 표시되는 오른쪽 에이전트 패널 전환"
-
-msgid "Toggle the right document panel."
-msgstr "오른쪽 문서 패널 전환"
 
 msgid "Toggle thumbnails"
 msgstr "썸네일 전환"

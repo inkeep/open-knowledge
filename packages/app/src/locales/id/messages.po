@@ -10123,6 +10123,9 @@ msgstr "Menu saran terbuka"
 msgid "Summarize everything I changed this week"
 msgstr "Ringkas semua yang saya ubah minggu ini"
 
+msgid "Swap file sidebar and document panel"
+msgstr "Tukar posisi bilah sisi berkas dan panel dokumen"
+
 msgid "Switch and update branch"
 msgstr "Ganti cabang dan perbarui"
 
@@ -11287,14 +11290,14 @@ msgstr "Menyalakan atau mematikan format coret."
 msgid "Toggle Terminal in its current dock."
 msgstr "Tampilkan atau sembunyikan Terminal di dok saat ini."
 
-msgid "Toggle the left file sidebar."
-msgstr "Menampilkan atau menyembunyikan bilah sisi berkas di kiri."
+msgid "Toggle the document panel."
+msgstr "Menampilkan atau menyembunyikan panel dokumen."
+
+msgid "Toggle the file sidebar."
+msgstr "Menampilkan atau menyembunyikan bilah sisi berkas."
 
 msgid "Toggle the right agents panel, where agent conversations live."
 msgstr "Menampilkan atau menyembunyikan panel agen di kanan, tempat percakapan dengan agen berada."
-
-msgid "Toggle the right document panel."
-msgstr "Menampilkan atau menyembunyikan panel dokumen di kanan."
 
 msgid "Toggle thumbnails"
 msgstr "Tampilkan atau sembunyikan gambar mini"

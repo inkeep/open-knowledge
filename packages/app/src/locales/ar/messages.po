@@ -10127,6 +10127,9 @@ msgstr "قائمة الاقتراحات مفتوحة"
 msgid "Summarize everything I changed this week"
 msgstr "لخّص كل ما غيّرته هذا الأسبوع"
 
+msgid "Swap file sidebar and document panel"
+msgstr "تبديل موضعي الشريط الجانبي للملفات ولوحة المستند"
+
 msgid "Switch and update branch"
 msgstr "تبديل الفرع وتحديثه"
 
@@ -11291,14 +11294,14 @@ msgstr "بدّل تنسيق الخط في المنتصف."
 msgid "Toggle Terminal in its current dock."
 msgstr "أظهر Terminal أو أخفه في موضع الإرساء الحالي."
 
-msgid "Toggle the left file sidebar."
-msgstr "بدّل شريط الملفات الجانبي الأيسر."
+msgid "Toggle the document panel."
+msgstr "بدّل لوحة المستند."
+
+msgid "Toggle the file sidebar."
+msgstr "بدّل شريط الملفات الجانبي."
 
 msgid "Toggle the right agents panel, where agent conversations live."
 msgstr "بدّل لوحة الوكلاء اليمنى، حيث تعيش محادثات الوكلاء."
-
-msgid "Toggle the right document panel."
-msgstr "بدّل لوحة المستند اليمنى."
 
 msgid "Toggle thumbnails"
 msgstr "تبديل الصور المصغّرة"

@@ -1,7 +1,7 @@
 import { detectEmbeddedHostFromBrowser } from '@inkeep/open-knowledge-core/constants/embedded-host';
 import { useLingui } from '@lingui/react/macro';
 import { cva, type VariantProps } from 'class-variance-authority';
-import { PanelLeft, PanelLeftOpen } from 'lucide-react';
+import { PanelLeft, PanelLeftOpen, PanelRight, PanelRightOpen } from 'lucide-react';
 import { Slot } from 'radix-ui';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
@@ -371,7 +371,7 @@ function Sidebar({
           variant === 'floating'
             ? 'p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]'
             : variant === 'inset'
-              ? 'group-data-[side=left]:border-e group-data-[side=right]:border-s group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]'
+              ? 'group-data-[side=left]:border-r group-data-[side=right]:border-l group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]'
               : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l',
           'group-data-[dragging=true]:duration-0! group-data-[dragging=true]_*:!duration-0',
           cover && 'inset-0 size-full transition-none',
@@ -391,7 +391,12 @@ function Sidebar({
   );
 }
 
-function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
+function SidebarTrigger({
+  className,
+  onClick,
+  side = 'left',
+  ...props
+}: React.ComponentProps<typeof Button> & { side?: 'left' | 'right' }) {
   const { t } = useLingui();
   const { toggleSidebar, state } = useSidebar();
   const sidebarShortcutLabel = formatShortcutLabel('toggle-files-sidebar');
@@ -416,7 +421,17 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
       }}
       {...props}
     >
-      {state === 'expanded' ? <PanelLeft /> : <PanelLeftOpen />}
+      {side === 'right' ? (
+        state === 'expanded' ? (
+          <PanelRight />
+        ) : (
+          <PanelRightOpen />
+        )
+      ) : state === 'expanded' ? (
+        <PanelLeft />
+      ) : (
+        <PanelLeftOpen />
+      )}
     </Button>
   );
 }
@@ -425,16 +440,18 @@ function SidebarRail({
   className,
   enableDrag = true,
   enableToggle = true,
+  direction = 'right',
   onMouseDown,
   ...props
 }: React.ComponentProps<'button'> & {
   enableDrag?: boolean;
   enableToggle?: boolean;
+  direction?: 'left' | 'right';
 }) {
   const { t } = useLingui();
   const { toggleSidebar, setWidth, state, width, setIsDraggingRail, cover } = useSidebar();
   const { dragRef, handleMouseDown } = useSidebarResize({
-    direction: 'right',
+    direction,
     enableDrag: enableDrag && !cover,
     enableToggle: enableToggle && !cover,
     onResize: setWidth,

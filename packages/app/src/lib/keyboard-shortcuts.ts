@@ -145,7 +145,7 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     id: 'toggle-files-sidebar',
     category: 'general',
     title: msg`Show or hide Files`,
-    description: msg`Toggle the left file sidebar.`,
+    description: msg`Toggle the file sidebar.`,
     scope: msg`Global`,
     bindings: [
       {
@@ -159,7 +159,7 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     id: 'toggle-document-panel',
     category: 'general',
     title: msg`Show or hide document panel`,
-    description: msg`Toggle the right document panel.`,
+    description: msg`Toggle the document panel.`,
     scope: msg`Global`,
     bindings: [
       {

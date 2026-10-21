@@ -689,6 +689,7 @@ interface EditorTabsProps {
   paneId: string;
   onSplitComplete?: (paneId: string, tabId: string) => void;
   leading?: ReactNode;
+  trailing?: ReactNode;
 }
 
 export function EditorTabs({
@@ -696,6 +697,7 @@ export function EditorTabs({
   paneId,
   onSplitComplete,
   leading,
+  trailing,
 }: EditorTabsProps) {
   const { t } = useLingui();
   const context = useDocumentContext();
@@ -1371,6 +1373,7 @@ export function EditorTabs({
           </TooltipContent>
         </Tooltip>
       </div>
+      {trailing}
       {skillActions.dialogs}
     </div>
   );

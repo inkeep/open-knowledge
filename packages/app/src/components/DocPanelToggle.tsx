@@ -1,10 +1,12 @@
 import { useLingui } from '@lingui/react/macro';
-import { PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
 import { Kbd } from '@/components/ui/kbd';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { physicalSide } from '@/lib/editor-sidebar-side-store';
 import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import { isNoteWindow } from '@/lib/note-window-mode';
+import { useDocumentDirection } from '@/lib/use-document-direction';
 import { cn } from '@/lib/utils';
 
 interface DocPanelToggleProps {
@@ -12,6 +14,7 @@ interface DocPanelToggleProps {
   readonly onTogglePanel: () => void;
   readonly className?: string;
   readonly panelId?: string;
+  readonly side?: 'start' | 'end';
 }
 
 export function DocPanelToggle({
@@ -19,8 +22,10 @@ export function DocPanelToggle({
   onTogglePanel,
   className,
   panelId = 'doc-panel',
+  side = 'end',
 }: DocPanelToggleProps) {
   const { t } = useLingui();
+  const direction = useDocumentDirection();
   const panelShortcut = formatShortcut('toggle-document-panel');
   const panelShortcutLabel = formatShortcutLabel('toggle-document-panel');
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
@@ -47,7 +52,17 @@ export function DocPanelToggle({
         asChild
       >
         <TooltipTrigger>
-          {isPanelCollapsed ? <PanelRightOpen /> : <PanelRightClose />}
+          {physicalSide(side, direction) === 'left' ? (
+            isPanelCollapsed ? (
+              <PanelLeftOpen />
+            ) : (
+              <PanelLeftClose />
+            )
+          ) : isPanelCollapsed ? (
+            <PanelRightOpen />
+          ) : (
+            <PanelRightClose />
+          )}
         </TooltipTrigger>
       </Button>
       <TooltipContent side="bottom">

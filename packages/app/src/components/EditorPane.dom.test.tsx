@@ -164,6 +164,7 @@ function shiftJKeydownInit(): KeyboardEventInit {
 }
 
 import * as actualLinguiMacro from '@lingui/react/macro';
+import type { WorkspaceHeaderChrome } from './EditorArea';
 
 vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
@@ -297,7 +298,7 @@ vi.doMock('./EditorArea', () => ({
     editorVisible?: boolean;
     agentsVisible?: boolean;
     onPaneExtentChange?: () => void;
-    renderWorkspaceHeader?: (tabs: ReactNode, chrome: { trailing: ReactNode }) => ReactNode;
+    renderWorkspaceHeader?: (tabs: ReactNode, chrome: WorkspaceHeaderChrome) => ReactNode;
     dockTree: DockNode;
     onDockTreeChange: (update: (tree: DockNode) => DockNode) => void;
     onSessionPlacements?: (placements: MockPlacements) => void;
@@ -311,7 +312,11 @@ vi.doMock('./EditorArea', () => ({
         data-editor-visible={String(editorVisible)}
         data-agents-visible={String(agentsVisible)}
       >
-        {renderWorkspaceHeader?.(<div data-testid="workspace-tabs" />, { trailing: null })}
+        {renderWorkspaceHeader?.(<div data-testid="workspace-tabs" />, {
+          leading: null,
+          trailing: null,
+          sidebarSwap: false,
+        })}
         <ReportPlacements onSessionPlacements={onSessionPlacements} />
         <MockPaneExtentHandle handleRef={ref} onPaneExtentChange={onPaneExtentChange} />
       </div>

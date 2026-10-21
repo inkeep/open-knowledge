@@ -10127,6 +10127,9 @@ msgstr "تجاویز کا مینو کھلا ہے"
 msgid "Summarize everything I changed this week"
 msgstr "اس ہفتے میں نے جو کچھ بدلا اس کا خلاصہ کریں"
 
+msgid "Swap file sidebar and document panel"
+msgstr "فائل سائیڈ بار اور دستاویز کے پینل کی جگہ بدلیں"
+
 msgid "Switch and update branch"
 msgstr "برانچ بدلیں اور تازہ کریں"
 
@@ -11291,14 +11294,14 @@ msgstr "درمیان سے کٹی فارمیٹنگ بدلیں۔"
 msgid "Toggle Terminal in its current dock."
 msgstr "Terminal کو اس کی موجودہ ڈاک میں دکھائیں یا چھپائیں۔"
 
-msgid "Toggle the left file sidebar."
-msgstr "بائیں فائل سائیڈ بار بدلیں۔"
+msgid "Toggle the document panel."
+msgstr "دستاویز پینل بدلیں۔"
+
+msgid "Toggle the file sidebar."
+msgstr "فائل سائیڈ بار بدلیں۔"
 
 msgid "Toggle the right agents panel, where agent conversations live."
 msgstr "دائیں ایجنٹس پینل بدلیں، جہاں ایجنٹس کی گفتگو رہتی ہے۔"
-
-msgid "Toggle the right document panel."
-msgstr "دائیں دستاویز پینل بدلیں۔"
 
 msgid "Toggle thumbnails"
 msgstr "تھمب نیلز بدلیں"

@@ -78,9 +78,15 @@ import { AuthModal } from './AuthModal';
 import { AutoSyncOnboardingDialog } from './AutoSyncOnboardingDialog';
 import { resolveAutoSyncOnboarding } from './auto-sync-onboarding-gate';
 import { type PanelTab, TABS } from './DocPanel';
-import { EditorArea, type EditorAreaHandle, type SessionPlacements } from './EditorArea';
+import {
+  EditorArea,
+  type EditorAreaHandle,
+  type SessionPlacements,
+  type WorkspaceHeaderChrome,
+} from './EditorArea';
 import { EditorHeader } from './EditorHeader';
 import { EditorModeToggle } from './EditorModeToggle';
+import { EditorSidebarsContextMenu } from './EditorSidebarsContextMenu';
 import { composeTerminalSelectionPaste } from './handoff/compose-terminal-selection';
 import { requestPreferredSession } from './handoff/preferred-session-events';
 import {
@@ -434,15 +440,20 @@ type WorkspaceHeaderState = {
 
 function WorkspaceHeader({
   tabs,
+  leading,
   trailing,
+  sidebarSwap,
   state,
 }: {
   tabs: ReactNode;
+  leading: ReactNode;
   trailing: ReactNode;
+  sidebarSwap: boolean;
   state: WorkspaceHeaderState;
 }) {
-  return (
+  const header = (
     <EditorHeader
+      leading={leading}
       trailing={trailing}
       noteModeToggle={
         state.noteWindow &&
@@ -459,11 +470,18 @@ function WorkspaceHeader({
       {tabs}
     </EditorHeader>
   );
+  return sidebarSwap ? <EditorSidebarsContextMenu>{header}</EditorSidebarsContextMenu> : header;
 }
 
 function createWorkspaceHeaderRenderer(state: WorkspaceHeaderState) {
-  return (tabs: ReactNode, chrome: { readonly trailing: ReactNode }) => (
-    <WorkspaceHeader tabs={tabs} trailing={chrome.trailing} state={state} />
+  return (tabs: ReactNode, chrome: WorkspaceHeaderChrome) => (
+    <WorkspaceHeader
+      tabs={tabs}
+      leading={chrome.leading}
+      trailing={chrome.trailing}
+      sidebarSwap={chrome.sidebarSwap}
+      state={state}
+    />
   );
 }
 

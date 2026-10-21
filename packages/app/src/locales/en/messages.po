@@ -10127,6 +10127,9 @@ msgstr "Suggestion menu open"
 msgid "Summarize everything I changed this week"
 msgstr "Summarize everything I changed this week"
 
+msgid "Swap file sidebar and document panel"
+msgstr "Swap file sidebar and document panel"
+
 msgid "Switch and update branch"
 msgstr "Switch and update branch"
 
@@ -11291,14 +11294,14 @@ msgstr "Toggle strikethrough formatting."
 msgid "Toggle Terminal in its current dock."
 msgstr "Toggle Terminal in its current dock."
 
-msgid "Toggle the left file sidebar."
-msgstr "Toggle the left file sidebar."
+msgid "Toggle the document panel."
+msgstr "Toggle the document panel."
+
+msgid "Toggle the file sidebar."
+msgstr "Toggle the file sidebar."
 
 msgid "Toggle the right agents panel, where agent conversations live."
 msgstr "Toggle the right agents panel, where agent conversations live."
-
-msgid "Toggle the right document panel."
-msgstr "Toggle the right document panel."
 
 msgid "Toggle thumbnails"
 msgstr "Toggle thumbnails"

@@ -104,6 +104,7 @@ import {
 import { useSettingsLoadingReason } from '@/lib/config-context';
 import { useConfigContext } from '@/lib/config-provider';
 import { subscribeToCreateTopLevelFile } from '@/lib/create-file-events';
+import { physicalSide, useFileSidebarSide } from '@/lib/editor-sidebar-side-store';
 import {
   buildSendToAiInputForActiveTarget,
   resolveActiveTargetAbsPath,
@@ -123,6 +124,7 @@ import { revealEditorBeforeActing } from '@/lib/reveal-editor';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import { buildFolderShareInput, runShareAction } from '@/lib/share/run-share-action';
 import { useStickyAgent } from '@/lib/unified-agent-store';
+import { useDocumentDirection } from '@/lib/use-document-direction';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { setViewMenuState } from '@/lib/view-menu-state-store';
@@ -180,6 +182,8 @@ function SettingsLoadingMenuGroupTooltip({
 
 function FileSidebarInner() {
   const { t } = useLingui();
+  const fileSidebarSide = useFileSidebarSide();
+  const fileSidebarEdge = physicalSide(fileSidebarSide, useDocumentDirection());
   const settingsLoadingReasonId = useId();
   const [tree, setTree] = useState<FileTreeHandle | null>(null);
   const suppressTreeMenuFocusRestoreRef = useRef(false);
@@ -586,7 +590,7 @@ function FileSidebarInner() {
   ]);
 
   return (
-    <Sidebar variant="inset" className="pt-0">
+    <Sidebar variant="inset" side={fileSidebarEdge} className="pt-0">
       {pendingSettingsReason ? (
         <span id={settingsLoadingReasonId} className="sr-only">
           {pendingSettingsReason}
@@ -845,6 +849,7 @@ function FileSidebarInner() {
             <SidebarRail
               enableToggle={false}
               enableDrag={!(isEmbedded && sidebarState === 'collapsed')}
+              direction={fileSidebarEdge === 'left' ? 'right' : 'left'}
             />
           </div>
         </ContextMenuTrigger>

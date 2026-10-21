@@ -35,6 +35,7 @@ import {
 import { useDocumentContext } from '@/editor/DocumentContext';
 import type { EditorPaneState, PaneSide } from '@/editor/editor-panes';
 import { openSidebarDropPayload } from '@/editor/sidebar-drop';
+import { useFileSidebarSide } from '@/lib/editor-sidebar-side-store';
 import {
   getNoteWindowDeletedDoc,
   subscribeNoteWindowDeleted,
@@ -386,6 +387,7 @@ export function EditorWorkspace({
   } = useDocumentContext();
   const singleFile = useSingleFileMode();
   const singleDocumentSurface = singleFile || isNoteWindow();
+  const fileSidebarSide = useFileSidebarSide();
   const deletedDocName = useSyncExternalStore(
     subscribeNoteWindowDeleted,
     getNoteWindowDeletedDoc,
@@ -692,9 +694,19 @@ export function EditorWorkspace({
     return paneLabel(data.paneId);
   }
 
+  function holdsFileListToggle(pane: EditorPaneState, index: number): boolean {
+    if (projected) return pane.id === focusedPaneId;
+    return index === (fileSidebarSide === 'start' ? 0 : panes.length - 1);
+  }
+
   function paneLeadingControl(pane: EditorPaneState, index: number): ReactNode {
-    if (projected) return pane.id === focusedPaneId ? <FileListToggle /> : undefined;
-    return index === 0 ? <FileListToggle /> : undefined;
+    if (fileSidebarSide !== 'start' || !holdsFileListToggle(pane, index)) return undefined;
+    return <FileListToggle side="start" />;
+  }
+
+  function paneTrailingControl(pane: EditorPaneState, index: number): ReactNode {
+    if (fileSidebarSide !== 'end' || !holdsFileListToggle(pane, index)) return undefined;
+    return <FileListToggle side="end" />;
   }
 
   const paneGroup = (
@@ -785,6 +797,7 @@ export function EditorWorkspace({
                 paneId={pane.id}
                 onSplitComplete={requestTabFocus}
                 leading={paneLeadingControl(pane, index)}
+                trailing={paneTrailingControl(pane, index)}
               />
             </PaneStripDropTarget>
           </Fragment>
