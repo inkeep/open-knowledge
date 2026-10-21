@@ -56,15 +56,21 @@ export function isConcurrentOverwriteRefusal(error: unknown): boolean {
 }
 
 async function problemError(res: Response, message: string): Promise<ProblemError> {
-  let body: { type?: unknown } | null = null;
+  let body: { type?: unknown; title?: unknown; detail?: unknown } | null = null;
   let parseFailure: unknown;
   try {
-    body = (await res.json()) as { type?: unknown };
+    body = (await res.json()) as { type?: unknown; title?: unknown; detail?: unknown };
   } catch (error) {
     parseFailure = error;
   }
+  const problem = [body?.type, body?.title, body?.detail].filter(
+    (part): part is string => typeof part === 'string' && part.length > 0,
+  );
+  const fullMessage = problem.length > 0 ? `${message} (${problem.join('; ')})` : message;
   const err: ProblemError =
-    parseFailure === undefined ? new Error(message) : new Error(message, { cause: parseFailure });
+    parseFailure === undefined
+      ? new Error(fullMessage)
+      : new Error(fullMessage, { cause: parseFailure });
   err.status = res.status;
   if (typeof body?.type === 'string') err.type = body.type;
   return err;
@@ -690,6 +696,13 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         throw err;
       }
     }
+    async function postTestReset(
+      query: { scope: 'document'; docName?: string } | { scope: 'presence' },
+    ): Promise<void> {
+      const search = new URLSearchParams(query).toString();
+      const res = await post(`/api/test-reset?${search}`);
+      if (!res.ok) throw await problemError(res, `test-reset?${search} failed: ${res.status}`);
+    }
     const helpers: ApiHelpers = {
       async createPage(path: string): Promise<void> {
         const res = await post('/api/create-page', { path });
@@ -722,12 +735,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         }
       },
       async testReset(docName?: string): Promise<void> {
-        const res = await post(
-          docName ? `/api/test-reset?docName=${encodeURIComponent(docName)}` : '/api/test-reset',
-        );
-        if (!res.ok) {
-          throw new Error(`test-reset failed${docName ? ` for ${docName}` : ''}: ${res.status}`);
-        }
+        await postTestReset({ scope: 'document', ...(docName !== undefined ? { docName } : {}) });
       },
       async seedDocs(docs: Array<{ name: string; markdown: string }>): Promise<void> {
         await resetContentToFixtureBaseline(baseURL, workerServer.contentDir);
@@ -737,6 +745,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           await helpers.createPage(/\.(md|mdx)$/i.test(d.name) ? d.name : `${d.name}.md`);
         }
         for (const d of docs) await helpers.replaceDoc(docNameOf(d.name), d.markdown);
+        await postTestReset({ scope: 'presence' });
         await waitForSeededPagesSettled(
           baseURL,
           docs.map((d) => docNameOf(d.name)),

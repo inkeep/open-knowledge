@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { CONCURRENT_REPLACE_WINDOW_MS } from '@inkeep/open-knowledge-server';
 import {
   expect,
@@ -11,6 +13,35 @@ function agentId(label: string): string {
 }
 
 test.describe('multi-agent presence — sectioned PresenceBar (FR-9)', () => {
+  test('seeding docs publishes no unrequested agent presence', async ({ api, baseURL }) => {
+    await api.seedDocs([{ name: 'seed-presence-contract', markdown: '# seeded' }]);
+
+    const response = await fetch(`${baseURL}/api/metrics/agent-presence`);
+    expect(response.ok).toBe(true);
+    expect(await response.json()).toEqual({ presence: {} });
+  });
+
+  test('seeding docs keeps the project config the caller wrote before seeding', async ({
+    api,
+    workerServer,
+  }) => {
+    const configDir = join(workerServer.contentDir, '.ok');
+    const configPath = join(configDir, 'config.yml');
+    const originalConfig = existsSync(configPath) ? readFileSync(configPath) : null;
+    const callerConfig = 'contentRules:\n  markdownlint:\n    enabled: true\n';
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(configPath, callerConfig, 'utf-8');
+    try {
+      await api.seedDocs([{ name: 'seed-config-contract', markdown: '# seeded' }]);
+
+      expect(existsSync(configPath)).toBe(true);
+      expect(readFileSync(configPath, 'utf-8')).toBe(callerConfig);
+    } finally {
+      if (originalConfig !== null) writeFileSync(configPath, originalConfig);
+      else rmSync(configPath, { force: true });
+    }
+  });
+
   test('two distinct agents on the same doc render as two badges (bug-bash repro)', async ({
     page,
     api,

@@ -26,7 +26,8 @@ import { getRequestId } from './request-id.ts';
 import { withValidation } from './request-validation.ts';
 import { successResponse } from './success-response.ts';
 
-const TEST_RESET_SCOPES = ['document', 'server'] as const;
+const TEST_RESET_SCOPES = ['document', 'server', 'presence'] as const;
+const PRESENCE_RESET_REFUSED_PARAMS = ['docName', 'reset-okignore'] as const;
 type TestResetScope = (typeof TEST_RESET_SCOPES)[number];
 
 interface TestServerResetResidue {
@@ -99,14 +100,18 @@ export function createTestRoutes(deps: TestRouteDeps): ApiRouteGroup {
     return isSystemDoc(docName) || isConfigDoc(docName);
   }
 
+  function clearAgentPresence(): void {
+    for (const agentId of Object.keys(agentPresence?.getPresenceMap() ?? {})) {
+      agentPresence?.clearPresence(agentId);
+    }
+  }
+
   async function resetLoadedState(keep: string): Promise<void> {
     for (const docName of hocuspocus.documents.keys()) {
       if (docName === keep || isServerStateDoc(docName)) continue;
       await unloadDocumentForTest(docName);
     }
-    for (const agentId of Object.keys(agentPresence?.getPresenceMap() ?? {})) {
-      agentPresence?.clearPresence(agentId);
-    }
+    clearAgentPresence();
     for (const [docName] of recentlyRemovedDocs?.entries() ?? []) {
       recentlyRemovedDocs?.delete(docName);
     }
@@ -146,6 +151,24 @@ export function createTestRoutes(deps: TestRouteDeps): ApiRouteGroup {
             `scope must be one of ${TEST_RESET_SCOPES.join(', ')}.`,
             { handler: 'test-reset' },
           );
+          return;
+        }
+        if (scope === 'presence') {
+          const refusedParam = PRESENCE_RESET_REFUSED_PARAMS.find((param) =>
+            url.searchParams.has(param),
+          );
+          if (refusedParam !== undefined) {
+            errorResponse(
+              res,
+              400,
+              'urn:ok:error:invalid-request',
+              `${refusedParam} cannot be combined with scope=presence: a presence-scope reset clears agent presence only.`,
+              { handler: 'test-reset' },
+            );
+            return;
+          }
+          clearAgentPresence();
+          successResponse(res, 200, TestResetSuccessSchema, { scope }, { handler: 'test-reset' });
           return;
         }
         if (scope === 'server' && url.searchParams.has('reset-okignore')) {

@@ -1,8 +1,10 @@
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Hocuspocus } from '@hocuspocus/server';
+import type { Document, Hocuspocus } from '@hocuspocus/server';
+import { type AgentPresenceEntry, SYSTEM_DOC_NAME } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
+import { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { makeCaptureRes, makeSyntheticReq } from '../composition-rig.test-helper.ts';
 import type { ConflictAuthority } from '../conflict-authority.ts';
@@ -141,8 +143,147 @@ describe('POST /api/test-reset scope', () => {
     expect(captured.status).toBe(400);
     expect(JSON.parse(captured.body)).toMatchObject({
       type: 'urn:ok:error:invalid-request',
-      title: 'scope must be one of document, server.',
+      title: 'scope must be one of document, server, presence.',
     });
     expect(readFileSync(join(contentDir, 'test-doc.md'), 'utf-8')).toBe('kept\n');
   });
+});
+
+function presenceEntry(displayName: string): AgentPresenceEntry {
+  return {
+    displayName,
+    icon: 'claude',
+    color: '#D97757',
+    currentDoc: 'seeded.md',
+    mode: 'writing',
+    ts: Date.now(),
+  };
+}
+
+function presenceResetRig() {
+  const contentDir = contentDirWithTestDoc('kept\n');
+  mkdirSync(join(contentDir, '.ok'), { recursive: true });
+  writeFileSync(
+    join(contentDir, '.ok', 'config.yml'),
+    'contentRules:\n  markdownlint:\n    enabled: true\n',
+    'utf-8',
+  );
+  writeFileSync(join(contentDir, '.okignore'), 'kept-by-caller/\n', 'utf-8');
+
+  let awarenessState: Record<string, unknown> | null = null;
+  const awareness = {
+    getLocalState: () => awarenessState,
+    setLocalState: (next: Record<string, unknown> | null) => {
+      awarenessState = next;
+    },
+  };
+  const documents = new Map<string, Document>([
+    [SYSTEM_DOC_NAME, { name: SYSTEM_DOC_NAME, awareness } as unknown as Document],
+    ['test-doc', { name: 'test-doc', getConnections: () => [{}] } as unknown as Document],
+    ['seeded', { name: 'seeded', getConnections: () => [{}] } as unknown as Document],
+  ]);
+  const closedConnections: Array<string | undefined> = [];
+  const closedSessions: Array<string | undefined> = [];
+  const unloadedDocuments: string[] = [];
+  let settingsResets = 0;
+  const hocuspocus = {
+    documents,
+    debouncer: { isDebounced: () => false, executeNow: async () => {} },
+    closeConnections: (docName?: string) => {
+      closedConnections.push(docName);
+    },
+    unloadDocument: async (document: Document) => {
+      unloadedDocuments.push(document.name);
+    },
+  } as unknown as Hocuspocus;
+  const agentPresence = new AgentPresenceBroadcaster(hocuspocus);
+  agentPresence.setPresence('claude-1', presenceEntry('Claude'));
+  agentPresence.setPresence('agent-seeded', presenceEntry('Seeded agent'));
+
+  const group = buildGroup({
+    contentDir,
+    agentPresence,
+    hocuspocus,
+    resetSettingsForTest: () => {
+      settingsResets++;
+    },
+    forceUnloadDocument: async (document: Document) => {
+      unloadedDocuments.push(document.name);
+    },
+    sessionManager: {
+      closeAll: async (docName?: string) => {
+        closedSessions.push(docName);
+      },
+      liveSessionCount: 1,
+    } as unknown as AgentSessionManager,
+    durabilityState: {
+      deleteReconciledBase: () => {},
+      listStaleExternalWrites: () => [],
+    } as unknown as TestRouteDeps['durabilityState'],
+    conflicts: { dissolveReconcile: () => {} } as unknown as ConflictAuthority,
+  });
+
+  return {
+    group,
+    contentDir,
+    agentPresence,
+    documents,
+    closedConnections,
+    closedSessions,
+    unloadedDocuments,
+    settingsResets: () => settingsResets,
+  };
+}
+
+describe('POST /api/test-reset scope=presence', () => {
+  test('clears every agent presence and leaves sessions, connections, loaded documents, settings and files as the caller left them', async () => {
+    const rig = presenceResetRig();
+    expect(Object.keys(rig.agentPresence.getPresenceMap()).sort()).toEqual([
+      'agent-seeded',
+      'claude-1',
+    ]);
+
+    const captured = await postTestReset(rig.group, '?scope=presence');
+
+    expect(captured.status).toBe(200);
+    expect(rig.agentPresence.getPresenceMap()).toEqual({});
+    expect(rig.closedSessions).toEqual([]);
+    expect(rig.closedConnections).toEqual([]);
+    expect(rig.unloadedDocuments).toEqual([]);
+    expect([...rig.documents.keys()].sort()).toEqual(
+      [SYSTEM_DOC_NAME, 'seeded', 'test-doc'].sort(),
+    );
+    expect(rig.settingsResets()).toBe(0);
+    expect(readFileSync(join(rig.contentDir, 'test-doc.md'), 'utf-8')).toBe('kept\n');
+    expect(readFileSync(join(rig.contentDir, '.ok', 'config.yml'), 'utf-8')).toBe(
+      'contentRules:\n  markdownlint:\n    enabled: true\n',
+    );
+    expect(readFileSync(join(rig.contentDir, '.okignore'), 'utf-8')).toBe('kept-by-caller/\n');
+  });
+
+  test.each([
+    ['docName', 'docName=seeded'],
+    ['reset-okignore', 'reset-okignore=false'],
+  ])(
+    'a presence-scope reset naming %s is refused before anything is reset',
+    async (parameter, query) => {
+      const rig = presenceResetRig();
+
+      const captured = await postTestReset(rig.group, `?scope=presence&${query}`);
+
+      expect(captured.status).toBe(400);
+      expect(JSON.parse(captured.body)).toMatchObject({
+        type: 'urn:ok:error:invalid-request',
+        title: `${parameter} cannot be combined with scope=presence: a presence-scope reset clears agent presence only.`,
+      });
+      expect(Object.keys(rig.agentPresence.getPresenceMap()).sort()).toEqual([
+        'agent-seeded',
+        'claude-1',
+      ]);
+      expect(rig.closedSessions).toEqual([]);
+      expect(rig.closedConnections).toEqual([]);
+      expect(rig.unloadedDocuments).toEqual([]);
+      expect(readFileSync(join(rig.contentDir, 'test-doc.md'), 'utf-8')).toBe('kept\n');
+    },
+  );
 });
