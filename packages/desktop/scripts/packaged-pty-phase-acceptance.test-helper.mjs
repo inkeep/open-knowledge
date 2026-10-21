@@ -22,6 +22,14 @@ const RENDERER_SESSION_UTILITY_PHASES = [
   ['pty-first-forward', 'point'],
 ];
 
+const MAIN_RELAY_PHASES = [
+  ['utility-data-received', 'point'],
+  ['main-data-relay', 'begin'],
+  ['main-data-relay', 'end'],
+];
+
+const RENDERER_SESSION_PHASES = [['renderer-data-received', 'point']];
+
 function findRendererTraceUnavailable(driverStderr) {
   for (const line of driverStderr.split(/\r?\n/u)) {
     let entry;
@@ -69,9 +77,18 @@ function assertSomeUtilityProcessStarted(records) {
   assert.ok(failures.includes(undefined), failures[0] ?? missingUtilityStartup([]));
 }
 
+const RENDERER_SESSION_PHASES_BY_PRODUCER = [
+  ['utility', RENDERER_SESSION_UTILITY_PHASES],
+  ['main', MAIN_RELAY_PHASES],
+  ['renderer', RENDERER_SESSION_PHASES],
+];
+
 function describeUncheckedRendererSession({ errorType, error }) {
-  const phases = [...new Set(RENDERER_SESSION_UTILITY_PHASES.map(([phase]) => phase))];
-  return `Packaged PTY renderer trace unavailable (${errorType}: ${error}), so the renderer session of this passing echo and that session's utility phases (${phases.join(', ')}) were not checked`;
+  const unchecked = RENDERER_SESSION_PHASES_BY_PRODUCER.map(
+    ([producer, phases]) =>
+      `${producer} phases (${[...new Set(phases.map(([phase]) => phase))].join(', ')})`,
+  );
+  return `Packaged PTY renderer trace unavailable (${errorType}: ${error}), so the renderer session of this passing echo and that session's ${unchecked.slice(0, -1).join(', ')} and ${unchecked.at(-1)} were not checked`;
 }
 
 export function assertPackagedPtyPhaseEvidence(directory, driverStderr = '') {
@@ -104,6 +121,30 @@ export function assertPackagedPtyPhaseEvidence(directory, driverStderr = '') {
           (phase !== 'pty-first-output' || record.currentSession === true),
       ),
       `Packaged PTY phase evidence is missing utility ${phase}/${edge} for the renderer session`,
+    );
+  }
+  const main = records.filter(
+    (record) => record.producer === 'main' && record.ptyId === start.ptyId,
+  );
+  for (const [phase, edge] of MAIN_RELAY_PHASES) {
+    assert.ok(
+      main.some(
+        (record) =>
+          record.phase === phase && record.edge === edge && (edge !== 'end' || record.ok === true),
+      ),
+      `Packaged PTY phase evidence is missing main ${phase}/${edge} for the renderer session`,
+    );
+  }
+  for (const [phase, edge] of RENDERER_SESSION_PHASES) {
+    assert.ok(
+      records.some(
+        (record) =>
+          record.producer === 'renderer' &&
+          record.ptyId === start.ptyId &&
+          record.phase === phase &&
+          record.edge === edge,
+      ),
+      `Packaged PTY phase evidence is missing renderer ${phase}/${edge} for the renderer session`,
     );
   }
 }

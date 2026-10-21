@@ -255,6 +255,7 @@ def evaluate_pty_echo(socket_url: str) -> Dict[str, object]:
           const endings = [];
           const notices = [];
           const releases = [];
+          const receivedPtyIds = new Set();
           const sinceStart = (at) => (at === null ? null : Math.round(at - startedAt));
           const timings = () => ({{
             createdMs: sinceStart(createdAt),
@@ -311,6 +312,10 @@ def evaluate_pty_echo(socket_url: str) -> Dict[str, object]:
           );
           try {{
             releases.push(bridge.terminal.onData((message) => {{
+              if (!receivedPtyIds.has(message.ptyId)) {{
+                receivedPtyIds.add(message.ptyId);
+                markPhase?.('renderer-data-received', 'point', message.ptyId);
+              }}
               if (message.ptyId !== ptyId) return;
               consume(message.data, performance.now());
             }}));

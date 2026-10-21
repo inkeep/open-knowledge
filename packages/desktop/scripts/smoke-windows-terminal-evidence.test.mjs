@@ -168,6 +168,20 @@ test('reports verified retained utility phases after a successful packaged echo'
     timeOriginMs: 100,
     ...record,
   }));
+  const mainRelay = ['utility-data-received', 'main-data-relay', 'main-data-relay'].map(
+    (phase, index) => ({
+      event: 'pty-phase',
+      producer: 'main',
+      pid: 12345,
+      sequence: index + 2,
+      atMs: index + 1,
+      timeOriginMs: 100,
+      phase,
+      edge: phase === 'main-data-relay' ? (index === 1 ? 'begin' : 'end') : 'point',
+      ptyId,
+      ...(phase === 'main-data-relay' && index === 2 ? { ok: true } : {}),
+    }),
+  );
   child.spawn.mockImplementation((_file, args, options) => {
     const profile = args.find((arg) => arg.startsWith('--user-data-dir=')).slice(16);
     const paths = {
@@ -183,7 +197,10 @@ test('reports verified retained utility phases after a successful packaged echo'
       logDir,
     };
     writeFileSync(join(logDir, 'desktop.log'), `${JSON.stringify(paths)}\n`);
-    writeSync(options.stdio[1], [paths, ...utility].map((r) => JSON.stringify(r)).join('\n'));
+    writeSync(
+      options.stdio[1],
+      [paths, ...mainRelay, ...utility].map((r) => JSON.stringify(r)).join('\n'),
+    );
     return { pid: 12345 };
   });
   child.spawnSync.mockImplementation((file) => ({
@@ -198,6 +215,16 @@ test('reports verified retained utility phases after a successful packaged echo'
             atMs: 0,
             phase: 'start',
             edge: 'begin',
+            ptyId,
+          }) +
+          '\n' +
+          JSON.stringify({
+            event: 'pty-phase',
+            producer: 'renderer',
+            sequence: 2,
+            atMs: 1,
+            phase: 'renderer-data-received',
+            edge: 'point',
             ptyId,
           }),
     stderr: '',
@@ -349,7 +376,7 @@ test.each([
       (chunk) => chunk !== stderr && chunk.includes(errorType) && chunk.includes(error),
     );
     expect(diagnostics).toEqual([
-      `Packaged PTY renderer trace unavailable (${errorType}: ${error}), so the renderer session of this passing echo and that session's utility phases (message-received, shell-resolution, pty-spawn, pty-first-output, pty-first-forward) were not checked`,
+      `Packaged PTY renderer trace unavailable (${errorType}: ${error}), so the renderer session of this passing echo and that session's utility phases (message-received, shell-resolution, pty-spawn, pty-first-output, pty-first-forward), main phases (utility-data-received, main-data-relay) and renderer phases (renderer-data-received) were not checked`,
     ]);
     expect(emitted.join('\n')).not.toContain('missing the renderer session');
   },

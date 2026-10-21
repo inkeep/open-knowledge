@@ -3936,6 +3936,7 @@ function registerIpcHandlers() {
         }),
       ) as unknown as PtyUtilityLike,
     sendData: (wc, payload) => sendToRenderer(wc, 'ok:pty:data', payload),
+    phaseTrace,
     sendExit: (wc, payload) => sendToRenderer(wc, 'ok:pty:exit', payload),
     sendNotice: (wc, payload) => sendToRenderer(wc, 'ok:pty:notice', payload),
     newPtyId: () => randomUUID(),

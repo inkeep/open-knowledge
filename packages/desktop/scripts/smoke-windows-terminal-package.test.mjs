@@ -1242,12 +1242,40 @@ test.each([false, true])(
         expect(pairs).toContain(`${phase}:end`);
       }
       expect(pairs).toContain('first-data:point');
+      expect(pairs).toContain('renderer-data-received:point');
       expect(window.__okPtyPhaseTrace.find((record) => record.phase === 'start')).toMatchObject({
         ptyId: STUB_PTY_ID,
       });
     }
   },
 );
+
+test('records renderer receipt of output for another session in the same window before the session filter drops it', async () => {
+  const window = stubRenderer();
+  let deliver;
+  const subscribe = window.okDesktop.terminal.onData;
+  window.okDesktop.terminal.onData = (listener) => {
+    deliver = listener;
+    return subscribe(listener);
+  };
+  window.okDesktop.terminal.start = async () => {
+    deliver({ ptyId: OTHER_PTY_ID, data: 'other session$ ' });
+    deliver({ ptyId: STUB_PTY_ID, data: MARKER_LINE });
+    return { ok: true };
+  };
+
+  const result = await runPtyEchoSnippet(window, true);
+
+  expect(result.output).toBe(MARKER_LINE);
+  const phasesFor = (ptyId) =>
+    window.__okPtyPhaseTrace
+      .filter((record) => record.ptyId === ptyId)
+      .map(({ phase, edge }) => `${phase}:${edge}`);
+  expect(phasesFor(OTHER_PTY_ID)).toEqual(['renderer-data-received:point']);
+  expect(phasesFor(STUB_PTY_ID)).toEqual(
+    expect.arrayContaining(['renderer-data-received:point', 'first-data:point']),
+  );
+});
 
 test('does not refresh the echo budget to collect a renderer trace or replace its failure', () => {
   const result = runPython(

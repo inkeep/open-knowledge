@@ -18,6 +18,7 @@ import type {
   TerminalShellNoticeReason,
 } from '../shared/bridge-contract.ts';
 import type { SendableWebContents } from '../shared/ipc-send.ts';
+import type { PtyPhaseTrace } from '../shared/pty-phase-trace.ts';
 import type {
   PtyCreateMessage,
   PtyHostIncomingMessage,
@@ -54,6 +55,7 @@ export interface TerminalManagerDeps {
   recordShellExit?: (info: { crashed: boolean }) => void;
   recordTerminalSession?: () => void;
   recordConcurrentSessions?: (info: { count: number }) => void;
+  phaseTrace?: PtyPhaseTrace;
 }
 
 interface TerminalCreateRequest {
@@ -92,6 +94,7 @@ interface SessionState {
   killRequested: boolean;
   commandRan: boolean;
   sawOutput: boolean;
+  relayTraced: boolean;
   spawnedAt: number | null;
   customLabel: string | null;
   ordinal: number | null;
@@ -198,6 +201,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
   const shutdownMs = deps.shutdownMs ?? DEFAULT_SHUTDOWN_MS;
   const handles = new Map<number, PtyWindowHandle>();
   const pendingShutdowns = new Set<Promise<void>>();
+  const tracedUtilityData = new Set<string>();
   let announcedShutdown: AppShutdownCause | null = null;
 
   function safeKillUtility(handle: PtyWindowHandle): void {
@@ -271,12 +275,35 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
     deps.sendNotice?.(handle.webContents, payload);
   }
 
-  function deliver(handle: PtyWindowHandle, ptyId: string, session: SessionState): void {
-    if (handle.webContents.isDestroyed?.()) return;
+  function deliver(
+    windowId: number,
+    handle: PtyWindowHandle,
+    ptyId: string,
+    session: SessionState,
+  ): void {
     if (session.outbound.length === 0) return;
+    const traceRelay = !session.relayTraced;
+    session.relayTraced = true;
+    if (handle.webContents.isDestroyed?.()) {
+      if (traceRelay) {
+        deps.phaseTrace?.mark('main-data-relay-skipped', 'point', { windowId, ptyId });
+      }
+      return;
+    }
     const chunk = session.outbound;
     session.outbound = '';
-    pushData(handle, ptyId, chunk);
+    if (traceRelay) {
+      deps.phaseTrace?.mark('main-data-relay', 'begin', { windowId, ptyId });
+      let returned = false;
+      try {
+        pushData(handle, ptyId, chunk);
+        returned = true;
+      } finally {
+        deps.phaseTrace?.mark('main-data-relay', 'end', { windowId, ptyId, ok: returned });
+      }
+    } else {
+      pushData(handle, ptyId, chunk);
+    }
     session.pendingBytes += chunk.length;
     if (!session.paused && !session.killRequested && session.pendingBytes > highWater) {
       handle.utility.postMessage({ type: 'pause', ptyId });
@@ -289,7 +316,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
     const session = handle?.sessions.get(ptyId);
     if (!handle || !session) return;
     session.flushToken = null;
-    deliver(handle, ptyId, session);
+    deliver(windowId, handle, ptyId, session);
   }
 
   function scheduleFlush(windowId: number, ptyId: string, session: SessionState): void {
@@ -370,6 +397,18 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       return;
     }
     const session = handle.sessions.get(message.ptyId);
+    if (
+      message.type === 'data' &&
+      deps.phaseTrace !== undefined &&
+      !tracedUtilityData.has(message.ptyId)
+    ) {
+      tracedUtilityData.add(message.ptyId);
+      deps.phaseTrace.mark('utility-data-received', 'point', {
+        windowId,
+        ptyId: message.ptyId,
+        currentSession: session !== undefined,
+      });
+    }
     if (!session) return;
 
     switch (message.type) {
@@ -387,7 +426,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         const { ptyId } = message;
         const exitCode = message.exitCode ?? -1;
         clearSessionTimers(session);
-        deliver(handle, ptyId, session);
+        deliver(windowId, handle, ptyId, session);
         maybeRecordSession(session);
         handle.sessions.delete(ptyId);
         deps.recordShellExit?.({ crashed: false });
@@ -587,6 +626,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         killRequested: false,
         commandRan: false,
         sawOutput: false,
+        relayTraced: false,
         spawnedAt: null,
         customLabel: null,
         ordinal: null,

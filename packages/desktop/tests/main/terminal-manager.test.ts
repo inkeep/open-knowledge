@@ -13,6 +13,7 @@ import {
   type TerminalManagerDeps,
 } from '../../src/main/terminal-manager.ts';
 import type { SendableWebContents } from '../../src/shared/ipc-send.ts';
+import { createPtyPhaseTrace, type PtyPhaseRecord } from '../../src/shared/pty-phase-trace.ts';
 import type { PtyHostIncomingMessage } from '../../src/utility/pty-host.ts';
 import { createStartedTerminal } from '../support/terminal-create.test-helper.ts';
 
@@ -141,6 +142,32 @@ function makeManager(over?: Partial<TerminalManagerDeps>) {
 
 const PROJECT = '/Users/me/project';
 
+const VOLATILE_PHASE_FIELDS = new Set([
+  'pid',
+  'sequence',
+  'atMs',
+  'wallTimeMs',
+  'timeOriginMs',
+  'previousWriteMs',
+  'droppedWrites',
+]);
+
+function tracedRecords() {
+  const records: PtyPhaseRecord[] = [];
+  const phaseTrace = createPtyPhaseTrace({ OK_PTY_PHASE_TRACE: '1' }, 'main', (record) =>
+    records.push(record),
+  );
+  const stable = (): Array<Record<string, unknown>> =>
+    records.map((record) =>
+      Object.fromEntries(Object.entries(record).filter(([key]) => !VOLATILE_PHASE_FIELDS.has(key))),
+    );
+  return { records, phaseTrace, stable };
+}
+
+function mainPhase(phase: string, edge: string, context: Record<string, unknown>) {
+  return { event: 'pty-phase', producer: 'main', phase, edge, ...context };
+}
+
 describe('terminal creation waits for the renderer to subscribe', () => {
   function reserve(over?: Partial<TerminalManagerDeps>) {
     const h = makeManager(over);
@@ -160,7 +187,12 @@ describe('terminal creation waits for the renderer to subscribe', () => {
   }
 
   test('neither create nor a replay request starts the shell; the first start starts it once', () => {
-    const h = reserve();
+    const records: PtyPhaseRecord[] = [];
+    const h = reserve({
+      phaseTrace: createPtyPhaseTrace({ OK_PTY_PHASE_TRACE: '1' }, 'main', (record) =>
+        records.push(record),
+      ),
+    });
     h.runTimers();
     expect(h.forked[0]?.posted).toEqual([]);
     expect(h.mgr.adoptSession({ windowId: 1, ptyId: 'pty-1', webContents: h.webContents })).toEqual(
@@ -177,6 +209,11 @@ describe('terminal creation waits for the renderer to subscribe', () => {
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'prompt$ ' });
     h.runTimers();
     expect(h.dataPayloads()).toEqual(['prompt$ ']);
+    expect(records.map(({ phase, edge, ptyId }) => [phase, edge, ptyId])).toEqual([
+      ['utility-data-received', 'point', 'pty-1'],
+      ['main-data-relay', 'begin', 'pty-1'],
+      ['main-data-relay', 'end', 'pty-1'],
+    ]);
     expect(h.forked[0]?.posted).toEqual([
       {
         type: 'create',
@@ -560,6 +597,37 @@ describe('createTerminalManager — create', () => {
       channel: 'ok:pty:notice',
       payload: { ptyId: 'pty-1', notice: 'invalid-shell-override', reason: 'not-found' },
     });
+  });
+
+  test('does not mark a shell notice as PTY data received, and marks the data that follows it', () => {
+    const trace = tracedRecords();
+    const h = makeManager({ phaseTrace: trace.phaseTrace });
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+
+    h.forked[0]?.emitMessage({
+      type: 'shell-notice',
+      ptyId: 'pty-1',
+      notice: 'shell-resolved',
+      shellFamily: 'bash',
+    });
+
+    expect(trace.records.some((record) => record.phase === 'utility-data-received')).toBe(false);
+
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'prompt$ ' });
+
+    expect(trace.stable().filter((record) => record.phase === 'utility-data-received')).toEqual([
+      mainPhase('utility-data-received', 'point', {
+        windowId: 1,
+        ptyId: 'pty-1',
+        currentSession: true,
+      }),
+    ]);
   });
 
   test('forwards the resolved Windows shell family to the addressed renderer session', () => {
@@ -1865,6 +1933,119 @@ describe('createTerminalManager — destroyed-window guard', () => {
     h.runTimers();
     expect(h.liveTimerCount()).toBe(0);
     expect(h.dataPayloads()).toEqual([]);
+  });
+});
+
+describe('createTerminalManager output relay phase trace', () => {
+  test('records data addressed to a session main no longer holds', () => {
+    const trace = tracedRecords();
+    const h = makeManager({ phaseTrace: trace.phaseTrace });
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-gone', data: 'late' });
+    h.runTimers();
+
+    expect(h.dataPayloads()).toEqual([]);
+    expect(trace.stable()).toEqual([
+      mainPhase('utility-data-received', 'point', {
+        windowId: 1,
+        ptyId: 'pty-gone',
+        currentSession: false,
+      }),
+    ]);
+  });
+
+  test('records the first receipt and the first relay of a session once across later flushes', () => {
+    const trace = tracedRecords();
+    const h = makeManager({ phaseTrace: trace.phaseTrace });
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'first' });
+    h.runTimers();
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'second' });
+    h.runTimers();
+
+    expect(h.dataPayloads()).toEqual(['first', 'second']);
+    expect(trace.stable()).toEqual([
+      mainPhase('utility-data-received', 'point', {
+        windowId: 1,
+        ptyId: 'pty-1',
+        currentSession: true,
+      }),
+      mainPhase('main-data-relay', 'begin', { windowId: 1, ptyId: 'pty-1' }),
+      mainPhase('main-data-relay', 'end', { windowId: 1, ptyId: 'pty-1', ok: true }),
+    ]);
+  });
+
+  test('records a relay skipped for a destroyed window once, and never as an attempted send', () => {
+    const trace = tracedRecords();
+    const h = makeManager({ phaseTrace: trace.phaseTrace });
+    const wc = makeWebContents();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: wc,
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    wc.destroyed = true;
+
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'first' });
+    h.runTimers();
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'second' });
+    h.runTimers();
+
+    expect(h.sent).toEqual([]);
+    expect(trace.stable()).toEqual([
+      mainPhase('utility-data-received', 'point', {
+        windowId: 1,
+        ptyId: 'pty-1',
+        currentSession: true,
+      }),
+      mainPhase('main-data-relay-skipped', 'point', { windowId: 1, ptyId: 'pty-1' }),
+    ]);
+  });
+
+  test('records a send that threw as a relay that did not return, and lets the throw propagate', () => {
+    const trace = tracedRecords();
+    const h = makeManager({
+      phaseTrace: trace.phaseTrace,
+      sendData: () => {
+        throw new TypeError('webContents has no main frame to send to');
+      },
+    });
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'first' });
+
+    expect(() => h.runTimers()).toThrow(TypeError);
+    expect(trace.stable()).toEqual([
+      mainPhase('utility-data-received', 'point', {
+        windowId: 1,
+        ptyId: 'pty-1',
+        currentSession: true,
+      }),
+      mainPhase('main-data-relay', 'begin', { windowId: 1, ptyId: 'pty-1' }),
+      mainPhase('main-data-relay', 'end', { windowId: 1, ptyId: 'pty-1', ok: false }),
+    ]);
   });
 });
 

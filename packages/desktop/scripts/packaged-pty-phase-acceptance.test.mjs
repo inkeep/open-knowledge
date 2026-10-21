@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test } from 'vitest';
@@ -22,6 +22,29 @@ function evidence(utilityRecords) {
       atMs: 0,
       sequence: 1,
     },
+    {
+      event: 'pty-phase',
+      producer: 'renderer',
+      phase: 'renderer-data-received',
+      edge: 'point',
+      ptyId: 'echo-session',
+      atMs: 1,
+      sequence: 2,
+    },
+    ...[
+      { phase: 'utility-data-received', edge: 'point' },
+      { phase: 'main-data-relay', edge: 'begin' },
+      { phase: 'main-data-relay', edge: 'end', ok: true },
+    ].map((record, index) => ({
+      event: 'pty-phase',
+      producer: 'main',
+      pid: 7,
+      timeOriginMs: 100,
+      atMs: index,
+      sequence: index + 1,
+      ptyId: 'echo-session',
+      ...record,
+    })),
     ...utilityRecords.map((record, index) => ({
       event: 'pty-phase',
       producer: 'utility',
@@ -130,6 +153,38 @@ test('rejects a session whose first output was never forwarded', () => {
   const unforwarded = session.filter((record) => record.phase !== 'pty-first-forward');
   expect(() => assertPackagedPtyPhaseEvidence(evidence([...startup, ...unforwarded]))).toThrow(
     'Packaged PTY phase evidence is missing utility pty-first-forward/point for the renderer session',
+  );
+});
+
+test('rejects a renderer session without a renderer receive phase', () => {
+  const directory = evidence([...startup, ...session]);
+  const tracePath = join(directory, 'phase-trace.jsonl');
+  const records = readFileSync(tracePath, 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line))
+    .filter((record) => record.phase !== 'renderer-data-received');
+  writeFileSync(tracePath, records.map((record) => JSON.stringify(record)).join('\n'));
+  expect(() => assertPackagedPtyPhaseEvidence(directory)).toThrow(
+    'Packaged PTY phase evidence is missing renderer renderer-data-received/point',
+  );
+});
+
+test('rejects a renderer session whose main relay did not send', () => {
+  const directory = evidence([...startup, ...session]);
+  const tracePath = join(directory, 'phase-trace.jsonl');
+  const records = readFileSync(tracePath, 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line))
+    .map((record) =>
+      record.producer === 'main' && record.phase === 'main-data-relay' && record.edge === 'end'
+        ? { ...record, ok: false }
+        : record,
+    );
+  writeFileSync(tracePath, records.map((record) => JSON.stringify(record)).join('\n'));
+  expect(() => assertPackagedPtyPhaseEvidence(directory)).toThrow(
+    'Packaged PTY phase evidence is missing main main-data-relay/end',
   );
 });
 
