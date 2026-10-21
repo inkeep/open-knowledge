@@ -1354,9 +1354,6 @@ msgstr "ایجنٹ موڈ"
 msgid "Agent panel"
 msgstr "ایجنٹ پینل"
 
-msgid "Agent panel closed to keep Terminal readable."
-msgstr "Terminal کو پڑھنے کے قابل رکھنے کے لیے ایجنٹ پینل بند کر دیا گیا۔"
-
 msgid "Agent settings"
 msgstr "ایجنٹ کی ترتیبات"
 
@@ -8758,14 +8755,14 @@ msgstr "منظر کے فلٹرز دوبارہ ترتیب دیں"
 msgid "Resize {handleKey}"
 msgstr "{handleKey} کا حجم بدلیں"
 
+msgid "Resize {pane}"
+msgstr "{pane} کا حجم بدلیں"
+
 msgid "Resize document panel"
 msgstr "دستاویز کے پینل کا سائز تبدیل کریں"
 
 msgid "Resize skills panel"
 msgstr "مہارتوں کے پینل کا سائز تبدیل کریں"
-
-msgid "Resize terminal"
-msgstr "ٹرمینل کا سائز تبدیل کریں"
 
 msgid "Resolve conflict in your terminal"
 msgstr "اپنے ٹرمینل میں تصادم حل کریں"
@@ -10289,9 +10286,6 @@ msgstr "ٹرمینل {0}"
 
 msgid "Terminal access isn't enabled for this project."
 msgstr "اس پروجیکٹ کے لیے ٹرمینل کی رسائی فعال نہیں۔"
-
-msgid "Terminal closed to make room for the agent panel."
-msgstr "ایجنٹ پینل کے لیے جگہ بنانے کی خاطر Terminal بند کر دیا گیا۔"
 
 msgid "Terminal disabled"
 msgstr "ٹرمینل بند"

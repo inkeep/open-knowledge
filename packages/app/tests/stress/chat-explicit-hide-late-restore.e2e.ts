@@ -4,7 +4,7 @@ import type {
   ThreadServerFrame,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import type { WebSocketRoute } from '@playwright/test';
-import { expect, test, waitForActiveProviderSynced } from './_helpers';
+import { dockUnitRect, expect, test, waitForActiveProviderSynced } from './_helpers';
 import { startHiddenChatAgent } from './hidden-chat-transport.test-helper';
 
 test('a hidden Chat stays hidden through late thread restoration until its shortcut reveals it', async ({
@@ -70,9 +70,8 @@ test('a hidden Chat stays hidden through late thread restoration until its short
     await waitForActiveProviderSynced(page);
 
     const button = page.getByTestId('header-pane-button-agents');
-    const mount = page.locator('[data-agents-panel-mount]');
     const threadTab = page.locator(`[role="tab"][data-tab-id="${fixture.threadId}"]`);
-    const panelWidth = () => mount.boundingBox().then((box) => box?.width ?? 0);
+    const panelWidth = () => dockUnitRect(page, 'agents').then((rect) => rect?.width ?? 0);
 
     await expect
       .poll(() => observedRosters.some((ids) => ids.includes(fixture.threadId)))
@@ -94,14 +93,6 @@ test('a hidden Chat stays hidden through late thread restoration until its short
     await expect(threadTab).toHaveCount(1);
     expect(createRequests).toEqual([]);
 
-    const handle = mount
-      .locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]')
-      .locator('xpath=preceding-sibling::*[1]');
-    await expect(handle).toHaveAttribute('data-slot', 'resizable-handle');
-    await handle.press('Home');
-    await expect.poll(panelWidth).toBe(0);
-    await button.press('ControlOrMeta+Shift+j');
-    await expect.poll(panelWidth).toBeGreaterThan(250);
     await button.press('ControlOrMeta+Shift+j');
     await expect.poll(panelWidth).toBeGreaterThan(250);
 
@@ -137,10 +128,14 @@ test('a hidden Chat stays hidden through late thread restoration until its short
     await page.evaluate(() => {
       const samples: Array<{ visible: boolean; pressed: boolean }> = [];
       const recordFrame = () => {
-        const panel = document.querySelector('[data-agents-panel-mount]');
+        const unit = document.querySelector('[data-dock-unit="agents"]');
         const button = document.querySelector('[data-testid="header-pane-button-agents"]');
         samples.push({
-          visible: (panel?.getBoundingClientRect().width ?? 0) > 0,
+          visible:
+            unit instanceof HTMLElement &&
+            !unit.hidden &&
+            !unit.hasAttribute('data-dock-unit-off') &&
+            unit.getBoundingClientRect().width > 0,
           pressed: button?.getAttribute('aria-pressed') === 'true',
         });
         requestAnimationFrame(recordFrame);

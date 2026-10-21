@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { acpCatalogBody, expect, test, waitForActiveProviderSynced } from './_helpers';
+import { acpCatalogBody, dockUnit, expect, test, waitForActiveProviderSynced } from './_helpers';
 import { startHiddenChatAgent } from './hidden-chat-transport.test-helper';
 
 const EDITOR_CARD = '[data-slot="pane-card"][data-pane="editor"]';
@@ -61,7 +61,7 @@ test('hidden Chat retains a live draft and unread completed stream until the thr
     await editorButton.click();
     await expect(page.locator(EDITOR_CARD)).toBeVisible();
     await expect(chatCard).toBeHidden();
-    await expect(chatCard).toHaveAttribute('inert', '');
+    await expect(dockUnit(page, 'agents')).toHaveAttribute('inert', '');
     fixture.release();
     await fixture.waitForFinalChunk();
     fixture.finish();

@@ -7,12 +7,9 @@ import {
   isFrontmatterSchemaAsset,
   isMarkdownlintJsonConfig,
 } from '@inkeep/open-knowledge-core/markdown/lint';
-import {
-  PREFERRED_TERMINAL_RIGHT_WIDTH,
-  type TerminalPlacement,
-} from '@inkeep/open-knowledge-core/terminal-layout';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ChevronLeft, PanelRightClose } from 'lucide-react';
+import { useTheme } from 'next-themes';
 import {
   lazy,
   type ReactNode,
@@ -32,6 +29,7 @@ import { useGroupRef, usePanelRef } from 'react-resizable-panels';
 import { toast } from 'sonner';
 import { AssetPreview } from '@/components/AssetPreview';
 import { DocChangeNotice } from '@/components/DocChangeNotice';
+import { DockWorkspace } from '@/components/DockWorkspace';
 import { DocPanel, type PanelTab } from '@/components/DocPanel';
 import { DocPanelToggle } from '@/components/DocPanelToggle';
 import {
@@ -47,17 +45,15 @@ import { MountStalledAffordance } from '@/components/MountStalledAffordance';
 import { NothingOpen } from '@/components/NothingOpen';
 import { OkBlobRunnerPage } from '@/components/OkBlobRunnerPage';
 import { PropertyProvider, useProperties } from '@/components/PropertyContext';
+import { PANE_LABEL } from '@/components/pane-icons';
 import { ShareReceiveMissPanel } from '@/components/ShareReceiveMissPanel';
 import { SkillFileViewer } from '@/components/SkillFileViewer';
 import { SkillPreviewTab } from '@/components/SkillPreviewTab';
 import { SettingsDialogShell } from '@/components/settings/SettingsDialogShell';
 import { Button } from '@/components/ui/button';
 import {
-  PANE_CARD_GAP_LEAD_INSET_PX,
-  PANE_CARD_GAP_TRAIL_INSET_PX,
-  PANE_CARD_INSET_PX,
+  PANE_CARD_GAP_PX,
   PaneCard,
-  paneCardDividerClass,
   SECONDARY_PANEL_SURFACE_CLASS,
 } from '@/components/ui/pane-card';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
@@ -81,23 +77,19 @@ import { useDocConflict } from '@/hooks/use-conflicts';
 import { useDocumentStats } from '@/hooks/use-document-stats';
 import { useSelectionStats } from '@/hooks/use-selection-stats';
 import { closeAgentDiff, useAgentDiffView } from '@/lib/agent-diff-store';
-import {
-  type AgentsPanelPointerReleaseDecision,
-  getInitialAgentsPanelWidth,
-  MIN_AGENTS_PANEL_WIDTH,
-  resolveAgentsPanelPointerRelease,
-  writeAgentsPanelWidth,
-} from '@/lib/agents-panel-width-store';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { docNameFromHash, hashFromDocName, isSameHash } from '@/lib/doc-hash';
 import { getInitialDocPanelWidth, writeDocPanelWidth } from '@/lib/doc-panel-width-store';
+import { dockTerminalPlacement } from '@/lib/dock-arrangement-store';
+import { type DockLayout, dockPaneMinExtent, EMPTY_DOCK_LAYOUT } from '@/lib/dock-layout';
+import type { DockNode } from '@/lib/dock-tree';
 import { focusAwayFromHiddenEditor, focusWaitsForEditor } from '@/lib/editor-hidden-focus';
 import { type EditorSidebar, resolveEditorSidebarFit } from '@/lib/editor-sidebar-fit';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { isNoteWindow } from '@/lib/note-window-mode';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
-import { assertNeverPaneId, type PaneId } from '@/lib/pane-visibility-store';
+import type { PaneId } from '@/lib/pane-visibility-store';
 import { ProfilerBoundary } from '@/lib/perf';
 import { moveHostPreservingScroll, observeHostScrollRestore } from '@/lib/preserve-subtree-scroll';
 import { revealEditor, revealEditorBeforeActing } from '@/lib/reveal-editor';
@@ -130,38 +122,17 @@ import {
   type EditorWorkspaceActivityBindings,
   type EditorWorkspacePaneRenderContext,
 } from './EditorWorkspace';
-import {
-  computeEditorHiddenLayout,
-  editorHiddenLayoutLanded,
-  isEditorHiddenLayoutSettled,
-} from './editor-area-hidden-editor';
-import { computeInnerFollowLayout, predictInnerPanelSpacePx } from './editor-area-inner-follow';
 import { shouldPaintOverlay } from './editor-area-overlay';
 import {
-  describeRailFloorShortfall,
-  describeRailWidthShortfall,
   type RailPanelSpaceRefusal,
-  type RailPanelSpaceResult,
-  type RailWidthShortfall,
   reportUnexpectedPanelGroupFailure,
-  resolveInnerRowChromePx,
   resolveRailPanelSpace,
   resolveRailPanelSpacePx,
 } from './editor-area-panel-space';
-import {
-  AGENTS_COLUMN_ID,
-  accountRailLayout,
-  DOC_PANEL_ID,
-  findResidualPanelId,
-  TERMINAL_COLUMN_ID,
-} from './editor-area-rail-registry';
+import { DOC_PANEL_ID, findResidualPanelId } from './editor-area-rail-registry';
 import { computeStickyRepinLayout } from './editor-area-sticky-repin';
-import {
-  RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX,
-  resolveRightRailAdmission,
-} from './right-rail-admission';
 import { isSlidesHost } from './slides-host-gate';
-import { TerminalDock, type TerminalDockHandle } from './TerminalDock';
+import { useLiveXtermTheme } from './use-live-xterm-theme';
 
 const LazyActivityModeContent = lazy(async () => {
   const mod = await import('@/components/ActivityModeContent');
@@ -273,33 +244,22 @@ function useFilesRequestCoordinator(inputs: FilesRequestCoordinatorInputs) {
   return coordinate;
 }
 
-type AgentsPanelCloseRetryContext = {
-  readonly decision: 'close';
-  readonly targetWidthPx: 0;
-};
-
-type AgentsPanelPointerReleaseRetryContext =
-  | AgentsPanelCloseRetryContext
-  | { readonly decision: 'restore-preferred'; readonly targetWidthPx: number }
-  | { readonly decision: 'settle-minimum'; readonly targetWidthPx: number }
-  | { readonly decision: 'commit-preferred'; readonly targetWidthPx: number };
-
-type RailLayoutSyncRetryContext = {
-  readonly decision: 'sync-rail-columns' | 'sync-doc-presence' | 'observed-doc-width';
+type RailLayoutRetryContext = {
+  readonly decision: 'sync-doc-presence' | 'show-editor' | 'observed-doc-width';
   readonly targetWidthPx: number;
 };
 
-type AgentsPanelKeyboardRetryContext = {
-  readonly decision: 'keyboard-settle-minimum';
-  readonly targetWidthPx: typeof MIN_AGENTS_PANEL_WIDTH;
-};
-
-type RailLayoutRetryContext =
-  | AgentsPanelPointerReleaseRetryContext
-  | AgentsPanelKeyboardRetryContext
-  | RailLayoutSyncRetryContext;
-
 type RailLayoutRetryOutcome = 'applied' | 'blocked' | 'failed';
+
+type DocPanelPinMiss =
+  | { readonly cause: 'dragging' | 'group-missing' | 'layout-without-doc-panel' }
+  | { readonly cause: 'write-threw'; readonly writeError: string }
+  | { readonly cause: 'panel-space-unresolved'; readonly refusal: RailPanelSpaceRefusal }
+  | {
+      readonly cause: 'width-missed';
+      readonly pinnedWidthPx: number;
+      readonly landedWidthPx: number;
+    };
 
 type RailLayoutRetryController = {
   frameId: number;
@@ -310,23 +270,6 @@ type RailLayoutRetryController = {
 type RailLayoutRetryControllerRef = {
   current: RailLayoutRetryController;
 };
-
-function createAgentsPanelPointerReleaseRetryContext(
-  decision: AgentsPanelPointerReleaseDecision,
-): AgentsPanelPointerReleaseRetryContext {
-  switch (decision.kind) {
-    case 'close':
-      return { decision: decision.kind, targetWidthPx: 0 };
-    case 'restore-preferred':
-    case 'settle-minimum':
-    case 'commit-preferred':
-      return { decision: decision.kind, targetWidthPx: decision.widthPx };
-    default: {
-      const exhaustiveDecision: never = decision;
-      return exhaustiveDecision;
-    }
-  }
-}
 
 function cancelRailLayoutRetry(retryRef: RailLayoutRetryControllerRef) {
   if (retryRef.current.frameId !== 0) cancelAnimationFrame(retryRef.current.frameId);
@@ -340,31 +283,23 @@ function runRailLayoutRetry({
   retryRef,
   attempt,
   context,
-  onComplete,
-  onExhausted,
+  describeMiss,
 }: {
   retryRef: RailLayoutRetryControllerRef;
   attempt: () => RailLayoutRetryOutcome;
   context: RailLayoutRetryContext;
-  onComplete?: () => void;
-  onExhausted?: () => void;
+  describeMiss?: () => DocPanelPinMiss | null;
 }) {
   cancelRailLayoutRetry(retryRef);
   retryRef.current.context = context;
   const deadlineTimestamp = performance.now() + BLOCKED_RAIL_LAYOUT_RETRY_DEADLINE_MS;
-  const completeRetry = () => {
-    cancelRailLayoutRetry(retryRef);
-    onComplete?.();
-  };
   const completeExhaustedRetry = () => {
     cancelRailLayoutRetry(retryRef);
     reportUnexpectedPanelGroupFailure(
       'rail-layout-retry-exhausted',
       new Error('Rail layout did not apply within the retry budget'),
-      context,
+      { ...context, ...describeMiss?.() },
     );
-    onExhausted?.();
-    onComplete?.();
   };
   retryRef.current.deadlineTimer = setTimeout(
     completeExhaustedRetry,
@@ -379,7 +314,7 @@ function runRailLayoutRetry({
     const outcome = attempt();
     switch (outcome) {
       case 'applied':
-        completeRetry();
+        cancelRailLayoutRetry(retryRef);
         return;
       case 'blocked':
         retryRef.current.frameId = requestAnimationFrame((timestamp) =>
@@ -476,32 +411,10 @@ const LazyAgentDiffPane = lazy(async () => {
   return { default: mod.AgentDiffPane };
 });
 
-export const MAX_RAIL_PIN_EXHAUSTED_REPORTS = 5;
-
-type RailPinOutcome =
-  | { readonly stage: 'pinned' }
-  | { readonly stage: 'group-missing' }
-  | { readonly stage: 'read-failed' }
-  | { readonly stage: 'panel-space-unresolved'; readonly refusal: RailPanelSpaceRefusal }
-  | { readonly stage: 'layout-unaccounted'; readonly unaccountedIds: readonly string[] }
-  | { readonly stage: 'no-residual-panel' }
-  | { readonly stage: 'no-pinned-columns' }
-  | { readonly stage: 'pins-do-not-fit'; readonly shortfall: Record<string, RailWidthShortfall> }
-  | { readonly stage: 'write-failed' }
-  | { readonly stage: 'verify-failed' }
-  | { readonly stage: 'width-shortfall'; readonly shortfall: Record<string, RailWidthShortfall> }
-  | { readonly stage: 'editor-hidden-unsettled' };
-
-type RailPinExhaustedTrigger = 'rail-column-sync' | 'doc-slot-presence' | 'editor-visibility';
-
 const DOC_PANEL_MIN_WIDTH_PX = 300;
 const DOC_USABLE_MIN_WIDTH_PX = 300;
 const DOC_PANEL_MIN_SIZE = `${DOC_PANEL_MIN_WIDTH_PX}px`;
 const DOC_PANEL_MAX_SIZE = '600px';
-const RIGHT_TERMINAL_GAP_END_INSET_PX = 1;
-const EDITOR_COLUMN_COLLAPSED_PCT = 0.5;
-const NO_CARD_INSETS = { start: 0, end: 0 } as const;
-
 interface SessionPanelPlacement {
   readonly container: HTMLElement | null;
   readonly isShowing: boolean;
@@ -517,17 +430,6 @@ type PanesOnScreen = Readonly<Record<PaneId, boolean>>;
 
 export interface EditorAreaHandle {
   panesOnScreen(): PanesOnScreen;
-  bringBackPane(pane: PaneId): void;
-}
-
-interface EditorCardSize {
-  readonly width: number;
-  readonly height: number;
-}
-
-function measureEditorCard(card: HTMLElement): EditorCardSize | null {
-  const { width, height } = card.getBoundingClientRect();
-  return width > 0 && height > 0 ? { width, height } : null;
 }
 
 function hasExtent(element: HTMLElement | null): boolean {
@@ -550,12 +452,9 @@ interface EditorAreaProps {
   terminalBridge?: OkDesktopBridge | null;
   editorVisible?: boolean;
   terminalVisible?: boolean;
-  terminalPlacement?: TerminalPlacement;
-  terminalRightWidth?: number;
-  onTerminalVisibleChange?: (visible: boolean) => void;
-  onTerminalRightWidthChange?: (width: number) => void;
   agentsVisible?: boolean;
-  onAgentsVisibleChange?: (visible: boolean) => void;
+  dockTree: DockNode;
+  onDockTreeChange: (update: (tree: DockNode) => DockNode) => void;
   onSessionPlacements?: (placements: SessionPlacements) => void;
   renderWorkspaceHeader?: (tabs: ReactNode, chrome: WorkspaceHeaderChrome) => ReactNode;
 }
@@ -689,12 +588,9 @@ function EditorAreaInner({
   terminalBridge,
   editorVisible = true,
   terminalVisible = false,
-  terminalPlacement = 'bottom',
-  terminalRightWidth,
-  onTerminalVisibleChange,
-  onTerminalRightWidthChange,
   agentsVisible = false,
-  onAgentsVisibleChange,
+  dockTree,
+  onDockTreeChange,
   onSessionPlacements,
   renderWorkspaceHeader = renderTabsWithoutHeader,
 }: EditorAreaProps) {
@@ -774,8 +670,6 @@ function EditorAreaInner({
     resolvePartition(embeddedHost, window.innerWidth, 'right'),
   );
   const panelRef = usePanelRef();
-  const agentsColumnPanelRef = usePanelRef();
-  const terminalColumnPanelRef = usePanelRef();
   const [initialRightCollapsed] = useState(() => {
     const pins = readPins();
     return resolveEffectiveState('right', initialRightPartition, pins) === 'collapsed';
@@ -841,7 +735,6 @@ function EditorAreaInner({
   }, [docPanelHost]);
   const {
     cover: filesCover,
-    canDock: filesCanDock,
     dismissCover: dismissFilesCover,
     setCanDock: setFilesCanDock,
     registerOpenRequestHandler: registerFilesOpenRequestHandler,
@@ -853,51 +746,21 @@ function EditorAreaInner({
   const [filesCoverTarget, setFilesCoverTarget] = useState<HTMLDivElement | null>(null);
 
   const [agentsContainer, setAgentsContainer] = useState<HTMLElement | null>(null);
-  const [rightTerminalContainer, setRightTerminalContainer] = useState<HTMLDivElement | null>(null);
+  const [terminalContainer, setTerminalContainer] = useState<HTMLDivElement | null>(null);
   const [workspaceHeaderContainer, setWorkspaceHeaderContainer] = useState<HTMLDivElement | null>(
     null,
   );
   const [workspaceColumnEl, setWorkspaceColumnEl] = useState<HTMLElement | null>(null);
-  const [bottomTerminalContainer, setBottomTerminalContainer] = useState<HTMLDivElement | null>(
-    null,
-  );
   const [terminalEditorRegion, setTerminalEditorRegion] = useState<HTMLDivElement | null>(null);
+  const { resolvedTheme } = useTheme();
+  const xtermBackground = useLiveXtermTheme(resolvedTheme).background;
 
-  const agentsColumnPresent = !noteWindow && agentsVisible;
-  const terminalColumnPresent = !noteWindow && terminalVisible && terminalPlacement === 'right';
-  const [agentsColumnCollapsed, setAgentsColumnCollapsed] = useState(false);
-  const [terminalColumnCollapsed, setTerminalColumnCollapsed] = useState(false);
-  const terminalCollapsedByUserRef = useRef(false);
-  const [bottomTerminalCollapsed, setBottomTerminalCollapsed] = useState(false);
-  const terminalDockRef = useRef<TerminalDockHandle>(null);
-  const [agentsShowingHold, setAgentsShowingHold] = useState(false);
-  const [terminalShowingHold, setTerminalShowingHold] = useState(false);
-  const resizableRailColumnPresent = terminalColumnPresent || agentsColumnPresent;
-  const rightTerminalCardShowing = terminalColumnPresent && !terminalColumnCollapsed;
-  const rightColumnPresent = terminalColumnPresent || agentsColumnPresent;
-  const bottomTerminalHeld = terminalAvailable && terminalVisible && terminalPlacement === 'bottom';
-  const editorColumnHoldsPane = editorVisible || bottomTerminalHeld;
-  const editorColumnChromePx =
-    cardLook && rightColumnPresent && editorColumnHoldsPane ? PANE_CARD_GAP_LEAD_INSET_PX : 0;
-  const terminalCardInsets = cardLook
-    ? {
-        start: editorVisible ? PANE_CARD_GAP_TRAIL_INSET_PX : 0,
-        end: agentsColumnPresent ? RIGHT_TERMINAL_GAP_END_INSET_PX : 0,
-      }
-    : NO_CARD_INSETS;
-  const agentsCardInsetStartPx = !cardLook
-    ? 0
-    : terminalColumnPresent
-      ? PANE_CARD_INSET_PX - RIGHT_TERMINAL_GAP_END_INSET_PX
-      : editorColumnHoldsPane
-        ? PANE_CARD_GAP_TRAIL_INSET_PX
-        : 0;
-  const editorColumnChromePxRef = useRef(editorColumnChromePx);
+  const agentsUnitShown = !noteWindow && agentsVisible;
+  const terminalUnitShown = !noteWindow && terminalAvailable && terminalVisible;
+  const terminalPlacement = dockTerminalPlacement(dockTree);
+  const [dockLayout, setDockLayout] = useState<DockLayout>(EMPTY_DOCK_LAYOUT);
   const editorVisibleRef = useRef(editorVisible);
-  const bottomTerminalHeldRef = useRef(bottomTerminalHeld);
   const editorCardRef = useRef<HTMLDivElement | null>(null);
-  const lastEditorCardSizeRef = useRef<EditorCardSize | null>(null);
-  const [editorCardPin, setEditorCardPin] = useState<EditorCardSize | null>(null);
   const [paneVisibilityWhileEditorShown, setPaneVisibilityWhileEditorShown] = useState({
     terminalVisible,
     agentsVisible,
@@ -909,41 +772,22 @@ function EditorAreaInner({
   ) {
     setPaneVisibilityWhileEditorShown({ terminalVisible, agentsVisible });
   }
-  useLayoutEffect(() => {
-    const card = editorCardRef.current;
-    if (card == null || !editorVisible || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => {
-      const size = measureEditorCard(card);
-      if (size != null) lastEditorCardSizeRef.current = size;
-    });
-    observer.observe(card);
-    return () => observer.disconnect();
-  }, [editorVisible]);
   const editorVisibleBeforeRef = useRef(editorVisible);
   useLayoutEffect(() => {
     const wasVisible = editorVisibleBeforeRef.current;
     editorVisibleBeforeRef.current = editorVisible;
+    editorVisibleRef.current = editorVisible;
     if (editorVisible) {
       if (!wasVisible && focusWaitsForEditor()) terminalEditorRegion?.focus();
       return;
     }
     const card = editorCardRef.current;
-    if (card == null) return;
-    setEditorCardPin(
-      (current) => current ?? lastEditorCardSizeRef.current ?? measureEditorCard(card),
-    );
-    if (card.contains(document.activeElement)) focusAwayFromHiddenEditor();
+    if (card?.contains(document.activeElement)) focusAwayFromHiddenEditor();
   }, [editorVisible, terminalEditorRegion]);
-  const terminalContainer =
-    terminalPlacement === 'right' ? rightTerminalContainer : bottomTerminalContainer;
   const terminalShowing =
-    terminalVisible &&
-    terminalContainer != null &&
-    (terminalPlacement === 'right'
-      ? !terminalColumnCollapsed || terminalShowingHold
-      : !bottomTerminalCollapsed);
+    terminalUnitShown && terminalContainer != null && dockLayout.panes.has('terminal');
   const agentsShowing =
-    agentsColumnPresent && (!agentsColumnCollapsed || agentsShowingHold) && agentsContainer != null;
+    agentsUnitShown && agentsContainer != null && dockLayout.panes.has('agents');
   useEffect(() => {
     onSessionPlacements?.({
       terminal: { container: terminalContainer, isShowing: terminalShowing },
@@ -958,13 +802,6 @@ function EditorAreaInner({
     agentsShowing,
     terminalEditorRegion,
   ]);
-  useEffect(() => {
-    if (!agentsColumnPresent) setAgentsShowingHold(false);
-    if (!terminalColumnPresent) {
-      setTerminalShowingHold(false);
-      terminalCollapsedByUserRef.current = false;
-    }
-  }, [agentsColumnPresent, terminalColumnPresent]);
 
   const onPaneExtentChangeRef = useRef(onPaneExtentChange);
   useLayoutEffect(() => {
@@ -983,14 +820,12 @@ function EditorAreaInner({
   useLayoutEffect(() => {
     const observer = paneExtentObserverRef.current;
     if (observer == null) return;
-    const mounts = [agentsContainer, rightTerminalContainer, bottomTerminalContainer].filter(
-      (mount) => mount != null,
-    );
+    const mounts = [agentsContainer, terminalContainer].filter((mount) => mount != null);
     for (const mount of mounts) observer.observe(mount);
     return () => {
       for (const mount of mounts) observer.unobserve(mount);
     };
-  }, [agentsContainer, rightTerminalContainer, bottomTerminalContainer]);
+  }, [agentsContainer, terminalContainer]);
 
   useEffect(() => {
     isCollapsedRef.current = isCollapsed;
@@ -1010,56 +845,16 @@ function EditorAreaInner({
     }, 100);
   }
 
-  const [initialAgentsWidthPx] = useState(() => getInitialAgentsPanelWidth());
-  const agentsPreferredWidthPxRef = useRef(initialAgentsWidthPx);
-  const [isDraggingAgentsHandle, setIsDraggingAgentsHandle] = useState(false);
-  const isDraggingAgentsHandleRef = useRef(false);
-  const agentsSettlementRetryRef = useRef<RailLayoutRetryController>({
-    frameId: 0,
-    deadlineTimer: null,
-  });
-  const railColumnSyncRetryRef = useRef<RailLayoutRetryController>({
-    frameId: 0,
-    deadlineTimer: null,
-  });
-  const pendingAgentsVisibilityRetryContextRef = useRef<AgentsPanelCloseRetryContext | null>(null);
-
-  const [initialTerminalWidthPx] = useState(() =>
-    Math.max(
-      terminalRightWidth ?? PREFERRED_TERMINAL_RIGHT_WIDTH,
-      RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX,
-    ),
-  );
-  const terminalWidthPxRef = useRef(initialTerminalWidthPx);
-  const [isDraggingTerminalHandle, setIsDraggingTerminalHandle] = useState(false);
-  const isDraggingTerminalHandleRef = useRef(false);
-  const terminalWriteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  function debouncedWriteTerminalWidth(px: number) {
-    if (terminalWriteTimerRef.current != null) clearTimeout(terminalWriteTimerRef.current);
-    terminalWriteTimerRef.current = setTimeout(() => {
-      onTerminalRightWidthChange?.(px);
-      terminalWriteTimerRef.current = null;
-    }, 100);
-  }
-
   useEffect(
     () => () => {
       if (writeTimerRef.current != null) clearTimeout(writeTimerRef.current);
-      if (terminalWriteTimerRef.current != null) clearTimeout(terminalWriteTimerRef.current);
-      cancelRailLayoutRetry(agentsSettlementRetryRef);
     },
     [],
   );
 
-  const [groupContainerEl, setGroupContainerEl] = useState<HTMLDivElement | null>(null);
-  const groupContainerElRef = useRef<HTMLDivElement | null>(null);
   const [innerContainerEl, setInnerContainerEl] = useState<HTMLDivElement | null>(null);
   const innerContainerElRef = useRef<HTMLDivElement | null>(null);
-  const {
-    node: fileListSlotEl,
-    nodeRef: fileListSlotElRef,
-    slotRef: fileListSlotRef,
-  } = useFileListSlot();
+  const { node: fileListSlotEl, slotRef: fileListSlotRef } = useFileListSlot();
   useLayoutEffect(() => {
     if (docPanelCover || isCollapsed) return;
     const focusedPanelControl = docPanelDockFocusRef.current;
@@ -1102,577 +897,100 @@ function EditorAreaInner({
     frameId: 0,
     deadlineTimer: null,
   });
-  const editorVisibilityRetryRef = useRef<RailLayoutRetryController>({
-    frameId: 0,
-    deadlineTimer: null,
-  });
   const observedDocWidthRetryRef = useRef<RailLayoutRetryController>({
     frameId: 0,
     deadlineTimer: null,
   });
-  const railPinOutcomeRef = useRef<RailPinOutcome>({ stage: 'group-missing' });
-  const railPlanWriteInProgressRef = useRef(false);
-  const railPinExhaustedReportsRef = useRef<Record<RailPinExhaustedTrigger, number>>({
-    'rail-column-sync': 0,
-    'doc-slot-presence': 0,
-    'editor-visibility': 0,
-  });
 
-  const reportRailPinExhausted = useEffectEvent((trigger: RailPinExhaustedTrigger) => {
-    if (railPinExhaustedReportsRef.current[trigger] >= MAX_RAIL_PIN_EXHAUSTED_REPORTS) return;
-    railPinExhaustedReportsRef.current[trigger] += 1;
-    console.warn(
-      JSON.stringify({
-        event: 'right-rail-pin-exhausted',
-        trigger,
-        ...railPinOutcomeRef.current,
-      }),
-    );
-  });
-
-  const groupRef = useGroupRef();
   const innerGroupRef = useGroupRef();
-  function readDocPanelPx(): number | null {
-    try {
-      const size = panelRef.current?.getSize();
-      return size == null || !Number.isFinite(size.inPixels) ? null : size.inPixels;
-    } catch (error) {
-      reportUnexpectedPanelGroupFailure('read-doc-panel-px-failed', error);
-      return null;
-    }
-  }
-  function resolveGroupPxWidth(): number | null {
-    return resolveRailPanelSpacePx(groupContainerElRef.current);
-  }
   function resolveInnerGroupPxWidth(): number | null {
     return resolveRailPanelSpacePx(innerContainerElRef.current);
   }
-  function measureInnerChromePx(innerPx: number): number {
-    const chromePx = resolveInnerRowChromePx(
-      groupContainerElRef.current,
-      innerContainerElRef.current,
-      innerPx,
-    );
-    if (chromePx != null) return chromePx;
-    reportUnexpectedPanelGroupFailure(
-      'measure-inner-chrome-column-missing',
-      new Error('No outer row column holds the inner row'),
-    );
-    return 0;
-  }
-  function readFileListWidthPx(): number {
-    const width = fileListSlotElRef.current?.getBoundingClientRect().width ?? 0;
-    return Number.isFinite(width) && width > 0 ? width : 0;
-  }
-  function sharedRowPxFrom(outerPx: number): number {
-    return Math.max(0, outerPx - editorColumnChromePxRef.current - readFileListWidthPx());
-  }
-  function resolveSharedRowPxWidth(): number | null {
-    const outerPx = resolveGroupPxWidth();
-    return outerPx == null ? null : sharedRowPxFrom(outerPx);
-  }
 
-  function resolveAdmissionMetrics(): {
-    workspaceWidthPx: number;
-    otherRailWidthPx: number;
-  } | null {
-    const group = groupRef.current;
-    if (group == null) return null;
+  function attemptDocPanelPin(
+    docCollapsed: boolean,
+    recordMiss: (miss: DocPanelPinMiss) => void = () => {},
+  ): RailLayoutRetryOutcome {
+    const missDocPanelPin = (miss: DocPanelPinMiss, outcome: 'blocked' | 'failed') => {
+      recordMiss(miss);
+      return outcome;
+    };
+    isCollapsedRef.current = docCollapsed;
+    if (!editorVisibleRef.current) return 'applied';
+    if (isDraggingDocHandleRef.current) return missDocPanelPin({ cause: 'dragging' }, 'blocked');
+    const group = innerGroupRef.current;
+    if (group == null) return missDocPanelPin({ cause: 'group-missing' }, 'blocked');
+    const space = resolveRailPanelSpace(innerContainerElRef.current);
+    if (!space.ok) {
+      return missDocPanelPin(
+        { cause: 'panel-space-unresolved', refusal: space.refusal },
+        'blocked',
+      );
+    }
+    const innerPx = space.panelSpacePx;
     try {
-      const workspaceWidthPx = resolveSharedRowPxWidth();
-      if (workspaceWidthPx == null) return null;
-      if (!docSlotPresentRef.current) {
-        return { workspaceWidthPx, otherRailWidthPx: 0 };
+      const layout = group.getLayout();
+      const residualId = findResidualPanelId(Object.keys(layout));
+      if (residualId == null || !(DOC_PANEL_ID in layout)) {
+        return missDocPanelPin({ cause: 'layout-without-doc-panel' }, 'blocked');
       }
-      if (isCollapsedRef.current) {
-        return { workspaceWidthPx, otherRailWidthPx: 0 };
-      }
-      const measuredWidthPx = readDocPanelPx();
-      const docWidthPx =
-        measuredWidthPx != null && measuredWidthPx > 0
-          ? Math.min(measuredWidthPx, docPanelWidthPxRef.current)
-          : docPanelWidthPxRef.current;
-      return {
-        workspaceWidthPx,
-        otherRailWidthPx: Math.max(docWidthPx, DOC_PANEL_MIN_WIDTH_PX),
-      };
+      const pinnedPx = docCollapsed || !docSlotPresentRef.current ? 0 : docPanelWidthPxRef.current;
+      const next = computeStickyRepinLayout({
+        currentLayout: layout,
+        containerPx: innerPx,
+        pinnedPx: { [DOC_PANEL_ID]: pinnedPx },
+        residualId,
+      });
+      if (next === layout) return 'applied';
+      group.setLayout(next);
+      const landedPx = ((group.getLayout()[DOC_PANEL_ID] ?? 0) / 100) * innerPx;
+      if (Math.abs(landedPx - pinnedPx) <= 1) return 'applied';
+      return missDocPanelPin(
+        { cause: 'width-missed', pinnedWidthPx: pinnedPx, landedWidthPx: landedPx },
+        'failed',
+      );
     } catch (error) {
-      reportUnexpectedPanelGroupFailure('resolve-admission-metrics-failed', error);
-      return null;
+      reportUnexpectedPanelGroupFailure('pin-doc-panel-failed', error);
+      return missDocPanelPin(
+        {
+          cause: 'write-threw',
+          writeError: error instanceof Error ? error.message : String(error),
+        },
+        'failed',
+      );
     }
   }
 
-  type AdmissionVisibility = {
-    readonly terminalRightVisible: boolean;
-    readonly agentsVisible: boolean;
-  };
-  const admissionVisibility: AdmissionVisibility = {
-    terminalRightVisible: terminalColumnPresent,
-    agentsVisible,
-  };
-  const admissionVisibilityRef = useRef(admissionVisibility);
-  const previousAdmissionVisibilityRef = useRef(admissionVisibility);
-  const previousAdmissionCollapsedRef = useRef(isCollapsed);
-  const pendingAdmissionCloseRef = useRef<'close-agents' | 'close-terminal' | null>(null);
-  const filesCanDockRef = useRef(filesCanDock);
-  const dragCloseRequestedRef = useRef(false);
-  const admissionDeferredByFilesRef = useRef<{
-    readonly trigger: 'state-change' | 'resize';
-    readonly previous: AdmissionVisibility;
-  } | null>(null);
-  const admissionDeferredByDragRef = useRef<{
-    readonly trigger: 'state-change' | 'resize';
-    readonly previous: AdmissionVisibility;
-  } | null>(null);
-
-  function railDragInProgress(): boolean {
-    return (
-      isDraggingDocHandleRef.current ||
-      isDraggingTerminalHandleRef.current ||
-      isDraggingAgentsHandleRef.current
-    );
+  function pinDocPanel(docCollapsed: boolean): boolean {
+    return attemptDocPanelPin(docCollapsed) !== 'failed';
   }
 
-  function enforceRightRailAdmission(
-    trigger: 'state-change' | 'resize',
-    previous: AdmissionVisibility,
-  ) {
-    if (railDragInProgress()) {
-      admissionDeferredByDragRef.current = { trigger, previous };
-      return;
-    }
-    admissionDeferredByDragRef.current = null;
-    const filesSettling = !filesCanDockRef.current && readFileListWidthPx() > 0;
-    const deferredByFiles = filesSettling ? null : admissionDeferredByFilesRef.current;
-    const admissionTrigger = deferredByFiles?.trigger ?? trigger;
-    const admissionPrevious = deferredByFiles?.previous ?? previous;
-    const metrics = resolveAdmissionMetrics();
-    if (metrics == null) return;
-    const decision = resolveRightRailAdmission({
-      ...metrics,
-      editorMinimumWidthPx: docSlotPresentRef.current ? DOC_USABLE_MIN_WIDTH_PX : 0,
-      agentsMinimumWidthPx: MIN_AGENTS_PANEL_WIDTH,
-      previous: admissionPrevious,
-      current: admissionVisibilityRef.current,
-      trigger: admissionTrigger,
-    });
-    if (filesSettling) {
-      if (
-        decision.kind !== 'none' &&
-        (admissionDeferredByFilesRef.current == null || trigger === 'state-change')
-      ) {
-        admissionDeferredByFilesRef.current = { trigger, previous };
-      }
-      return;
-    }
-    admissionDeferredByFilesRef.current = null;
-    if (decision.kind === 'none' || pendingAdmissionCloseRef.current === decision.kind) return;
-
-    if (decision.kind === 'close-agents') {
-      if (onAgentsVisibleChange == null) return;
-      pendingAdmissionCloseRef.current = decision.kind;
-      onAgentsVisibleChange(false);
-      toast.info(t`Agent panel closed to keep Terminal readable.`);
-      return;
-    }
-
-    if (onTerminalVisibleChange == null) return;
-    pendingAdmissionCloseRef.current = decision.kind;
-    onTerminalVisibleChange(false);
-    toast.info(t`Terminal closed to make room for the agent panel.`);
-  }
-
-  const enforceRightRailAdmissionRef = useRef(enforceRightRailAdmission);
-  useLayoutEffect(() => {
-    enforceRightRailAdmissionRef.current = enforceRightRailAdmission;
-    filesCanDockRef.current = filesCanDock;
-    admissionVisibilityRef.current = admissionVisibility;
-    editorColumnChromePxRef.current = editorColumnChromePx;
-    editorVisibleRef.current = editorVisible;
-    bottomTerminalHeldRef.current = bottomTerminalHeld;
+  const pinDocPanelRef = useRef(pinDocPanel);
+  useEffect(() => {
+    pinDocPanelRef.current = pinDocPanel;
   });
 
-  useLayoutEffect(() => {
-    if (!agentsVisible && pendingAdmissionCloseRef.current === 'close-agents') {
-      pendingAdmissionCloseRef.current = null;
-    }
-    if (!terminalColumnPresent && pendingAdmissionCloseRef.current === 'close-terminal') {
-      pendingAdmissionCloseRef.current = null;
-    }
-    const previous = previousAdmissionVisibilityRef.current;
-    const previousCollapsed = previousAdmissionCollapsedRef.current;
-    previousAdmissionVisibilityRef.current = {
-      terminalRightVisible: terminalColumnPresent,
-      agentsVisible,
-    };
-    previousAdmissionCollapsedRef.current = isCollapsed;
-    queueMicrotask(() => {
-      enforceRightRailAdmissionRef.current(
-        previousCollapsed === isCollapsed ? 'state-change' : 'resize',
-        previous,
-      );
-    });
-  }, [agentsVisible, terminalColumnPresent, isCollapsed]);
-
-  function applyEditorHiddenLayout(): boolean {
-    const outerGroup = groupRef.current;
-    if (outerGroup == null) {
-      railPinOutcomeRef.current = { stage: 'group-missing' };
-      return false;
-    }
-    let outerSpace: RailPanelSpaceResult;
-    let outerLayout: Record<string, number>;
-    try {
-      outerSpace = resolveRailPanelSpace(groupContainerElRef.current);
-      outerLayout = outerGroup.getLayout();
-    } catch (error) {
-      railPinOutcomeRef.current = { stage: 'read-failed' };
-      reportUnexpectedPanelGroupFailure('apply-editor-hidden-layout-read-failed', error);
-      return false;
-    }
-    if (!outerSpace.ok) {
-      railPinOutcomeRef.current = { stage: 'panel-space-unresolved', refusal: outerSpace.refusal };
-      return false;
-    }
-    const outerAccounting = accountRailLayout(Object.keys(outerLayout));
-    if (!outerAccounting.ok) {
-      railPinOutcomeRef.current =
-        outerAccounting.unaccountedIds.length === 0
-          ? { stage: 'no-residual-panel' }
-          : { stage: 'layout-unaccounted', unaccountedIds: outerAccounting.unaccountedIds };
-      return false;
-    }
-    const outerPx = outerSpace.panelSpacePx;
-    const currentOrPreferredPx = (id: string, visible: boolean, preferredPx: number) => {
-      if (!visible) return 0;
-      const currentPx = ((outerLayout[id] ?? 0) / 100) * outerPx;
-      return currentPx > 0 ? currentPx : preferredPx;
-    };
-    const editorColumnId = outerAccounting.residualId;
-    const chatBesideBottomTerminalPx = admissionVisibilityRef.current.agentsVisible
-      ? agentsPreferredWidthPxRef.current
-      : 0;
-    const plan = {
-      currentLayout: outerLayout,
-      editorColumnId,
-      visibleColumnPx: bottomTerminalHeldRef.current
-        ? {
-            [editorColumnId]: Math.max(outerPx - chatBesideBottomTerminalPx, 1),
-            [AGENTS_COLUMN_ID]: chatBesideBottomTerminalPx,
-          }
-        : {
-            [TERMINAL_COLUMN_ID]: currentOrPreferredPx(
-              TERMINAL_COLUMN_ID,
-              admissionVisibilityRef.current.terminalRightVisible,
-              terminalWidthPxRef.current,
-            ),
-            [AGENTS_COLUMN_ID]: currentOrPreferredPx(
-              AGENTS_COLUMN_ID,
-              admissionVisibilityRef.current.agentsVisible,
-              agentsPreferredWidthPxRef.current,
-            ),
-          },
-    };
-    if (isEditorHiddenLayoutSettled(plan)) {
-      railPinOutcomeRef.current = { stage: 'pinned' };
-      return true;
-    }
-    const next = computeEditorHiddenLayout(plan);
-    railPlanWriteInProgressRef.current = true;
-    let readBack: Record<string, number>;
-    try {
-      outerGroup.setLayout(next);
-      readBack = outerGroup.getLayout();
-    } catch (error) {
-      railPlanWriteInProgressRef.current = false;
-      railPinOutcomeRef.current = { stage: 'write-failed' };
-      reportUnexpectedPanelGroupFailure('apply-editor-hidden-layout-write-failed', error);
-      return false;
-    }
-    railPlanWriteInProgressRef.current = false;
-    const landed = editorHiddenLayoutLanded(next, readBack);
-    railPinOutcomeRef.current = landed ? { stage: 'pinned' } : { stage: 'editor-hidden-unsettled' };
-    return landed;
-  }
-
-  function reopenCollapsedEditorColumn(
-    outerGroup: NonNullable<typeof groupRef.current>,
-    outerLayout: Record<string, number>,
-    outerPx: number,
-  ) {
-    const { residualId } = accountRailLayout(Object.keys(outerLayout));
-    if (residualId == null || (outerLayout[residualId] ?? 0) > EDITOR_COLUMN_COLLAPSED_PCT) return;
-    const pinnedPx: Record<string, number> = {};
-    if (TERMINAL_COLUMN_ID in outerLayout) {
-      pinnedPx[TERMINAL_COLUMN_ID] = admissionVisibilityRef.current.terminalRightVisible
-        ? terminalWidthPxRef.current
-        : 0;
-    }
-    if (AGENTS_COLUMN_ID in outerLayout) {
-      pinnedPx[AGENTS_COLUMN_ID] = admissionVisibilityRef.current.agentsVisible
-        ? agentsPreferredWidthPxRef.current
-        : 0;
-    }
-    const next = computeStickyRepinLayout({
-      currentLayout: outerLayout,
-      containerPx: outerPx,
-      pinnedPx,
-      residualId,
-    });
-    if (next === outerLayout) return;
-    railPlanWriteInProgressRef.current = true;
-    try {
-      outerGroup.setLayout(next);
-    } catch (error) {
-      reportUnexpectedPanelGroupFailure('reopen-editor-column-write-failed', error);
-    }
-    railPlanWriteInProgressRef.current = false;
-  }
-
-  function applyRailLayout(
-    docCollapsed: boolean,
-    {
-      agentsWidthOverridePx,
-    }: {
-      agentsWidthOverridePx?: number;
-    } = {},
-  ): boolean {
-    if (!editorVisibleRef.current) return applyEditorHiddenLayout();
-    const outerGroup = groupRef.current;
-    const innerGroup = innerGroupRef.current;
-    if (outerGroup == null || innerGroup == null) {
-      railPinOutcomeRef.current = { stage: 'group-missing' };
-      return false;
-    }
-    let outerSpace: RailPanelSpaceResult;
-    let innerSpace: RailPanelSpaceResult;
-    let outerLayout: Record<string, number>;
-    let innerLayout: Record<string, number>;
-    try {
-      outerSpace = resolveRailPanelSpace(groupContainerElRef.current);
-      innerSpace = resolveRailPanelSpace(innerContainerElRef.current);
-      outerLayout = outerGroup.getLayout();
-      innerLayout = innerGroup.getLayout();
-    } catch (error) {
-      railPinOutcomeRef.current = { stage: 'read-failed' };
-      reportUnexpectedPanelGroupFailure('apply-rail-layout-read-failed', error);
-      return false;
-    }
-    if (!outerSpace.ok) {
-      railPinOutcomeRef.current = { stage: 'panel-space-unresolved', refusal: outerSpace.refusal };
-      return false;
-    }
-    if (!innerSpace.ok) {
-      railPinOutcomeRef.current = { stage: 'panel-space-unresolved', refusal: innerSpace.refusal };
-      reopenCollapsedEditorColumn(outerGroup, outerLayout, outerSpace.panelSpacePx);
-      return false;
-    }
-    const outerPx = outerSpace.panelSpacePx;
-    const innerPx = innerSpace.panelSpacePx;
-    const sharedRowPx = sharedRowPxFrom(outerPx);
-    const outerAccounting = accountRailLayout(Object.keys(outerLayout));
-    const innerAccounting = accountRailLayout(Object.keys(innerLayout));
-    if (!outerAccounting.ok || !innerAccounting.ok) {
-      const unaccountedIds = [...outerAccounting.unaccountedIds, ...innerAccounting.unaccountedIds];
-      railPinOutcomeRef.current =
-        unaccountedIds.length === 0
-          ? { stage: 'no-residual-panel' }
-          : { stage: 'layout-unaccounted', unaccountedIds };
-      if (import.meta.env.DEV) {
-        console.warn(
-          JSON.stringify({
-            event: 'right-rail-accounting-failed',
-            unaccountedIds,
-          }),
-        );
-      }
-      return false;
-    }
-
-    const buildPins = (atFloor: boolean) => {
-      const inner: Record<string, number> = {};
-      const outer: Record<string, number> = {};
-      if (DOC_PANEL_ID in innerLayout) {
-        inner[DOC_PANEL_ID] =
-          !docSlotPresentRef.current || docCollapsed
-            ? 0
-            : atFloor
-              ? DOC_PANEL_MIN_WIDTH_PX
-              : docPanelWidthPxRef.current;
-      }
-      if (TERMINAL_COLUMN_ID in outerLayout) {
-        outer[TERMINAL_COLUMN_ID] =
-          !admissionVisibilityRef.current.terminalRightVisible || terminalCollapsedByUserRef.current
-            ? 0
-            : atFloor
-              ? RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX
-              : terminalWidthPxRef.current;
-      }
-      if (AGENTS_COLUMN_ID in outerLayout) {
-        outer[AGENTS_COLUMN_ID] = !admissionVisibilityRef.current.agentsVisible
-          ? 0
-          : atFloor
-            ? MIN_AGENTS_PANEL_WIDTH
-            : (agentsWidthOverridePx ?? agentsPreferredWidthPxRef.current);
-      }
-      return { inner, outer, all: { ...inner, ...outer } };
-    };
-
-    const renderedWidths = (
-      outerPcts: Record<string, number>,
-      innerPcts: Record<string, number>,
-      innerRowPx = innerPx,
-    ) => {
-      const widths = new Map<string, number>();
-      for (const [id, pct] of Object.entries(outerPcts)) widths.set(id, (pct / 100) * outerPx);
-      for (const [id, pct] of Object.entries(innerPcts)) widths.set(id, (pct / 100) * innerRowPx);
-      return widths;
-    };
-    const fitsSharedRow = (pins: Record<string, number>) =>
-      Object.values(pins).reduce((total, px) => total + px, 0) <= sharedRowPx;
-
-    const docRenderedPx = readDocPanelPx();
-    const withDocRendered = (widths: Map<string, number>) => {
-      if (docRenderedPx != null && widths.has(DOC_PANEL_ID))
-        widths.set(DOC_PANEL_ID, docRenderedPx);
-      return widths;
-    };
-
-    let pins = buildPins(false);
-    if (Object.keys(pins.all).length === 0) {
-      railPinOutcomeRef.current = { stage: 'no-pinned-columns' };
-      return false;
-    }
-    if (!fitsSharedRow(pins.all)) pins = buildPins(true);
-    if (!fitsSharedRow(pins.all)) {
-      const shortfall = describeRailFloorShortfall(
-        pins.all,
-        withDocRendered(renderedWidths(outerLayout, innerLayout)),
-      );
-      const pinned = Object.keys(shortfall).length === 0;
-      railPinOutcomeRef.current = pinned
-        ? { stage: 'pinned' }
-        : { stage: 'pins-do-not-fit', shortfall };
-      return pinned;
-    }
-
-    const nextOuter = computeStickyRepinLayout({
-      currentLayout: outerLayout,
-      containerPx: outerPx,
-      pinnedPx: pins.outer,
-      residualId: outerAccounting.residualId,
-    });
-    const innerTargetPx =
-      predictInnerPanelSpacePx({
-        outerLayout: nextOuter,
-        outerResidualId: outerAccounting.residualId,
-        outerPanelSpacePx: outerPx,
-        innerChromePx: measureInnerChromePx(innerPx),
-      }) ?? innerPx;
-    const docPinPx = pins.inner[DOC_PANEL_ID];
-    const docProjectedPx =
-      docPinPx == null ? null : ((innerLayout[DOC_PANEL_ID] ?? 0) / 100) * innerTargetPx;
-    const docAlreadyPinned =
-      docPinPx != null && docProjectedPx != null && Math.abs(docProjectedPx - docPinPx) <= 1;
-    const nextInner = docAlreadyPinned
-      ? innerLayout
-      : computeStickyRepinLayout({
-          currentLayout: innerLayout,
-          containerPx: innerTargetPx,
-          pinnedPx: pins.inner,
-          residualId: innerAccounting.residualId,
-        });
-    railPlanWriteInProgressRef.current = true;
-    try {
-      if (nextOuter !== outerLayout) outerGroup.setLayout(nextOuter);
-      if (nextInner !== innerLayout) innerGroup.setLayout(nextInner);
-    } catch (error) {
-      railPlanWriteInProgressRef.current = false;
-      railPinOutcomeRef.current = { stage: 'write-failed' };
-      reportUnexpectedPanelGroupFailure('apply-rail-layout-write-failed', error);
-      return false;
-    }
-    railPlanWriteInProgressRef.current = false;
-    let outerReadBack: Record<string, number>;
-    let innerReadBack: Record<string, number>;
-    try {
-      outerReadBack = outerGroup.getLayout();
-      innerReadBack = innerGroup.getLayout();
-    } catch (error) {
-      railPinOutcomeRef.current = { stage: 'verify-failed' };
-      reportUnexpectedPanelGroupFailure('apply-rail-layout-verify-failed', error);
-      return false;
-    }
-    const shortfall = describeRailWidthShortfall(
-      pins.all,
-      renderedWidths(outerReadBack, innerReadBack, innerTargetPx),
-    );
-    const pinned = Object.keys(shortfall).length === 0;
-    railPinOutcomeRef.current = pinned
-      ? { stage: 'pinned' }
-      : { stage: 'width-shortfall', shortfall };
-    return pinned;
-  }
-
-  function followOuterLayout(outerLayout: Record<string, number>) {
-    if (!editorVisibleRef.current) return;
-    const innerGroup = innerGroupRef.current;
-    if (innerGroup == null) return;
-    const outerPx = resolveGroupPxWidth();
-    const innerPx = resolveInnerGroupPxWidth();
-    if (outerPx == null || innerPx == null) return;
-    let innerLayout: Record<string, number>;
-    try {
-      innerLayout = innerGroup.getLayout();
-    } catch (error) {
-      reportUnexpectedPanelGroupFailure('follow-outer-layout-read-failed', error);
-      return;
-    }
-    const outerAccounting = accountRailLayout(Object.keys(outerLayout));
-    const innerAccounting = accountRailLayout(Object.keys(innerLayout));
-    if (!outerAccounting.ok || !innerAccounting.ok || !(DOC_PANEL_ID in innerLayout)) return;
-    const docPinPx =
-      !docSlotPresentRef.current || isCollapsedRef.current ? 0 : docPanelWidthPxRef.current;
-    const next = computeInnerFollowLayout({
-      outerLayout,
-      outerResidualId: outerAccounting.residualId,
-      outerPanelSpacePx: outerPx,
-      innerChromePx: measureInnerChromePx(innerPx),
-      innerLayout,
-      innerResidualId: innerAccounting.residualId,
-      pinnedPx: { [DOC_PANEL_ID]: docPinPx },
-    });
-    if (next === innerLayout) return;
-    try {
-      innerGroup.setLayout(next);
-    } catch (error) {
-      reportUnexpectedPanelGroupFailure('follow-outer-layout-write-failed', error);
-    }
-  }
-
-  function reclaimHiddenRailColumn(columnId: string, present: boolean, widthPx: number) {
+  function reclaimHiddenDocPanel(present: boolean, widthPx: number) {
     if (present || widthPx <= 0) return;
     queueMicrotask(() => {
-      const innerRow = columnId === DOC_PANEL_ID;
-      if (!innerRow && !editorVisibleRef.current) return;
-      const group = innerRow ? innerGroupRef.current : groupRef.current;
+      const group = innerGroupRef.current;
       if (group == null) return;
       let layout: Record<string, number>;
       let containerPx: number | null;
       try {
         layout = group.getLayout();
-        containerPx = innerRow ? resolveInnerGroupPxWidth() : resolveGroupPxWidth();
+        containerPx = resolveInnerGroupPxWidth();
       } catch (error) {
         reportUnexpectedPanelGroupFailure('reclaim-hidden-rail-read-failed', error);
         return;
       }
-      if (containerPx == null || !(columnId in layout) || layout[columnId] === 0) return;
+      if (containerPx == null || !(DOC_PANEL_ID in layout) || layout[DOC_PANEL_ID] === 0) return;
       const residualId = findResidualPanelId(Object.keys(layout));
       if (residualId == null) return;
       const next = computeStickyRepinLayout({
         currentLayout: layout,
         containerPx,
-        pinnedPx: { [columnId]: 0 },
+        pinnedPx: { [DOC_PANEL_ID]: 0 },
         residualId,
       });
       if (next === layout) return;
@@ -1684,69 +1002,7 @@ function EditorAreaInner({
     });
   }
 
-  function attemptRailLayout(
-    docCollapsed: boolean,
-    overrides?: { agentsWidthOverridePx?: number },
-  ): RailLayoutRetryOutcome {
-    if (railDragInProgress()) {
-      if (isDraggingDocHandleRef.current) return 'blocked';
-      const group = innerGroupRef.current;
-      const containerPx = resolveInnerGroupPxWidth();
-      if (group == null || containerPx == null) return 'blocked';
-      try {
-        const layout = group.getLayout();
-        const residualId = findResidualPanelId(Object.keys(layout));
-        if (residualId == null || !(DOC_PANEL_ID in layout)) return 'blocked';
-        const collapsed =
-          docCollapsed || containerPx < docPanelWidthPxRef.current + DOC_USABLE_MIN_WIDTH_PX;
-        isCollapsedRef.current = collapsed;
-        group.setLayout(
-          computeStickyRepinLayout({
-            currentLayout: layout,
-            containerPx,
-            pinnedPx: { [DOC_PANEL_ID]: collapsed ? 0 : docPanelWidthPxRef.current },
-            residualId,
-          }),
-        );
-        return 'blocked';
-      } catch (error) {
-        reportUnexpectedPanelGroupFailure('fit-information-during-outer-drag-failed', error);
-        return 'failed';
-      }
-    }
-    isCollapsedRef.current = docCollapsed;
-    return applyRailLayout(docCollapsed, overrides) ? 'applied' : 'failed';
-  }
-
-  function assertRightRailLayout(docCollapsed: boolean): boolean {
-    return attemptRailLayout(docCollapsed) !== 'failed';
-  }
-
-  const assertRightRailLayoutRef = useRef(assertRightRailLayout);
-  useEffect(() => {
-    assertRightRailLayoutRef.current = assertRightRailLayout;
-  });
-
   const endHandleDragRef = useRef<(() => void) | null>(null);
-  function railLayoutRetryPending(): boolean {
-    return (
-      agentsSettlementRetryRef.current.context != null ||
-      railColumnSyncRetryRef.current.context != null ||
-      presenceRepinRetryRef.current.context != null ||
-      editorVisibilityRetryRef.current.context != null
-    );
-  }
-  function replanAfterDragEnd() {
-    const closeRequested = dragCloseRequestedRef.current;
-    dragCloseRequestedRef.current = false;
-    const deferredAdmission = admissionDeferredByDragRef.current;
-    admissionDeferredByDragRef.current = null;
-    if (closeRequested) return;
-    if (!railLayoutRetryPending()) assertRightRailLayoutRef.current(isCollapsedRef.current);
-    if (deferredAdmission != null) {
-      enforceRightRailAdmissionRef.current(deferredAdmission.trigger, deferredAdmission.previous);
-    }
-  }
   function trackHandleDrag(
     pointerId: number | null,
     setDragging: (dragging: boolean) => void,
@@ -1769,12 +1025,12 @@ function EditorAreaInner({
       if (pointerId != null && event.pointerId !== pointerId) return;
       end();
       onCommit?.();
-      replanAfterDragEnd();
+      pinDocPanelRef.current(isCollapsedRef.current);
     }
     function onPointerCancel(event: PointerEvent) {
       if (pointerId != null && event.pointerId !== pointerId) return;
       end();
-      assertRightRailLayoutRef.current(isCollapsedRef.current);
+      pinDocPanelRef.current(isCollapsedRef.current);
     }
     endHandleDragRef.current = end;
     window.addEventListener('pointerup', onPointerUp);
@@ -1791,243 +1047,23 @@ function EditorAreaInner({
       () => setPreferredDocPanelWidthPx(docPanelWidthPxRef.current),
     );
   }
-  function beginTerminalHandleDrag(pointerId: number | null) {
-    const startedOnSeparator = pointerId != null;
-    trackHandleDrag(
-      pointerId,
-      setIsDraggingTerminalHandle,
-      isDraggingTerminalHandleRef,
-      () => {
-        if (!terminalColumnPanelRef.current?.isCollapsed()) return;
-        dragCloseRequestedRef.current = true;
-        if (startedOnSeparator && onTerminalVisibleChange != null) onTerminalVisibleChange(false);
-      },
-      () => {
-        if (!startedOnSeparator || !terminalColumnPanelRef.current?.isCollapsed()) {
-          setTerminalShowingHold(false);
-        }
-      },
+  function adoptLibraryDrag() {
+    const active = innerContainerElRef.current?.querySelector(
+      ':scope > [data-group] > [data-separator="active"]',
     );
-  }
-  function beginAgentsHandleDrag(pointerId: number | null) {
-    const chatHistoryCovering =
-      agentsContainer?.querySelector('[data-history-mode="cover"]') != null;
-    const startedOnSeparator = pointerId != null && !chatHistoryCovering;
-    cancelAgentsSettlement();
-    trackHandleDrag(
-      pointerId,
-      setIsDraggingAgentsHandle,
-      isDraggingAgentsHandleRef,
-      () => settleAgentsPointerRelease({ leaveCollapsed: !startedOnSeparator }),
-      () => {
-        if (!startedOnSeparator || !agentsColumnPanelRef.current?.isCollapsed()) {
-          setAgentsShowingHold(false);
-        }
-      },
-    );
-  }
-  function adoptLibraryDrag(row: 'outer' | 'inner') {
-    const container = row === 'outer' ? groupContainerElRef.current : innerContainerElRef.current;
-    const active = container?.querySelector(':scope > [data-group] > [data-separator="active"]');
     if (!(active instanceof HTMLElement)) return;
-    if (row === 'inner') {
-      if (active.hasAttribute('data-doc-panel-handle') && !isDraggingDocHandleRef.current) {
-        beginDocHandleDrag(null);
-      }
-      return;
-    }
-    if (active.hasAttribute('data-terminal-panel-handle') && !isDraggingTerminalHandleRef.current) {
-      beginTerminalHandleDrag(null);
-    } else if (
-      active.hasAttribute('data-agents-panel-resize-handle') &&
-      !isDraggingAgentsHandleRef.current
-    ) {
-      beginAgentsHandleDrag(null);
+    if (active.hasAttribute('data-doc-panel-handle') && !isDraggingDocHandleRef.current) {
+      beginDocHandleDrag(null);
     }
   }
   useEffect(() => () => endHandleDragRef.current?.(), []);
 
-  function cancelAgentsSettlement() {
-    cancelRailLayoutRetry(agentsSettlementRetryRef);
-  }
-
-  function cancelAgentsKeyboardSettlement() {
-    if (agentsSettlementRetryRef.current.context?.decision === 'keyboard-settle-minimum') {
-      cancelAgentsSettlement();
-    }
-  }
-
-  function superviseAgentsPointerSettlement(context: AgentsPanelPointerReleaseRetryContext) {
-    runRailLayoutRetry({
-      retryRef: agentsSettlementRetryRef,
-      attempt: () => attemptRailLayout(isCollapsedRef.current),
-      context,
-    });
-  }
-
-  function settleAgentsPointerRelease(options?: { readonly leaveCollapsed: boolean }) {
-    cancelAgentsSettlement();
-    const measuredWidthPx = agentsColumnPanelRef.current?.getSize().inPixels;
-    const decision = resolveAgentsPanelPointerRelease(
-      measuredWidthPx,
-      agentsPreferredWidthPxRef.current,
-    );
-    const context = createAgentsPanelPointerReleaseRetryContext(decision);
-    if (!editorVisibleRef.current && context.decision !== 'close') {
-      superviseAgentsPointerSettlement(context);
-      return;
-    }
-    switch (context.decision) {
-      case 'close':
-        if (options?.leaveCollapsed) {
-          dragCloseRequestedRef.current = true;
-        } else if (onAgentsVisibleChange != null) {
-          pendingAgentsVisibilityRetryContextRef.current = context;
-          dragCloseRequestedRef.current = true;
-          onAgentsVisibleChange(false);
-        } else {
-          superviseAgentsPointerSettlement(context);
-        }
-        return;
-      case 'restore-preferred':
-        agentsPreferredWidthPxRef.current = context.targetWidthPx;
-        superviseAgentsPointerSettlement(context);
-        return;
-      case 'settle-minimum':
-      case 'commit-preferred':
-        agentsPreferredWidthPxRef.current = context.targetWidthPx;
-        writeAgentsPanelWidth(context.targetWidthPx);
-        superviseAgentsPointerSettlement(context);
-        return;
-      default: {
-        const exhaustiveContext: never = context;
-        return exhaustiveContext;
-      }
-    }
-  }
-
-  function settleAgentsKeyboardLayout(layout: Record<string, number>, isUserInteraction: boolean) {
-    if (!isUserInteraction || railDragInProgress() || !editorVisibleRef.current) return;
-    const activeElement = document.activeElement;
-    if (
-      !(activeElement instanceof HTMLElement) ||
-      !activeElement.hasAttribute('data-agents-panel-resize-handle')
-    ) {
-      cancelAgentsKeyboardSettlement();
-      return;
-    }
-    cancelAgentsSettlement();
-    const agentsPercentage = layout[AGENTS_COLUMN_ID];
-    const groupWidthPx = resolveGroupPxWidth();
-    if (agentsPercentage == null || groupWidthPx == null) return;
-    const measuredWidthPx = (agentsPercentage / 100) * groupWidthPx;
-    if (measuredWidthPx <= 0 || measuredWidthPx >= MIN_AGENTS_PANEL_WIDTH) return;
-    runRailLayoutRetry({
-      retryRef: agentsSettlementRetryRef,
-      attempt: () =>
-        attemptRailLayout(isCollapsedRef.current, {
-          agentsWidthOverridePx: MIN_AGENTS_PANEL_WIDTH,
-        }),
-      context: {
-        decision: 'keyboard-settle-minimum',
-        targetWidthPx: MIN_AGENTS_PANEL_WIDTH,
-      },
-    });
-  }
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: agentsVisible and render-bound attemptRailLayout are sampled only when rail column presence changes; the presence dependencies own retry replacement
-  useEffect(() => {
-    if (pendingAgentsVisibilityRetryContextRef.current?.decision === 'close' && agentsVisible) {
-      pendingAgentsVisibilityRetryContextRef.current = null;
-    }
-    const pendingContext = pendingAgentsVisibilityRetryContextRef.current;
-    const context: RailLayoutRetryContext = pendingContext ?? {
-      decision: 'sync-rail-columns',
-      targetWidthPx: agentsVisible ? agentsPreferredWidthPxRef.current : 0,
-    };
-    runRailLayoutRetry({
-      retryRef: railColumnSyncRetryRef,
-      attempt: () => attemptRailLayout(isCollapsedRef.current),
-      context,
-      onExhausted:
-        pendingContext == null ? () => reportRailPinExhausted('rail-column-sync') : undefined,
-      onComplete: () => {
-        if (pendingAgentsVisibilityRetryContextRef.current === context) {
-          pendingAgentsVisibilityRetryContextRef.current = null;
-        }
-      },
-    });
-    return () => cancelRailLayoutRetry(railColumnSyncRetryRef);
-  }, [terminalColumnPresent, agentsColumnPresent]);
-
-  const previousEditorColumnRef = useRef({ editorVisible, editorColumnHoldsPane });
-  // biome-ignore lint/correctness/useExhaustiveDependencies: render-bound attemptRailLayout is sampled when editor visibility or the editor column's contents flip; the flip owns retry replacement
-  useEffect(() => {
-    const previous = previousEditorColumnRef.current;
-    if (
-      previous.editorVisible === editorVisible &&
-      previous.editorColumnHoldsPane === editorColumnHoldsPane
-    ) {
-      return;
-    }
-    previousEditorColumnRef.current = { editorVisible, editorColumnHoldsPane };
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled) return;
-      runRailLayoutRetry({
-        retryRef: editorVisibilityRetryRef,
-        attempt: () => attemptRailLayout(isCollapsedRef.current),
-        context: {
-          decision: 'sync-rail-columns',
-          targetWidthPx: agentsVisible ? agentsPreferredWidthPxRef.current : 0,
-        },
-        onComplete: () => {
-          if (editorVisibleRef.current) setEditorCardPin(null);
-        },
-        onExhausted: () => reportRailPinExhausted('editor-visibility'),
-      });
-    });
-    return () => {
-      cancelled = true;
-      cancelRailLayoutRetry(editorVisibilityRetryRef);
-    };
-  }, [editorVisible, editorColumnHoldsPane]);
-
-  function bringBackRailColumn(targetWidthPx: number) {
-    runRailLayoutRetry({
-      retryRef: railColumnSyncRetryRef,
-      attempt: () => attemptRailLayout(isCollapsedRef.current),
-      context: { decision: 'sync-rail-columns', targetWidthPx },
-    });
-  }
-
   useImperativeHandle(ref, () => ({
     panesOnScreen: () => ({
-      editor: editorVisible,
+      editor: editorVisible && dockLayout.panes.has('editor'),
       agents: hasExtent(agentsContainer),
       terminal: hasExtent(terminalContainer),
     }),
-    bringBackPane: (pane) => {
-      switch (pane) {
-        case 'editor':
-          return;
-        case 'agents':
-          if (agentsColumnPresent) bringBackRailColumn(agentsPreferredWidthPxRef.current);
-          return;
-        case 'terminal':
-          if (terminalPlacement === 'right') {
-            if (terminalColumnPresent) {
-              terminalCollapsedByUserRef.current = false;
-              bringBackRailColumn(terminalWidthPxRef.current);
-            }
-          } else {
-            terminalDockRef.current?.bringBackBottom();
-          }
-          return;
-        default:
-          return assertNeverPaneId(pane);
-      }
-    },
   }));
 
   function docPanelToggleable(): boolean {
@@ -2173,7 +1209,7 @@ function EditorAreaInner({
     }
     docPanelCoverOpenerRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    assertRightRailLayout(true);
+    pinDocPanel(true);
     setDocPanelCover(true);
   }
 
@@ -2182,29 +1218,11 @@ function EditorAreaInner({
     revealEditorBeforeActing();
     if (docPanelCover || (!isCollapsedRef.current && docPanelIntentOpen)) {
       writeDocPanelIntent(false);
-      assertRightRailLayout(true);
+      pinDocPanel(true);
       if (docPanelCover) dismissDocPanelCover();
       return;
     }
     expandDocPanel(true);
-  }
-
-  const outerLayoutChangedRef = useRef(false);
-  const lastEditorColumnPxRef = useRef<number | null>(null);
-  function noteOuterLayout(layout: Record<string, number>) {
-    const { residualId } = accountRailLayout(Object.keys(layout));
-    const outerPx = resolveGroupPxWidth();
-    const editorColumnPx =
-      residualId == null || outerPx == null ? null : ((layout[residualId] ?? 0) / 100) * outerPx;
-    const previousPx = lastEditorColumnPxRef.current;
-    lastEditorColumnPxRef.current = editorColumnPx;
-    if (
-      editorColumnPx == null ||
-      previousPx == null ||
-      Math.abs(editorColumnPx - previousPx) > 0.5
-    ) {
-      outerLayoutChangedRef.current = true;
-    }
   }
 
   const attemptObservedDocWidth = useEffectEvent((): RailLayoutRetryOutcome => {
@@ -2257,52 +1275,34 @@ function EditorAreaInner({
     });
   });
 
+  const editorUnitWidthPx = dockLayout.panes.get('editor')?.width ?? null;
+  const followEditorUnit = useEffectEvent(() => {
+    attemptDocPanelPin(isCollapsedRef.current);
+  });
+  useLayoutEffect(() => {
+    if (editorUnitWidthPx !== null) followEditorUnit();
+  }, [editorUnitWidthPx]);
+
   useEffect(() => {
-    if (groupContainerEl == null || innerContainerEl == null) return;
+    if (innerContainerEl == null) return;
     if (isEmbedded) return;
-    const replanAndAdmit = () => {
-      assertRightRailLayoutRef.current(isCollapsedRef.current);
-      enforceRightRailAdmissionRef.current('resize', admissionVisibilityRef.current);
-    };
-    const outerObserver = new ResizeObserver(replanAndAdmit);
     const docPanel = innerContainerEl.querySelector<HTMLElement>(`#${DOC_PANEL_ID}`);
     let docSettlementFrame = 0;
-    const innerObserver = new ResizeObserver((entries) => {
-      if (entries.some((entry) => entry.target === docPanel)) {
-        if (docSettlementFrame === 0) {
-          docSettlementFrame = requestAnimationFrame(() => {
-            docSettlementFrame = 0;
-            settleObservedDocWidth();
-          });
-        }
-        if (entries.every((entry) => entry.target === docPanel)) return;
-      }
-      if (outerLayoutChangedRef.current) {
-        outerLayoutChangedRef.current = false;
-        if (railPinOutcomeRef.current.stage === 'pinned') return;
-      }
-      replanAndAdmit();
+    const observer = new ResizeObserver(() => {
+      if (docSettlementFrame !== 0) return;
+      docSettlementFrame = requestAnimationFrame(() => {
+        docSettlementFrame = 0;
+        settleObservedDocWidth();
+      });
     });
-    outerObserver.observe(groupContainerEl);
-    innerObserver.observe(innerContainerEl);
-    if (docPanel != null) innerObserver.observe(docPanel);
+    observer.observe(innerContainerEl);
+    if (docPanel != null) observer.observe(docPanel);
     return () => {
-      outerObserver.disconnect();
-      innerObserver.disconnect();
+      observer.disconnect();
       if (docSettlementFrame !== 0) cancelAnimationFrame(docSettlementFrame);
       cancelRailLayoutRetry(observedDocWidthRetryRef);
     };
-  }, [groupContainerEl, innerContainerEl, isEmbedded]);
-
-  useEffect(() => {
-    if (fileListSlotEl == null) return;
-    const observer = new ResizeObserver(() => {
-      if (admissionDeferredByFilesRef.current == null) return;
-      enforceRightRailAdmissionRef.current('resize', admissionVisibilityRef.current);
-    });
-    observer.observe(fileListSlotEl);
-    return () => observer.disconnect();
-  }, [fileListSlotEl]);
+  }, [innerContainerEl, isEmbedded]);
 
   const openRequestedDocPanelTab = useEffectEvent((tab: PanelTab) => {
     revealEditor();
@@ -2713,7 +1713,7 @@ function EditorAreaInner({
       return;
     }
     const collapsed = !docPanelIntentOpen || !docPanelCanDock || !docPanelDockReady;
-    if (isCollapsedRef.current !== collapsed) assertRightRailLayoutRef.current(collapsed);
+    if (isCollapsedRef.current !== collapsed) pinDocPanelRef.current(collapsed);
     if (docPanelCover && docPanelCanDock && docPanelDockReady) {
       const pendingDestination = pendingDocPanelDestinationRef.current;
       if (pendingDestination !== null) {
@@ -2836,19 +1836,29 @@ function EditorAreaInner({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [docPanelCover]);
 
+  const editorVisibleAtPinRef = useRef(editorVisible);
   useLayoutEffect(() => {
     const docSlotPresenceChanged = docSlotPresentRef.current !== docSlotPresent;
+    const editorShown = editorVisible && !editorVisibleAtPinRef.current;
     docSlotPresentRef.current = docSlotPresent;
     docSlotHeldForLoadRef.current = docSlotHeldForLoad;
-    if (!docSlotPresenceChanged) return;
+    editorVisibleAtPinRef.current = editorVisible;
+    if (!docSlotPresenceChanged && !editorShown) return;
+    const docCollapsed = isCollapsedRef.current;
+    let lastMiss: DocPanelPinMiss | null = null;
     runRailLayoutRetry({
       retryRef: presenceRepinRetryRef,
-      attempt: () => attemptRailLayout(isCollapsedRef.current),
-      context: {
-        decision: 'sync-doc-presence',
-        targetWidthPx: agentsVisible ? agentsPreferredWidthPxRef.current : 0,
+      attempt: () => {
+        lastMiss = null;
+        return attemptDocPanelPin(docCollapsed, (miss) => {
+          lastMiss = miss;
+        });
       },
-      onExhausted: () => reportRailPinExhausted('doc-slot-presence'),
+      context: {
+        decision: docSlotPresenceChanged ? 'sync-doc-presence' : 'show-editor',
+        targetWidthPx: docPanelWidthPxRef.current,
+      },
+      describeMiss: () => lastMiss,
     });
   });
   useEffect(() => () => cancelRailLayoutRetry(presenceRepinRetryRef), []);
@@ -3027,7 +2037,7 @@ function EditorAreaInner({
             adoptDraggedDocPanelWidth(size.inPixels);
             debouncedWriteDocPanelWidth(size.inPixels);
           }
-          reclaimHiddenRailColumn(DOC_PANEL_ID, docSlotPresent, size.inPixels);
+          reclaimHiddenDocPanel(docSlotPresent, size.inPixels);
         }}
         inert={!docSlotPresent || isCollapsed}
         className={cn('flex flex-col', SECONDARY_PANEL_SURFACE_CLASS)}
@@ -3039,152 +2049,7 @@ function EditorAreaInner({
 
   const chatAlone = !editorVisible && agentsShowing && !terminalShowing;
   const nothingOpen = !editorVisible && !agentsVisible && !terminalVisible;
-  const terminalHandleShown = terminalColumnPresent && editorVisible;
-  const agentsHandleShown = agentsColumnPresent && (editorColumnHoldsPane || terminalColumnPresent);
-
-  const rightTerminalMount = (
-    <div
-      ref={setRightTerminalContainer}
-      data-terminal-panel-mount=""
-      inert={!terminalColumnPresent || (terminalColumnCollapsed && !terminalShowingHold)}
-      className="flex min-h-0 flex-1 flex-col overflow-hidden"
-    />
-  );
-
-  const terminalColumn = (
-    <>
-      <ResizableHandle
-        data-terminal-panel-handle=""
-        aria-controls={TERMINAL_COLUMN_ID}
-        aria-label={t`Resize terminal`}
-        withHandle={terminalHandleShown}
-        className={cn(
-          paneCardDividerClass(cardVariant, 'vertical'),
-          !terminalHandleShown && 'pointer-events-none',
-        )}
-        style={terminalHandleShown ? undefined : { display: 'none' }}
-        onPointerDown={(event) => {
-          beginTerminalHandleDrag(event.pointerId);
-        }}
-      />
-      <ResizablePanel
-        id={TERMINAL_COLUMN_ID}
-        panelRef={terminalColumnPanelRef}
-        defaultSize={terminalColumnPresent ? `${initialTerminalWidthPx}px` : 0}
-        minSize={terminalColumnPresent ? `${RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX}px` : '0px'}
-        maxSize={terminalColumnPresent ? undefined : '0px'}
-        collapsible
-        collapsedSize={0}
-        onResize={(size) => {
-          if (
-            size.inPixels === 0 &&
-            document.activeElement?.hasAttribute('data-terminal-panel-handle')
-          ) {
-            terminalCollapsedByUserRef.current = true;
-          }
-          if (
-            size.inPixels > 0 &&
-            isDraggingTerminalHandleRef.current &&
-            editorVisibleRef.current
-          ) {
-            terminalWidthPxRef.current = size.inPixels;
-            debouncedWriteTerminalWidth(size.inPixels);
-          }
-          setTerminalColumnCollapsed(size.inPixels === 0);
-          if (size.inPixels > 0) terminalCollapsedByUserRef.current = false;
-          if (size.inPixels === 0 && isDraggingTerminalHandleRef.current) {
-            setTerminalShowingHold(true);
-          } else if (size.inPixels > 0 && !isDraggingTerminalHandleRef.current) {
-            setTerminalShowingHold(false);
-          }
-          reclaimHiddenRailColumn(TERMINAL_COLUMN_ID, terminalColumnPresent, size.inPixels);
-        }}
-        className="flex flex-col"
-        style={{ overflow: 'visible' }}
-      >
-        {terminalAvailable ? (
-          <PaneCard
-            pane="terminal"
-            variant={cardVariant}
-            data-placement="right"
-            className={cn(!rightTerminalCardShowing && 'shadow-none')}
-            style={{
-              marginInlineStart: terminalCardInsets.start,
-              marginInlineEnd: terminalCardInsets.end,
-            }}
-          >
-            {rightTerminalMount}
-          </PaneCard>
-        ) : (
-          rightTerminalMount
-        )}
-      </ResizablePanel>
-    </>
-  );
-
-  const agentsColumn = (
-    <>
-      <ResizableHandle
-        withHandle={agentsHandleShown}
-        aria-controls={terminalColumnPresent ? TERMINAL_COLUMN_ID : AGENTS_COLUMN_ID}
-        aria-label={terminalColumnPresent ? t`Terminal` : t`Agents`}
-        data-agents-panel-resize-handle=""
-        className={cn(
-          paneCardDividerClass(cardVariant, 'vertical'),
-          !agentsHandleShown && 'pointer-events-none',
-        )}
-        style={agentsHandleShown ? undefined : { display: 'none' }}
-        onPointerDown={(event) => {
-          beginAgentsHandleDrag(event.pointerId);
-        }}
-      />
-      <ResizablePanel
-        id={AGENTS_COLUMN_ID}
-        panelRef={agentsColumnPanelRef}
-        defaultSize={agentsColumnPresent ? `${initialAgentsWidthPx}px` : 0}
-        minSize="0px"
-        maxSize={agentsColumnPresent ? (editorColumnHoldsPane ? '95%' : '100%') : '0px'}
-        collapsible
-        collapsedSize={0}
-        onResize={(size) => {
-          setAgentsColumnCollapsed(size.inPixels === 0);
-          if (size.inPixels === 0 && isDraggingAgentsHandleRef.current) {
-            setAgentsShowingHold(true);
-          } else if (size.inPixels > 0 && !isDraggingAgentsHandleRef.current) {
-            setAgentsShowingHold(false);
-          }
-          reclaimHiddenRailColumn(AGENTS_COLUMN_ID, agentsColumnPresent, size.inPixels);
-        }}
-        className="flex flex-col"
-        style={{ overflow: 'visible' }}
-      >
-        <PaneCard
-          pane="agents"
-          variant={cardVariant}
-          className={cn(
-            !agentsVisible && 'invisible',
-            !(agentsColumnPresent && !agentsColumnCollapsed) && 'shadow-none',
-          )}
-          inert={!agentsVisible}
-          style={{ marginInlineStart: agentsCardInsetStartPx }}
-        >
-          <section
-            ref={setAgentsContainer}
-            data-agents-panel-mount=""
-            data-chat-alone={chatAlone ? '' : undefined}
-            aria-label={t`Agent panel`}
-            inert={!agentsColumnPresent || (agentsColumnCollapsed && !agentsShowingHold)}
-            className="flex min-h-0 flex-1 flex-col overflow-hidden"
-          />
-        </PaneCard>
-      </ResizablePanel>
-    </>
-  );
-
-  const railColumnMinSize = resizableRailColumnPresent ? '5%' : '30%';
-  const editorColumnMinSize = editorColumnHoldsPane ? railColumnMinSize : '0%';
   const workspaceAbsorbsResidual = docSlotPresent && !initialRightCollapsed;
-  const outerRowDragging = isDraggingTerminalHandle || isDraggingAgentsHandle;
   const workspaceHeaderTarget = (
     <div
       ref={setWorkspaceHeaderContainer}
@@ -3193,190 +2058,162 @@ function EditorAreaInner({
     />
   );
 
+  const editorUnit = (
+    <PaneCard
+      ref={editorCardRef}
+      pane="editor"
+      variant={cardVariant}
+      className="flex-row"
+      inert={!editorVisible}
+      data-editor-hidden={editorVisible ? undefined : ''}
+    >
+      {fileListHost != null ? (
+        <div
+          data-editor-file-list-slot=""
+          inert={docPanelCover}
+          className="relative flex shrink-0"
+          ref={fileListSlotRef}
+        />
+      ) : null}
+      <SidebarInset inert={docPanelCover || filesCover} className="min-w-0 overflow-hidden">
+        <div
+          data-editor-inner-panels=""
+          className="relative flex min-h-0 flex-1"
+          ref={(el) => {
+            setInnerContainerEl(el);
+            innerContainerElRef.current = el;
+          }}
+        >
+          <ResizablePanelGroup
+            orientation="horizontal"
+            groupRef={innerGroupRef}
+            data-editor-row="inner"
+            onLayoutChange={adoptLibraryDrag}
+            data-dragging={isDraggingDocHandle || undefined}
+          >
+            <ResizablePanel
+              minSize={docSlotPresent && !isCollapsed ? `${DOC_USABLE_MIN_WIDTH_PX}px` : '0%'}
+              {...(workspaceAbsorbsResidual ? {} : { defaultSize: '100%' })}
+            >
+              <main
+                ref={setWorkspaceColumnEl}
+                data-editor-workspace-column=""
+                className="flex h-full min-w-0 flex-col"
+              >
+                {noteWindow ? null : workspaceHeaderTarget}
+                {documentArea}
+              </main>
+            </ResizablePanel>
+            {docSlot}
+          </ResizablePanelGroup>
+        </div>
+      </SidebarInset>
+      {filesCover && fileListHost != null ? (
+        <section
+          aria-label={t`Files`}
+          data-files-cover=""
+          className={cn(
+            'absolute inset-0 z-20 flex min-h-0 min-w-0 flex-col',
+            SECONDARY_PANEL_SURFACE_CLASS,
+          )}
+        >
+          <div ref={setFilesCoverTarget} className="relative min-h-0 flex-1" />
+        </section>
+      ) : null}
+      {docPanelCover && docSlotPresent ? (
+        <section
+          id="doc-panel-cover"
+          aria-label={t`Document panel`}
+          data-doc-panel-cover=""
+          className={cn(
+            'absolute inset-0 z-20 flex min-h-0 min-w-0 flex-col',
+            SECONDARY_PANEL_SURFACE_CLASS,
+          )}
+        >
+          <div className="flex h-11 shrink-0 items-center gap-1 px-2">
+            <Button
+              ref={docPanelBackRef}
+              data-doc-panel-back=""
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t`Back to editor`}
+              title={t`Back to editor`}
+              onClick={dismissDocPanelCover}
+              onKeyDown={(event) => {
+                if (event.key !== 'Escape' || isOverlayLayerOpen()) return;
+                event.preventDefault();
+                dismissDocPanelCover();
+              }}
+            >
+              <ChevronLeft aria-hidden="true" />
+            </Button>
+            <h2 className="min-w-0 flex-1 truncate font-mono text-xs font-normal uppercase tracking-wide text-muted-foreground">
+              {activeDocName ?? t`Activity`}
+            </h2>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  data-doc-panel-hide=""
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t`Hide panel`}
+                  onClick={togglePanel}
+                >
+                  <PanelRightClose aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={8}>{t`Hide panel`}</TooltipContent>
+            </Tooltip>
+          </div>
+          <div ref={docPanelCoverRef} className="min-h-0 flex-1" />
+        </section>
+      ) : null}
+    </PaneCard>
+  );
+
+  const agentsUnit = noteWindow ? null : (
+    <PaneCard pane="agents" variant={cardVariant}>
+      <section
+        ref={setAgentsContainer}
+        data-agents-panel-mount=""
+        data-chat-alone={chatAlone ? '' : undefined}
+        aria-label={t`Agent panel`}
+        inert={!agentsUnitShown}
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      />
+    </PaneCard>
+  );
+
+  const terminalUnit = terminalAvailable ? (
+    <PaneCard
+      pane="terminal"
+      variant={cardVariant}
+      data-placement={terminalPlacement}
+      style={{ backgroundColor: xtermBackground }}
+    >
+      <div
+        ref={setTerminalContainer}
+        data-terminal-panel-mount=""
+        inert={!terminalUnitShown}
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      />
+    </PaneCard>
+  ) : null;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {noteWindow ? workspaceHeaderTarget : null}
-      <div
-        data-editor-area-panels=""
-        className="relative flex min-h-0 flex-1"
-        ref={(el) => {
-          setGroupContainerEl(el);
-          groupContainerElRef.current = el;
-        }}
-      >
-        <ResizablePanelGroup
-          orientation="horizontal"
-          groupRef={groupRef}
-          data-editor-row="outer"
-          style={{ overflow: 'visible' }}
-          onLayoutChange={(layout) => {
-            noteOuterLayout(layout);
-            if (railPlanWriteInProgressRef.current) return;
-            adoptLibraryDrag('outer');
-            if (isDraggingTerminalHandleRef.current || isDraggingAgentsHandleRef.current) {
-              followOuterLayout(layout);
-            }
-          }}
-          onLayoutChanged={(layout, meta) => {
-            if (meta.isUserInteraction) followOuterLayout(layout);
-            settleAgentsKeyboardLayout(layout, meta.isUserInteraction);
-          }}
-          data-dragging={outerRowDragging || undefined}
-        >
-          <ResizablePanel
-            minSize={editorColumnMinSize}
-            {...(resizableRailColumnPresent ? {} : { defaultSize: '100%' })}
-            className="flex flex-col"
-            style={{
-              paddingInlineEnd: editorColumnChromePx,
-              overflow: editorVisible && editorCardPin == null ? 'visible' : 'hidden',
-            }}
-          >
-            <TerminalDock
-              ref={terminalDockRef}
-              editorVisible={editorVisible}
-              onBottomCollapsedChange={setBottomTerminalCollapsed}
-              placement={terminalPlacement}
-              visible={terminalVisible}
-              available={terminalAvailable}
-              variant={cardVariant}
-              onVisibleChange={onTerminalVisibleChange ?? (() => {})}
-              onBottomContainer={setBottomTerminalContainer}
-            >
-              <PaneCard
-                ref={editorCardRef}
-                pane="editor"
-                variant={cardVariant}
-                className={editorVisible ? 'flex-row' : 'invisible flex-row'}
-                inert={!editorVisible}
-                data-editor-hidden={editorVisible ? undefined : ''}
-                style={
-                  editorCardPin == null
-                    ? undefined
-                    : { width: editorCardPin.width, height: editorCardPin.height, flex: 'none' }
-                }
-              >
-                {fileListHost != null ? (
-                  <div
-                    data-editor-file-list-slot=""
-                    inert={docPanelCover}
-                    className="relative flex shrink-0"
-                    ref={fileListSlotRef}
-                  />
-                ) : null}
-                <SidebarInset
-                  inert={docPanelCover || filesCover}
-                  className="min-w-0 overflow-hidden"
-                >
-                  <div
-                    data-editor-inner-panels=""
-                    className="relative flex min-h-0 flex-1"
-                    ref={(el) => {
-                      setInnerContainerEl(el);
-                      innerContainerElRef.current = el;
-                    }}
-                  >
-                    <ResizablePanelGroup
-                      orientation="horizontal"
-                      groupRef={innerGroupRef}
-                      data-editor-row="inner"
-                      onLayoutChange={() => {
-                        if (railPlanWriteInProgressRef.current) return;
-                        adoptLibraryDrag('inner');
-                      }}
-                      onLayoutChanged={(layout, meta) => {
-                        settleAgentsKeyboardLayout(layout, meta.isUserInteraction);
-                      }}
-                      data-dragging={isDraggingDocHandle || undefined}
-                    >
-                      <ResizablePanel
-                        minSize={
-                          docSlotPresent && !isCollapsed ? `${DOC_USABLE_MIN_WIDTH_PX}px` : '0%'
-                        }
-                        {...(workspaceAbsorbsResidual ? {} : { defaultSize: '100%' })}
-                      >
-                        <main
-                          ref={setWorkspaceColumnEl}
-                          data-editor-workspace-column=""
-                          className="flex h-full min-w-0 flex-col"
-                        >
-                          {noteWindow ? null : workspaceHeaderTarget}
-                          {documentArea}
-                        </main>
-                      </ResizablePanel>
-                      {docSlot}
-                    </ResizablePanelGroup>
-                  </div>
-                </SidebarInset>
-                {filesCover && fileListHost != null ? (
-                  <section
-                    aria-label={t`Files`}
-                    data-files-cover=""
-                    className={cn(
-                      'absolute inset-0 z-20 flex min-h-0 min-w-0 flex-col',
-                      SECONDARY_PANEL_SURFACE_CLASS,
-                    )}
-                  >
-                    <div ref={setFilesCoverTarget} className="relative min-h-0 flex-1" />
-                  </section>
-                ) : null}
-                {docPanelCover && docSlotPresent ? (
-                  <section
-                    id="doc-panel-cover"
-                    aria-label={t`Document panel`}
-                    data-doc-panel-cover=""
-                    className={cn(
-                      'absolute inset-0 z-20 flex min-h-0 min-w-0 flex-col',
-                      SECONDARY_PANEL_SURFACE_CLASS,
-                    )}
-                  >
-                    <div className="flex h-11 shrink-0 items-center gap-1 px-2">
-                      <Button
-                        ref={docPanelBackRef}
-                        data-doc-panel-back=""
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={t`Back to editor`}
-                        title={t`Back to editor`}
-                        onClick={dismissDocPanelCover}
-                        onKeyDown={(event) => {
-                          if (event.key !== 'Escape' || isOverlayLayerOpen()) return;
-                          event.preventDefault();
-                          dismissDocPanelCover();
-                        }}
-                      >
-                        <ChevronLeft aria-hidden="true" />
-                      </Button>
-                      <h2 className="min-w-0 flex-1 truncate font-mono text-xs font-normal uppercase tracking-wide text-muted-foreground">
-                        {activeDocName ?? t`Activity`}
-                      </h2>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            data-doc-panel-hide=""
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={t`Hide panel`}
-                            onClick={togglePanel}
-                          >
-                            <PanelRightClose aria-hidden="true" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent
-                          side="bottom"
-                          sideOffset={8}
-                        >{t`Hide panel`}</TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <div ref={docPanelCoverRef} className="min-h-0 flex-1" />
-                  </section>
-                ) : null}
-              </PaneCard>
-            </TerminalDock>
-          </ResizablePanel>
-          {terminalColumn}
-          {agentsColumn}
-        </ResizablePanelGroup>
+      <div data-editor-area-panels="" className="relative flex min-h-0 flex-1">
+        <DockWorkspace
+          tree={dockTree}
+          visible={{ editor: editorVisible, agents: agentsUnitShown, terminal: terminalUnitShown }}
+          units={{ editor: editorUnit, agents: agentsUnit, terminal: terminalUnit }}
+          gap={cardLook ? PANE_CARD_GAP_PX : 0}
+          minExtent={dockPaneMinExtent}
+          paneLabel={(pane) => t(PANE_LABEL[pane])}
+          onTreeChange={onDockTreeChange}
+          onLayoutChange={setDockLayout}
+        />
         {nothingOpen ? <NothingOpen /> : null}
       </div>
       {createPortal(docSlotContent, docPanelHost)}

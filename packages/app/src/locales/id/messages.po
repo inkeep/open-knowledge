@@ -1350,9 +1350,6 @@ msgstr "Mode agen"
 msgid "Agent panel"
 msgstr "Panel agen"
 
-msgid "Agent panel closed to keep Terminal readable."
-msgstr "Panel agen ditutup agar Terminal tetap mudah dibaca."
-
 msgid "Agent settings"
 msgstr "Pengaturan agen"
 
@@ -8754,14 +8751,14 @@ msgstr "Setel ulang filter tampilan"
 msgid "Resize {handleKey}"
 msgstr "Ubah ukuran {handleKey}"
 
+msgid "Resize {pane}"
+msgstr "Ubah ukuran {pane}"
+
 msgid "Resize document panel"
 msgstr "Ubah ukuran panel dokumen"
 
 msgid "Resize skills panel"
 msgstr "Ubah ukuran panel Keterampilan"
-
-msgid "Resize terminal"
-msgstr "Ubah ukuran terminal"
 
 msgid "Resolve conflict in your terminal"
 msgstr "Selesaikan konfliknya di terminal Anda"
@@ -10285,9 +10282,6 @@ msgstr "Terminal {0}"
 
 msgid "Terminal access isn't enabled for this project."
 msgstr "Akses terminal belum diaktifkan untuk proyek ini."
-
-msgid "Terminal closed to make room for the agent panel."
-msgstr "Terminal ditutup untuk memberi ruang bagi panel agen."
 
 msgid "Terminal disabled"
 msgstr "Terminal dinonaktifkan"

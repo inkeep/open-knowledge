@@ -1354,9 +1354,6 @@ msgstr "智能体模式"
 msgid "Agent panel"
 msgstr "智能体面板"
 
-msgid "Agent panel closed to keep Terminal readable."
-msgstr "为保持 Terminal 清晰可读，已关闭智能体面板。"
-
 msgid "Agent settings"
 msgstr "智能体设置"
 
@@ -8758,14 +8755,14 @@ msgstr "重置视图筛选条件"
 msgid "Resize {handleKey}"
 msgstr "调整 {handleKey} 的大小"
 
+msgid "Resize {pane}"
+msgstr "调整 {pane} 的大小"
+
 msgid "Resize document panel"
 msgstr "调整文档面板大小"
 
 msgid "Resize skills panel"
 msgstr "调整「技能」面板大小"
-
-msgid "Resize terminal"
-msgstr "调整终端大小"
 
 msgid "Resolve conflict in your terminal"
 msgstr "在你的终端中解决冲突"
@@ -10289,9 +10286,6 @@ msgstr "终端 {0}"
 
 msgid "Terminal access isn't enabled for this project."
 msgstr "这个项目没有启用终端访问。"
-
-msgid "Terminal closed to make room for the agent panel."
-msgstr "已关闭 Terminal，为智能体面板腾出空间。"
 
 msgid "Terminal disabled"
 msgstr "终端已禁用"

@@ -12,9 +12,9 @@ import {
 const ARMED_AT = 1_000;
 const REVEAL_SPAN_MS = 5;
 const SLOW_TRIGGER_MS = 120;
-const PANEL_ID = 'terminal-dock-panel';
-const COLLAPSED = { width: 1280, height: 0 };
-const EXPANDED = { width: 1280, height: 300 };
+const UNIT_ID = 'dock-unit-terminal';
+const ZERO_SIZE = { width: 0, height: 0 };
+const SHOWN = { width: 1280, height: 300 };
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => {
@@ -27,31 +27,34 @@ const armed = (over: Partial<DockRevealSample> = {}): DockRevealSample => ({
   ...over,
 });
 
-interface FakePanel {
+interface FakeUnit {
   box: { width: number; height: number };
   visibility: string;
   passesCheckVisibility: boolean;
 }
 
-const fakePanel = (over: Partial<FakePanel> = {}): FakePanel => ({
-  box: { ...COLLAPSED },
+const fakeUnit = (over: Partial<FakeUnit> = {}): FakeUnit => ({
+  box: { ...SHOWN },
   visibility: 'visible',
   passesCheckVisibility: true,
   ...over,
 });
 
-function mountFakeRenderer(panel: FakePanel | null, clock: { now: number }) {
+const neverShownUnit = (): FakeUnit =>
+  fakeUnit({ box: { ...ZERO_SIZE }, passesCheckVisibility: false });
+
+function mountFakeRenderer(unit: FakeUnit | null, clock: { now: number }) {
   const element =
-    panel === null
+    unit === null
       ? null
       : {
-          checkVisibility: () => panel.passesCheckVisibility,
-          getBoundingClientRect: () => panel.box,
+          checkVisibility: () => unit.passesCheckVisibility,
+          getBoundingClientRect: () => unit.box,
         };
   vi.stubGlobal('document', {
-    getElementById: (id: string) => (id === PANEL_ID ? element : null),
+    getElementById: (id: string) => (id === UNIT_ID ? element : null),
   });
-  vi.stubGlobal('getComputedStyle', () => ({ visibility: panel?.visibility ?? 'hidden' }));
+  vi.stubGlobal('getComputedStyle', () => ({ visibility: unit?.visibility ?? 'hidden' }));
   vi.stubGlobal('performance', { now: () => clock.now });
 }
 
@@ -137,7 +140,7 @@ describe('dock reveal measurement', () => {
       await expect(
         measureDockRevealMs(
           stubSteps({
-            watchForReveal: () => Promise.reject(new Error('panel never mounted')),
+            watchForReveal: () => Promise.reject(new Error('dock unit never mounted')),
             triggerReveal: () =>
               new Promise<void>((_resolve, reject) => {
                 setTimeout(() => reject(new Error('View menu item missing')), 0);
@@ -146,7 +149,7 @@ describe('dock reveal measurement', () => {
         ),
       ).rejects.toThrow(/View menu item missing/u);
 
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('panel never mounted'));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('dock unit never mounted'));
     } finally {
       warn.mockRestore();
     }
@@ -229,63 +232,68 @@ describe('dock reveal measurement', () => {
   });
 });
 
-describe('dock reveal probe reads the panel the way Playwright does', () => {
+describe('dock reveal probe reads the unit the way Playwright does', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  test('a collapsed zero-height panel is not revealed, though it is in the DOM', () => {
-    mountFakeRenderer(fakePanel({ box: { ...COLLAPSED } }), { now: ARMED_AT });
+  test('a unit that was never shown is not revealed, though it is in the DOM', () => {
+    mountFakeRenderer(neverShownUnit(), { now: ARMED_AT });
 
-    expect(dockRevealProbe(['arm', PANEL_ID])).toEqual({ at: ARMED_AT, revealed: false });
+    expect(dockRevealProbe(['arm', UNIT_ID])).toEqual({ at: ARMED_AT, revealed: false });
   });
 
-  test('an expanded panel at arm time is reported as already revealed', () => {
-    mountFakeRenderer(fakePanel({ box: { ...EXPANDED } }), { now: ARMED_AT });
+  test('a unit shown at arm time is reported as already revealed', () => {
+    mountFakeRenderer(fakeUnit(), { now: ARMED_AT });
 
-    expect(dockRevealProbe(['arm', PANEL_ID])).toEqual({ at: ARMED_AT, revealed: true });
+    expect(dockRevealProbe(['arm', UNIT_ID])).toEqual({ at: ARMED_AT, revealed: true });
   });
 
-  test('a poll against a still-collapsed panel yields no stamp', () => {
-    mountFakeRenderer(fakePanel({ box: { ...COLLAPSED } }), { now: ARMED_AT });
+  test('a poll against a unit that is still not shown yields no stamp', () => {
+    mountFakeRenderer(neverShownUnit(), { now: ARMED_AT });
 
-    expect(dockRevealProbe(['poll', PANEL_ID])).toBe(false);
+    expect(dockRevealProbe(['poll', UNIT_ID])).toBe(false);
   });
 
-  test('a transition-only reveal is stamped, with no DOM mutation anywhere in it', () => {
+  test('a poll stamps the first frame the unit shows, without watching for a DOM mutation', () => {
     const clock = { now: ARMED_AT };
-    const panel = fakePanel({ box: { ...COLLAPSED } });
-    mountFakeRenderer(panel, clock);
+    const unit = neverShownUnit();
+    mountFakeRenderer(unit, clock);
 
-    expect(dockRevealProbe(['poll', PANEL_ID])).toBe(false);
+    expect(dockRevealProbe(['poll', UNIT_ID])).toBe(false);
 
     clock.now = ARMED_AT + REVEAL_SPAN_MS;
-    panel.box = { width: 1280, height: 1 };
+    unit.passesCheckVisibility = true;
+    unit.box = { ...SHOWN };
 
-    expect(dockRevealProbe(['poll', PANEL_ID])).toEqual({
+    expect(dockRevealProbe(['poll', UNIT_ID])).toEqual({
       at: ARMED_AT + REVEAL_SPAN_MS,
       revealed: true,
     });
   });
 
-  test('a sized panel hidden by visibility is not revealed', () => {
-    mountFakeRenderer(fakePanel({ box: { ...EXPANDED }, visibility: 'hidden' }), { now: ARMED_AT });
+  test('a unit turned off keeps its last size but is not revealed while it is invisible', () => {
+    mountFakeRenderer(fakeUnit({ visibility: 'hidden' }), { now: ARMED_AT });
 
-    expect(dockRevealProbe(['poll', PANEL_ID])).toBe(false);
+    expect(dockRevealProbe(['poll', UNIT_ID])).toBe(false);
   });
 
-  test('a sized panel that fails checkVisibility is not revealed', () => {
-    mountFakeRenderer(fakePanel({ box: { ...EXPANDED }, passesCheckVisibility: false }), {
-      now: ARMED_AT,
-    });
+  test('a sized unit that fails checkVisibility is not revealed', () => {
+    mountFakeRenderer(fakeUnit({ passesCheckVisibility: false }), { now: ARMED_AT });
 
-    expect(dockRevealProbe(['poll', PANEL_ID])).toBe(false);
+    expect(dockRevealProbe(['poll', UNIT_ID])).toBe(false);
   });
 
-  test('an absent panel is not revealed', () => {
+  test('a zero-size unit that passes checkVisibility is not revealed', () => {
+    mountFakeRenderer(fakeUnit({ box: { ...ZERO_SIZE } }), { now: ARMED_AT });
+
+    expect(dockRevealProbe(['poll', UNIT_ID])).toBe(false);
+  });
+
+  test('an absent unit is not revealed', () => {
     mountFakeRenderer(null, { now: ARMED_AT });
 
-    expect(dockRevealProbe(['poll', PANEL_ID])).toBe(false);
+    expect(dockRevealProbe(['poll', UNIT_ID])).toBe(false);
   });
 });
 
@@ -299,7 +307,7 @@ describe('dock reveal watch budget', () => {
     ['a zero ceiling', 0],
     ['a NaN ceiling', Number.NaN],
   ])('rejects %s by naming the contract, not an already-elapsed deadline', async (_label, ms) => {
-    await expect(watchForDockReveal(pageWithNoWait, PANEL_ID, ms)).rejects.toThrow(
+    await expect(watchForDockReveal(pageWithNoWait, UNIT_ID, ms)).rejects.toThrow(
       /positive ceiling/u,
     );
   });
@@ -308,13 +316,13 @@ describe('dock reveal watch budget', () => {
     expect(DOCK_REVEAL_WATCH_CEILING_MS).toBeGreaterThan(DOCK_REVEAL_BUDGET_MS);
   });
 
-  test('names the ceiling and the panel when the watch ends with no stamp', async () => {
+  test('names the ceiling and the unit when the watch ends with no stamp', async () => {
     const pageThatNeverReveals = {
       waitForFunction: () => Promise.reject(new Error('Timeout 2000ms exceeded')),
     } as unknown as Parameters<typeof watchForDockReveal>[0];
 
-    await expect(watchForDockReveal(pageThatNeverReveals, PANEL_ID, 2000)).rejects.toThrow(
-      /terminal-dock-panel.*2000 ms ceiling/su,
+    await expect(watchForDockReveal(pageThatNeverReveals, UNIT_ID, 2000)).rejects.toThrow(
+      /dock-unit-terminal.*2000 ms ceiling/su,
     );
   });
 
@@ -325,7 +333,7 @@ describe('dock reveal watch budget', () => {
         Promise.resolve({ jsonValue: () => Promise.reject(new Error(destroyed)) }),
     } as unknown as Parameters<typeof watchForDockReveal>[0];
 
-    const failure = await watchForDockReveal(pageLosingItsContext, PANEL_ID, 2000).then(
+    const failure = await watchForDockReveal(pageLosingItsContext, UNIT_ID, 2000).then(
       () => new Error('the watch resolved where it had to reject'),
       (error: unknown) => error,
     );
@@ -339,8 +347,8 @@ describe('dock reveal watch budget', () => {
       waitForFunction: () => Promise.resolve({ jsonValue: () => Promise.resolve(false) }),
     } as unknown as Parameters<typeof watchForDockReveal>[0];
 
-    await expect(watchForDockReveal(pageResolvingFalse, PANEL_ID, 2000)).rejects.toThrow(
-      /resolved on a falsy sample for #terminal-dock-panel/u,
+    await expect(watchForDockReveal(pageResolvingFalse, UNIT_ID, 2000)).rejects.toThrow(
+      /resolved on a falsy sample for #dock-unit-terminal/u,
     );
   });
 });

@@ -1,6 +1,6 @@
 import { useLingui } from '@lingui/react/macro';
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { PANE_ICON } from '@/components/pane-icons';
+import { PANE_ICON, PANE_LABEL } from '@/components/pane-icons';
 import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import { Separator } from '@/components/ui/separator';
@@ -66,12 +66,7 @@ export function useHeaderPaneButtonSet(): readonly PaneId[] {
 
 function HeaderPaneButton({ pane, pressed }: HeaderPaneButtonState) {
   const { t } = useLingui();
-  const names: Record<PaneId, string> = {
-    editor: t`Editor`,
-    agents: t`Agents`,
-    terminal: t`Terminal`,
-  };
-  const name = names[pane];
+  const name = t(PANE_LABEL[pane]);
   const Icon = PANE_ICON[pane];
   const shortcutId = PANE_SHORTCUT[pane];
 

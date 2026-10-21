@@ -92,14 +92,14 @@ function retainedContextDepth(path: string, docNames: string[]) {
   );
   expect(refs).toHaveLength(1);
 
-  const terminalHandles: number[] = [];
+  const docPanelHandles: number[] = [];
   for (let index = 0; index < nodeCount; index++) {
-    if (nodeType(index) === 'native' && nodeName(index)?.includes('data-terminal-panel-handle')) {
-      terminalHandles.push(index);
+    if (nodeType(index) === 'native' && nodeName(index)?.includes('data-doc-panel-handle')) {
+      docPanelHandles.push(index);
     }
   }
-  expect(terminalHandles).toHaveLength(1);
-  const terminalHandleCallbacks = terminalHandles.flatMap((handle) =>
+  expect(docPanelHandles).toHaveLength(1);
+  const docPanelHandleCallbacks = docPanelHandles.flatMap((handle) =>
     outgoing(handle)
       .filter((edge) => edge.type === 'property' && edge.name?.startsWith('__reactFiber$'))
       .flatMap((edge) =>
@@ -117,7 +117,7 @@ function retainedContextDepth(path: string, docNames: string[]) {
           ),
       ),
   );
-  expect(terminalHandleCallbacks).toHaveLength(1);
+  expect(docPanelHandleCallbacks).toHaveLength(1);
 
   const editorAreaPanels: number[] = [];
   for (let index = 0; index < nodeCount; index++) {
@@ -268,8 +268,8 @@ function retainedContextDepth(path: string, docNames: string[]) {
   );
   return {
     files: depthFrom(refs),
-    terminalHandle: depthFrom(
-      terminalHandleCallbacks,
+    docPanelHandle: depthFrom(
+      docPanelHandleCallbacks,
       process.env.QA101_CONTEXT_CHAIN_TRACE === '1',
     ),
     editorAreaDestination: depthFrom(
@@ -547,7 +547,7 @@ test('responsive cycles release prior editor callback contexts', async ({
     expect.soft(after.pageHeadings.maxDepth - before.pageHeadings.maxDepth).toBeLessThanOrEqual(8);
     expect.soft(after.files.maxDepth - before.files.maxDepth).toBeLessThanOrEqual(8);
     expect
-      .soft(after.terminalHandle.maxDepth - before.terminalHandle.maxDepth)
+      .soft(after.docPanelHandle.maxDepth - before.docPanelHandle.maxDepth)
       .toBeLessThanOrEqual(8);
     expect
       .soft(after.editorAreaDestination.maxDepth - before.editorAreaDestination.maxDepth)

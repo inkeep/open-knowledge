@@ -36,7 +36,17 @@ import { usePreferredSessionSelection } from '@/lib/acp/use-preferred-session-se
 import type { AuthPromptStep } from '@/lib/auth-prompt-store';
 import { loadBoolPref, saveBoolPref } from '@/lib/bool-pref';
 import { useConfigContext } from '@/lib/config-provider';
+import {
+  type DockArrangement,
+  dockArrangementStorageKey,
+  dockTerminalPlacement,
+  legacyDockArrangement,
+  readDockArrangement,
+  withDockTerminalPlacement,
+  writeDockArrangement,
+} from '@/lib/dock-arrangement-store';
 import { readWebDockSessionOrder } from '@/lib/dock-session-persistence';
+import type { DockNode } from '@/lib/dock-tree';
 import { focusAwayFromHiddenEditor } from '@/lib/editor-hidden-focus';
 import { matchesKeyboardShortcut, matchesRendererShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
@@ -57,8 +67,6 @@ import {
 import { RESTORE_SETTLE_TIMEOUT_MS } from '@/lib/restore-settle-timeout';
 import { revealEditorBeforeActing } from '@/lib/reveal-editor';
 import { useSingleFileMode } from '@/lib/single-file-mode';
-import { readTerminalPlacement, writeTerminalPlacement } from '@/lib/terminal-placement-store';
-import { readTerminalRightWidth, writeTerminalRightWidth } from '@/lib/terminal-right-width-store';
 import { recordTerminalOpened } from '@/lib/terminal-telemetry';
 import { useWorkspace } from '@/lib/use-workspace';
 import { setViewMenuState } from '@/lib/view-menu-state-store';
@@ -476,6 +484,19 @@ function narrowWorkspaceSnapshot(): boolean {
   return window.matchMedia(NARROW_WORKSPACE_QUERY).matches;
 }
 
+interface ProjectDock {
+  readonly key: string;
+  readonly arrangement: DockArrangement;
+  readonly edited: boolean;
+}
+
+function loadDockArrangement(key: string): DockArrangement {
+  return (
+    readDockArrangement(key) ??
+    legacyDockArrangement({ widthPx: window.innerWidth, heightPx: window.innerHeight })
+  );
+}
+
 function makeRestoreVisibilityGate(mountLevel: boolean): RestoreVisibilityGate {
   return { pendingWithhold: false, levelEstablished: false, lastLevel: mountLevel };
 }
@@ -587,16 +608,51 @@ export function EditorPane() {
   }, [exclusive, readyNarrowSessionKey, narrowSessionKey, narrowSelection]);
   const [terminalVisible, setTerminalVisible] = useState<boolean>(RESTORE_UNESTABLISHED_LEVEL);
   const [terminalRestoreRevealNonce, setTerminalRestoreRevealNonce] = useState(0);
-  const [terminalPlacement, setTerminalPlacement] = useState<TerminalPlacement>(() =>
-    readTerminalPlacement(),
+  const dockArrangementKey = dockArrangementStorageKey(
+    desktopBridge === null ? null : (workspace?.contentDir ?? null),
   );
-  const [terminalRightWidth, setTerminalRightWidth] = useState(() => readTerminalRightWidth());
+  const [dock, setDock] = useState<ProjectDock>(() => ({
+    key: dockArrangementKey,
+    arrangement: loadDockArrangement(dockArrangementKey),
+    edited: false,
+  }));
+  if (dock.key !== dockArrangementKey) {
+    setDock({
+      key: dockArrangementKey,
+      arrangement: loadDockArrangement(dockArrangementKey),
+      edited: false,
+    });
+  }
   useEffect(() => {
-    writeTerminalPlacement(terminalPlacement);
-  }, [terminalPlacement]);
-  useEffect(() => {
-    writeTerminalRightWidth(terminalRightWidth);
-  }, [terminalRightWidth]);
+    if (dock.edited) writeDockArrangement(dock.key, dock.arrangement);
+  }, [dock]);
+  function updateDockArrangement(update: (current: DockArrangement) => DockArrangement) {
+    setDock((current) => {
+      const arrangement = update(current.arrangement);
+      return arrangement === current.arrangement
+        ? current
+        : { key: current.key, arrangement, edited: true };
+    });
+  }
+  function changeDockTree(update: (tree: DockNode) => DockNode) {
+    updateDockArrangement((current) => {
+      const tree = update(current.tree);
+      return tree === current.tree ? current : { tree, terminalShares: current.terminalShares };
+    });
+  }
+  const dockTree = dock.arrangement.tree;
+  const terminalPlacement = dockTerminalPlacement(dockTree);
+  function placeTerminal(placement: TerminalPlacement) {
+    updateDockArrangement((current) => withDockTerminalPlacement(current, placement));
+  }
+  const moveTerminalEvent = useEffectEvent(() => {
+    updateDockArrangement((current) =>
+      withDockTerminalPlacement(
+        current,
+        dockTerminalPlacement(current.tree) === 'bottom' ? 'right' : 'bottom',
+      ),
+    );
+  });
   const [agentsVisible, setAgentsVisible] = useState<boolean>(() =>
     desktopBridge == null
       ? (readWebDockSessionOrder('agents')?.agentPanelVisible ?? false)
@@ -807,11 +863,6 @@ export function EditorPane() {
         applyPaneRequest(pane, open);
         return;
       }
-      const shown = paneVisibilityStore.getSnapshot()[pane];
-      if (open && shown?.open === true && !shown.onScreen) {
-        editorAreaRef.current?.bringBackPane(pane);
-        return;
-      }
       switch (pane) {
         case 'editor':
           if (!editorToggleable) return;
@@ -904,7 +955,7 @@ export function EditorPane() {
       if (action === 'toggle-terminal') {
         toggleTerminalEvent();
       } else if (action === 'move-terminal') {
-        setTerminalPlacement((placement) => (placement === 'bottom' ? 'right' : 'bottom'));
+        moveTerminalEvent();
       } else if (action === 'new-terminal') {
         showTerminalEvent();
       } else if (action === 'toggle-agent-panel') {
@@ -1248,12 +1299,9 @@ export function EditorPane() {
             terminalBridge={terminalAvailable ? desktopBridge : null}
             editorVisible={effectiveEditorVisible}
             terminalVisible={noteWindow ? false : effectiveTerminalVisible}
-            terminalPlacement={terminalPlacement}
-            terminalRightWidth={terminalRightWidth}
-            onTerminalVisibleChange={handleTerminalVisibleChange}
-            onTerminalRightWidthChange={setTerminalRightWidth}
             agentsVisible={noteWindow ? false : effectiveAgentsVisible}
-            onAgentsVisibleChange={handleAgentsVisibleChange}
+            dockTree={dockTree}
+            onDockTreeChange={changeDockTree}
             onSessionPlacements={setPlacements}
             renderWorkspaceHeader={createWorkspaceHeaderRenderer({
               noteWindow,
@@ -1292,7 +1340,7 @@ export function EditorPane() {
           <SessionsHost
             surface="terminal-dock"
             terminalPlacement={terminalPlacement}
-            onTerminalPlacementChange={setTerminalPlacement}
+            onTerminalPlacementChange={placeTerminal}
             bridge={desktopBridge}
             terminalCapable
             visible={effectiveTerminalVisible}

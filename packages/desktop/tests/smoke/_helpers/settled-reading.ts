@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 
-export const RAIL_LAYOUT_SETTLE_TIMEOUT_MS = 10_000;
+export const LAYOUT_SETTLE_TIMEOUT_MS = 10_000;
 
 export interface SettleBudget {
   readonly label: string;
@@ -13,7 +13,7 @@ export interface SettleBudgetOptions {
   now?: () => number;
 }
 
-export function requirePositiveTimeout(owner: string, timeout: number): void {
+function requirePositiveTimeout(owner: string, timeout: number): void {
   if (!(timeout > 0) || !Number.isFinite(timeout)) {
     throw new Error(
       `${owner} needs a positive, finite timeout; received ${timeout}. ` +

@@ -1,11 +1,12 @@
-import { describe, expect, test } from 'vitest';
 import {
   MIN_TERMINAL_RIGHT_WIDTH,
   PREFERRED_TERMINAL_RIGHT_WIDTH,
+} from '@inkeep/open-knowledge-core/terminal-layout';
+import { describe, expect, test } from 'vitest';
+import {
   readTerminalRightWidth,
   TERMINAL_RIGHT_WIDTH_KEY,
   type TerminalRightWidthStorage,
-  writeTerminalRightWidth,
 } from './terminal-right-width-store.ts';
 
 const LEGACY_AGENTS_WIDTH_KEY = 'ok-terminal-width-v1';
@@ -15,9 +16,6 @@ function memoryStorage(initial: Record<string, string> = {}): TerminalRightWidth
   return {
     getItem(key) {
       return data.get(key) ?? null;
-    },
-    setItem(key, value) {
-      data.set(key, value);
     },
   };
 }
@@ -30,14 +28,12 @@ describe('right-terminal width persistence', () => {
   });
 
   test('keeps a width the user dragged below the preferred width', () => {
-    const storage = memoryStorage();
-    writeTerminalRightWidth(400, storage);
+    const storage = memoryStorage({ [TERMINAL_RIGHT_WIDTH_KEY]: '400' });
     expect(readTerminalRightWidth(storage)).toBe(400);
   });
 
-  test('round-trips a supported width', () => {
-    const storage = memoryStorage();
-    writeTerminalRightWidth(840, storage);
+  test('reads a supported width', () => {
+    const storage = memoryStorage({ [TERMINAL_RIGHT_WIDTH_KEY]: '840' });
     expect(readTerminalRightWidth(storage)).toBe(840);
   });
 
@@ -54,12 +50,5 @@ describe('right-terminal width persistence', () => {
   test('does not impose a persistence ceiling on a finite width', () => {
     const storage = memoryStorage({ [TERMINAL_RIGHT_WIDTH_KEY]: '2400' });
     expect(readTerminalRightWidth(storage)).toBe(2400);
-  });
-
-  test('writes only the fresh width key and leaves the agents-panel key untouched', () => {
-    const storage = memoryStorage({ [LEGACY_AGENTS_WIDTH_KEY]: '875' });
-    writeTerminalRightWidth(700, storage);
-    expect(storage.getItem(TERMINAL_RIGHT_WIDTH_KEY)).toBe('700');
-    expect(storage.getItem(LEGACY_AGENTS_WIDTH_KEY)).toBe('875');
   });
 });

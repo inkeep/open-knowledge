@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import type { Locator, Page } from '@playwright/test';
+import { PANE_CARD_GAP_PX } from '../../src/components/ui/pane-card';
 import {
   HISTORY_DOCKED_MIN_PANE_WIDTH_PX,
   HISTORY_PANEL_WIDTH_PX,
@@ -9,6 +10,9 @@ import {
 import { AGENTS_PANEL_WIDTH_KEY } from '../../src/lib/agents-panel-width-store';
 import {
   contrastRatioOf,
+  DOCK_WORKSPACE,
+  dockSeam,
+  dockUnitRect,
   expect,
   readContrastPair,
   servedModuleRoute,
@@ -28,6 +32,9 @@ const BOOT_TIMEOUT_MS = 30_000;
 const ROSTER_TIMEOUT_MS = 30_000;
 const AGENTS_HEADER_BUTTON = 'header-pane-button-agents';
 const STORED_AGENTS_PANEL_WIDTH_PX = 400;
+const AGENTS_MIN_WIDTH_PX = 290;
+const SEAM_KEYBOARD_STEP_PX = 16;
+const SEAM_LARGE_KEYBOARD_STEP_PX = 64;
 const THREAD_COMPOSER = '[data-testid="agent-thread-composer"]';
 const HEADER_DRAFT = 'Draft kept across a header hide';
 const SELECTION_DOC_TEXT = 'The quick brown fox jumps over the lazy dog.';
@@ -361,21 +368,28 @@ async function openAgentsPanel(page: Page): Promise<void> {
   await settleAfterRoster(page);
 }
 
+async function agentsPanelWidth(page: Page): Promise<number> {
+  return (await dockUnitRect(page, 'agents'))?.width ?? 0;
+}
+
+async function expectAgentsPanelWidth(page: Page, widthPx: number): Promise<void> {
+  await expect
+    .poll(async () => Math.abs((await agentsPanelWidth(page)) - widthPx))
+    .toBeLessThanOrEqual(1);
+}
+
 async function resizeAgentsPanel(page: Page, targetWidth: number): Promise<void> {
-  const mount = page.locator(AGENTS_PANEL_MOUNT);
-  const panel = mount.locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]');
-  const handle = panel.locator('xpath=preceding-sibling::*[1]');
-  await expect(handle).toHaveAttribute('data-slot', 'resizable-handle');
-  await handle.focus();
-  const currentWidth = await mount.evaluate((element) => element.getBoundingClientRect().width);
-  const grows = currentWidth < targetWidth;
-  for (let index = 0; index < 20; index += 1) {
-    const width = await mount.evaluate((element) => element.getBoundingClientRect().width);
+  const seam = dockSeam(page, 'agents');
+  await seam.focus();
+  await expect(seam).toBeFocused();
+  const grows = (await agentsPanelWidth(page)) < targetWidth;
+  for (let index = 0; index < 40; index += 1) {
+    const width = await agentsPanelWidth(page);
     if (grows ? width >= targetWidth : width <= targetWidth) break;
     await page.keyboard.press(grows ? 'ArrowLeft' : 'ArrowRight');
     await settleAfterRoster(page);
   }
-  const observedWidth = await mount.evaluate((element) => element.getBoundingClientRect().width);
+  const observedWidth = await agentsPanelWidth(page);
   if (grows) expect(observedWidth).toBeGreaterThanOrEqual(targetWidth);
   else expect(observedWidth).toBeLessThanOrEqual(targetWidth);
 }
@@ -385,47 +399,41 @@ async function dragAgentsPanel(
   targetWidth: number,
   termination: 'pointerup' | 'pointercancel' = 'pointerup',
 ): Promise<number> {
-  const mount = page.locator(AGENTS_PANEL_MOUNT);
-  const panel = mount.locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]');
-  const handle = panel.locator('xpath=preceding-sibling::*[1]');
-  const [handleBounds, startWidth] = await Promise.all([
-    handle.boundingBox(),
-    panel.evaluate((element) => element.getBoundingClientRect().width),
-  ]);
-  expect(handleBounds).not.toBeNull();
-  if (handleBounds === null) throw new Error('Agents panel handle has no bounds');
-  const startX = handleBounds.x + handleBounds.width / 2;
-  const y = handleBounds.y + handleBounds.height / 2;
+  const seam = dockSeam(page, 'agents');
+  const workspace = page.locator(DOCK_WORKSPACE);
+  const [seamBounds, startWidth] = await Promise.all([seam.boundingBox(), agentsPanelWidth(page)]);
+  expect(seamBounds).not.toBeNull();
+  if (seamBounds === null) throw new Error('the Agents seam has no bounds');
+  const startX = seamBounds.x + seamBounds.width / 2;
+  const y = seamBounds.y + seamBounds.height / 2;
   const targetX = startX + startWidth - targetWidth;
 
+  await seam.evaluate((element: HTMLElement) => {
+    element.addEventListener(
+      'pointerdown',
+      (event) => {
+        (window as Window & { __agentsSeamPointerId?: number }).__agentsSeamPointerId =
+          event.pointerId;
+      },
+      { once: true },
+    );
+  });
   await page.mouse.move(startX, y);
   await page.mouse.down();
-  await expect(page.locator('[data-dragging="true"]')).toHaveCount(1);
+  await expect(workspace).toHaveAttribute('data-dragging', '');
   await page.mouse.move(targetX, y, { steps: 8 });
-  const transientWidth = await panel.evaluate((element) => element.getBoundingClientRect().width);
+  const transientWidth = await agentsPanelWidth(page);
 
   if (termination === 'pointercancel') {
-    await page.evaluate(() => {
-      document.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: 1 }));
+    await seam.evaluate((element) => {
+      const pointerId =
+        (window as Window & { __agentsSeamPointerId?: number }).__agentsSeamPointerId ?? 1;
+      element.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId }));
     });
   }
   await page.mouse.up();
-  await expect(page.locator('[data-dragging="true"]')).toHaveCount(0);
+  await expect(workspace).not.toHaveAttribute('data-dragging');
   return transientWidth;
-}
-
-async function agentsPanelWidth(page: Page): Promise<number> {
-  return page
-    .locator(AGENTS_PANEL_MOUNT)
-    .locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]')
-    .evaluate((element) => element.getBoundingClientRect().width);
-}
-
-async function persistedAgentsPanelWidth(page: Page): Promise<number | null> {
-  return page.evaluate((key) => {
-    const raw = window.localStorage.getItem(key);
-    return raw === null ? null : Number.parseInt(raw, 10);
-  }, AGENTS_PANEL_WIDTH_KEY);
 }
 
 async function waitForAgentsHostSettled(page: Page): Promise<void> {
@@ -479,7 +487,7 @@ test.describe('agents panel resize', () => {
     await page.evaluate(() => window.__acpThreadHarness?.reset());
   });
 
-  test('the panel follows the pointer below its settled minimum and reverses before release', async ({
+  test('the panel follows a seam drag, stops at its minimum and reverses before release', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
@@ -496,45 +504,40 @@ test.describe('agents panel resize', () => {
     await openAgentsPanel(page);
 
     const mount = page.locator(AGENTS_PANEL_MOUNT);
-    const panel = mount.locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]');
-    const handle = panel.locator('xpath=preceding-sibling::*[1]');
-    const handleBounds = await handle.boundingBox();
-    expect(handleBounds).not.toBeNull();
-    if (handleBounds === null) return;
+    const workspace = page.locator(DOCK_WORKSPACE);
+    const seamBounds = await dockSeam(page, 'agents').boundingBox();
+    expect(seamBounds).not.toBeNull();
+    if (seamBounds === null) return;
 
-    const startWidth = await panel.evaluate((element) => element.getBoundingClientRect().width);
-    expect(startWidth).toBeGreaterThan(420);
-    expect(startWidth).toBeLessThan(540);
-    const handleX = handleBounds.x + handleBounds.width / 2;
-    const handleY = handleBounds.y + handleBounds.height / 2;
+    const startWidth = await agentsPanelWidth(page);
+    expect(startWidth).toBeGreaterThan(AGENTS_MIN_WIDTH_PX + 145);
+    const seamX = seamBounds.x + seamBounds.width / 2;
+    const seamY = seamBounds.y + seamBounds.height / 2;
 
-    await page.mouse.move(handleX, handleY);
+    await page.mouse.move(seamX, seamY);
     await page.mouse.down();
-    await expect(page.locator('[data-dragging="true"]')).toHaveCount(1);
+    await expect(workspace).toHaveAttribute('data-dragging', '');
 
-    await page.mouse.move(handleX + 145, handleY, { steps: 8 });
-    const firstShrinkWidth = await panel.evaluate(
-      (element) => element.getBoundingClientRect().width,
-    );
+    await page.mouse.move(seamX + 145, seamY, { steps: 8 });
+    const firstShrinkWidth = await agentsPanelWidth(page);
     expect(firstShrinkWidth).toBeLessThan(startWidth - 100);
 
-    await page.mouse.move(handleX + 190, handleY, { steps: 4 });
-    const belowMinimumWidth = await panel.evaluate(
-      (element) => element.getBoundingClientRect().width,
-    );
-    expect(belowMinimumWidth).toBeGreaterThan(200);
-    expect(belowMinimumWidth).toBeLessThan(320);
+    await page.mouse.move(seamX + startWidth, seamY, { steps: 4 });
+    const atMinimumWidth = await agentsPanelWidth(page);
+    expect(Math.abs(atMinimumWidth - AGENTS_MIN_WIDTH_PX)).toBeLessThanOrEqual(1);
 
-    await page.mouse.move(handleX + 110, handleY, { steps: 6 });
-    const reversedWidth = await panel.evaluate((element) => element.getBoundingClientRect().width);
-    expect(reversedWidth).toBeGreaterThan(belowMinimumWidth + 50);
+    await page.mouse.move(seamX + 100, seamY, { steps: 6 });
+    const reversedWidth = await agentsPanelWidth(page);
+    expect(reversedWidth).toBeGreaterThan(atMinimumWidth + 50);
     expect(reversedWidth).toBeLessThan(startWidth);
 
     await page.mouse.up();
-    await expect(page.locator('[data-dragging="true"]')).toHaveCount(0);
+    await expect(workspace).not.toHaveAttribute('data-dragging');
     await expect(mount).toBeVisible();
-    await expect.poll(() => agentsPanelWidth(page)).toBeCloseTo(reversedWidth, -1);
-    await expect.poll(() => persistedAgentsPanelWidth(page)).toBeCloseTo(reversedWidth, -1);
+    await expectAgentsPanelWidth(page, reversedWidth);
+    await reloadAndSettle(page);
+    await expect(mount).toBeVisible();
+    await expectAgentsPanelWidth(page, reversedWidth);
   });
 
   test('keyboard reveal of an empty agents panel keeps focus in the revealed surface', async ({
@@ -561,7 +564,7 @@ test.describe('agents panel resize', () => {
     await expectFocusInsideAgentsPanel(page);
   });
 
-  test('release bands, cancellation, keyboard resizing, reveal, and reload preserve the settled contract', async ({
+  test('a release past the minimum settles at it, cancellation keeps the prior width, and keyboard steps, reveal and reload keep the settled width', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
@@ -577,46 +580,41 @@ test.describe('agents panel resize', () => {
     });
     await openAgentsPanel(page);
 
-    const middleTransientWidth = await dragAgentsPanel(page, 250);
-    expect(middleTransientWidth).toBeGreaterThan(200);
-    expect(middleTransientWidth).toBeLessThan(320);
-    await expect.poll(() => agentsPanelWidth(page)).toBeCloseTo(320, -1);
-    await expect.poll(() => persistedAgentsPanelWidth(page)).toBe(320);
+    const minimumTransientWidth = await dragAgentsPanel(page, 250);
+    expect(Math.abs(minimumTransientWidth - AGENTS_MIN_WIDTH_PX)).toBeLessThanOrEqual(1);
+    await expectAgentsPanelWidth(page, AGENTS_MIN_WIDTH_PX);
 
     await dragAgentsPanel(page, 520);
     const preferredWidth = await agentsPanelWidth(page);
-    expect(preferredWidth).toBeGreaterThan(500);
-    expect(preferredWidth).toBeLessThan(540);
-    await expect.poll(() => persistedAgentsPanelWidth(page)).toBeCloseTo(preferredWidth, -1);
+    expect(preferredWidth).toBeGreaterThan(510);
+    expect(preferredWidth).toBeLessThan(530);
 
     const cancelledTransientWidth = await dragAgentsPanel(page, 240, 'pointercancel');
-    expect(cancelledTransientWidth).toBeGreaterThan(200);
-    expect(cancelledTransientWidth).toBeLessThan(320);
-    await expect.poll(() => agentsPanelWidth(page)).toBeCloseTo(preferredWidth, -1);
-    await expect.poll(() => persistedAgentsPanelWidth(page)).toBeCloseTo(preferredWidth, -1);
+    expect(Math.abs(cancelledTransientWidth - AGENTS_MIN_WIDTH_PX)).toBeLessThanOrEqual(1);
+    await expectAgentsPanelWidth(page, preferredWidth);
 
-    const mount = page.locator(AGENTS_PANEL_MOUNT);
-    const panel = mount.locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]');
-    const handle = panel.locator('xpath=preceding-sibling::*[1]');
-    await handle.focus();
-    for (let index = 0; index < 8; index += 1) {
-      await page.keyboard.press('ArrowRight');
+    const seam = dockSeam(page, 'agents');
+    await seam.focus();
+    for (const key of [
+      'ArrowRight',
+      'ArrowRight',
+      'ArrowRight',
+      'ArrowRight',
+      'Shift+ArrowRight',
+    ]) {
+      await page.keyboard.press(key);
       await settleAfterRoster(page);
     }
-    await expect(handle).toBeFocused();
-    await expect.poll(() => agentsPanelWidth(page)).toBeCloseTo(320, -1);
-    await expect.poll(() => persistedAgentsPanelWidth(page)).toBeCloseTo(preferredWidth, -1);
+    await expect(seam).toBeFocused();
+    const keyboardWidth = preferredWidth - 4 * SEAM_KEYBOARD_STEP_PX - SEAM_LARGE_KEYBOARD_STEP_PX;
+    await expectAgentsPanelWidth(page, keyboardWidth);
 
-    const closeTransientWidth = await dragAgentsPanel(page, 100);
-    expect(closeTransientWidth).toBeLessThan(160);
-    await expectAgentsPanelShown(page, false);
-    await expect.poll(() => persistedAgentsPanelWidth(page)).toBeCloseTo(preferredWidth, -1);
-
+    await closeAgentsPanel(page);
     await openAgentsPanel(page);
-    await expect.poll(() => agentsPanelWidth(page)).toBeCloseTo(preferredWidth, -1);
+    await expectAgentsPanelWidth(page, keyboardWidth);
     await reloadAndSettle(page);
-    await expect(mount).toBeVisible();
-    await expect.poll(() => agentsPanelWidth(page)).toBeCloseTo(preferredWidth, -1);
+    await expect(page.locator(AGENTS_PANEL_MOUNT)).toBeVisible();
+    await expectAgentsPanelWidth(page, keyboardWidth);
   });
 });
 
@@ -626,10 +624,11 @@ test.describe('header Agents button', () => {
     await purgeLiveThreads(workerServer.port);
   });
 
-  test('clicking Agents while chat is hidden shows it at its stored width with focus inside it', async ({
+  test('clicking Agents while chat is hidden shows it at the share seeded from its stored width, with focus inside it', async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 1600, height: 900 });
+    const viewport = { width: 1600, height: 900 };
+    await page.setViewportSize(viewport);
     await storeAgentsPanelWidth(page, STORED_AGENTS_PANEL_WIDTH_PX);
     await stubAgentCatalog(page);
     await openAppWithRoster(page);
@@ -637,7 +636,12 @@ test.describe('header Agents button', () => {
 
     await agentsHeaderButton(page).click();
     await expectAgentsPanelShown(page, true);
-    await expect.poll(() => agentsPanelWidth(page)).toBeCloseTo(STORED_AGENTS_PANEL_WIDTH_PX, -1);
+    const workspaceWidth = await page
+      .locator(DOCK_WORKSPACE)
+      .evaluate((element) => element.getBoundingClientRect().width);
+    const seededWidth =
+      (STORED_AGENTS_PANEL_WIDTH_PX / viewport.width) * (workspaceWidth - PANE_CARD_GAP_PX);
+    await expect.poll(() => agentsPanelWidth(page)).toBeCloseTo(seededWidth, -1);
     await expectFocusInsideAgentsPanel(page);
   });
 
@@ -1113,7 +1117,7 @@ test.describe('chat history navigation', () => {
     ).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('a covered agent pane dragged to zero width reads off and one Agents click brings it back at its width', async ({
+  test('a narrow agent pane keeps history in a cover, and hiding it from Agents brings it back at its width', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
@@ -1123,9 +1127,9 @@ test.describe('chat history navigation', () => {
       const harness = window.__acpThreadHarness;
       if (harness === undefined) throw new Error('ACP thread harness is not installed');
       harness.openThread({
-        threadId: 'history-drag-close',
-        agent: { id: 'drag-close', name: 'First Agent', source: 'registry' },
-        title: 'Drag close conversation',
+        threadId: 'history-narrow-cover',
+        agent: { id: 'narrow-cover', name: 'First Agent', source: 'registry' },
+        title: 'Narrow cover conversation',
       });
     });
     await openAgentsPanel(page);
@@ -1169,24 +1173,13 @@ test.describe('chat history navigation', () => {
     await mount.getByRole('button', { name: 'Chat history' }).click();
     await expect(history).toHaveAttribute('data-history-mode', 'cover');
 
-    const panel = mount.locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]');
-    const handle = panel.locator('xpath=preceding-sibling::*[1]');
-    const handleBounds = await handle.boundingBox();
-    expect(handleBounds).not.toBeNull();
-    const handleX = (handleBounds?.x ?? 0) + (handleBounds?.width ?? 0) / 2;
-    const handleY = (handleBounds?.y ?? 0) + (handleBounds?.height ?? 0) / 2;
-    const widthBeforeDrag = await agentsPanelWidth(page);
-    await page.mouse.move(handleX, handleY);
-    await page.mouse.down();
-    await page.mouse.move(1598, handleY, { steps: 10 });
-    await page.mouse.up();
-
-    await expect(page.locator('[data-dragging="true"]')).toHaveCount(0);
+    const widthBeforeHide = await agentsPanelWidth(page);
+    await agentsHeaderButton(page).click();
     await expectAgentsPanelShown(page, false);
     await agentsHeaderButton(page).click();
     await expectAgentsPanelShown(page, true);
-    await expect.poll(() => agentsPanelWidth(page)).toBeCloseTo(widthBeforeDrag, -1);
-    await expect(mount.getByRole('tab', { name: 'Drag close conversation' })).toBeVisible();
+    await expectAgentsPanelWidth(page, widthBeforeHide);
+    await expect(mount.getByRole('tab', { name: 'Narrow cover conversation' })).toBeVisible();
   });
 });
 

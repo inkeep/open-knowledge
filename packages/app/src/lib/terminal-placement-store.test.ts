@@ -1,10 +1,9 @@
+import { DEFAULT_TERMINAL_PLACEMENT } from '@inkeep/open-knowledge-core/terminal-layout';
 import { describe, expect, test } from 'vitest';
 import {
-  DEFAULT_TERMINAL_PLACEMENT,
   readTerminalPlacement,
   TERMINAL_PLACEMENT_KEY,
   type TerminalPlacementStorage,
-  writeTerminalPlacement,
 } from './terminal-placement-store.ts';
 
 function memoryStorage(initial: Record<string, string> = {}): TerminalPlacementStorage {
@@ -12,9 +11,6 @@ function memoryStorage(initial: Record<string, string> = {}): TerminalPlacementS
   return {
     getItem(key) {
       return data.get(key) ?? null;
-    },
-    setItem(key, value) {
-      data.set(key, value);
     },
   };
 }
@@ -25,10 +21,8 @@ describe('terminal placement persistence', () => {
     expect(DEFAULT_TERMINAL_PLACEMENT).toBe('bottom');
   });
 
-  test.each(['right', 'bottom'] as const)('round-trips the %s home', (placement) => {
-    const storage = memoryStorage();
-    writeTerminalPlacement(placement, storage);
-    expect(storage.getItem(TERMINAL_PLACEMENT_KEY)).toBe(placement);
+  test.each(['right', 'bottom'] as const)('reads the stored %s home', (placement) => {
+    const storage = memoryStorage({ [TERMINAL_PLACEMENT_KEY]: placement });
     expect(readTerminalPlacement(storage)).toBe(placement);
   });
 

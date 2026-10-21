@@ -10,6 +10,7 @@ import { PANE_CARD_GAP_PX } from '../../src/components/ui/pane-card';
 import { SCROLL_PIN_SLACK_PX } from '../../src/editor/document-scrollports';
 import {
   acpCatalogBody,
+  dockUnit,
   expect,
   placeCaretAtEndOfText,
   readEditorCaretLine,
@@ -195,7 +196,10 @@ test('the editor and chat cards stand side by side, full height, one gap apart, 
   }
 
   await expect(page.locator(TERMINAL_CARD), 'the web draws no terminal card').toHaveCount(0);
-  await expect(page.locator('#terminal-dock-panel')).toHaveCount(0);
+  await expect(
+    dockUnit(page, 'terminal'),
+    'the web never turns the terminal unit on',
+  ).toHaveAttribute('hidden', '');
   await noSidewaysScroll(page);
 });
 

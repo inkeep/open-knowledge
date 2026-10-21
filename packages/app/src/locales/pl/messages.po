@@ -1354,9 +1354,6 @@ msgstr "Tryb agenta"
 msgid "Agent panel"
 msgstr "Panel agentów"
 
-msgid "Agent panel closed to keep Terminal readable."
-msgstr "Panel agenta został zamknięty, żeby Terminal pozostał czytelny."
-
 msgid "Agent settings"
 msgstr "Ustawienia agenta"
 
@@ -8758,14 +8755,14 @@ msgstr "Zresetuj filtry widoku"
 msgid "Resize {handleKey}"
 msgstr "Zmień rozmiar {handleKey}"
 
+msgid "Resize {pane}"
+msgstr "Zmień rozmiar: {pane}"
+
 msgid "Resize document panel"
 msgstr "Zmień rozmiar panelu dokumentu"
 
 msgid "Resize skills panel"
 msgstr "Zmień rozmiar panelu umiejętności"
-
-msgid "Resize terminal"
-msgstr "Zmień rozmiar terminala"
 
 msgid "Resolve conflict in your terminal"
 msgstr "Rozwiąż konflikt w terminalu"
@@ -10289,9 +10286,6 @@ msgstr "Terminal {0}"
 
 msgid "Terminal access isn't enabled for this project."
 msgstr "Dostęp do terminala nie jest włączony dla tego projektu."
-
-msgid "Terminal closed to make room for the agent panel."
-msgstr "Terminal zamknięty, aby zwolnić miejsce dla panelu agenta."
 
 msgid "Terminal disabled"
 msgstr "Terminal wyłączony"

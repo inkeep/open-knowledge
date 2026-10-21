@@ -19,6 +19,7 @@ import {
   measureDockRevealMs,
   watchForDockReveal,
 } from './_helpers/dock-reveal-latency';
+import { readTerminalHome, TERMINAL_CARD } from './_helpers/dock-workspace';
 import { attachDomState, describeDomState } from './_helpers/dom-state';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { launchDesktopApp, readBootLog, waitForWindowByMode } from './_helpers/launch-readiness';
@@ -28,14 +29,8 @@ import {
   PTY_PLATFORM_SUPPORTED,
   userDataDirFor,
 } from './_helpers/platform-gate';
-import { expectCollapsedRailColumn } from './_helpers/rail-column';
 import { closeAppForRelaunch } from './_helpers/settings-surface';
-import {
-  expectSettledReading,
-  pollSettledReading,
-  RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
-  settleBudget,
-} from './_helpers/settled-reading';
+import { type LAYOUT_SETTLE_TIMEOUT_MS, pollSettledReading } from './_helpers/settled-reading';
 import { expect, test } from './_helpers/smoke-test';
 import { captureTerminalStartupDiagnostics, waitForShellReady } from './_helpers/terminal-ready';
 import {
@@ -45,15 +40,15 @@ import {
   terminalSmokeShellCommands,
   writeFakeClaudeShim,
 } from './_helpers/terminal-smoke-shell';
-import { expectNoticeFromTrigger, transientNoticeObservation } from './_helpers/transient-notice';
 
 const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const PRIMARY_MODIFIER = process.platform === 'darwin' ? 'Meta' : 'Control';
 const SHELL_COMMANDS = terminalSmokeShellCommands();
-const TERMINAL_DOCK_PANEL_ID = 'terminal-dock-panel';
-const TERMINAL_DOCK_PANEL_SELECTOR = `#${TERMINAL_DOCK_PANEL_ID}`;
+const TERMINAL_UNIT_ID = 'dock-unit-terminal';
+const TERMINAL_UNIT_SELECTOR = `#${TERMINAL_UNIT_ID}`;
+const AGENTS_UNIT_SELECTOR = '#dock-unit-agents';
 
 interface SeedOpts {
   consent?: boolean;
@@ -379,11 +374,11 @@ async function openTerminal(app: ElectronApplication, page: Page): Promise<void>
 }
 
 async function waitForTerminalWidthStable(page: Page): Promise<void> {
-  const panel = page.locator('#terminal-dock-panel');
+  const unit = page.locator(TERMINAL_UNIT_SELECTOR);
   let previous = Number.NaN;
   let stable = 0;
   await expect(async () => {
-    const width = await panel.evaluate((el) => Math.round(el.getBoundingClientRect().width));
+    const width = await unit.evaluate((el) => Math.round(el.getBoundingClientRect().width));
     stable = width === previous ? stable + 1 : 0;
     previous = width;
     expect(stable).toBeGreaterThanOrEqual(3);
@@ -425,7 +420,9 @@ async function attachTerminalStartupDiagnostics(page: Page, home: string): Promi
 }
 
 async function ensureBottomDock(page: Page): Promise<void> {
-  await expect(page.locator('#terminal-dock-panel')).toBeVisible({ timeout: 10_000 });
+  await expect
+    .poll(() => readTerminalHome(page), { timeout: 10_000 })
+    .toMatchObject({ placement: 'bottom', geometry: 'bottom' });
 }
 
 async function typeInTerminal(page: Page, text: string): Promise<void> {
@@ -727,184 +724,23 @@ test.describe('Docked terminal — live Electron', () => {
 
     await widenEditorWindow(app, page, 1900, 900);
     await openTerminal(app, page);
+    await ensureBottomDock(page);
 
-    const rightTerminal = page.locator('#terminal-column section[aria-label="Terminal"]');
     const moveRightButton = page.getByRole('button', { name: 'Move Terminal to right' });
     await expect(moveRightButton).toBeVisible();
     await moveRightButton.click();
-    await expect(rightTerminal).toBeVisible({ timeout: 10_000 });
+    await expect
+      .poll(() => readTerminalHome(page), { timeout: 10_000 })
+      .toMatchObject({ placement: 'right', geometry: 'right' });
+    await expect(page.locator(`${TERMINAL_CARD} section[aria-label="Terminal"]`)).toBeVisible();
 
     const moveBottomButton = page.getByRole('button', { name: 'Move Terminal to bottom' });
     await expect(moveBottomButton).toBeVisible();
     await moveBottomButton.click();
-    await expect(rightTerminal).toBeHidden({ timeout: 10_000 });
-    await expect(moveRightButton).toBeVisible();
-  });
-
-  test('a pointerleave mid-drag resizes the right column by the real delta, never collapsing it', async ({
-    captureStderrFor,
-  }) => {
-    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
-    const s = seed('divider-pointerleave', { consent: true });
-    track(s.tmpHome, s.projectDir);
-    const app = await launchApp(s);
-    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
-    const page = await findEditorWindow(app);
-    await configureDesktopGitRepositories(page, s.realProjectDir);
-
-    await widenEditorWindow(app, page, 1900, 900);
-    await openTerminal(app, page);
-    await page.getByRole('button', { name: 'Move Terminal to right' }).click();
-    await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible({
-      timeout: 10_000,
-    });
-
-    const column = page.locator('#terminal-column');
-    const before = await column.evaluate((element) => element.getBoundingClientRect().width);
-    expect(before).toBeGreaterThan(0);
-
-    const handle = await column.evaluate((element) => {
-      const rect = element.previousElementSibling?.getBoundingClientRect();
-      return rect == null ? null : { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-    });
-    if (!handle) throw new Error('right Terminal resize handle is unavailable');
-
-    const travel = 40;
-    const originX = handle.x + handle.width / 2;
-    const originY = handle.y + handle.height / 2;
-    await page.mouse.move(originX, originY);
-    await page.mouse.down();
-    await page.mouse.move(originX - travel, originY, { steps: 4 });
-
-    await page.evaluate(
-      ({ x, y }) => {
-        document.dispatchEvent(
-          new PointerEvent('pointerleave', {
-            bubbles: false,
-            buttons: 1,
-            clientX: x,
-            clientY: y,
-            pointerId: 1,
-            pointerType: 'mouse',
-          }),
-        );
-      },
-      { x: originX - travel, y: originY },
-    );
-    await page.mouse.up();
-
-    let after = Number.NaN;
-    let stable = 0;
-    await expect(async () => {
-      const width = await column.evaluate((element) =>
-        Math.round(element.getBoundingClientRect().width),
-      );
-      stable = width === after ? stable + 1 : 0;
-      after = width;
-      expect(
-        stable,
-        `column width has not settled (last read ${width}px, before ${before}px)`,
-      ).toBeGreaterThanOrEqual(3);
-    }).toPass({ timeout: 10_000, intervals: [100] });
-    expect(after).toBeGreaterThan(before + travel * 0.75);
-    expect(after).toBeLessThan(before + travel * 1.25);
-  });
-
-  test('right Terminal and Agents exclude each other only when the window is infeasible', async ({
-    captureStderrFor,
-  }) => {
-    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
-    const s = seed('rail-admission', { consent: true, skipRestoreState: true });
-    track(s.tmpHome, s.projectDir);
-    const app = await launchApp(s);
-    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
-    const page = await findEditorWindow(app);
-    await configureDesktopGitRepositories(page, s.realProjectDir);
-
-    await widenEditorWindow(app, page, 1900, 900);
-    await openTerminal(app, page);
-    await clickTerminalPlacementItem(app, page);
-    await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible({
-      timeout: 10_000,
-    });
-    await waitForStatus(page, 'running', 25_000);
-    await clickViewAgentsItem(app, page);
-    await expect(page.locator('#agents-column')).toBeVisible({ timeout: 10_000 });
     await expect
-      .poll(
-        () =>
-          page
-            .locator('#terminal-column')
-            .evaluate((element) => element.getBoundingClientRect().width),
-        { timeout: 10_000 },
-      )
-      .toBeGreaterThan(739);
-    await typeInTerminal(page, `${SHELL_COMMANDS.columns('RAIL_COLS')}\r`);
-    await expect.poll(() => readTerminalText(page), { timeout: 15_000 }).toMatch(/RAIL_COLS=\d+/);
-    const columns = (await readTerminalText(page)).match(/RAIL_COLS=(\d+)/)?.[1];
-    expect(Number(columns)).toBeGreaterThanOrEqual(92);
-
-    const editorWindow = await app.browserWindow(page);
-    const shrink = settleBudget('rail admission after the window narrows to 900 px', {
-      timeout: RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
-    });
-    await expectNoticeFromTrigger(
-      'Agent panel closed to keep Terminal readable.',
-      transientNoticeObservation(page, {
-        document: 'current',
-        trigger: async () => {
-          await editorWindow.evaluate((win: unknown) => {
-            const target = win as {
-              setSize: (width: number, height: number, animate: boolean) => void;
-            };
-            target.setSize(900, 900, false);
-          });
-        },
-      }),
-      { timeout: shrink.remainingMs() },
-    );
-    await expectSettledReading(
-      () => page.evaluate(() => window.innerWidth),
-      (width) => expect(width).toBeLessThan(1000),
-      { reading: 'innerWidth', of: 'the editor window', budget: shrink },
-    );
-    await expectCollapsedRailColumn(page, '#agents-column', { budget: shrink });
-    await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible();
-    await expectHeaderPanes(page, { Agents: false, Terminal: true });
-
-    await expectNoticeFromTrigger(
-      'Terminal closed to make room for the agent panel.',
-      transientNoticeObservation(page, {
-        document: 'current',
-        trigger: () => clickViewAgentsItem(app, page),
-      }),
-      { timeout: 10_000 },
-    );
-    await expect(page.locator('#agents-column')).toBeVisible({ timeout: 10_000 });
-    await expectCollapsedRailColumn(page, '#terminal-column');
-    await expectHeaderPanes(page, { Agents: true, Terminal: false });
-
-    await clickViewAgentsItem(app, page);
-    await expectCollapsedRailColumn(page, '#agents-column');
-    await expectCollapsedRailColumn(page, '#terminal-column');
-    await expectHeaderPanes(page, { Agents: false, Terminal: false });
-
-    await headerPaneButton(page, 'Terminal').click();
-    await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible({
-      timeout: 10_000,
-    });
-    await expectHeaderPanes(page, { Agents: false, Terminal: true });
-    await expectNoticeFromTrigger(
-      'Terminal closed to make room for the agent panel.',
-      transientNoticeObservation(page, {
-        document: 'current',
-        trigger: () => headerPaneButton(page, 'Agents').click(),
-      }),
-      { timeout: 10_000 },
-    );
-    await expect(page.locator('#agents-column')).toBeVisible({ timeout: 10_000 });
-    await expectCollapsedRailColumn(page, '#terminal-column');
-    await expectHeaderPanes(page, { Agents: true, Terminal: false });
+      .poll(() => readTerminalHome(page), { timeout: 10_000 })
+      .toMatchObject({ placement: 'bottom', geometry: 'bottom' });
+    await expect(moveRightButton).toBeVisible();
   });
 
   test('QA-022 toggle reveals the dock and mounts the terminal inside their liveness budgets', async ({
@@ -922,15 +758,15 @@ test.describe('Docked terminal — live Electron', () => {
 
     const t0 = await page.evaluate(() => performance.now());
     const dockElapsed = await measureDockRevealMs({
-      armProbe: () => armDockRevealProbe(page, TERMINAL_DOCK_PANEL_ID),
+      armProbe: () => armDockRevealProbe(page, TERMINAL_UNIT_ID),
       watchForReveal: () =>
-        watchForDockReveal(page, TERMINAL_DOCK_PANEL_ID, DOCK_REVEAL_WATCH_CEILING_MS),
+        watchForDockReveal(page, TERMINAL_UNIT_ID, DOCK_REVEAL_WATCH_CEILING_MS),
       triggerReveal: async () => {
         expect(await clickViewTerminalItem(app, page)).toBe('Show Terminal');
       },
     });
     console.log(`[dock-reveal] revealMs=${dockElapsed.toFixed(1)}`);
-    await expect(page.locator(TERMINAL_DOCK_PANEL_SELECTOR)).toBeVisible();
+    await expect(page.locator(TERMINAL_UNIT_SELECTOR)).toBeVisible();
     expect(dockElapsed).toBeLessThan(DOCK_REVEAL_BUDGET_MS);
 
     const mountBudgetMs = 15_000;
@@ -1032,7 +868,7 @@ test.describe('Docked terminal — live Electron', () => {
     await expect(page.getByRole('button', { name: 'Drag to dock the terminal' })).toHaveCount(0);
   });
 
-  test('the terminal lives in the bottom panel, never in the right column', async ({
+  test('the terminal lives in its own card under the editor, never in the chat pane', async ({
     captureStderrFor,
   }) => {
     test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
@@ -1045,10 +881,15 @@ test.describe('Docked terminal — live Electron', () => {
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
 
-    await expect(page.locator('#terminal-dock-panel section[aria-label="Terminal"]')).toBeVisible({
-      timeout: 10_000,
-    });
-    await expect(page.locator('#agents-column section[aria-label="Terminal"]')).toHaveCount(0);
+    await expect
+      .poll(() => readTerminalHome(page), { timeout: 10_000 })
+      .toEqual({ placement: 'bottom', geometry: 'bottom', painted: true });
+    await expect(
+      page.locator(`${TERMINAL_CARD} [data-terminal-panel-mount] section[aria-label="Terminal"]`),
+    ).toBeVisible();
+    await expect(
+      page.locator('[data-agents-panel-mount] section[aria-label="Terminal"]'),
+    ).toHaveCount(0);
   });
 
   test('QA-020 panel exposes region + screen-reader mode + AA contrast', async ({
@@ -1130,9 +971,7 @@ test.describe('Docked terminal — live Electron', () => {
     await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Hide Terminal');
   });
 
-  test('QA-021 collapsed panel is inert and focus returns on collapse', async ({
-    captureStderrFor,
-  }) => {
+  test('QA-021 a hidden terminal is inert and gives up focus', async ({ captureStderrFor }) => {
     test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('inert', { consent: true });
     track(s.tmpHome, s.projectDir);
@@ -1146,9 +985,10 @@ test.describe('Docked terminal — live Electron', () => {
     await page.locator('section[aria-label="Terminal"] .xterm').click();
 
     await clickViewTerminalItem(app, page);
-    await expect(page.locator('#terminal-dock-panel')).toHaveAttribute('inert', '', {
+    await expect(page.locator(TERMINAL_UNIT_SELECTOR)).toHaveAttribute('inert', '', {
       timeout: 10_000,
     });
+    await expect(page.locator('[data-terminal-panel-mount]')).toHaveAttribute('inert', '');
     await expect
       .poll(() =>
         page.evaluate(() => {
@@ -1159,7 +999,7 @@ test.describe('Docked terminal — live Electron', () => {
       .toBe(false);
   });
 
-  test('QA-023 panel height persists across reopen', async ({ captureStderrFor }) => {
+  test('QA-023 panel height persists across reopen and reload', async ({ captureStderrFor }) => {
     test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('resize', { consent: true });
     track(s.tmpHome, s.projectDir);
@@ -1171,13 +1011,13 @@ test.describe('Docked terminal — live Electron', () => {
     await waitForStatus(page, 'running', 25_000);
     await ensureBottomDock(page);
 
-    const panel = page.locator('#terminal-dock-panel');
+    const panel = page.locator(TERMINAL_UNIT_SELECTOR);
     const heightBefore = await panel.evaluate((el) => el.getBoundingClientRect().height);
 
-    const handle = panel.locator('xpath=preceding-sibling::*[@role="separator"][1]');
+    const handle = page.getByRole('separator', { name: 'Resize Terminal', exact: true });
     await expect(handle).toBeVisible();
     const box = await handle.boundingBox();
-    if (box == null) throw new Error('bottom terminal resize handle has no bounding box');
+    if (box == null) throw new Error('bottom terminal seam has no bounding box');
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
     await page.mouse.move(box.x + box.width / 2, box.y - 160, { steps: 12 });
@@ -1185,20 +1025,11 @@ test.describe('Docked terminal — live Electron', () => {
 
     await pollSettledReading(() => panel.evaluate((el) => el.getBoundingClientRect().height), {
       reading: 'height',
-      of: '#terminal-dock-panel after resize',
-      timeout: 10_000 satisfies typeof RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+      of: '#dock-unit-terminal after resize',
+      timeout: 10_000 satisfies typeof LAYOUT_SETTLE_TIMEOUT_MS,
     }).toBeGreaterThan(heightBefore);
 
     const heightAfter = await panel.evaluate((el) => el.getBoundingClientRect().height);
-
-    await pollSettledReading(
-      () => page.evaluate(() => Number(localStorage.getItem('ok-terminal-height-v1') ?? 0)),
-      {
-        reading: 'persisted height',
-        of: 'bottom terminal',
-        timeout: 10_000 satisfies typeof RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
-      },
-    ).toBeGreaterThan(heightBefore);
 
     await clickViewTerminalItem(app, page);
     await expect(panel).toHaveAttribute('inert', '', { timeout: 10_000 });
@@ -1211,10 +1042,24 @@ test.describe('Docked terminal — live Electron', () => {
       },
       {
         reading: 'reopened height difference',
-        of: '#terminal-dock-panel',
-        timeout: 10_000 satisfies typeof RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+        of: '#dock-unit-terminal',
+        timeout: 10_000 satisfies typeof LAYOUT_SETTLE_TIMEOUT_MS,
       },
-    ).toBeLessThan(40);
+    ).toBeLessThan(2);
+
+    await page.reload();
+    await expect(terminalSection(page)).toBeVisible({ timeout: 20_000 });
+    await pollSettledReading(
+      async () => {
+        const heightReload = await panel.evaluate((el) => el.getBoundingClientRect().height);
+        return Math.abs(heightReload - heightAfter);
+      },
+      {
+        reading: 'reloaded height difference',
+        of: '#dock-unit-terminal',
+        timeout: 10_000 satisfies typeof LAYOUT_SETTLE_TIMEOUT_MS,
+      },
+    ).toBeLessThan(2);
   });
 
   test('QA-015/032 shell exit shows restart; banner hidden on exit', async ({
@@ -1691,7 +1536,7 @@ test.describe('Docked terminal — live Electron', () => {
 
     await clickViewAgentsItem(app, page);
     await expectHeaderPanes(page, { Agents: true, Terminal: false });
-    await expect(page.locator('#agents-column')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator(AGENTS_UNIT_SELECTOR)).toBeVisible({ timeout: 10_000 });
     await expect
       .poll(async () => (await viewMenuPaneLabels(app)).agents, { timeout: 8_000 })
       .toBe('Hide Agents');
@@ -1832,7 +1677,7 @@ test.describe('Docked terminal — live Electron', () => {
     const second = await launchOnProfile();
     await expectHeaderPanes(second.page, { Agents: true, Terminal: true }, 25_000);
     await expect(terminalSection(second.page)).toBeVisible();
-    await expect(second.page.locator('#agents-column')).toBeVisible();
+    await expect(second.page.locator(AGENTS_UNIT_SELECTOR)).toBeVisible();
     await headerPaneButton(second.page, 'Agents').click();
     await expectHeaderPanes(second.page, { Agents: false, Terminal: true });
     await quitAfterMenuReads(second.app, { agents: 'Show Agents', terminal: 'Hide Terminal' });
@@ -1842,7 +1687,7 @@ test.describe('Docked terminal — live Electron', () => {
       timeout: 25_000,
     });
     await expect(headerPaneButton(third.page, 'Agents')).toHaveAttribute('aria-pressed', 'false');
-    await expectCollapsedRailColumn(third.page, '#agents-column');
+    await expect(third.page.locator(AGENTS_UNIT_SELECTOR)).toBeHidden();
     await headerPaneButton(third.page, 'Agents').click();
     await headerPaneButton(third.page, 'Terminal').click();
     await expectHeaderPanes(third.page, { Agents: true, Terminal: false });

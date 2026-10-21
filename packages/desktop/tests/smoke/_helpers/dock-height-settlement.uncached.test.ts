@@ -14,7 +14,7 @@ const ts: typeof TypeScript = createRequire(
 
 const heightBefore = 300;
 const heightAfter = heightBefore + 160;
-const reopenedHeightTolerance = 40;
+const restoredHeightTolerance = 2;
 
 function currentDockHeightWait(label: string): string {
   const path = fileURLToPath(new URL('../terminal-dock.e2e.ts', import.meta.url));
@@ -27,7 +27,7 @@ function currentDockHeightWait(label: string): string {
       ts.isIdentifier(node.expression) &&
       node.expression.text === 'test' &&
       ts.isStringLiteral(node.arguments[0]) &&
-      node.arguments[0].text === 'QA-023 panel height persists across reopen'
+      node.arguments[0].text === 'QA-023 panel height persists across reopen and reload'
     ) {
       dockTest = node;
     }
@@ -66,7 +66,7 @@ function currentDockHeightWait(label: string): string {
   return waits[0].getText(parsed);
 }
 
-function runCurrentDockWait(label: string, panelHeight: number, persistedHeight: number) {
+function runCurrentDockWait(label: string, panelHeight: number) {
   const source = currentDockHeightWait(label);
   const path = fileURLToPath(new URL('../terminal-dock.e2e.ts', import.meta.url));
   let releaseRead: (() => void) | undefined;
@@ -86,23 +86,10 @@ function runCurrentDockWait(label: string, panelHeight: number, persistedHeight:
       }) as number;
     },
   };
-  const page = {
-    async evaluate(callback: () => number): Promise<number> {
-      markReadStarted?.();
-      await reading;
-      return runInNewContext(`(${callback.toString()})()`, {
-        localStorage: {
-          getItem: (key: string) =>
-            key === 'ok-terminal-height-v1' ? String(persistedHeight) : null,
-        },
-      }) as number;
-    },
-  };
   const bindings = {
     ...settledReading,
     expect: playwrightExpect,
     panel,
-    page,
     heightBefore,
     heightAfter,
   };
@@ -121,17 +108,13 @@ function runCurrentDockWait(label: string, panelHeight: number, persistedHeight:
 
 afterEach(() => vi.useRealTimers());
 
-test.each(['height', 'persisted height', 'reopened height difference'])(
+test.each(['height', 'reopened height difference', 'reloaded height difference'])(
   '%s settles when its dimension read completes within the layout budget',
   async (label) => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
-    const { result, readStarted, releaseRead } = runCurrentDockWait(
-      label,
-      heightAfter,
-      heightAfter,
-    );
+    const { result, readStarted, releaseRead } = runCurrentDockWait(label, heightAfter);
     await readStarted;
-    await vi.advanceTimersByTimeAsync(settledReading.RAIL_LAYOUT_SETTLE_TIMEOUT_MS - 1);
+    await vi.advanceTimersByTimeAsync(settledReading.LAYOUT_SETTLE_TIMEOUT_MS - 1);
     releaseRead?.();
 
     expect(await result).toBe('settled');
@@ -139,27 +122,27 @@ test.each(['height', 'persisted height', 'reopened height difference'])(
 );
 
 test.each([
-  ['height', heightBefore, heightAfter, 'toBeGreaterThan', heightBefore],
-  ['persisted height', heightAfter, heightBefore, 'toBeGreaterThan', heightBefore],
+  ['height', heightBefore, 'toBeGreaterThan', heightBefore],
   [
     'reopened height difference',
-    heightAfter + reopenedHeightTolerance,
-    heightAfter,
+    heightAfter + restoredHeightTolerance,
     'toBeLessThan',
-    reopenedHeightTolerance,
+    restoredHeightTolerance,
+  ],
+  [
+    'reloaded height difference',
+    heightAfter + restoredHeightTolerance,
+    'toBeLessThan',
+    restoredHeightTolerance,
   ],
 ] as const)(
   '%s rejects a completed reading exactly on its strict boundary',
-  async (label, panelHeight, persistedHeight, matcher, boundary) => {
+  async (label, panelHeight, matcher, boundary) => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
-    const { result, readStarted, releaseRead } = runCurrentDockWait(
-      label,
-      panelHeight,
-      persistedHeight,
-    );
+    const { result, readStarted, releaseRead } = runCurrentDockWait(label, panelHeight);
     releaseRead?.();
     await readStarted;
-    await vi.advanceTimersByTimeAsync(settledReading.RAIL_LAYOUT_SETTLE_TIMEOUT_MS + 1);
+    await vi.advanceTimersByTimeAsync(settledReading.LAYOUT_SETTLE_TIMEOUT_MS + 1);
 
     const outcome = await result;
     expect(outcome).toBeInstanceOf(Error);

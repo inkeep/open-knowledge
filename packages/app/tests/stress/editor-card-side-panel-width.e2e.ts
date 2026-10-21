@@ -11,7 +11,16 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { saveInMemoryCheckpoint } from '@inkeep/open-knowledge-server';
 import { chromium, type Locator, type Page } from '@playwright/test';
-import { acpCatalogBody, expect, test, waitForActiveProviderSynced } from './_helpers';
+import {
+  acpCatalogBody,
+  DOCK_WORKSPACE,
+  dockSeam,
+  dockUnit,
+  dragDockSeam,
+  expect,
+  test,
+  waitForActiveProviderSynced,
+} from './_helpers';
 
 const AGENTS_PANEL_MOUNT = '[data-agents-panel-mount]';
 const AGENTS_HEADER_BUTTON = 'header-pane-button-agents';
@@ -308,38 +317,25 @@ async function dragChatDivider(
   deltaPx: number,
   readMidDrag: () => Promise<void>,
 ): Promise<void> {
-  const chatPanel = page
-    .locator(AGENTS_PANEL_MOUNT)
-    .locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]');
-  const handle = chatPanel.locator('xpath=preceding-sibling::*[1]');
-  await expect(handle).toHaveAttribute('data-slot', 'resizable-handle');
-  const bounds = await handle.boundingBox();
+  const seam = dockSeam(page, 'agents');
+  const bounds = await seam.boundingBox();
   if (bounds == null) throw new Error('the chat divider has no bounds');
-  const x = bounds.x + bounds.width / 2 + grabOffsetPx;
-  const y = bounds.y + bounds.height / 2;
   if (grabOffsetPx !== 0) {
     expect(
       await page.evaluate(
         ([px, py]) => {
           const hit = document.elementFromPoint(px, py);
           return {
-            onDragBand: hit?.closest('[data-slot="resizable-handle"]') != null,
+            onDragBand: hit?.closest('[data-dock-seam]') != null,
             onCard: hit?.closest('[data-slot="pane-card"]') != null,
           };
         },
-        [x, y] as const,
+        [bounds.x + bounds.width / 2 + grabOffsetPx, bounds.y + bounds.height / 2] as const,
       ),
       'the grab point is in the gap beside the divider line: on its drag band, on no card',
     ).toEqual({ onDragBand: true, onCard: false });
   }
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await expect(handle).toHaveAttribute('data-separator', 'active');
-  await page.mouse.move(x + deltaPx, y, { steps: 8 });
-  await readMidDrag();
-  await page.mouse.up();
-  await expect(handle).not.toHaveAttribute('data-separator', 'active');
-  await expect(page.locator('[data-dragging="true"]')).toHaveCount(0);
+  await dragDockSeam(page, seam, { dx: deltaPx, grabOffsetPx, whileDragging: readMidDrag });
   await settleFrames(page);
 }
 
@@ -350,6 +346,7 @@ for (const grab of GRABS) {
   }) => {
     const docName = `editor-card-side-panel-width-${test.info().workerIndex}`;
     await api.seedDocs([{ name: docName, markdown: DOC_MARKDOWN }]);
+    await page.addInitScript(() => localStorage.setItem('ok-doc-panel-width-v1', '420'));
     await page.setViewportSize({ width: 1400, height: 800 });
     await page.goto(`/#/${docName}`);
     await waitForActiveProviderSynced(page);
@@ -375,9 +372,7 @@ for (const grab of GRABS) {
 
     await openChat(page);
     await expect(sidePanel).not.toBeVisible();
-    const chatPanel = page
-      .locator(AGENTS_PANEL_MOUNT)
-      .locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]');
+    const chatPanel = dockUnit(page, 'agents');
     const chatBefore = await widthOf(chatPanel);
     const columnBefore = await widthOf(documentColumn);
 
@@ -511,6 +506,70 @@ for (const input of ['pointer', 'keyboard']) {
     await expect(information).toBeHidden();
   });
 }
+
+test('a document pointerleave mid-drag resizes the side panel by the real travel and keeps it open', async ({
+  page,
+  api,
+}) => {
+  const docName = `editor-card-side-panel-pointerleave-${test.info().workerIndex}`;
+  await api.seedDocs([{ name: docName, markdown: DOC_MARKDOWN }]);
+  await page.addInitScript(() => localStorage.setItem('ok-doc-panel-width-v1', '420'));
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto(`/#/${docName}`);
+  await waitForActiveProviderSynced(page);
+  const sidePanel = page.locator('#doc-panel');
+  const toggle = page.locator('[data-doc-panel-toggle]');
+  await expect(sidePanel).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  const before = await widthOf(sidePanel);
+  expect(
+    Math.abs(before - 420),
+    'the side panel starts with room to grow and shrink',
+  ).toBeLessThanOrEqual(WIDTH_TOLERANCE_PX);
+
+  const separator = page.getByRole('separator', { name: 'Resize document panel' });
+  const bounds = await separator.boundingBox();
+  if (bounds == null) throw new Error('the side panel separator has no bounds');
+  const travel = 40;
+  const originX = bounds.x + bounds.width / 2;
+  const originY = bounds.y + bounds.height / 2;
+  await page.mouse.move(originX, originY);
+  await page.mouse.down();
+  await expect(separator).toHaveAttribute('data-separator', 'active');
+  await page.mouse.move(originX - travel, originY, { steps: 4 });
+  await page.evaluate(
+    ({ x, y }) => {
+      document.dispatchEvent(
+        new PointerEvent('pointerleave', {
+          bubbles: false,
+          buttons: 1,
+          clientX: x,
+          clientY: y,
+          pointerId: 1,
+          pointerType: 'mouse',
+        }),
+      );
+    },
+    { x: originX - travel, y: originY },
+  );
+  await page.mouse.up();
+
+  let after = Number.NaN;
+  let stable = 0;
+  await expect(async () => {
+    const width = Math.round(await widthOf(sidePanel));
+    stable = width === after ? stable + 1 : 0;
+    after = width;
+    expect(
+      stable,
+      `the side panel width has not settled (last read ${width}px, before ${before}px)`,
+    ).toBeGreaterThanOrEqual(3);
+  }).toPass({ timeout: 10_000, intervals: [100] });
+  expect(after).toBeGreaterThan(before + travel * 0.75);
+  expect(after).toBeLessThan(before + travel * 1.25);
+  await expect(sidePanel).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+});
 
 test('constrained docking swaps sidebars, restores both, and preserves explicit hiding and widths', async ({
   page,
@@ -1855,6 +1914,7 @@ test('information cover keeps every document tab usable at narrow browser widths
 
   await page.setViewportSize({ width: 320, height: 480 });
   await expect(toggle).toBeVisible();
+  await settleFrames(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
 
   await page.setViewportSize({ width: 650, height: 700 });
@@ -2230,6 +2290,8 @@ for (const order of ['destination first', 'resize first'] as const) {
     await agentsButton.click();
     await expect(agentsButton).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator(AGENTS_PANEL_MOUNT)).toBeVisible();
+    const editorWidth = await widthOf(page.locator('[data-slot="pane-card"][data-pane="editor"]'));
+    await dragDockSeam(page, dockSeam(page, 'agents'), { dx: 500 - editorWidth });
     await page.locator('[data-doc-panel-toggle]').click();
     const cover = page.locator('[data-doc-panel-cover]');
     await expect(cover).toBeVisible();
@@ -3456,19 +3518,9 @@ test('closed wide information reopens as a cover after editor and window resizin
   await toggle.click();
   await expect(info).toBeHidden();
   const card = page.locator('[data-slot="pane-card"][data-pane="editor"]');
-  const chatDivider = page.locator('[data-agents-panel-resize-handle]');
-  for (const target of [900, 650, 450, 270]) {
-    await chatDivider.hover();
-    const cb = await chatDivider.boundingBox();
+  for (const target of [900, 650, 450, 340]) {
     const before = await card.evaluate((e) => e.getBoundingClientRect().width);
-    if (!cb) throw new Error('Chat divider has no bounds');
-    await page.mouse.down();
-    await expect(chatDivider).toHaveAttribute('data-separator', 'active');
-    await page.mouse.move(cb.x + cb.width / 2 + (target - before), cb.y + cb.height / 2, {
-      steps: 12,
-    });
-    await page.mouse.up();
-    await expect(chatDivider).not.toHaveAttribute('data-separator', 'active');
+    await dragDockSeam(page, dockSeam(page, 'agents'), { dx: target - before });
     await page.screenshot({ path: test.info().outputPath(`closed-${target}.png`) });
     await expect(toggle).toBeVisible();
     await toggle.click();
@@ -3494,7 +3546,7 @@ test('closed wide information reopens as a cover after editor and window resizin
   await expect(page.locator('[data-sidebar="sidebar"]')).toBeVisible();
   await toggle.click();
   await expect(info).toBeHidden();
-  for (const width of [1400, 1200, 900]) {
+  for (const width of [1200, 1000, 900]) {
     await page.setViewportSize({ width, height: 900 });
     await settleFrames(page);
     await expect(toggle).toBeVisible();
@@ -3575,13 +3627,14 @@ test('information yields after resizing the editor beside Chat below its docking
   const info = page.locator('#doc-panel');
   await expect(info).toBeVisible();
   const card = page.locator('[data-slot="pane-card"][data-pane="editor"]');
-  const handle = page.locator('[data-agents-panel-resize-handle]');
+  const handle = dockSeam(page, 'agents');
+  const workspace = page.locator(DOCK_WORKSPACE);
   await handle.hover();
   const box = await handle.boundingBox();
   const before = await card.evaluate((e) => e.getBoundingClientRect().width);
   if (!box) throw new Error('Chat divider has no bounds');
   await page.mouse.down();
-  await expect(handle).toHaveAttribute('data-separator', 'active');
+  await expect(workspace).toHaveAttribute('data-dragging', '');
   try {
     for (const target of [1300, 1150, 1000, 850, 750]) {
       await page.mouse.move(box.x + box.width / 2 + target - before, box.y + box.height / 2, {
@@ -3606,7 +3659,7 @@ test('information yields after resizing the editor beside Chat below its docking
   } finally {
     await page.mouse.up();
   }
-  await expect(handle).not.toHaveAttribute('data-separator', 'active');
+  await expect(workspace).not.toHaveAttribute('data-dragging');
   await settleFrames(page);
   await page.screenshot({ path: test.info().outputPath('open-information-after-drag.png') });
   await expect(info).toBeHidden();

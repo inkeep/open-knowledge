@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import { DEFAULT_DOCK_TREE, moveDockPane } from '@/lib/dock-tree';
 import type { SessionPlacements } from './EditorArea';
 import { tabTitles } from './sessions-host-tabs.test-helper';
 
@@ -61,9 +62,6 @@ vi.doMock('@/components/EditorSkeleton', () => ({
 }));
 vi.doMock('@/components/EmptyEditorState', () => ({
   EmptyEditorState: () => <div data-testid="empty-editor-state" />,
-}));
-vi.doMock('./TerminalDock', () => ({
-  TerminalDock: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 vi.doMock('./EditorWorkspace', () => ({
   EditorWorkspace: ({
@@ -381,8 +379,8 @@ function CompositionHarness({ bridge }: { bridge: OkDesktopBridge }) {
           onActiveTabChange={() => {}}
           terminalBridge={bridge}
           terminalVisible
-          terminalPlacement="right"
-          onTerminalVisibleChange={() => {}}
+          dockTree={moveDockPane(DEFAULT_DOCK_TREE, 'terminal', 'editor', 'end', 0.3)}
+          onDockTreeChange={() => {}}
           onSessionPlacements={setPlacements}
         />
         <SessionsHost

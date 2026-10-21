@@ -3,8 +3,11 @@ import type { TerminalPlacement } from '../../src/lib/terminal-placement-store';
 import type { ApiHelpers, WorkerServer } from './_helpers';
 import {
   CHAT_PANE_CARD,
+  dockSeam,
+  dragDockSeam,
   EDITOR_PANE_CARD,
   expect,
+  expectDockUnitOff,
   expectEditorHidden,
   headerPaneButton,
   openDesktopHeader,
@@ -30,8 +33,8 @@ const DOC_TEXT = 'The quick brown fox jumps over the lazy dog.';
 const BOTTOM_TERMINAL_CARD =
   '[data-slot="pane-card"][data-pane="terminal"][data-placement="bottom"]';
 const PANELS = '[data-editor-area-panels]';
-const EDITOR_COLUMN = '[data-editor-row="outer"] > [data-panel]';
 const EDITOR_REGION = '[data-editor-region]';
+const FILE_LIST_SLOT = '[data-editor-file-list-slot]';
 const MIN_CARD_PX = 100;
 
 async function boxOf(page: Page, selector: string): Promise<Box> {
@@ -102,10 +105,6 @@ async function openDesktop(
   await expect(headerPaneButton(page, 'terminal')).toBeVisible({ timeout: BOOT_TIMEOUT_MS });
   await waitForDocument(page);
   return name;
-}
-
-async function expectEditorColumnEmpty(page: Page): Promise<void> {
-  await expect.poll(() => widthOf(page, EDITOR_COLUMN)).toBeLessThanOrEqual(1);
 }
 
 async function expectFillsRow(page: Page, selectors: readonly string[]): Promise<void> {
@@ -215,12 +214,13 @@ test.describe('the Editor header button', () => {
     await openWeb(page, api, 'chat-alone');
     await setHeaderPane(page, 'agents', true);
     const chatWidthBefore = await widthOf(page, CHAT_PANE_CARD);
+    await expect(page.locator(FILE_LIST_SLOT)).toBeVisible();
 
     await setHeaderPane(page, 'editor', false);
     await expectEditorHidden(page);
-    await expectEditorColumnEmpty(page);
+    await expectDockUnitOff(page, 'editor');
     await expectFillsRow(page, [CHAT_PANE_CARD]);
-    await expect(page.locator('[data-editor-file-list-slot]')).not.toBeInViewport();
+    await expect(page.locator(FILE_LIST_SLOT)).toBeHidden();
     await expect(
       page.getByRole('region', { name: /Document statistics|Editor status bar/ }),
     ).not.toBeVisible();
@@ -296,11 +296,11 @@ test.describe('filling the space on the mocked desktop', () => {
 
     await setHeaderPane(page, 'editor', false);
     await expectEditorHidden(page);
-    await expectEditorColumnEmpty(page);
+    await expectDockUnitOff(page, 'editor');
     await expectFillsRow(page, [RIGHT_TERMINAL_PANE_CARD]);
   });
 
-  test('a right terminal and chat share the row in proportion, and widths dragged while hidden are put back on show', async ({
+  test('a right terminal and chat share the row in proportion, and a drag between them while the editor is hidden gives the editor back its width on show', async ({
     page,
     api,
     workerServer,
@@ -308,13 +308,14 @@ test.describe('filling the space on the mocked desktop', () => {
     await openDesktop(page, api, workerServer, 'right-and-chat', 'right');
     await setHeaderPane(page, 'terminal', true);
     await setHeaderPane(page, 'agents', true);
+    const editorBefore = await widthOf(page, EDITOR_PANE_CARD);
     const terminalBefore = await widthOf(page, RIGHT_TERMINAL_PANE_CARD);
     const chatBefore = await widthOf(page, CHAT_PANE_CARD);
     const sidePanelBefore = await widthOf(page, '#doc-panel');
 
     await setHeaderPane(page, 'editor', false);
     await expectEditorHidden(page);
-    await expectEditorColumnEmpty(page);
+    await expectDockUnitOff(page, 'editor');
     await expectFillsRow(page, [RIGHT_TERMINAL_PANE_CARD, CHAT_PANE_CARD]);
     await expect
       .poll(
@@ -323,20 +324,23 @@ test.describe('filling the space on the mocked desktop', () => {
       )
       .toBeCloseTo(terminalBefore / chatBefore, 1);
 
-    const divider = page.locator('[data-agents-panel-resize-handle]');
-    const bounds = await divider.boundingBox();
-    if (bounds === null) throw new Error('no divider between terminal and chat');
-    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(bounds.x - 150, bounds.y + bounds.height / 2, { steps: 10 });
-    await page.mouse.up();
-    await expect.poll(() => widthOf(page, CHAT_PANE_CARD)).toBeGreaterThan(chatBefore + 100);
+    const chatHidden = await widthOf(page, CHAT_PANE_CARD);
+    await dragDockSeam(page, dockSeam(page, 'agents'), { dx: 150 });
+    await expect.poll(() => widthOf(page, CHAT_PANE_CARD)).toBeLessThan(chatHidden - 100);
     await expectFillsRow(page, [RIGHT_TERMINAL_PANE_CARD, CHAT_PANE_CARD]);
 
     await setHeaderPane(page, 'editor', true);
-    await expect.poll(() => widthOf(page, CHAT_PANE_CARD)).toBeCloseTo(chatBefore, 0);
-    await expect.poll(() => widthOf(page, RIGHT_TERMINAL_PANE_CARD)).toBeCloseTo(terminalBefore, 0);
+    await expect.poll(() => widthOf(page, EDITOR_PANE_CARD)).toBeCloseTo(editorBefore, 0);
     await expect.poll(() => widthOf(page, '#doc-panel')).toBeCloseTo(sidePanelBefore, 0);
+    expect(await widthOf(page, CHAT_PANE_CARD)).toBeLessThan(chatBefore);
+    expect(await widthOf(page, RIGHT_TERMINAL_PANE_CARD)).toBeGreaterThan(terminalBefore);
+    expect(
+      Math.abs(
+        (await widthOf(page, CHAT_PANE_CARD)) +
+          (await widthOf(page, RIGHT_TERMINAL_PANE_CARD)) -
+          (chatBefore + terminalBefore),
+      ),
+    ).toBeLessThanOrEqual(2);
   });
 });
 

@@ -1354,9 +1354,6 @@ msgstr "Agent mode"
 msgid "Agent panel"
 msgstr "Agent panel"
 
-msgid "Agent panel closed to keep Terminal readable."
-msgstr "Agent panel closed to keep Terminal readable."
-
 msgid "Agent settings"
 msgstr "Agent settings"
 
@@ -8758,14 +8755,14 @@ msgstr "Reset view filters"
 msgid "Resize {handleKey}"
 msgstr "Resize {handleKey}"
 
+msgid "Resize {pane}"
+msgstr "Resize {pane}"
+
 msgid "Resize document panel"
 msgstr "Resize document panel"
 
 msgid "Resize skills panel"
 msgstr "Resize skills panel"
-
-msgid "Resize terminal"
-msgstr "Resize terminal"
 
 msgid "Resolve conflict in your terminal"
 msgstr "Resolve conflict in your terminal"
@@ -10289,9 +10286,6 @@ msgstr "Terminal {0}"
 
 msgid "Terminal access isn't enabled for this project."
 msgstr "Terminal access isn't enabled for this project."
-
-msgid "Terminal closed to make room for the agent panel."
-msgstr "Terminal closed to make room for the agent panel."
 
 msgid "Terminal disabled"
 msgstr "Terminal disabled"

@@ -7,32 +7,8 @@ import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
 import { subscribeToTerminalLaunchRequests } from './handoff/terminal-launch-events';
 
-const TERMINAL_PANEL_ID = 'terminal-dock-panel';
-
-// biome-ignore lint/suspicious/noExplicitAny: captured mock-component props
-let terminalPanelProps: Record<string, any> | null = null;
-const panelHandle = {
-  collapse: vi.fn(() => terminalPanelProps?.onResize?.({ asPercentage: 0, inPixels: 0 })),
-  expand: vi.fn(() => terminalPanelProps?.onResize?.({ asPercentage: 40, inPixels: 240 })),
-  resize: vi.fn(() => {}),
-};
-const sharedPanelRef: { current: unknown } = { current: panelHandle };
-
 vi.doMock('@tanstack/react-query', () => ({
   useQuery: () => ({ data: undefined, isLoading: false, isError: false }),
-}));
-
-vi.doMock('react-resizable-panels', () => ({ usePanelRef: () => sharedPanelRef }));
-vi.doMock('@/components/ui/resizable', () => ({
-  // biome-ignore lint/suspicious/noExplicitAny: test stub
-  ResizablePanelGroup: ({ children }: any) => <div>{children}</div>,
-  // biome-ignore lint/suspicious/noExplicitAny: test stub
-  ResizablePanel: (props: any) => {
-    if (props.id === TERMINAL_PANEL_ID) terminalPanelProps = props;
-    return <div id={props.id}>{props.children}</div>;
-  },
-  // biome-ignore lint/suspicious/noExplicitAny: test stub
-  ResizableHandle: ({ onPointerDown }: any) => <div onPointerDown={onPointerDown} />,
 }));
 
 vi.doMock('./TerminalGate', () => ({
@@ -50,12 +26,6 @@ vi.doMock('./TerminalGate', () => ({
   },
 }));
 
-vi.doMock('@/lib/terminal-height-store', () => ({
-  getInitialTerminalHeight: () => 240,
-  writeTerminalHeight: () => {},
-}));
-
-const { TerminalDock } = await import('./TerminalDock');
 const { SessionsHost } = await import('./SessionsHost');
 
 function ReloadHarness({
@@ -72,15 +42,8 @@ function ReloadHarness({
   const [bottomContainer, setBottomContainer] = useState<HTMLDivElement | null>(null);
   return (
     <TooltipProvider>
-      <TerminalDock
-        visible={visible}
-        available
-        variant="card"
-        onVisibleChange={() => {}}
-        onBottomContainer={setBottomContainer}
-      >
-        <div data-testid="editor-child" />
-      </TerminalDock>
+      <div data-testid="editor-child" />
+      <div ref={setBottomContainer} data-testid="terminal-bottom-mount" />
       <SessionsHost
         surface="terminal-dock"
         bridge={bridge}
@@ -141,7 +104,6 @@ function renderDock(bridge: OkDesktopBridge, visible: boolean) {
 describe('issue #351 — the terminal dock rehydrates surviving sessions after a renderer reload', () => {
   afterEach(() => {
     cleanup();
-    terminalPanelProps = null;
   });
 
   test('recovers a tab per surviving session instead of seeding a single fresh one', async () => {

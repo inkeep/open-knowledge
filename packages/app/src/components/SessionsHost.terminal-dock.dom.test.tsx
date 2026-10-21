@@ -1,7 +1,7 @@
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { type PointerEventHandler, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { OkDesktopBridge, OkMenuAction } from '@/lib/desktop-bridge-types';
@@ -11,81 +11,14 @@ import {
 } from '@/lib/local-menu-action-bus';
 import { writePreferBareTerminal } from '@/lib/terminal-new-tab-store';
 import { saveStickyAgent, terminalCliId } from '@/lib/unified-agent-store';
-import {
-  expectVisualClassTokens,
-  expectVisualClassTokensAbsent,
-} from '@/test-utils/visual-contract';
 import { composeTerminalSelectionPaste } from './handoff/compose-terminal-selection';
 import { requestPreferredSession } from './handoff/preferred-session-events';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
 import { subscribeToTerminalLaunchRequests } from './handoff/terminal-launch-events';
 import { registerBracketedPasteProbe } from './handoff/terminal-paste-mode';
 
-const TERMINAL_PANEL_ID = 'terminal-dock-panel';
-
-// biome-ignore lint/suspicious/noExplicitAny: captured mock-component props, asserted structurally
-let terminalPanelProps: Record<string, any> | null = null;
-
-const panelHandle = {
-  collapse: vi.fn(() => terminalPanelProps?.onResize?.({ asPercentage: 0, inPixels: 0 })),
-  expand: vi.fn(() => terminalPanelProps?.onResize?.({ asPercentage: 40, inPixels: 240 })),
-  resize: vi.fn((s: string) => {
-    const px = Number.parseInt(s, 10) || 0;
-    terminalPanelProps?.onResize?.({ asPercentage: px > 0 ? 30 : 0, inPixels: px });
-  }),
-};
-const sharedPanelRef: { current: unknown } = { current: panelHandle };
-
 vi.doMock('@tanstack/react-query', () => ({
   useQuery: () => ({ data: undefined, isLoading: false, isError: false }),
-}));
-
-vi.doMock('react-resizable-panels', () => ({
-  usePanelRef: () => sharedPanelRef,
-}));
-
-vi.doMock('@/components/ui/resizable', () => ({
-  // biome-ignore lint/suspicious/noExplicitAny: test stub
-  ResizablePanelGroup: ({ children, orientation }: any) => (
-    <div data-testid="rrp-group" data-orientation={orientation}>
-      {children}
-    </div>
-  ),
-  // biome-ignore lint/suspicious/noExplicitAny: test stub
-  ResizablePanel: (props: any) => {
-    if (props.id === TERMINAL_PANEL_ID) terminalPanelProps = props;
-    return (
-      <div
-        id={props.id}
-        data-panel={props.id ?? 'editor'}
-        data-inert={props.inert ? 'true' : undefined}
-      >
-        {props.children}
-      </div>
-    );
-  },
-  ResizableHandle: ({
-    onPointerDown,
-    disabled,
-    withHandle,
-    'aria-label': ariaLabel,
-    'aria-controls': ariaControls,
-  }: {
-    onPointerDown?: PointerEventHandler<HTMLHRElement>;
-    disabled?: boolean;
-    withHandle?: boolean;
-    'aria-label'?: string;
-    'aria-controls'?: string;
-  }) => (
-    <hr
-      aria-label={ariaLabel}
-      aria-controls={ariaControls}
-      data-testid="terminal-resize-handle"
-      data-disabled={disabled ? 'true' : 'false'}
-      data-with-handle={withHandle ? 'true' : 'false'}
-      onPointerDown={onPointerDown}
-    />
-  ),
 }));
 
 const titleEmitters = new Map<string, (title: string) => void>();
@@ -147,13 +80,6 @@ vi.doMock('@/lib/acp/launch-agent-thread', () => ({
   hasInflightThreadLaunch: () => mockInflightThreadLaunch,
 }));
 
-vi.doMock('@/lib/terminal-height-store', () => ({
-  getInitialTerminalHeight: () => 240,
-  writeTerminalHeight: () => {},
-  clampTerminalHeight: (px: number) => px,
-}));
-
-const { TerminalDock, MAX_STRANDED_REPORTS } = await import('./TerminalDock');
 const { SessionsHost } = await import('./SessionsHost');
 const { STAGE_PASTE_SETTLE_MS } = await import('./TerminalPanel');
 
@@ -211,18 +137,10 @@ function DockHarness({
   const [editorRegionEl, setEditorRegionEl] = useState<HTMLDivElement | null>(null);
   return (
     <TooltipProvider>
-      <TerminalDock
-        placement={p}
-        visible={v}
-        available
-        variant="card"
-        onVisibleChange={onVisibleChange}
-        onBottomContainer={setBottomContainer}
-      >
-        <div ref={setEditorRegionEl} tabIndex={-1} data-testid="editor-region">
-          {children ?? <div data-testid="editor-child" />}
-        </div>
-      </TerminalDock>
+      <div ref={setEditorRegionEl} tabIndex={-1} data-testid="editor-region">
+        {children ?? <div data-testid="editor-child" />}
+      </div>
+      {p === 'bottom' ? <div ref={setBottomContainer} data-testid="terminal-bottom-mount" /> : null}
       {p === 'right' && targetAvailable ? (
         <div ref={setRightContainer} data-testid="terminal-right-mount" />
       ) : null}
@@ -307,14 +225,9 @@ async function addTerminalTab(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: 'New terminal' }));
 }
 
-describe('TerminalDock multi-session', () => {
+describe('SessionsHost terminal dock sessions', () => {
   beforeEach(() => {
     localStorage.clear();
-    terminalPanelProps = null;
-    panelHandle.collapse.mockClear();
-    panelHandle.resize.mockClear();
-    panelHandle.expand.mockClear();
-    sharedPanelRef.current = panelHandle;
     titleEmitters.clear();
     __resetLocalMenuActionBusForTests();
   });
@@ -336,12 +249,12 @@ describe('TerminalDock multi-session', () => {
     expect(screen.getByTestId('terminal-session')).toBe(session);
     expect(dock.create).toHaveBeenCalledTimes(1);
     expect(dock.kill).not.toHaveBeenCalled();
-    expect(document.getElementById(TERMINAL_PANEL_ID)).toBeNull();
+    expect(screen.queryByTestId('terminal-bottom-mount')).toBeNull();
 
     dock.rerender(true, null, 'bottom');
 
     await waitFor(() => {
-      expect(document.getElementById(TERMINAL_PANEL_ID)?.contains(session)).toBe(true);
+      expect(screen.getByTestId('terminal-bottom-mount').contains(session)).toBe(true);
     });
     expect(screen.getByTestId('terminal-session')).toBe(session);
     expect(screen.queryByTestId('terminal-right-mount')).toBeNull();
@@ -390,77 +303,10 @@ describe('TerminalDock multi-session', () => {
     expect(dock.create).toHaveBeenCalledTimes(2);
     expect(dock.kill).not.toHaveBeenCalled();
     expect(document.querySelectorAll('[data-terminal-session]')).toHaveLength(2);
-    expect(document.getElementById(TERMINAL_PANEL_ID)).toBeNull();
+    expect(screen.queryByTestId('terminal-bottom-mount')).toBeNull();
     expect(
       screen.getByTestId('terminal-right-mount').querySelectorAll('[data-terminal-session]'),
     ).toHaveLength(2);
-  });
-
-  test('moving the terminal between bottom and right, and hiding it, never remounts the editor', async () => {
-    let editorMounts = 0;
-    function CountingEditor() {
-      useEffect(() => {
-        editorMounts += 1;
-      }, []);
-      return <div data-testid="counting-editor" />;
-    }
-    const onVisibleChange = vi.fn((_v: boolean) => {});
-    const { bridge, create, kill } = makeBridge();
-    const ui = (v: boolean, p: 'bottom' | 'right') => (
-      <DockHarness v={v} l={null} p={p} onVisibleChange={onVisibleChange} bridge={bridge}>
-        <CountingEditor />
-      </DockHarness>
-    );
-    const view = render(ui(true, 'bottom'));
-    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
-    const editor = screen.getByTestId('counting-editor');
-    const region = screen.getByTestId('editor-region');
-    const card = document.querySelector('[data-slot="pane-card"][data-pane="terminal"]');
-    expect(card?.getAttribute('data-placement')).toBe('bottom');
-    expect(document.getElementById(TERMINAL_PANEL_ID)?.contains(card)).toBe(true);
-    expect(editorMounts).toBe(1);
-
-    view.rerender(ui(true, 'right'));
-    view.rerender(ui(false, 'right'));
-    view.rerender(ui(true, 'right'));
-    view.rerender(ui(true, 'bottom'));
-    view.rerender(ui(false, 'bottom'));
-    view.rerender(ui(true, 'bottom'));
-
-    expect(editorMounts).toBe(1);
-    expect(screen.getByTestId('counting-editor')).toBe(editor);
-    expect(screen.getByTestId('editor-region')).toBe(region);
-    expect(screen.getByTestId('rrp-group').contains(editor)).toBe(true);
-    expect(create).toHaveBeenCalledTimes(1);
-    expect(kill).not.toHaveBeenCalled();
-  });
-
-  test('names the bottom terminal divider for the pane it resizes', () => {
-    renderDock(true);
-    const divider = screen.getByRole('separator', { name: 'Resize terminal' });
-    expect(divider.getAttribute('aria-controls')).toBe(TERMINAL_PANEL_ID);
-  });
-
-  test('renders no bottom terminal panel or divider when no terminal is available, as on the web', () => {
-    render(
-      <TooltipProvider>
-        <TerminalDock
-          placement="bottom"
-          visible={false}
-          available={false}
-          variant="card"
-          onVisibleChange={() => {}}
-          onBottomContainer={() => {}}
-        >
-          <div data-testid="editor-child" />
-        </TerminalDock>
-      </TooltipProvider>,
-    );
-
-    expect(screen.getByTestId('editor-child')).toBeTruthy();
-    expect(document.getElementById(TERMINAL_PANEL_ID)).toBeNull();
-    expect(screen.queryByTestId('terminal-resize-handle')).toBeNull();
-    expect(document.querySelector('[data-slot="pane-card"][data-pane="terminal"]')).toBeNull();
   });
 
   test('tab strip carries no in-pane collapse, dock or drag controls', () => {
@@ -1309,59 +1155,6 @@ describe('TerminalDock multi-session', () => {
     }
   });
 
-  test('a pointercancel-terminated drag stops later resizes reading as user drags', () => {
-    const view = renderDock(true);
-    const handle = screen.getByTestId('terminal-resize-handle');
-    act(() => {
-      fireEvent.pointerDown(handle);
-    });
-    act(() => {
-      fireEvent.pointerCancel(window);
-    });
-    view.onVisibleChange.mockClear();
-
-    act(() => {
-      terminalPanelProps?.onResize?.({ asPercentage: 0, inPixels: 0 });
-    });
-    expect(view.onVisibleChange).not.toHaveBeenCalled();
-  });
-
-  test('a different pointer cancelling does not end an in-flight dock drag', () => {
-    const view = renderDock(true);
-    const handle = screen.getByTestId('terminal-resize-handle');
-    act(() => {
-      fireEvent.pointerDown(handle, { pointerId: 1 });
-    });
-
-    act(() => {
-      fireEvent.pointerCancel(window, { pointerId: 2 });
-    });
-    view.onVisibleChange.mockClear();
-    act(() => {
-      terminalPanelProps?.onResize?.({ asPercentage: 0, inPixels: 0 });
-    });
-    expect(view.onVisibleChange).toHaveBeenCalledWith(false);
-
-    act(() => {
-      fireEvent.pointerCancel(window, { pointerId: 1 });
-    });
-    view.onVisibleChange.mockClear();
-    act(() => {
-      terminalPanelProps?.onResize?.({ asPercentage: 0, inPixels: 0 });
-    });
-    expect(view.onVisibleChange).not.toHaveBeenCalled();
-  });
-
-  test('persists the bottom panel config (collapsible, sized, inert when hidden)', () => {
-    renderDock(false);
-    expect(terminalPanelProps?.collapsible).toBe(true);
-    expect(terminalPanelProps?.collapsedSize).toBe(0);
-    expect(terminalPanelProps?.minSize).toBe('120px');
-    expect(terminalPanelProps?.maxSize).toBe('95%');
-    expect(terminalPanelProps?.defaultSize).toBe(0);
-    expect(terminalPanelProps?.inert).toBe(true);
-  });
-
   test('focuses the active session on reveal so the user can type immediately', () => {
     const view = renderDock(true);
     const session = screen.getByTestId('terminal-session');
@@ -1372,49 +1165,10 @@ describe('TerminalDock multi-session', () => {
     act(() => view.rerender(true));
     expect(document.activeElement).toBe(session);
   });
-
-  test('the bottom terminal card casts its shadow only while the dock is open', () => {
-    const card = () => {
-      const el = document.querySelector<HTMLElement>(
-        '[data-slot="pane-card"][data-pane="terminal"]',
-      );
-      if (el == null) throw new Error('no bottom terminal card rendered');
-      return el;
-    };
-    const view = renderDock(true);
-    expectVisualClassTokensAbsent(card().className, ['shadow-none']);
-
-    act(() => {
-      terminalPanelProps?.onResize?.({ asPercentage: 0, inPixels: 0 });
-    });
-    expectVisualClassTokens(card().className, ['shadow-none']);
-
-    act(() => view.rerender(false));
-    expectVisualClassTokens(card().className, ['shadow-none']);
-
-    act(() => view.rerender(true));
-    expectVisualClassTokensAbsent(card().className, ['shadow-none']);
-  });
-
-  test('disables the resize handle while hidden so there is no drag-to-open', () => {
-    const view = renderDock(false);
-    expect(screen.getByTestId('terminal-resize-handle').getAttribute('data-disabled')).toBe('true');
-
-    act(() => view.rerender(true));
-    expect(screen.getByTestId('terminal-resize-handle').getAttribute('data-disabled')).toBe(
-      'false',
-    );
-  });
 });
 
-describe('TerminalDock extraction pins', () => {
-  beforeEach(() => {
-    terminalPanelProps = null;
-    panelHandle.collapse.mockClear();
-    panelHandle.resize.mockClear();
-    panelHandle.expand.mockClear();
-    sharedPanelRef.current = panelHandle;
-  });
+describe('SessionsHost terminal dock pins', () => {
+  beforeEach(() => {});
   afterEach(() => {
     cleanup();
   });
@@ -1501,94 +1255,5 @@ describe('TerminalDock extraction pins', () => {
       `[data-terminal-session="${nowActive}"] .xterm-helper-textarea`,
     );
     await waitFor(() => expect(document.activeElement).toBe(focusSink));
-  });
-});
-
-describe('TerminalDock hidden-dock invariant', () => {
-  beforeEach(() => {
-    localStorage.clear();
-    terminalPanelProps = null;
-    panelHandle.collapse.mockClear();
-    panelHandle.resize.mockClear();
-    panelHandle.expand.mockClear();
-    sharedPanelRef.current = panelHandle;
-    __resetLocalMenuActionBusForTests();
-  });
-  afterEach(() => {
-    cleanup();
-    __resetLocalMenuActionBusForTests();
-  });
-
-  function reportSize(inPixels: number, asPercentage: number) {
-    act(() => {
-      terminalPanelProps?.onResize?.({ asPercentage, inPixels });
-    });
-  }
-
-  function strandedLogs(warn: ReturnType<typeof vi.spyOn>): string[] {
-    return warn.mock.calls
-      .map((call) => String(call[0]))
-      .filter((line) => line.includes('ok-terminal-dock-stranded-while-hidden'));
-  }
-
-  test('a hidden dock that reports a non-zero height is snapped shut', () => {
-    renderDock(false);
-    panelHandle.collapse.mockClear();
-
-    reportSize(588, 42.5);
-
-    expect(panelHandle.collapse).toHaveBeenCalled();
-  });
-
-  test('an unmeasurable group (NaN percentage, zero pixels) is left alone', () => {
-    renderDock(false);
-    panelHandle.collapse.mockClear();
-
-    reportSize(0, Number.NaN);
-
-    expect(panelHandle.collapse).not.toHaveBeenCalled();
-  });
-
-  test('an open dock keeps the height it reports', () => {
-    renderDock(true);
-    panelHandle.collapse.mockClear();
-
-    reportSize(240, 30);
-
-    expect(panelHandle.collapse).not.toHaveBeenCalled();
-  });
-
-  test('the repair is reported with the geometry needed to diagnose it', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      renderDock(false);
-      reportSize(588, 42.5);
-
-      const [line] = strandedLogs(warn);
-      expect(line).toBeDefined();
-      expect(JSON.parse(line as string)).toMatchObject({
-        event: 'ok-terminal-dock-stranded-while-hidden',
-        panelPx: 588,
-        panelPct: 42.5,
-        visible: false,
-      });
-      const payload = JSON.parse(line as string);
-      expect(typeof payload.innerHeight).toBe('number');
-      expect(typeof payload.dockHeightPx).toBe('number');
-    } finally {
-      warn.mockRestore();
-    }
-  });
-
-  test('the report is capped so a fight with another layout writer cannot flood the log', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      renderDock(false);
-      for (let i = 0; i < MAX_STRANDED_REPORTS + 4; i++) reportSize(588, 42.5);
-
-      expect(strandedLogs(warn)).toHaveLength(MAX_STRANDED_REPORTS);
-    } finally {
-      warn.mockRestore();
-    }
   });
 });

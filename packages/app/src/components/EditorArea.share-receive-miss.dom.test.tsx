@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { ConfigProvider } from '@/lib/config-provider';
+import { DEFAULT_DOCK_TREE } from '@/lib/dock-tree';
 import { pendingReceiveNavStore } from '@/lib/share/pending-receive-nav-store';
 
 const MISSING_DOC_CTX = {
@@ -46,9 +47,6 @@ vi.doMock('@/components/EditorSkeleton', () => ({
 }));
 vi.doMock('@/components/EmptyEditorState', () => ({
   EmptyEditorState: () => <div data-testid="empty-editor-state" />,
-}));
-vi.doMock('./TerminalDock', () => ({
-  TerminalDock: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 vi.doMock('./EditorWorkspace', () => ({
   EditorWorkspace: ({
@@ -125,6 +123,8 @@ function renderEditorArea() {
           onModeChange={() => {}}
           activeTab="timeline"
           onActiveTabChange={() => {}}
+          dockTree={DEFAULT_DOCK_TREE}
+          onDockTreeChange={() => {}}
         />
       </SidebarProvider>
     </ConfigProvider>,

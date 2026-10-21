@@ -1354,9 +1354,6 @@ msgstr "代理模式"
 msgid "Agent panel"
 msgstr "智慧代理面板"
 
-msgid "Agent panel closed to keep Terminal readable."
-msgstr "為保持 Terminal 清晰可讀，已關閉智慧代理面板。"
-
 msgid "Agent settings"
 msgstr "代理設定"
 
@@ -8758,14 +8755,14 @@ msgstr "重設檢視篩選條件"
 msgid "Resize {handleKey}"
 msgstr "調整 {handleKey} 的大小"
 
+msgid "Resize {pane}"
+msgstr "調整 {pane} 的大小"
+
 msgid "Resize document panel"
 msgstr "調整文件面板大小"
 
 msgid "Resize skills panel"
 msgstr "調整「技能」面板大小"
-
-msgid "Resize terminal"
-msgstr "調整終端機大小"
 
 msgid "Resolve conflict in your terminal"
 msgstr "在你的終端機中解決衝突"
@@ -10289,9 +10286,6 @@ msgstr "終端機 {0}"
 
 msgid "Terminal access isn't enabled for this project."
 msgstr "這個專案沒有啟用終端機存取。"
-
-msgid "Terminal closed to make room for the agent panel."
-msgstr "已關閉 Terminal，為智慧代理面板騰出空間。"
 
 msgid "Terminal disabled"
 msgstr "終端機已停用"

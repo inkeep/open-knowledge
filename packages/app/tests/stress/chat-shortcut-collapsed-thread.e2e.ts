@@ -1,8 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import type { AgentCatalog } from '@/lib/acp/catalog';
-import { expect, test, waitForActiveProviderSynced } from './_helpers';
+import { dockUnitRect, expect, test, waitForActiveProviderSynced } from './_helpers';
 import { startHiddenChatAgent } from './hidden-chat-transport.test-helper';
+
+async function chatWidth(page: Page): Promise<number> {
+  return (await dockUnitRect(page, 'agents'))?.width ?? 0;
+}
 
 async function registerFixtureAgent(page: Page, agentId: string): Promise<void> {
   await page.addInitScript((id) => {
@@ -25,7 +29,7 @@ test.beforeEach(async ({ page }) => {
     });
   });
 });
-test('Chat shortcut restores a keyboard-collapsed real thread in the same frame', async ({
+test('Chat shortcut restores a hidden real thread in the same frame', async ({
   page,
   api,
   workerServer,
@@ -47,22 +51,14 @@ test('Chat shortcut restores a keyboard-collapsed real thread in the same frame'
     await page.goto(`/#/${docName}`);
     await waitForActiveProviderSynced(page);
     const button = page.getByTestId('header-pane-button-agents');
-    const mount = page.locator('[data-agents-panel-mount]');
     await expect(button).toBeVisible();
     await button.click();
-    await expect
-      .poll(() => mount.boundingBox().then((box) => box?.width ?? 0))
-      .toBeGreaterThan(250);
+    await expect.poll(() => chatWidth(page)).toBeGreaterThan(250);
     const threadTab = page.locator(`[role="tab"][data-tab-id="${fixture.threadId}"]`);
     await expect(threadTab).toHaveCount(1);
     await threadTab.click();
-    const handle = mount
-      .locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]')
-      .locator('xpath=preceding-sibling::*[1]');
-    await expect(handle).toHaveAttribute('data-slot', 'resizable-handle');
-    await handle.focus();
-    await handle.press('Home');
-    await expect.poll(() => mount.boundingBox().then((box) => box?.width ?? 0)).toBe(0);
+    await button.click();
+    await expect.poll(() => chatWidth(page)).toBe(0);
     await expect(button).toHaveAttribute('aria-pressed', 'false');
     await page.evaluate(() => {
       const swatch = document.createElement('div');
@@ -76,10 +72,14 @@ test('Chat shortcut restores a keyboard-collapsed real thread in the same frame'
         pointerEvents: 'none',
       });
       document.body.append(swatch);
-      const panel = document.querySelector('[data-agents-panel-mount]');
+      const unit = document.querySelector('[data-dock-unit="agents"]');
       const button = document.querySelector('[data-testid="header-pane-button-agents"]');
       const sample = () => {
-        const wide = (panel?.getBoundingClientRect().width ?? 0) > 0;
+        const wide =
+          unit instanceof HTMLElement &&
+          !unit.hidden &&
+          !unit.hasAttribute('data-dock-unit-off') &&
+          unit.getBoundingClientRect().width > 0;
         const pressed = button?.getAttribute('aria-pressed') === 'true';
         swatch.style.backgroundColor = wide
           ? pressed
@@ -91,8 +91,12 @@ test('Chat shortcut restores a keyboard-collapsed real thread in the same frame'
       };
       const mutation = new MutationObserver(sample);
       if (button) mutation.observe(button, { attributes: true, attributeFilter: ['aria-pressed'] });
-      const resize = new ResizeObserver(sample);
-      if (panel) resize.observe(panel);
+      if (unit) {
+        mutation.observe(unit, {
+          attributes: true,
+          attributeFilter: ['hidden', 'data-dock-unit-off', 'style'],
+        });
+      }
       let running = true;
       const tick = () => {
         if (!running) return;
@@ -106,7 +110,6 @@ test('Chat shortcut restores a keyboard-collapsed real thread in the same frame'
           stop: () => {
             running = false;
             mutation.disconnect();
-            resize.disconnect();
             swatch.remove();
           },
         },
@@ -115,15 +118,11 @@ test('Chat shortcut restores a keyboard-collapsed real thread in the same frame'
     await client.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 });
     await expect.poll(() => frames.length).toBeGreaterThan(0);
     await page.keyboard.press('ControlOrMeta+Shift+j');
-    await expect
-      .poll(() => mount.boundingBox().then((box) => box?.width ?? 0))
-      .toBeGreaterThan(250);
+    await expect.poll(() => chatWidth(page)).toBeGreaterThan(250);
     await expect(button).toHaveAttribute('aria-pressed', 'true');
-    const firstWidth = (await mount.boundingBox())?.width ?? 0;
+    const firstWidth = await chatWidth(page);
     await page.keyboard.press('ControlOrMeta+Shift+j');
-    await expect
-      .poll(() => mount.boundingBox().then((box) => box?.width ?? 0))
-      .toBeGreaterThan(250);
+    await expect.poll(() => chatWidth(page)).toBeGreaterThan(250);
     await expect(button).toHaveAttribute('aria-pressed', 'true');
     await expect.poll(() => frames.length).toBeGreaterThan(1);
     await client.send('Page.stopScreencast');
@@ -185,7 +184,7 @@ for (const action of [
   'reuse the active thread with Ask AI',
   'launch an agent thread',
 ] as const) {
-  test(`${action} reveals a keyboard-collapsed Chat pane with an existing thread`, async ({
+  test(`${action} reveals a hidden Chat pane with an existing thread`, async ({
     page,
     api,
     workerServer,
@@ -204,18 +203,12 @@ for (const action of [
       await expect(button).toBeVisible();
       await expect(threadTab).toHaveCount(1);
       await button.click();
-      await expect
-        .poll(() => mount.boundingBox().then((box) => box?.width ?? 0))
-        .toBeGreaterThan(250);
+      await expect.poll(() => chatWidth(page)).toBeGreaterThan(250);
       await expect(threadTab).toHaveCount(1);
       await threadTab.click();
       const tabs = mount.locator('[role="tab"][data-tab-id]');
-      const handle = mount
-        .locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]')
-        .locator('xpath=preceding-sibling::*[1]');
-      await expect(handle).toHaveAttribute('data-slot', 'resizable-handle');
-      await handle.press('Home');
-      await expect.poll(() => mount.boundingBox().then((box) => box?.width ?? 0)).toBe(0);
+      await button.click();
+      await expect.poll(() => chatWidth(page)).toBe(0);
       await expect(button).toHaveAttribute('aria-pressed', 'false');
       const originalTabIds = await tabs.evaluateAll((elements) =>
         elements.map((element) => element.getAttribute('data-tab-id')).sort(),
@@ -311,9 +304,7 @@ for (const action of [
         if (originalTabIds.length === 1) await expect(tabs).toHaveCount(2);
       }
 
-      await expect
-        .poll(() => mount.boundingBox().then((box) => box?.width ?? 0))
-        .toBeGreaterThan(250);
+      await expect.poll(() => chatWidth(page)).toBeGreaterThan(250);
       await expect(button).toHaveAttribute('aria-pressed', 'true');
       await expect(threadTab).toBeVisible();
       await threadTab.focus();

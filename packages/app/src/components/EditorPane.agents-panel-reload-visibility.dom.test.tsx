@@ -1,6 +1,6 @@
 import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import * as actualLinguiMacro from '@lingui/react/macro';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -171,11 +171,9 @@ vi.doMock('./EditorHeader', () => ({
 vi.doMock('./EditorArea', () => ({
   EditorArea: ({
     agentsVisible,
-    onAgentsVisibleChange,
     onSessionPlacements,
   }: {
     agentsVisible?: boolean;
-    onAgentsVisibleChange?: (visible: boolean) => void;
     onSessionPlacements?: (placements: unknown) => void;
   }) => {
     const [agentsContainer] = useState(() => document.createElement('div'));
@@ -195,17 +193,7 @@ vi.doMock('./EditorArea', () => ({
         terminalContainer.remove();
       };
     }, [agentsContainer, terminalContainer]);
-    if (agentsVisible)
-      return (
-        <div data-testid="agents-column">
-          <button
-            type="button"
-            data-testid="agents-collapse"
-            onClick={() => onAgentsVisibleChange?.(false)}
-          />
-        </div>
-      );
-    return null;
+    return agentsVisible ? <div data-testid="agents-column" /> : null;
   },
 }));
 
@@ -390,7 +378,7 @@ describe('EditorPane agents-panel reload visibility', () => {
     expect(screen.queryByTestId('agents-column')).not.toBeNull();
   });
 
-  test('web: a thread arriving after a persisted-open reload is collapsed reveals the panel', async () => {
+  test('web: a thread arriving after a persisted-open reload is closed reveals the panel', async () => {
     seedPersistedAgentsPanelLevel(true);
 
     await renderPane(3);
@@ -401,7 +389,7 @@ describe('EditorPane agents-panel reload visibility', () => {
       deliverRosterThreads([makeThread({ threadId: 't1' })]);
     });
     await act(async () => {
-      fireEvent.click(screen.getByTestId('agents-collapse'));
+      paneVisibilityStore.request('agents', false);
     });
 
     expect(paneVisibilityStore.getSnapshot().agents?.open).toBe(false);
@@ -800,7 +788,7 @@ describe('EditorPane agents-panel reload visibility', () => {
         paneVisibilityStore.request('agents', true);
       });
       await act(async () => {
-        fireEvent.click(screen.getByTestId('agents-collapse'));
+        paneVisibilityStore.request('agents', false);
       });
       expect(viewMenuStates).not.toContainEqual({
         agentPanelVisible: true,
@@ -850,7 +838,7 @@ describe('EditorPane agents-panel reload visibility', () => {
         paneVisibilityStore.request('agents', true);
       });
       await act(async () => {
-        fireEvent.click(screen.getByTestId('agents-collapse'));
+        paneVisibilityStore.request('agents', false);
       });
       expect(viewMenuStates).not.toContainEqual({
         agentPanelVisible: false,
@@ -919,7 +907,7 @@ describe('EditorPane agents-panel reload visibility', () => {
       ).toBe(true);
 
       await act(async () => {
-        fireEvent.click(screen.getByTestId('agents-collapse'));
+        paneVisibilityStore.request('agents', false);
       });
 
       expect(viewMenuStates).toContainEqual({

@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { pollSettledReading, RAIL_LAYOUT_SETTLE_TIMEOUT_MS } from './settled-reading';
+import { LAYOUT_SETTLE_TIMEOUT_MS, pollSettledReading } from './settled-reading';
 
 afterEach(() => vi.useRealTimers());
 
@@ -30,7 +30,7 @@ test('a reading completed after its declared bound cannot turn the verdict into 
     {
       reading: 'dimension',
       of: 'test surface',
-      timeout: RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+      timeout: LAYOUT_SETTLE_TIMEOUT_MS,
     },
   )
     .toBe('ready')
@@ -39,7 +39,7 @@ test('a reading completed after its declared bound cannot turn the verdict into 
       (error: unknown) => error,
     );
   await started.promise;
-  await vi.advanceTimersByTimeAsync(RAIL_LAYOUT_SETTLE_TIMEOUT_MS + 1);
+  await vi.advanceTimersByTimeAsync(LAYOUT_SETTLE_TIMEOUT_MS + 1);
   reading.resolve('ready');
   await vi.runAllTimersAsync();
 
@@ -61,7 +61,7 @@ test('a synchronous reader failure is preserved even if another attempt could su
     {
       reading: 'dimension',
       of: 'test surface',
-      timeout: RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+      timeout: LAYOUT_SETTLE_TIMEOUT_MS,
     },
   )
     .toBe(1)

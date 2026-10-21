@@ -3,7 +3,7 @@ import type * as React from 'react';
 import type { PaneId } from '@/lib/pane-visibility-store';
 import { cn } from '@/lib/utils';
 
-export type PaneCardVariant = 'card' | 'flat';
+type PaneCardVariant = 'card' | 'flat';
 
 export const PANE_CARD_GAP_PX = 8;
 export const PANE_CARD_DIVIDER_PX = 1;

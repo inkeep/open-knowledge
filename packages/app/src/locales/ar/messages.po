@@ -1354,9 +1354,6 @@ msgstr "وضع الوكيل"
 msgid "Agent panel"
 msgstr "لوحة الوكيل"
 
-msgid "Agent panel closed to keep Terminal readable."
-msgstr "أُغلقت لوحة الوكيل لإبقاء Terminal سهل القراءة."
-
 msgid "Agent settings"
 msgstr "إعدادات الوكيل"
 
@@ -8758,14 +8755,14 @@ msgstr "إعادة تعيين مرشحات العرض"
 msgid "Resize {handleKey}"
 msgstr "تغيير حجم {handleKey}"
 
+msgid "Resize {pane}"
+msgstr "تغيير حجم {pane}"
+
 msgid "Resize document panel"
 msgstr "تغيير حجم لوحة المستند"
 
 msgid "Resize skills panel"
 msgstr "تغيير حجم لوحة المهارات"
-
-msgid "Resize terminal"
-msgstr "تغيير حجم الطرفية"
 
 msgid "Resolve conflict in your terminal"
 msgstr "حل التعارض في طرفيتك"
@@ -10289,9 +10286,6 @@ msgstr "الطرفية {0}"
 
 msgid "Terminal access isn't enabled for this project."
 msgstr "الوصول إلى الطرفية غير مفعّل لهذا المشروع."
-
-msgid "Terminal closed to make room for the agent panel."
-msgstr "أُغلق Terminal لإفساح المجال للوحة الوكيل."
 
 msgid "Terminal disabled"
 msgstr "الطرفية معطّلة"

@@ -78,7 +78,7 @@ test('a requested editor width settles when the renderer read completes within t
     Promise.resolve(requestedWidth),
   );
   await readStarted;
-  await vi.advanceTimersByTimeAsync(settledReading.RAIL_LAYOUT_SETTLE_TIMEOUT_MS - 1);
+  await vi.advanceTimersByTimeAsync(settledReading.LAYOUT_SETTLE_TIMEOUT_MS - 1);
   releaseRead();
 
   expect(await result).toBe('settled');
@@ -91,7 +91,7 @@ test('the editor width at the requested minimum is accepted', async () => {
   );
   releaseRead();
   await readStarted;
-  await vi.advanceTimersByTimeAsync(settledReading.RAIL_LAYOUT_SETTLE_TIMEOUT_MS + 1);
+  await vi.advanceTimersByTimeAsync(settledReading.LAYOUT_SETTLE_TIMEOUT_MS + 1);
 
   expect(await result).toBe('settled');
 });
@@ -104,7 +104,7 @@ test('an editor width below the requested minimum is rejected', async () => {
   );
   releaseRead();
   await readStarted;
-  await vi.advanceTimersByTimeAsync(settledReading.RAIL_LAYOUT_SETTLE_TIMEOUT_MS + 1);
+  await vi.advanceTimersByTimeAsync(settledReading.LAYOUT_SETTLE_TIMEOUT_MS + 1);
 
   const outcome = await result;
   expect(outcome).toBeInstanceOf(Error);

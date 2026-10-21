@@ -1350,9 +1350,6 @@ msgstr "এজেন্ট মোড"
 msgid "Agent panel"
 msgstr "এজেন্ট প্যানেল"
 
-msgid "Agent panel closed to keep Terminal readable."
-msgstr "Terminal পাঠযোগ্য রাখতে এজেন্ট প্যানেল বন্ধ করা হয়েছে।"
-
 msgid "Agent settings"
 msgstr "এজেন্ট সেটিং"
 
@@ -8754,14 +8751,14 @@ msgstr "দৃশ্যের ছাঁকনি রিসেট করুন"
 msgid "Resize {handleKey}"
 msgstr "{handleKey}-এর আকার বদলান"
 
+msgid "Resize {pane}"
+msgstr "{pane}-এর আকার বদলান"
+
 msgid "Resize document panel"
 msgstr "নথি প্যানেলের আকার পরিবর্তন করুন"
 
 msgid "Resize skills panel"
 msgstr "স্কিল প্যানেলের আকার পরিবর্তন করুন"
-
-msgid "Resize terminal"
-msgstr "টার্মিনালের আকার পরিবর্তন করুন"
 
 msgid "Resolve conflict in your terminal"
 msgstr "আপনার টার্মিনালে দ্বন্দ্ব মীমাংসা করুন"
@@ -10285,9 +10282,6 @@ msgstr "টার্মিনাল {0}"
 
 msgid "Terminal access isn't enabled for this project."
 msgstr "এই প্রকল্পের জন্য টার্মিনালে প্রবেশ চালু নেই।"
-
-msgid "Terminal closed to make room for the agent panel."
-msgstr "এজেন্ট প্যানেলের জন্য জায়গা করতে Terminal বন্ধ করা হয়েছে।"
 
 msgid "Terminal disabled"
 msgstr "টার্মিনাল নিষ্ক্রিয়"

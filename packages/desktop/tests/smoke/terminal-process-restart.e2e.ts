@@ -14,6 +14,13 @@ import {
   runningAppProcesses,
   watchCrashDumps,
 } from './_helpers/crash-dumps';
+import {
+  dockUnitWidth,
+  expectStoredDockArrangementChanged,
+  readTerminalHome,
+  storedDockArrangement,
+  TERMINAL_CARD,
+} from './_helpers/dock-workspace';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { waitForWindowByMode } from './_helpers/launch-readiness';
 import { sumOfDeclaredBoundsMs } from './_helpers/parse-timeouts';
@@ -22,11 +29,10 @@ import {
   PTY_PLATFORM_SUPPORTED,
   userDataDirFor,
 } from './_helpers/platform-gate';
-import { readRailColumnWidth } from './_helpers/rail-column';
 import {
   expectSettledReading,
+  LAYOUT_SETTLE_TIMEOUT_MS,
   pollSettledReading,
-  RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
   settleBudget,
 } from './_helpers/settled-reading';
 import { expect, test } from './_helpers/smoke-test';
@@ -48,6 +54,7 @@ const ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const PRIMARY_MODIFIER = process.platform === 'darwin' ? 'Meta' : 'Control';
 const QUIT_SAMPLES = process.platform === 'win32' ? 50 : 1;
 const SECOND_TAB_LABEL = process.platform === 'win32' ? 'process second' : 'Terminal 2';
+const TERMINAL_UNIT = '#dock-unit-terminal';
 
 interface RestartSeed {
   tmpHome: string;
@@ -124,7 +131,7 @@ async function setWindowSize(
   await pollSettledReading(() => page.evaluate(() => window.innerWidth), {
     reading: 'viewport width',
     of: 'editor window',
-    timeout: 10_000 satisfies typeof RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+    timeout: 10_000 satisfies typeof LAYOUT_SETTLE_TIMEOUT_MS,
   }).toBeGreaterThanOrEqual(width - 100);
 }
 
@@ -169,7 +176,7 @@ async function expectArrangedTabs(page: Page): Promise<void> {
   );
 }
 
-async function arrangeTabsInRightColumn(
+async function arrangeTabsInRightTerminal(
   page: Page,
   firstTabId: string,
   secondTabId: string,
@@ -185,24 +192,47 @@ async function arrangeTabsInRightColumn(
   await expectTerminalTabOrder(page, [secondTabId, firstTabId]);
   await expect(terminalTabById(page, secondTabId)).toHaveAttribute('aria-selected', 'true');
   await dispatchRendererMenuAction(page, 'move-terminal');
-  await expect(page.locator('#terminal-column')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator(TERMINAL_CARD)).toHaveAttribute('data-placement', 'right', {
+    timeout: 10_000,
+  });
   await expectArrangedTabs(page);
 }
 
-async function applyPersistedRightTerminalWidth(page: Page, width: number): Promise<number> {
-  await page.evaluate((nextWidth) => {
-    localStorage.setItem('ok-terminal-right-width-v1', String(nextWidth));
-  }, width);
+async function terminalRowShare(page: Page): Promise<number> {
+  const editor = await dockUnitWidth(page, 'editor');
+  const terminal = await dockUnitWidth(page, 'terminal');
+  return terminal / (editor + terminal);
+}
+
+async function widenRightTerminalThenReload(page: Page): Promise<number> {
+  const movedArrangement = await storedDockArrangement(page, { timeout: 10_000 });
+  const before = await dockUnitWidth(page, 'terminal');
+  await page.getByRole('separator', { name: 'Resize Terminal', exact: true }).focus();
+  await page.keyboard.press('Shift+ArrowLeft');
+  await page.keyboard.press('Shift+ArrowLeft');
+  const grow = settleBudget('right Terminal keyboard resize and its stored arrangement', {
+    timeout: LAYOUT_SETTLE_TIMEOUT_MS,
+  });
+  await expectSettledReading(
+    () => dockUnitWidth(page, 'terminal'),
+    (width) => expect(width).toBeGreaterThan(before + 100),
+    { reading: 'width', of: TERMINAL_UNIT, budget: grow },
+  );
+  const widened = await dockUnitWidth(page, 'terminal');
+  await expectStoredDockArrangementChanged(page, movedArrangement, grow);
   await page.reload({ waitUntil: 'domcontentloaded' });
   const restore = settleBudget('restored right Terminal width', { timeout: 20_000 });
-  const column = page.locator('#terminal-column');
-  await expect(column).toBeVisible({ timeout: restore.remainingMs() });
   await expectSettledReading(
-    () => readRailColumnWidth(page, '#terminal-column'),
-    (renderedWidth) => expect(Math.abs(renderedWidth - width)).toBeLessThan(20),
-    { reading: 'width', of: '#terminal-column', budget: restore },
+    () => readTerminalHome(page),
+    (home) => expect(home).toMatchObject({ placement: 'right', geometry: 'right' }),
+    { reading: 'terminal home', of: 'the reloaded editor window', budget: restore },
   );
-  return column.evaluate((element) => element.getBoundingClientRect().width);
+  await expectSettledReading(
+    () => dockUnitWidth(page, 'terminal'),
+    (width) => expect(Math.abs(width - widened)).toBeLessThan(20),
+    { reading: 'width', of: TERMINAL_UNIT, budget: restore },
+  );
+  return terminalRowShare(page);
 }
 
 async function quitAndWait(app: ElectronApplication, child: ChildProcess): Promise<void> {
@@ -244,7 +274,7 @@ test.describe('terminal process restart', () => {
   test.skip(!PTY_PLATFORM_SUPPORTED, PTY_PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
-  test('restores placement, width, tab order, and active tab in a separate Electron process', async ({
+  test('restores placement, relative width, tab order, and active tab in a separate Electron process', async ({
     captureStderrFor,
   }) => {
     test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
@@ -263,8 +293,8 @@ test.describe('terminal process restart', () => {
     await openBareTab(firstPage);
     const [, secondTabId] = await terminalTabIds(firstPage);
     if (secondTabId === undefined) throw new Error('second terminal tab was not created');
-    await arrangeTabsInRightColumn(firstPage, firstTabId, secondTabId);
-    const retainedWidth = await applyPersistedRightTerminalWidth(firstPage, 860);
+    await arrangeTabsInRightTerminal(firstPage, firstTabId, secondTabId);
+    const retainedShare = await widenRightTerminalThenReload(firstPage);
     await expectArrangedTabs(firstPage);
     const firstQuitDumps = await quitAndCollectCrashDumps(firstApp, firstProcess, firstDumps);
     expect.soft(firstQuitDumps.lines, firstQuitDumps.headline).toEqual([]);
@@ -276,13 +306,14 @@ test.describe('terminal process restart', () => {
     });
     const secondPage = await findEditorWindow(secondApp);
     await setWindowSize(secondApp, secondPage, 1900, 900);
-    await expect(secondPage.locator('#terminal-column')).toBeVisible({ timeout: 25_000 });
-    await expect(secondPage.locator('#terminal-dock-panel')).toHaveCount(0);
+    await expect(secondPage.locator(TERMINAL_CARD)).toHaveAttribute('data-placement', 'right', {
+      timeout: 25_000,
+    });
     await expect(terminalTabs(secondPage)).toHaveText([SECOND_TAB_LABEL, 'process first'], {
       timeout: 25_000,
     });
-    const restoredTail = settleBudget('restored active tab and right Terminal width', {
-      timeout: RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+    const restoredTail = settleBudget('restored active tab and right Terminal share', {
+      timeout: LAYOUT_SETTLE_TIMEOUT_MS,
     });
     await expect(secondPage.getByRole('tab', { name: SECOND_TAB_LABEL })).toHaveAttribute(
       'aria-selected',
@@ -290,9 +321,14 @@ test.describe('terminal process restart', () => {
       { timeout: restoredTail.remainingMs() },
     );
     await expectSettledReading(
-      () => readRailColumnWidth(secondPage, '#terminal-column'),
-      (width) => expect(Math.abs(width - retainedWidth)).toBeLessThan(20),
-      { reading: 'width', of: '#terminal-column', budget: restoredTail },
+      () => readTerminalHome(secondPage),
+      (home) => expect(home).toMatchObject({ placement: 'right', geometry: 'right' }),
+      { reading: 'terminal home', of: 'the relaunched editor window', budget: restoredTail },
+    );
+    await expectSettledReading(
+      () => terminalRowShare(secondPage),
+      (share) => expect(Math.abs(share - retainedShare)).toBeLessThan(0.01),
+      { reading: 'terminal share', of: 'the right dock row', budget: restoredTail },
     );
   });
 
@@ -317,8 +353,8 @@ test.describe('terminal process restart', () => {
       await openBareTab(page);
       const [, secondTabId] = await terminalTabIds(page);
       if (secondTabId === undefined) throw new Error('second terminal tab was not created');
-      await arrangeTabsInRightColumn(page, firstTabId, secondTabId);
-      await applyPersistedRightTerminalWidth(page, 860);
+      await arrangeTabsInRightTerminal(page, firstTabId, secondTabId);
+      await widenRightTerminalThenReload(page);
       await expectArrangedTabs(page);
       const quit = await quitAndCollectCrashDumps(app, appProcess, dumps);
       expect(quit.lines, quit.headline).toEqual([]);

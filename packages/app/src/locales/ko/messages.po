@@ -1354,9 +1354,6 @@ msgstr "에이전트 모드"
 msgid "Agent panel"
 msgstr "에이전트 패널"
 
-msgid "Agent panel closed to keep Terminal readable."
-msgstr "Terminal을 읽기 쉽게 에이전트 패널을 닫았습니다."
-
 msgid "Agent settings"
 msgstr "에이전트 설정"
 
@@ -8758,14 +8755,14 @@ msgstr "보기 필터 초기화"
 msgid "Resize {handleKey}"
 msgstr "{handleKey} 크기 조정"
 
+msgid "Resize {pane}"
+msgstr "{pane} 크기 조정"
+
 msgid "Resize document panel"
 msgstr "문서 패널 크기 조절"
 
 msgid "Resize skills panel"
 msgstr "스킬 패널 크기 조절"
-
-msgid "Resize terminal"
-msgstr "터미널 크기 조절"
 
 msgid "Resolve conflict in your terminal"
 msgstr "터미널에서 충돌 해결"
@@ -10289,9 +10286,6 @@ msgstr "터미널 {0}"
 
 msgid "Terminal access isn't enabled for this project."
 msgstr "이 프로젝트의 터미널 접근 비활성화 상태."
-
-msgid "Terminal closed to make room for the agent panel."
-msgstr "에이전트 패널을 위한 공간을 만들려고 Terminal을 닫았습니다."
 
 msgid "Terminal disabled"
 msgstr "터미널 비활성화됨"

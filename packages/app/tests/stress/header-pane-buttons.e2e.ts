@@ -1,14 +1,15 @@
 import { realpathSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import type { Locator, Page } from '@playwright/test';
-import { TERMINAL_PLACEMENT_KEY } from '../../src/lib/terminal-placement-store';
 import type { ApiHelpers, DesktopHeaderHost, WorkerServer } from './_helpers';
 import {
+  dockUnitRect,
   expect,
   headerPaneButton,
   openDesktopHeader,
   presetTerminalPlacement,
   stubAgentCatalog,
+  terminalPaneCard,
   test,
   waitForActiveProviderSynced,
 } from './_helpers';
@@ -23,26 +24,18 @@ type Pane = 'agents' | 'terminal';
 type PaneState = 'shown' | 'hidden';
 
 const AGENTS_MOUNT = '[data-agents-panel-mount]';
-const BOTTOM_TERMINAL_PANEL = '#terminal-dock-panel';
-const RIGHT_TERMINAL_MOUNT = '[data-terminal-panel-mount]';
+const TERMINAL_MOUNT = '[data-terminal-panel-mount]';
+const TERMINAL_CARD = '[data-slot="pane-card"][data-pane="terminal"]';
 const BOOT_TIMEOUT_MS = 30_000;
 const DOC_TEXT = 'The quick brown fox jumps over the lazy dog.';
 
 async function paneExtentPx(page: Page, pane: Pane): Promise<number> {
-  return await page.evaluate(
-    ({ pane, agentsMount, bottomPanel, rightMount }) => {
-      const extent = (selector: string, axis: 'width' | 'height') =>
-        document.querySelector(selector)?.getBoundingClientRect()[axis] ?? 0;
-      if (pane === 'agents') return extent(agentsMount, 'width');
-      return Math.max(extent(bottomPanel, 'height'), extent(rightMount, 'width'));
-    },
-    {
-      pane,
-      agentsMount: AGENTS_MOUNT,
-      bottomPanel: BOTTOM_TERMINAL_PANEL,
-      rightMount: RIGHT_TERMINAL_MOUNT,
-    },
-  );
+  const rect = await dockUnitRect(page, pane);
+  if (rect === null) return 0;
+  if (pane === 'agents') return rect.width;
+  return (await page.locator(TERMINAL_CARD).getAttribute('data-placement')) === 'bottom'
+    ? rect.height
+    : rect.width;
 }
 
 async function expectPane(page: Page, pane: Pane, state: PaneState): Promise<void> {
@@ -74,8 +67,7 @@ async function expectPaneKeepingFocus(page: Page, pane: Pane, state: PaneState):
 }
 
 async function waitForFocusInPane(page: Page, pane: Pane): Promise<void> {
-  const container =
-    pane === 'agents' ? AGENTS_MOUNT : `${RIGHT_TERMINAL_MOUNT}, ${BOTTOM_TERMINAL_PANEL}`;
+  const container = pane === 'agents' ? AGENTS_MOUNT : TERMINAL_MOUNT;
   await expect
     .poll(
       () =>
@@ -172,42 +164,6 @@ async function openThread(page: Page, title: string): Promise<void> {
       title: threadTitle,
     });
   }, title);
-}
-
-function handleBefore(page: Page, mount: string): Locator {
-  return page
-    .locator(mount)
-    .locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]')
-    .locator('xpath=preceding-sibling::*[1]');
-}
-
-function bottomTerminalHandle(page: Page): Locator {
-  return page.locator(BOTTOM_TERMINAL_PANEL).locator('xpath=preceding-sibling::*[1]');
-}
-
-async function dragHandleTo(page: Page, handle: Locator, x: number, y: number): Promise<void> {
-  await expect(handle).toHaveAttribute('data-slot', 'resizable-handle');
-  const bounds = await handle.boundingBox();
-  if (bounds === null) throw new Error('the resize handle has no layout bounds');
-  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-  await page.mouse.down();
-  await expect(page.locator('[data-dragging="true"]')).toHaveCount(1);
-  await page.mouse.move(x, y, { steps: 10 });
-  await page.mouse.up();
-  await expect(page.locator('[data-dragging="true"]')).toHaveCount(0);
-}
-
-async function handleCenter(handle: Locator): Promise<{ x: number; y: number }> {
-  const bounds = await handle.boundingBox();
-  if (bounds === null) throw new Error('the resize handle has no layout bounds');
-  return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
-}
-
-async function collapseWithKeyboard(handle: Locator, key: 'Home' | 'End'): Promise<void> {
-  await expect(handle).toHaveAttribute('data-slot', 'resizable-handle');
-  await handle.focus();
-  await expect(handle).toBeFocused();
-  await handle.press(key);
 }
 
 function viewportOf(page: Page): { width: number; height: number } {
@@ -572,28 +528,6 @@ test.describe('the Agents button follows every chat show/hide path on the web', 
     await expectPane(page, 'agents', 'shown');
   });
 
-  test('dragging chat below its minimum width hides it', async ({ page, api }) => {
-    await openWeb(page, api, 'drag-chat');
-    await clickPaneButton(page, 'agents', 'shown');
-    const handle = handleBefore(page, AGENTS_MOUNT);
-    const { y } = await handleCenter(handle);
-    await dragHandleTo(page, handle, viewportOf(page).width - 100, y);
-    await expectPane(page, 'agents', 'hidden');
-  });
-
-  test('chat collapsed to zero with the keyboard reads off, and one click brings it back', async ({
-    page,
-    api,
-  }) => {
-    await openWeb(page, api, 'keyboard-chat');
-    await clickPaneButton(page, 'agents', 'shown');
-    await waitForFocusInPane(page, 'agents');
-    const preferredWidth = await paneExtentPx(page, 'agents');
-    await collapseWithKeyboard(handleBefore(page, AGENTS_MOUNT), 'Home');
-    await expectPaneKeepingFocus(page, 'agents', 'hidden');
-    await bringBackWithOneClick(page, 'agents', preferredWidth);
-  });
-
   test('a web reload keeps the button matching chat', async ({ page, api }) => {
     await openWeb(page, api, 'reload');
     await clickPaneButton(page, 'agents', 'shown');
@@ -666,9 +600,7 @@ test.describe('the Terminal button follows every terminal show/hide path on the 
     await expect(page.locator('[data-pane="editor"]')).toBeVisible();
     await expectPane(page, 'agents', 'shown');
     await expectPane(page, 'terminal', 'hidden');
-    expect(await page.evaluate((key) => localStorage.getItem(key), TERMINAL_PLACEMENT_KEY)).toBe(
-      'bottom',
-    );
+    await expect(page.locator(TERMINAL_CARD)).toHaveAttribute('data-placement', 'bottom');
     await page.setViewportSize({ width: 767, height: 800 });
     await expectPane(page, 'terminal', 'shown');
     await expect(page.locator('[data-pane="editor"]')).toBeHidden();
@@ -723,56 +655,6 @@ test.describe('the Terminal button follows every terminal show/hide path on the 
       await expectPane(page, 'terminal', 'hidden');
     });
   }
-
-  test('dragging the bottom terminal to nothing hides it', async ({ page, api, workerServer }) => {
-    await presetTerminalPlacement(page, 'bottom');
-    await openDesktop(page, api, workerServer, 'drag-bottom');
-    await clickPaneButton(page, 'terminal', 'shown');
-    const handle = bottomTerminalHandle(page);
-    const { x } = await handleCenter(handle);
-    await dragHandleTo(page, handle, x, viewportOf(page).height - 2);
-    await expectPane(page, 'terminal', 'hidden');
-  });
-
-  test('dragging the right terminal to nothing hides it', async ({ page, api, workerServer }) => {
-    await presetTerminalPlacement(page, 'right');
-    await openDesktop(page, api, workerServer, 'drag-right');
-    await clickPaneButton(page, 'terminal', 'shown');
-    const handle = handleBefore(page, RIGHT_TERMINAL_MOUNT);
-    const { y } = await handleCenter(handle);
-    await dragHandleTo(page, handle, viewportOf(page).width - 2, y);
-    await expectPane(page, 'terminal', 'hidden');
-  });
-
-  test('a right terminal collapsed to zero with the keyboard reads off, and one click brings it back', async ({
-    page,
-    api,
-    workerServer,
-  }) => {
-    await presetTerminalPlacement(page, 'right');
-    await openDesktop(page, api, workerServer, 'keyboard-right');
-    await clickPaneButton(page, 'terminal', 'shown');
-    await waitForFocusInPane(page, 'terminal');
-    const preferredWidth = await paneExtentPx(page, 'terminal');
-    await collapseWithKeyboard(handleBefore(page, RIGHT_TERMINAL_MOUNT), 'Home');
-    await expectPaneKeepingFocus(page, 'terminal', 'hidden');
-    await bringBackWithOneClick(page, 'terminal', preferredWidth);
-  });
-
-  test('a bottom terminal collapsed to zero with the keyboard reads off, and one click brings it back', async ({
-    page,
-    api,
-    workerServer,
-  }) => {
-    await presetTerminalPlacement(page, 'bottom');
-    await openDesktop(page, api, workerServer, 'keyboard-bottom');
-    await clickPaneButton(page, 'terminal', 'shown');
-    await waitForFocusInPane(page, 'terminal');
-    const preferredHeight = await paneExtentPx(page, 'terminal');
-    await collapseWithKeyboard(bottomTerminalHandle(page), 'Home');
-    await expectPaneKeepingFocus(page, 'terminal', 'hidden');
-    await bringBackWithOneClick(page, 'terminal', preferredHeight);
-  });
 
   test('a terminal launch from Open with AI shows the terminal and keeps it shown', async ({
     page,
@@ -835,13 +717,14 @@ test.describe('the Terminal button follows every terminal show/hide path on the 
     await openDesktop(page, api, workerServer, 'move');
     await clickPaneButton(page, 'terminal', 'shown');
     await waitForFocusInPane(page, 'terminal');
-    await expect(page.locator(BOTTOM_TERMINAL_PANEL)).toBeVisible();
+    await expect(page.locator(terminalPaneCard('bottom'))).toBeVisible();
     await runPalette(page, 'move terminal', 'move-terminal');
-    await expect(page.locator(RIGHT_TERMINAL_MOUNT)).toBeVisible();
+    await expect(page.locator(terminalPaneCard('right'))).toBeVisible();
+    await expect(page.locator(terminalPaneCard('bottom'))).toHaveCount(0);
     await expectPane(page, 'terminal', 'shown');
     await runPalette(page, 'move terminal', 'move-terminal');
-    await expect(page.locator(BOTTOM_TERMINAL_PANEL)).toBeVisible();
-    await expect(page.locator(RIGHT_TERMINAL_MOUNT)).toBeHidden();
+    await expect(page.locator(terminalPaneCard('bottom'))).toBeVisible();
+    await expect(page.locator(terminalPaneCard('right'))).toHaveCount(0);
     await expectPane(page, 'terminal', 'shown');
   });
 });
@@ -889,7 +772,7 @@ test.describe('the Agents button on the mocked desktop', () => {
       .toBeGreaterThanOrEqual(300);
   });
 
-  test('information yields before a right Terminal is closed when Chat opens', async ({
+  test('information yields while a right Terminal stays open when Chat opens', async ({
     page,
     api,
     workerServer,
@@ -1243,68 +1126,61 @@ interface FrameSamplerWindow {
 }
 
 async function startFrameSampler(page: Page): Promise<void> {
-  await page.evaluate(
-    ({ agentsMount, bottomPanel, rightMount }) => {
-      const hasArea = (element: Element | null) => {
-        if (element === null) return false;
-        const { width, height } = element.getBoundingClientRect();
-        return width > 0 && height > 0;
-      };
-      const paneOnScreen = {
-        agents: () => hasArea(document.querySelector(agentsMount)),
-        terminal: () =>
-          hasArea(document.querySelector(bottomPanel)) ||
-          hasArea(document.querySelector(rightMount)),
-      };
-      const frames: Array<Partial<Record<'agents' | 'terminal', SampledPane>>> = [];
-      let frame = -1;
-      let running = true;
-      const sample = () => {
-        if (!running || frame < 0) return;
-        const record: Partial<Record<'agents' | 'terminal', SampledPane>> = {};
-        for (const pane of ['agents', 'terminal'] as const) {
-          const button = document.querySelector(`[data-testid="header-pane-button-${pane}"]`);
-          if (button === null) continue;
-          record[pane] = {
-            pressed: button.getAttribute('aria-pressed') === 'true',
-            onScreen: paneOnScreen[pane](),
-          };
-        }
-        frames[frame] = record;
-      };
-      const observer = new ResizeObserver(sample);
-      const observed = new Set<Element>();
-      const observeTargets = () => {
-        for (const selector of [agentsMount, bottomPanel, rightMount]) {
-          for (const element of document.querySelectorAll(selector)) {
-            if (observed.has(element)) continue;
-            observed.add(element);
-            observer.observe(element);
-          }
-        }
-      };
-      const tick = () => {
-        if (!running) return;
-        frame += 1;
-        observeTargets();
-        sample();
-        requestAnimationFrame(tick);
-      };
+  await page.evaluate(() => {
+    const unitOf = (pane: 'agents' | 'terminal') =>
+      document.querySelector(`[data-dock-unit="${pane}"]`);
+    const paneOnScreen = (pane: 'agents' | 'terminal') => {
+      const unit = unitOf(pane);
+      if (!(unit instanceof HTMLElement) || unit.hidden) return false;
+      if (unit.hasAttribute('data-dock-unit-off')) return false;
+      const { width, height } = unit.getBoundingClientRect();
+      return width > 0 && height > 0;
+    };
+    const frames: Array<Partial<Record<'agents' | 'terminal', SampledPane>>> = [];
+    let frame = -1;
+    let running = true;
+    const sample = () => {
+      if (!running || frame < 0) return;
+      const record: Partial<Record<'agents' | 'terminal', SampledPane>> = {};
+      for (const pane of ['agents', 'terminal'] as const) {
+        const button = document.querySelector(`[data-testid="header-pane-button-${pane}"]`);
+        if (button === null) continue;
+        record[pane] = {
+          pressed: button.getAttribute('aria-pressed') === 'true',
+          onScreen: paneOnScreen(pane),
+        };
+      }
+      frames[frame] = record;
+    };
+    const observer = new MutationObserver(sample);
+    const observed = new Set<Element>();
+    const observeTargets = () => {
+      for (const pane of ['agents', 'terminal'] as const) {
+        const unit = unitOf(pane);
+        if (unit === null || observed.has(unit)) continue;
+        observed.add(unit);
+        observer.observe(unit, {
+          attributes: true,
+          attributeFilter: ['hidden', 'data-dock-unit-off', 'style'],
+        });
+      }
+    };
+    const tick = () => {
+      if (!running) return;
+      frame += 1;
+      observeTargets();
+      sample();
       requestAnimationFrame(tick);
-      (window as FrameSamplerWindow).__paneFrameSampler = {
-        stop: () => {
-          running = false;
-          observer.disconnect();
-          return frames;
-        },
-      };
-    },
-    {
-      agentsMount: AGENTS_MOUNT,
-      bottomPanel: BOTTOM_TERMINAL_PANEL,
-      rightMount: RIGHT_TERMINAL_MOUNT,
-    },
-  );
+    };
+    requestAnimationFrame(tick);
+    (window as FrameSamplerWindow).__paneFrameSampler = {
+      stop: () => {
+        running = false;
+        observer.disconnect();
+        return frames;
+      },
+    };
+  });
   await settleFrames(page);
 }
 
@@ -1347,7 +1223,7 @@ async function expectEveryFrameMatches(page: Page, panes: readonly Pane[]): Prom
 }
 
 test.describe('the pane buttons match their panes in every frame', () => {
-  test('chat: header show and hide, an agent auto-open, a keyboard collapse to zero and a one-click bring-back', async ({
+  test('chat: header show and hide, an agent auto-open, a header hide and a one-click bring-back', async ({
     page,
     api,
   }) => {
@@ -1359,15 +1235,14 @@ test.describe('the pane buttons match their panes in every frame', () => {
     await clickPaneButton(page, 'agents', 'hidden');
     await openThread(page, 'Frame sampler thread');
     await expectPane(page, 'agents', 'shown');
-    await collapseWithKeyboard(handleBefore(page, AGENTS_MOUNT), 'Home');
-    await expectPane(page, 'agents', 'hidden');
+    await clickPaneButton(page, 'agents', 'hidden');
     await bringBackWithOneClick(page, 'agents', preferredWidth);
 
     await expectEveryFrameMatches(page, ['agents']);
   });
 
   for (const placement of ['bottom', 'right'] as const) {
-    test(`${placement} terminal: header show, a keyboard collapse to zero, a one-click bring-back and a header hide`, async ({
+    test(`${placement} terminal: header show and hide, a one-click bring-back and a header hide`, async ({
       page,
       api,
       workerServer,
@@ -1379,13 +1254,7 @@ test.describe('the pane buttons match their panes in every frame', () => {
       await clickPaneButton(page, 'terminal', 'shown');
       await waitForFocusInPane(page, 'terminal');
       const preferredExtent = await paneExtentPx(page, 'terminal');
-      await collapseWithKeyboard(
-        placement === 'bottom'
-          ? bottomTerminalHandle(page)
-          : handleBefore(page, RIGHT_TERMINAL_MOUNT),
-        'Home',
-      );
-      await expectPane(page, 'terminal', 'hidden');
+      await clickPaneButton(page, 'terminal', 'hidden');
       await bringBackWithOneClick(page, 'terminal', preferredExtent);
       await clickPaneButton(page, 'terminal', 'hidden');
 

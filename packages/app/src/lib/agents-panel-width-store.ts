@@ -1,66 +1,15 @@
 export const AGENTS_PANEL_WIDTH_KEY = 'ok-terminal-width-v1';
 
-export const DEFAULT_AGENTS_PANEL_WIDTH = 480;
-export const MIN_AGENTS_PANEL_WIDTH = 320;
-const AGENTS_PANEL_CLOSE_THRESHOLD_PX = 160;
-
-export type AgentsPanelPointerReleaseDecision =
-  | { readonly kind: 'close' }
-  | { readonly kind: 'restore-preferred'; readonly widthPx: number }
-  | { readonly kind: 'settle-minimum'; readonly widthPx: number }
-  | { readonly kind: 'commit-preferred'; readonly widthPx: number };
+const MIN_AGENTS_PANEL_WIDTH = 320;
 
 export interface WidthStorage {
   getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
 }
 
-function clamp(px: number): number {
-  if (!Number.isFinite(px)) return DEFAULT_AGENTS_PANEL_WIDTH;
-  if (px < MIN_AGENTS_PANEL_WIDTH) return MIN_AGENTS_PANEL_WIDTH;
-  return Math.round(px);
-}
-
-export function resolveAgentsPanelPointerRelease(
-  measuredWidthPx: number | null | undefined,
-  preferredWidthPx: number,
-): AgentsPanelPointerReleaseDecision {
-  const restoredWidthPx = clamp(preferredWidthPx);
-  if (measuredWidthPx == null || !Number.isFinite(measuredWidthPx) || measuredWidthPx < 0) {
-    return { kind: 'restore-preferred', widthPx: restoredWidthPx };
-  }
-  if (measuredWidthPx < AGENTS_PANEL_CLOSE_THRESHOLD_PX) return { kind: 'close' };
-  if (measuredWidthPx < MIN_AGENTS_PANEL_WIDTH) {
-    return { kind: 'settle-minimum', widthPx: MIN_AGENTS_PANEL_WIDTH };
-  }
-  return { kind: 'commit-preferred', widthPx: clamp(measuredWidthPx) };
-}
-
-export function readAgentsPanelWidth(storage?: WidthStorage): number {
-  try {
-    const s = storage ?? localStorage;
-    const raw = s.getItem(AGENTS_PANEL_WIDTH_KEY);
-    if (raw == null) return DEFAULT_AGENTS_PANEL_WIDTH;
-    const parsed = Number.parseInt(raw, 10);
-    if (!Number.isFinite(parsed)) return DEFAULT_AGENTS_PANEL_WIDTH;
-    return clamp(parsed);
-  } catch {
-    return DEFAULT_AGENTS_PANEL_WIDTH;
-  }
-}
-
-export function writeAgentsPanelWidth(px: number, storage?: WidthStorage): void {
-  try {
-    const s = storage ?? localStorage;
-    s.setItem(AGENTS_PANEL_WIDTH_KEY, String(clamp(px)));
-  } catch {}
-}
-
-export function getInitialAgentsPanelWidth(): number {
-  try {
-    if (typeof localStorage === 'undefined') return DEFAULT_AGENTS_PANEL_WIDTH;
-    return readAgentsPanelWidth();
-  } catch {
-    return DEFAULT_AGENTS_PANEL_WIDTH;
-  }
+export function readAgentsPanelWidth(storage: WidthStorage): number | null {
+  const raw = storage.getItem(AGENTS_PANEL_WIDTH_KEY);
+  if (raw === null) return null;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(parsed, MIN_AGENTS_PANEL_WIDTH);
 }
