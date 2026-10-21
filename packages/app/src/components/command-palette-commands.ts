@@ -2,6 +2,8 @@ import {
   COMMAND_IDENTITIES,
   type CommandContext,
   type CommandIdentity,
+  DOCK_MOVE_COMMANDS,
+  type DockMoveSide,
   evaluateCommandAvailability,
 } from '@inkeep/open-knowledge-core/commands/command-identity';
 import { SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core/constants/feature-flags';
@@ -34,8 +36,10 @@ import {
   MessageSquare,
   Network,
   Package,
+  PanelBottom,
   PanelLeft,
   PanelRight,
+  PanelTop,
   Pencil,
   Plus,
   RefreshCw,
@@ -56,6 +60,7 @@ import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
 import { PANE_ICON } from '@/components/pane-icons';
 import { requestSkillsDockExpanded } from '@/components/skills-dock-expanded-store';
 import type { OkDesktopBridge, OkMenuAction } from '@/lib/desktop-bridge-types';
+import { requestDockPaneMove } from '@/lib/dock-move-requests';
 import { i18n } from '@/lib/i18n';
 import type { KeyboardShortcutId } from '@/lib/keyboard-shortcuts';
 import { openDocInNoteWindow } from '@/lib/open-note-window';
@@ -165,6 +170,18 @@ const PALETTE_COMMAND_LABELS = {
   agentPanelShow: msg`Show Agents`,
   agentPanelHide: msg`Hide Agents`,
   agentPanelAskSelection: msg`Ask AI About Selection`,
+  editorMoveToLeftEdge: msg`Move Editor to the left edge of the window`,
+  editorMoveToRightEdge: msg`Move Editor to the right edge of the window`,
+  editorMoveToTopEdge: msg`Move Editor to the top edge of the window`,
+  editorMoveToBottomEdge: msg`Move Editor to the bottom edge of the window`,
+  agentsMoveToLeftEdge: msg`Move Agents to the left edge of the window`,
+  agentsMoveToRightEdge: msg`Move Agents to the right edge of the window`,
+  agentsMoveToTopEdge: msg`Move Agents to the top edge of the window`,
+  agentsMoveToBottomEdge: msg`Move Agents to the bottom edge of the window`,
+  terminalMoveToLeftEdge: msg`Move Terminal to the left edge of the window`,
+  terminalMoveToRightEdge: msg`Move Terminal to the right edge of the window`,
+  terminalMoveToTopEdge: msg`Move Terminal to the top edge of the window`,
+  terminalMoveToBottomEdge: msg`Move Terminal to the bottom edge of the window`,
   showHiddenFiles: msg`Show hidden files`,
   showOkFolders: msg`Show .ok folders`,
   showOnlyMarkdownFiles: msg`Show only markdown files`,
@@ -211,7 +228,17 @@ function paletteLabelDescriptor(
   return PALETTE_COMMAND_LABELS[key];
 }
 
+const DOCK_SIDE_ICON = {
+  left: PanelLeft,
+  right: PanelRight,
+  top: PanelTop,
+  bottom: PanelBottom,
+} as const satisfies Record<DockMoveSide, ComponentType<{ className?: string }>>;
+
 const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
+  ...Object.fromEntries(
+    DOCK_MOVE_COMMANDS.map((command) => [command.id, DOCK_SIDE_ICON[command.side]]),
+  ),
   'open-blob-run': Gamepad2,
   'navigate-back': ChevronLeft,
   'navigate-forward': ChevronRight,
@@ -264,6 +291,15 @@ const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
 };
 
 const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
+  ...Object.fromEntries(
+    DOCK_MOVE_COMMANDS.map((command) => [
+      command.id,
+      (ctx: PaletteCommandContext) => {
+        ctx.closePalette();
+        requestDockPaneMove({ pane: command.pane, side: command.side });
+      },
+    ]),
+  ),
   'open-blob-run': (ctx) => ctx.openBlobRun(),
   'new-file': (ctx) => {
     ctx.closePalette();

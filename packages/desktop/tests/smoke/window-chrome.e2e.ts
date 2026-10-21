@@ -248,7 +248,7 @@ test.describe('Editor header drag-region smoke', () => {
   test.skip(!PLATFORM_SUPPORTED, PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
-  test('keeps the full header canvas draggable and its controls clickable', async ({
+  test('keeps the app header draggable, takes the workspace tab rows out of the window drag region, and keeps their controls clickable', async ({
     captureStderrFor,
   }) => {
     const { tmpHome, projectDir } = seedHomeWithLastOpenedProject();
@@ -423,22 +423,22 @@ test.describe('Editor header drag-region smoke', () => {
       agentsButton: 'no-drag',
       editorButton: 'no-drag',
       filesButton: 'no-drag',
-      headerCanvas: 'drag',
-      leadingGapRegion: 'drag',
-      filesToggleZone: 'drag',
+      headerCanvas: 'no-drag',
+      leadingGapRegion: 'no-drag',
+      filesToggleZone: 'no-drag',
       newTabButton: 'no-drag',
-      overflowRoot: 'drag',
+      overflowRoot: 'no-drag',
       paneDivider: 'drag',
       paneDividerGapAfter: 'drag',
       paneDividerGapBefore: 'drag',
-      paneTabs: 'drag',
+      paneTabs: 'no-drag',
       resourcesButton: 'no-drag',
       terminalButton: ptyAvailable ? 'no-drag' : 'no terminal on this host',
       scrollViewport: 'no-drag',
       shareButton: 'no-drag',
       shareHasDraggableVerticalGutter: true,
       tabRowHoldsNoShare: true,
-      tabsHost: 'drag',
+      tabsHost: 'no-drag',
       toggleLeadsFirstPaneRow: true,
       appHeaderCanvas: 'drag',
     });

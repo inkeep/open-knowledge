@@ -6333,6 +6333,18 @@ msgstr "將 {0} 個技能移至專案"
 msgid "Move across"
 msgstr "移動過去"
 
+msgid "Move Agents to the bottom edge of the window"
+msgstr "將「代理」移到視窗底部邊緣"
+
+msgid "Move Agents to the left edge of the window"
+msgstr "將「代理」移到視窗左邊緣"
+
+msgid "Move Agents to the right edge of the window"
+msgstr "將「代理」移到視窗右邊緣"
+
+msgid "Move Agents to the top edge of the window"
+msgstr "將「代理」移到視窗頂部邊緣"
+
 msgid "Move between table cells"
 msgstr "在表格儲存格之間移動"
 
@@ -6341,6 +6353,18 @@ msgstr "移動區塊"
 
 msgid "Move down"
 msgstr "下移"
+
+msgid "Move Editor to the bottom edge of the window"
+msgstr "將編輯器移到視窗底部邊緣"
+
+msgid "Move Editor to the left edge of the window"
+msgstr "將編輯器移到視窗左邊緣"
+
+msgid "Move Editor to the right edge of the window"
+msgstr "將編輯器移到視窗右邊緣"
+
+msgid "Move Editor to the top edge of the window"
+msgstr "將編輯器移到視窗頂部邊緣"
 
 msgid "Move OpenKnowledge.app to the Trash"
 msgstr "將 OpenKnowledge.app 移到垃圾桶"
@@ -6356,6 +6380,18 @@ msgstr "將 Terminal 移到底部"
 
 msgid "Move Terminal to right"
 msgstr "將 Terminal 移到右側"
+
+msgid "Move Terminal to the bottom edge of the window"
+msgstr "將 Terminal 移到視窗底部邊緣"
+
+msgid "Move Terminal to the left edge of the window"
+msgstr "將 Terminal 移到視窗左邊緣"
+
+msgid "Move Terminal to the right edge of the window"
+msgstr "將 Terminal 移到視窗右邊緣"
+
+msgid "Move Terminal to the top edge of the window"
+msgstr "將 Terminal 移到視窗頂部邊緣"
 
 msgid "Move the current block up or down. In lists, move the current item or selected items."
 msgstr "將目前的區塊向上或向下移動。在清單中，移動目前的項目或所選項目。"

@@ -6333,6 +6333,18 @@ msgstr "Przenieś {0} do projektu"
 msgid "Move across"
 msgstr "Przenieś w inne miejsce"
 
+msgid "Move Agents to the bottom edge of the window"
+msgstr "Przenieś agentów do dolnej krawędzi okna"
+
+msgid "Move Agents to the left edge of the window"
+msgstr "Przenieś agentów do lewej krawędzi okna"
+
+msgid "Move Agents to the right edge of the window"
+msgstr "Przenieś agentów do prawej krawędzi okna"
+
+msgid "Move Agents to the top edge of the window"
+msgstr "Przenieś agentów do górnej krawędzi okna"
+
 msgid "Move between table cells"
 msgstr "Przenoszenie między komórkami tabeli"
 
@@ -6341,6 +6353,18 @@ msgstr "Przenieś blok"
 
 msgid "Move down"
 msgstr "Przenieś w dół"
+
+msgid "Move Editor to the bottom edge of the window"
+msgstr "Przenieś edytor do dolnej krawędzi okna"
+
+msgid "Move Editor to the left edge of the window"
+msgstr "Przenieś edytor do lewej krawędzi okna"
+
+msgid "Move Editor to the right edge of the window"
+msgstr "Przenieś edytor do prawej krawędzi okna"
+
+msgid "Move Editor to the top edge of the window"
+msgstr "Przenieś edytor do górnej krawędzi okna"
 
 msgid "Move OpenKnowledge.app to the Trash"
 msgstr "Przenieś OpenKnowledge.app do Kosza"
@@ -6356,6 +6380,18 @@ msgstr "Przenieś terminal na dół"
 
 msgid "Move Terminal to right"
 msgstr "Przenieś terminal na prawo"
+
+msgid "Move Terminal to the bottom edge of the window"
+msgstr "Przenieś terminal do dolnej krawędzi okna"
+
+msgid "Move Terminal to the left edge of the window"
+msgstr "Przenieś terminal do lewej krawędzi okna"
+
+msgid "Move Terminal to the right edge of the window"
+msgstr "Przenieś terminal do prawej krawędzi okna"
+
+msgid "Move Terminal to the top edge of the window"
+msgstr "Przenieś terminal do górnej krawędzi okna"
 
 msgid "Move the current block up or down. In lists, move the current item or selected items."
 msgstr "Przenieś bieżący blok w górę lub w dół. Na listach przenieś bieżący element lub zaznaczone elementy."

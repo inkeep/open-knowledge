@@ -60,6 +60,18 @@ export const MENU_LABELS = {
   agentPanelShow: 'Show Agents',
   agentPanelHide: 'Hide Agents',
   agentPanelAskSelection: 'Ask AI About Selection',
+  editorMoveToLeftEdge: 'Move Editor to the left edge of the window',
+  editorMoveToRightEdge: 'Move Editor to the right edge of the window',
+  editorMoveToTopEdge: 'Move Editor to the top edge of the window',
+  editorMoveToBottomEdge: 'Move Editor to the bottom edge of the window',
+  agentsMoveToLeftEdge: 'Move Agents to the left edge of the window',
+  agentsMoveToRightEdge: 'Move Agents to the right edge of the window',
+  agentsMoveToTopEdge: 'Move Agents to the top edge of the window',
+  agentsMoveToBottomEdge: 'Move Agents to the bottom edge of the window',
+  terminalMoveToLeftEdge: 'Move Terminal to the left edge of the window',
+  terminalMoveToRightEdge: 'Move Terminal to the right edge of the window',
+  terminalMoveToTopEdge: 'Move Terminal to the top edge of the window',
+  terminalMoveToBottomEdge: 'Move Terminal to the bottom edge of the window',
   installClaudeDesktop: 'Install for Claude Chat & Cowork (Desktop App)',
 } as const satisfies Record<string, string>;
 

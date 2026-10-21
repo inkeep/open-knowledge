@@ -1,4 +1,6 @@
-export type PaneId = 'editor' | 'agents' | 'terminal';
+import type { PaneId } from '@inkeep/open-knowledge-core/terminal-layout';
+
+export type { PaneId } from '@inkeep/open-knowledge-core/terminal-layout';
 
 export function assertNeverPaneId(pane: never): never {
   throw new Error(`unhandled pane: ${String(pane)}`);

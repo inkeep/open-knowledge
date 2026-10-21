@@ -32,7 +32,14 @@ import {
   withDockTerminalPlacement,
   writeDockArrangement,
 } from '@/lib/dock-arrangement-store';
-import { type DockNode, moveDockPane } from '@/lib/dock-tree';
+import { requestDockPaneMove } from '@/lib/dock-move-requests';
+import {
+  bottomTerminalDockTree,
+  DEFAULT_CHAT_SHARE,
+  type DockNode,
+  isDockLeaf,
+  moveDockPane,
+} from '@/lib/dock-tree';
 import { narrowWorkspaceSessionKey } from '@/lib/narrow-workspace-session';
 import {
   __resetPaneVisibilityStoreForTests,
@@ -283,10 +290,12 @@ vi.doMock('./EditorArea', () => ({
     dockTree,
     onDockTreeChange,
     editorVisible,
+    agentsVisible,
     onSessionPlacements,
   }: {
     ref?: Ref<MockEditorAreaHandle>;
     editorVisible?: boolean;
+    agentsVisible?: boolean;
     onPaneExtentChange?: () => void;
     renderWorkspaceHeader?: (tabs: ReactNode, chrome: { trailing: ReactNode }) => ReactNode;
     dockTree: DockNode;
@@ -300,6 +309,7 @@ vi.doMock('./EditorArea', () => ({
         data-testid="editor-area"
         data-terminal-placement={dockTerminalPlacement(dockTree)}
         data-editor-visible={String(editorVisible)}
+        data-agents-visible={String(agentsVisible)}
       >
         {renderWorkspaceHeader?.(<div data-testid="workspace-tabs" />, { trailing: null })}
         <ReportPlacements onSessionPlacements={onSessionPlacements} />
@@ -2773,6 +2783,103 @@ describe('EditorPane keeps each project its own dock arrangement', () => {
     return keys;
   }
   const moveTerminalRight = (tree: DockNode) => moveDockPane(tree, 'terminal', 'editor', 'end');
+  const shape = (node: DockNode): unknown =>
+    isDockLeaf(node) ? node.pane : { [node.direction]: node.items.map((item) => shape(item.node)) };
+
+  test('a request to move Agents to the left edge docks it along the start, saves that, and shows it', async () => {
+    await renderEditorPane();
+    expect(screen.getByTestId('editor-area').getAttribute('data-agents-visible')).toBe('false');
+
+    act(() => requestDockPaneMove({ pane: 'agents', side: 'left' }));
+    await act(async () => {});
+
+    const drawn = drawnDockTrees.at(-1);
+    if (drawn === undefined) throw new Error('the editor area never drew');
+    expect(shape(drawn)).toEqual({ row: ['agents', { column: ['editor', 'terminal'] }] });
+    const saved = readDockArrangement(dockArrangementStorageKey('/tmp/project'));
+    expect(saved === null ? null : shape(saved.tree)).toEqual(shape(drawn));
+    expect(screen.getByTestId('editor-area').getAttribute('data-agents-visible')).toBe('true');
+  });
+
+  test('right to left, a request for the right edge docks the pane at the start', async () => {
+    document.documentElement.style.direction = 'rtl';
+    try {
+      await renderEditorPane();
+      act(() => requestDockPaneMove({ pane: 'agents', side: 'right' }));
+
+      const drawn = drawnDockTrees.at(-1);
+      if (drawn === undefined) throw new Error('the editor area never drew');
+      expect(shape(drawn)).toEqual({ row: ['agents', { column: ['editor', 'terminal'] }] });
+    } finally {
+      document.documentElement.style.direction = '';
+    }
+  });
+
+  test('a request to move the Terminal to the bottom edge puts it under the editor and Agents', async () => {
+    await renderEditorPane();
+    act(() => requestDockPaneMove({ pane: 'terminal', side: 'bottom' }));
+
+    const drawn = drawnDockTrees.at(-1);
+    if (drawn === undefined) throw new Error('the editor area never drew');
+    expect(shape(drawn)).toEqual({ column: [{ row: ['editor', 'agents'] }, 'terminal'] });
+  });
+
+  test('a request to move the Terminal to the right edge opens it at the share of the space it last split with the editor', async () => {
+    writeDockArrangement(dockArrangementStorageKey('/tmp/project'), {
+      tree: bottomTerminalDockTree(DEFAULT_CHAT_SHARE, 0.3),
+      terminalShares: { bottom: 0.3, right: 0.45 },
+    });
+    await renderEditorPane();
+    act(() => requestDockPaneMove({ pane: 'terminal', side: 'right' }));
+
+    const drawn = drawnDockTrees.at(-1);
+    if (drawn === undefined || isDockLeaf(drawn)) throw new Error('the editor area never drew');
+    expect(shape(drawn)).toEqual({ row: ['editor', 'agents', 'terminal'] });
+    const [editor, , terminal] = drawn.items.map((item) => item.size);
+    if (editor === undefined || terminal === undefined) throw new Error('the row lost a pane');
+    expect(terminal / (terminal + editor)).toBeCloseTo(0.45, 10);
+  });
+
+  test('a Terminal moved to an edge and back below the editor returns at the height it left with', async () => {
+    const desk = makeOkDesktopStub();
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+    writeDockArrangement(dockArrangementStorageKey('/tmp/project'), {
+      tree: bottomTerminalDockTree(DEFAULT_CHAT_SHARE, 0.5),
+      terminalShares: { bottom: 0.3, right: 0.45 },
+    });
+    await renderEditorPane();
+
+    act(() => requestDockPaneMove({ pane: 'terminal', side: 'left' }));
+    expect(drawnPlacement()).toBe('right');
+    act(() => desk.dispatchMenuAction('move-terminal'));
+
+    const drawn = drawnDockTrees.at(-1);
+    if (drawn === undefined || isDockLeaf(drawn)) throw new Error('the editor area never drew');
+    expect(shape(drawn)).toEqual({ row: [{ column: ['editor', 'terminal'] }, 'agents'] });
+    const column = drawn.items[0]?.node;
+    if (column === undefined || isDockLeaf(column)) throw new Error('the editor column is gone');
+    expect(column.items[1]?.size).toBeCloseTo(0.5, 10);
+  });
+
+  test('repeated trips to the right edge and back under the editor by header drag open the same sizes every time', async () => {
+    await renderEditorPane();
+    const atEdge: number[][] = [];
+
+    for (let round = 0; round < 3; round += 1) {
+      act(() => requestDockPaneMove({ pane: 'terminal', side: 'right' }));
+      const drawn = drawnDockTrees.at(-1);
+      if (drawn === undefined || isDockLeaf(drawn)) throw new Error('the editor area never drew');
+      expect(shape(drawn)).toEqual({ row: ['editor', 'agents', 'terminal'] });
+      atEdge.push(drawn.items.map((item) => Number(item.size.toFixed(9))));
+      act(() =>
+        changeDrawnDockTree?.((tree) => moveDockPane(tree, 'terminal', 'editor', 'bottom', 0.5)),
+      );
+      expect(drawnPlacement()).toBe('bottom');
+    }
+
+    expect(atEdge[1]).toEqual(atEdge[0]);
+    expect(atEdge[2]).toEqual(atEdge[0]);
+  });
 
   test('the first layout drawn is the arrangement the project stored', async () => {
     writeDockArrangement(dockArrangementStorageKey('/tmp/project'), rightTerminal());

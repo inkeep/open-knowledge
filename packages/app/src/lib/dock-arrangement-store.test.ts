@@ -8,11 +8,13 @@ import {
   dockTerminalPlacement,
   legacyDockArrangement,
   readDockArrangement,
+  withDockPaneAtEdge,
   withDockTerminalPlacement,
   writeDockArrangement,
 } from './dock-arrangement-store.ts';
 import { dockPaneMinExtent, layoutDock } from './dock-layout.ts';
 import {
+  bottomTerminalDockTree,
   DEFAULT_CHAT_SHARE,
   DEFAULT_DOCK_TREE,
   type DockNode,
@@ -431,6 +433,107 @@ describe('the first move right at a 1440px window', () => {
     expect(widthsAfterMovingRight((pane) => pane !== 'agents')).toEqual({
       editor: 696,
       terminal: 736,
+    });
+  });
+});
+
+describe('moving the Terminal back and forth', () => {
+  const sized = (node: DockNode): unknown =>
+    isDockLeaf(node)
+      ? node.pane
+      : {
+          [node.direction]: node.items.map((item) => [
+            Number(item.size.toFixed(9)),
+            sized(item.node),
+          ]),
+        };
+  const EDGES = ['start', 'end', 'top', 'bottom'] as const;
+  const STARTS: ReadonlyArray<
+    readonly [string, (arrangement: DockArrangement) => DockArrangement]
+  > = [
+    ...(['agents', 'editor'] as const).flatMap((pane) =>
+      EDGES.map(
+        (edge) =>
+          [
+            `${pane} along the ${edge} edge`,
+            (arrangement: DockArrangement) => withDockPaneAtEdge(arrangement, pane, edge),
+          ] as const,
+      ),
+    ),
+    [
+      'the Terminal along the right edge',
+      (arrangement) => withDockPaneAtEdge(arrangement, 'terminal', 'end'),
+    ],
+    [
+      'the Terminal toggled right',
+      (arrangement) => withDockTerminalPlacement(arrangement, 'right'),
+    ],
+  ];
+
+  test.each(STARTS)(
+    'from %s, toggling the Terminal over and back keeps every size from the first round on',
+    (_name, arrange) => {
+      const start = arrange(
+        legacyDockArrangement({ widthPx: 1440, heightPx: 900 }, memoryStorage()),
+      );
+      const placement = dockTerminalPlacement(start.tree);
+      const away = placement === 'bottom' ? 'right' : 'bottom';
+      const roundTrip = (arrangement: DockArrangement) =>
+        withDockTerminalPlacement(withDockTerminalPlacement(arrangement, away), placement);
+      const first = roundTrip(start);
+      let current = first;
+      for (let round = 0; round < 5; round += 1) current = roundTrip(current);
+      expect(sized(current.tree)).toEqual(sized(first.tree));
+      expect(current.terminalShares.bottom).toBeCloseTo(first.terminalShares.bottom, 9);
+      expect(current.terminalShares.right).toBeCloseTo(first.terminalShares.right, 9);
+    },
+  );
+
+  test('a move to the right edge and back under the editor returns the arrangement it started from', () => {
+    const start = legacyDockArrangement({ widthPx: 1440, heightPx: 900 }, memoryStorage());
+    const back = withDockTerminalPlacement(withDockPaneAtEdge(start, 'terminal', 'end'), 'bottom');
+    expect(sized(back.tree)).toEqual(sized(start.tree));
+  });
+});
+
+describe('moving the Terminal to a workspace edge', () => {
+  test('a move to an edge in the Terminal’s current placement keeps the size it has', () => {
+    const arrangement: DockArrangement = {
+      tree: bottomTerminalDockTree(DEFAULT_CHAT_SHARE, 0.5),
+      terminalShares: { bottom: 0.3, right: 0.45 },
+    };
+    const moved = withDockPaneAtEdge(arrangement, 'terminal', 'bottom');
+    expect(shape(moved.tree)).toEqual({ column: [{ row: ['editor', 'agents'] }, 'terminal'] });
+    expect(rowShare(moved.tree, 'terminal')).toBeCloseTo(0.5, 10);
+    expect(moved.terminalShares).toEqual(arrangement.terminalShares);
+  });
+
+  function widthsAfterMovingToTheRightEdge(isVisible: (pane: PaneId) => boolean) {
+    const seeded = legacyDockArrangement({ widthPx: 1440, heightPx: 900 }, memoryStorage());
+    const { tree } = withDockPaneAtEdge(seeded, 'terminal', 'end');
+    const layout = layoutDock(
+      visibleDockTree(tree, isVisible),
+      { x: 0, y: 0, width: 1440, height: 900 },
+      PANE_CARD_GAP_PX,
+      dockPaneMinExtent,
+    );
+    return Object.fromEntries(
+      [...layout.panes].map(([pane, rect]) => [pane, Math.round(rect.width)]),
+    );
+  }
+
+  test('the first move to the right edge at a 1440px window opens the Terminal as wide as the first move right while Agents is closed', () => {
+    expect(widthsAfterMovingToTheRightEdge((pane) => pane !== 'agents')).toEqual({
+      editor: 696,
+      terminal: 736,
+    });
+  });
+
+  test('the first move to the right edge at a 1440px window keeps the editor’s share of the split with Agents open, down to the Agents minimum', () => {
+    expect(widthsAfterMovingToTheRightEdge(() => true)).toEqual({
+      editor: 551,
+      agents: 290,
+      terminal: 583,
     });
   });
 });

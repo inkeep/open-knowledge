@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  DEFAULT_BOTTOM_TERMINAL_SHARE,
   DEFAULT_DOCK_TREE,
   type DockGroup,
   type DockNode,
@@ -8,9 +9,11 @@ import {
   isDockLeaf,
   isVisibleDockLeaf,
   moveDockPane,
+  moveDockPaneToEdge,
   normalizeDockTree,
   parseDockTree,
   resizeDockGroup,
+  swapDockPanes,
   type VisibleDockGroup,
   visibleDockTree,
 } from './dock-tree.ts';
@@ -315,5 +318,113 @@ describe('moveDockPane', () => {
 
   test('moving a pane onto itself changes nothing', () => {
     expect(moveDockPane(DEFAULT_DOCK_TREE, 'editor', 'editor', 'end')).toBe(DEFAULT_DOCK_TREE);
+  });
+});
+
+describe('moveDockPaneToEdge', () => {
+  test('puts chat along the start edge, beside the editor and terminal column', () => {
+    const moved = moveDockPaneToEdge(DEFAULT_DOCK_TREE, 'agents', 'start', 0.3);
+    expect(shape(moved)).toEqual({ row: ['agents', { column: ['editor', 'terminal'] }] });
+    expect(sizes(moved)).toEqual([0.3, 0.7]);
+  });
+
+  test('puts the terminal along the bottom edge, under the editor and chat', () => {
+    const moved = moveDockPaneToEdge(DEFAULT_DOCK_TREE, 'terminal', 'bottom', 0.25);
+    expect(shape(moved)).toEqual({ column: [{ row: ['editor', 'agents'] }, 'terminal'] });
+    expect(sizes(moved)).toEqual([0.75, 0.25]);
+  });
+
+  test('puts the editor along the top edge, over a row the other two now share', () => {
+    const moved = moveDockPaneToEdge(DEFAULT_DOCK_TREE, 'editor', 'top', 0.6);
+    expect(shape(moved)).toEqual({ column: ['editor', { row: ['terminal', 'agents'] }] });
+  });
+
+  test('a pane already along that whole edge stays put at its size, and one only at the end of a nested row still moves', () => {
+    expect(moveDockPaneToEdge(DEFAULT_DOCK_TREE, 'agents', 'end', 0.5)).toBe(DEFAULT_DOCK_TREE);
+    const bottomEdgeTerminal = moveDockPaneToEdge(DEFAULT_DOCK_TREE, 'terminal', 'bottom', 0.25);
+    expect(moveDockPaneToEdge(bottomEdgeTerminal, 'terminal', 'bottom', 0.4)).toBe(
+      bottomEdgeTerminal,
+    );
+    expect(shape(moveDockPaneToEdge(bottomEdgeTerminal, 'agents', 'end', 0.3))).toEqual({
+      row: [{ column: ['editor', 'terminal'] }, 'agents'],
+    });
+    expect(shape(moveDockPaneToEdge(bottomEdgeTerminal, 'terminal', 'end', 0.3))).toEqual({
+      row: ['editor', 'agents', 'terminal'],
+    });
+    expect(shape(moveDockPaneToEdge(DEFAULT_DOCK_TREE, 'terminal', 'end', 0.3))).toEqual({
+      row: ['editor', 'agents', 'terminal'],
+    });
+  });
+
+  test('every edge keeps all three panes, each once, in a tree that reads back', () => {
+    const edges = ['start', 'end', 'top', 'bottom'] as const;
+    const panes: PaneId[] = ['editor', 'agents', 'terminal'];
+    for (const pane of panes) {
+      for (const edge of edges) {
+        const moved = moveDockPaneToEdge(DEFAULT_DOCK_TREE, pane, edge, 1 / 3);
+        expect(dockTreePanes(moved).toSorted()).toEqual(['agents', 'editor', 'terminal']);
+        expect(parseDockTree(JSON.parse(JSON.stringify(moved)))).not.toBeNull();
+      }
+    }
+  });
+});
+
+describe('giving space back when a pane leaves', () => {
+  const sized = (node: DockNode): unknown =>
+    isDockLeaf(node)
+      ? node.pane
+      : {
+          [node.direction]: node.items.map((item) => [
+            Number(item.size.toFixed(9)),
+            sized(item.node),
+          ]),
+        };
+
+  test('a pane docked along a whole edge gives its space back to every other pane, also after the tree is read back', () => {
+    const atEdge = moveDockPaneToEdge(DEFAULT_DOCK_TREE, 'terminal', 'end', 0.3);
+    const readBack = parseDockTree(JSON.parse(JSON.stringify(atEdge)));
+    if (readBack === null) throw new Error('expected the tree to read back');
+    for (const tree of [atEdge, readBack]) {
+      const back = moveDockPane(
+        tree,
+        'terminal',
+        'editor',
+        'bottom',
+        DEFAULT_BOTTOM_TERMINAL_SHARE,
+      );
+      expect(sized(back)).toEqual(sized(DEFAULT_DOCK_TREE));
+    }
+  });
+
+  test('a pane docked beside another gives its space back to it, even when it ends up at the end of the window', () => {
+    const besideEditor = moveDockPane(
+      moveDockPaneToEdge(DEFAULT_DOCK_TREE, 'agents', 'start', 0.3),
+      'terminal',
+      'editor',
+      'end',
+      0.4,
+    );
+    expect(shape(besideEditor)).toEqual({ row: ['agents', 'editor', 'terminal'] });
+    const back = moveDockPane(besideEditor, 'terminal', 'editor', 'bottom', 0.5);
+    expect(sizes(back)).toEqual([0.3, 0.7]);
+  });
+
+  test('dropping a pane on the far half of its neighbour changes only those two panes', () => {
+    const rightTerminal = moveDockPane(DEFAULT_DOCK_TREE, 'terminal', 'editor', 'end', 0.4);
+    const moved = moveDockPane(rightTerminal, 'editor', 'terminal', 'end');
+    expect(shape(moved)).toEqual({ row: ['terminal', 'editor', 'agents'] });
+    expect(sizes(moved)[2]).toBe(sizes(rightTerminal)[2]);
+  });
+});
+
+describe('swapDockPanes', () => {
+  test('trades the places of two panes and keeps every size', () => {
+    const sizeShape = (node: DockNode): unknown =>
+      isDockLeaf(node)
+        ? null
+        : node.items.map((item) => [Number(item.size.toFixed(4)), sizeShape(item.node)]);
+    const swapped = swapDockPanes(DEFAULT_DOCK_TREE, 'editor', 'agents');
+    expect(shape(swapped)).toEqual({ row: [{ column: ['agents', 'terminal'] }, 'editor'] });
+    expect(sizeShape(swapped)).toEqual(sizeShape(DEFAULT_DOCK_TREE));
   });
 });

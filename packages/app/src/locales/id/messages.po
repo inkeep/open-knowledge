@@ -6329,6 +6329,18 @@ msgstr "Pindahkan {0} ke Proyek"
 msgid "Move across"
 msgstr "Dipindahkan"
 
+msgid "Move Agents to the bottom edge of the window"
+msgstr "Pindahkan Agen ke tepi bawah jendela"
+
+msgid "Move Agents to the left edge of the window"
+msgstr "Pindahkan Agen ke tepi kiri jendela"
+
+msgid "Move Agents to the right edge of the window"
+msgstr "Pindahkan Agen ke tepi kanan jendela"
+
+msgid "Move Agents to the top edge of the window"
+msgstr "Pindahkan Agen ke tepi atas jendela"
+
 msgid "Move between table cells"
 msgstr "Berpindah antarsel tabel"
 
@@ -6337,6 +6349,18 @@ msgstr "Pindahkan blok"
 
 msgid "Move down"
 msgstr "Turunkan"
+
+msgid "Move Editor to the bottom edge of the window"
+msgstr "Pindahkan Penyunting ke tepi bawah jendela"
+
+msgid "Move Editor to the left edge of the window"
+msgstr "Pindahkan Penyunting ke tepi kiri jendela"
+
+msgid "Move Editor to the right edge of the window"
+msgstr "Pindahkan Penyunting ke tepi kanan jendela"
+
+msgid "Move Editor to the top edge of the window"
+msgstr "Pindahkan Penyunting ke tepi atas jendela"
 
 msgid "Move OpenKnowledge.app to the Trash"
 msgstr "Pindahkan OpenKnowledge.app ke Tong Sampah"
@@ -6352,6 +6376,18 @@ msgstr "Pindahkan Terminal ke bawah"
 
 msgid "Move Terminal to right"
 msgstr "Pindahkan Terminal ke kanan"
+
+msgid "Move Terminal to the bottom edge of the window"
+msgstr "Pindahkan Terminal ke tepi bawah jendela"
+
+msgid "Move Terminal to the left edge of the window"
+msgstr "Pindahkan Terminal ke tepi kiri jendela"
+
+msgid "Move Terminal to the right edge of the window"
+msgstr "Pindahkan Terminal ke tepi kanan jendela"
+
+msgid "Move Terminal to the top edge of the window"
+msgstr "Pindahkan Terminal ke tepi atas jendela"
 
 msgid "Move the current block up or down. In lists, move the current item or selected items."
 msgstr "Pindahkan blok saat ini ke atas atau ke bawah. Dalam daftar, pindahkan item saat ini atau item yang dipilih."

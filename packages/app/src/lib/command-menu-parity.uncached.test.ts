@@ -1,6 +1,10 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { COMMAND_IDENTITIES, type MenuPlatform } from '@inkeep/open-knowledge-core';
+import {
+  COMMAND_IDENTITIES,
+  DOCK_MOVE_COMMANDS,
+  type MenuPlatform,
+} from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { PALETTE_COMMANDS } from '@/components/command-palette-commands';
 import { APP_RESERVED_IDS, PALETTE_COMMAND_IDS } from '@/lib/command-menu-parity.test-helper';
@@ -531,6 +535,7 @@ describe('command identity registry (Phase 2b)', () => {
       'open-github',
       'open-docs',
       'open-discord',
+      ...DOCK_MOVE_COMMANDS.map((command) => command.id),
     ]);
     const missing = COMMAND_IDENTITIES.flatMap((cmd) =>
       cmd.palette && !OVERRIDES.has(cmd.id) && cmd.menuActionId === undefined ? [cmd.id] : [],

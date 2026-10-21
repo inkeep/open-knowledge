@@ -42,11 +42,14 @@ import {
   dockTerminalPlacement,
   legacyDockArrangement,
   readDockArrangement,
+  withDockPaneAtEdge,
   withDockTerminalPlacement,
+  withDockTree,
   writeDockArrangement,
 } from '@/lib/dock-arrangement-store';
+import { type DockPaneMove, subscribeDockPaneMoves } from '@/lib/dock-move-requests';
 import { readWebDockSessionOrder } from '@/lib/dock-session-persistence';
-import type { DockNode } from '@/lib/dock-tree';
+import type { DockEdge, DockNode } from '@/lib/dock-tree';
 import { focusAwayFromHiddenEditor } from '@/lib/editor-hidden-focus';
 import { matchesKeyboardShortcut, matchesRendererShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
@@ -635,10 +638,7 @@ export function EditorPane() {
     });
   }
   function changeDockTree(update: (tree: DockNode) => DockNode) {
-    updateDockArrangement((current) => {
-      const tree = update(current.tree);
-      return tree === current.tree ? current : { tree, terminalShares: current.terminalShares };
-    });
+    updateDockArrangement((current) => withDockTree(current, update(current.tree)));
   }
   const dockTree = dock.arrangement.tree;
   const terminalPlacement = dockTerminalPlacement(dockTree);
@@ -653,6 +653,17 @@ export function EditorPane() {
       ),
     );
   });
+  const moveDockPaneEvent = useEffectEvent(({ pane, side }: DockPaneMove) => {
+    const rtl = getComputedStyle(document.documentElement).direction === 'rtl';
+    const edge: DockEdge =
+      side === 'top' || side === 'bottom' ? side : (side === 'left') !== rtl ? 'start' : 'end';
+    updateDockArrangement((current) => withDockPaneAtEdge(current, pane, edge));
+    paneVisibilityStore.request(pane, true);
+  });
+  useEffect(() => {
+    if (noteWindow) return;
+    return subscribeDockPaneMoves(moveDockPaneEvent);
+  }, [noteWindow]);
   const [agentsVisible, setAgentsVisible] = useState<boolean>(() =>
     desktopBridge == null
       ? (readWebDockSessionOrder('agents')?.agentPanelVisible ?? false)

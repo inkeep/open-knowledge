@@ -667,7 +667,7 @@ describe('TerminalTabStrip as a card top bar', () => {
     expect(row?.className).toContain('[-webkit-app-region:drag]');
   });
 
-  test('on desktop the docked strip drags the window from its empty space while every control opts out', () => {
+  test('on desktop the docked strip opts its empty space into the window drag region while every control opts out', () => {
     Object.defineProperty(window, 'okDesktop', {
       configurable: true,
       value: { config: { mode: 'editor' } },

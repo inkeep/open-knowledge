@@ -101,12 +101,14 @@ function Workspace({
   onTreeChange = () => {},
   onLayoutChange,
   units,
+  redockable,
 }: {
   tree: DockNode;
   visible?: Record<PaneId, boolean>;
   onTreeChange?: (update: (tree: DockNode) => DockNode) => void;
   onLayoutChange?: (layout: DockLayout) => void;
   units?: Record<PaneId, ReactNode>;
+  redockable?: boolean;
 }) {
   return (
     <DockWorkspace
@@ -118,8 +120,82 @@ function Workspace({
       paneLabel={(pane) => LABELS[pane]}
       onTreeChange={onTreeChange}
       onLayoutChange={onLayoutChange}
+      redockable={redockable}
     />
   );
+}
+
+const HEADED_UNITS: Record<PaneId, ReactNode> = {
+  editor: (
+    <header data-dock-handle="" data-testid="editor-handle">
+      Editor tabs
+    </header>
+  ),
+  agents: (
+    <header data-dock-handle="" data-testid="agents-handle">
+      Agent chats
+      <button type="button">New chat</button>
+    </header>
+  ),
+  terminal: (
+    <header data-dock-handle="" data-testid="terminal-handle">
+      Terminal sessions
+    </header>
+  ),
+};
+
+function RedockHarness({ visible }: { visible?: Record<PaneId, boolean> }) {
+  const [tree, setTree] = useState<DockNode>(DEFAULT_DOCK_TREE);
+  return (
+    <Workspace
+      tree={tree}
+      visible={visible}
+      onTreeChange={setTree}
+      units={HEADED_UNITS}
+      redockable
+    />
+  );
+}
+
+interface Box {
+  readonly start: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+function box(pane: PaneId): Box {
+  return boxOf(unit(pane));
+}
+
+function boxOf(element: HTMLElement): Box {
+  return {
+    start: px(element, 'insetInlineStart'),
+    top: px(element, 'insetBlockStart'),
+    width: px(element, 'width'),
+    height: px(element, 'height'),
+  };
+}
+
+function dragHeader(
+  pane: PaneId,
+  to: { clientX: number; clientY: number },
+  { release = true }: { release?: boolean } = {},
+) {
+  const from = box(pane);
+  const handle = screen.getByTestId(`${pane}-handle`);
+  const start = { clientX: from.start + 20, clientY: from.top + 10 };
+  fireEvent.pointerDown(handle, { button: 0, buttons: 1, pointerId: 7, ...start });
+  fireEvent.pointerMove(handle, { buttons: 1, pointerId: 7, ...to });
+  if (release) fireEvent.pointerUp(handle, { pointerId: 7, ...to });
+}
+
+function chip(): HTMLElement | null {
+  return document.body.querySelector<HTMLElement>('[data-dock-drag-chip]');
+}
+
+function dropZone(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('[data-dock-drop-zone]');
 }
 
 describe('DockWorkspace', () => {
@@ -573,3 +649,170 @@ describe('DockWorkspace', () => {
     expect(px(unit('terminal'), 'insetInlineStart')).toBe(px(unit('agents'), 'insetInlineStart'));
   });
 });
+
+describe('DockWorkspace re-docking', () => {
+  test('dragging a tab strip onto the start edge of another unit docks it where the outline shows', () => {
+    render(<RedockHarness />);
+    const editor = box('editor');
+    const target = { clientX: editor.start + 10, clientY: editor.top + editor.height / 2 };
+
+    dragHeader('agents', target, { release: false });
+    const zone = dropZone();
+    expect(zone?.dataset).toMatchObject({ dockDropZone: 'start', dockDropPane: 'editor' });
+    if (zone === null) throw new Error('no drop zone outlined');
+    const outline = boxOf(zone);
+    expect(chip()?.textContent).toBe('Agents');
+    expect(document.querySelector('[data-redocking="agents"]')).not.toBeNull();
+    fireEvent.pointerUp(screen.getByTestId('agents-handle'), { pointerId: 7, ...target });
+
+    const agents = box('agents');
+    const moved = box('editor');
+    expect(agents).toEqual(outline);
+    expect(agents.start).toBe(editor.start);
+    expect(agents.top).toBe(moved.top);
+    expect(moved.start).toBeGreaterThan(agents.start);
+    expect(box('terminal').width).toBe(WIDTH);
+    expect(chip()).toBeNull();
+    expect(dropZone()).toBeNull();
+  });
+
+  test('dropping a tab strip on the middle of another unit trades the two places', () => {
+    render(<RedockHarness />);
+    const editor = box('editor');
+    const agents = box('agents');
+
+    dragHeader('agents', {
+      clientX: editor.start + editor.width / 2,
+      clientY: editor.top + editor.height / 2,
+    });
+
+    expect(box('agents')).toEqual(editor);
+    expect(box('editor')).toEqual(agents);
+  });
+
+  test('a press on a control inside the tab strip starts no drag', () => {
+    render(<RedockHarness />);
+    const before = layoutBoxes();
+    const editor = box('editor');
+    const button = screen.getByRole('button', { name: 'New chat' });
+    fireEvent.pointerDown(button, {
+      button: 0,
+      buttons: 1,
+      pointerId: 7,
+      clientX: 1100,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(button, {
+      buttons: 1,
+      pointerId: 7,
+      clientX: editor.start + 10,
+      clientY: 300,
+    });
+    expect(chip()).toBeNull();
+    fireEvent.pointerUp(button, { pointerId: 7, clientX: editor.start + 10, clientY: 300 });
+
+    expect(layoutBoxes()).toEqual(before);
+  });
+
+  test('a press that moves less than the start distance shows no drag and leaves the layout alone', () => {
+    render(<RedockHarness />);
+    const before = layoutBoxes();
+    const agents = box('agents');
+    const nudged = { clientX: agents.start + 22, clientY: agents.top + 11 };
+
+    dragHeader('agents', nudged, { release: false });
+    expect(chip()).toBeNull();
+    expect(document.querySelector('[data-redocking]')).toBeNull();
+    fireEvent.pointerUp(screen.getByTestId('agents-handle'), { pointerId: 7, ...nudged });
+
+    expect(layoutBoxes()).toEqual(before);
+  });
+
+  test('Escape during a drag puts everything back and the release changes nothing', () => {
+    render(<RedockHarness />);
+    const before = layoutBoxes();
+    const editor = box('editor');
+    const target = { clientX: editor.start + 10, clientY: editor.top + 100 };
+
+    dragHeader('agents', target, { release: false });
+    expect(chip()).not.toBeNull();
+    expect(fireEvent.keyDown(window, { key: 'Escape' })).toBe(false);
+    expect(chip()).toBeNull();
+    expect(dropZone()).toBeNull();
+    expect(document.querySelector('[data-redocking]')).toBeNull();
+    fireEvent.pointerUp(screen.getByTestId('agents-handle'), { pointerId: 7, ...target });
+
+    expect(layoutBoxes()).toEqual(before);
+  });
+
+  test('a press whose release is lost to a context menu ends there, and a later release changes nothing', () => {
+    render(<RedockHarness />);
+    const before = layoutBoxes();
+    const agents = box('agents');
+    const editor = box('editor');
+    const handle = screen.getByTestId('agents-handle');
+    const target = { clientX: editor.start + 10, clientY: editor.top + editor.height / 2 };
+    fireEvent.pointerDown(handle, {
+      button: 0,
+      buttons: 1,
+      pointerId: 7,
+      clientX: agents.start + 20,
+      clientY: agents.top + 10,
+    });
+    fireEvent.contextMenu(handle);
+    fireEvent.pointerMove(handle, { buttons: 1, pointerId: 7, ...target });
+    expect(chip()).toBeNull();
+    fireEvent.pointerUp(handle, { pointerId: 7, ...target });
+
+    expect(layoutBoxes()).toEqual(before);
+  });
+
+  test('a move that arrives with the button already up ends the drag without a drop', () => {
+    render(<RedockHarness />);
+    const before = layoutBoxes();
+    const editor = box('editor');
+    const target = { clientX: editor.start + 10, clientY: editor.top + editor.height / 2 };
+
+    dragHeader('agents', target, { release: false });
+    expect(chip()).not.toBeNull();
+    fireEvent.pointerMove(window, { buttons: 0, pointerId: 7, ...target });
+    expect(chip()).toBeNull();
+    expect(dropZone()).toBeNull();
+    fireEvent.pointerUp(window, { pointerId: 7, ...target });
+
+    expect(layoutBoxes()).toEqual(before);
+  });
+
+  test('with one unit showing, a header drag finds nowhere to go and starts nothing', () => {
+    render(<RedockHarness visible={{ editor: true, agents: false, terminal: false }} />);
+    const editor = box('editor');
+
+    dragHeader(
+      'editor',
+      { clientX: editor.start + 300, clientY: editor.top + 300 },
+      { release: false },
+    );
+
+    expect(chip()).toBeNull();
+    expect(dropZone()).toBeNull();
+  });
+
+  test('right to left, a drop near the physical left of the editor docks at its end', () => {
+    direction = 'rtl';
+    render(<RedockHarness />);
+    const editor = box('editor');
+    const physicalLeft = WIDTH - (editor.start + editor.width);
+    const target = { clientX: physicalLeft + 10, clientY: editor.top + editor.height / 2 };
+
+    dragHeader('terminal', target, { release: false });
+    expect(dropZone()?.dataset).toMatchObject({ dockDropZone: 'end', dockDropPane: 'editor' });
+    fireEvent.pointerUp(screen.getByTestId('terminal-handle'), { pointerId: 7, ...target });
+
+    expect(box('terminal').start).toBeGreaterThan(box('editor').start);
+    expect(box('terminal').top).toBe(box('editor').top);
+  });
+});
+
+function layoutBoxes() {
+  return { editor: box('editor'), agents: box('agents'), terminal: box('terminal') };
+}

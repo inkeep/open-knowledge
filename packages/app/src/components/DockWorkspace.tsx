@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { flushSync } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import {
   clampDockSeam,
   type DockExtent,
@@ -22,12 +22,27 @@ import {
   EMPTY_DOCK_LAYOUT,
   layoutDock,
 } from '@/lib/dock-layout';
-import { DOCK_PANES, type DockNode, resizeDockGroup, visibleDockTree } from '@/lib/dock-tree';
-import type { PaneId } from '@/lib/pane-visibility-store';
+import {
+  DOCK_PANES,
+  type DockEdge,
+  type DockNode,
+  moveDockPane,
+  resizeDockGroup,
+  swapDockPanes,
+  visibleDockTree,
+} from '@/lib/dock-tree';
+import { isPaneId, type PaneId } from '@/lib/pane-visibility-store';
 import { cn } from '@/lib/utils';
 
 const KEYBOARD_STEP_PX = 16;
 const KEYBOARD_LARGE_STEP_PX = 64;
+const REDOCK_START_DISTANCE_PX = 6;
+const REDOCK_EDGE_FRACTION = 0.26;
+const REDOCK_SHARE = 0.5;
+const REDOCK_CHIP_OFFSET_PX = { x: 14, y: 12 };
+const REDOCK_HANDLE = '[data-dock-handle]';
+const REDOCK_IGNORED =
+  'button, a[href], input, textarea, select, [role="tab"], [role="button"], [role="menuitem"], [role="combobox"], [contenteditable=""], [contenteditable="true"]';
 
 function dockUnitId(pane: PaneId): string {
   return `dock-unit-${pane}`;
@@ -42,6 +57,50 @@ interface DockWorkspaceProps {
   readonly paneLabel: (pane: PaneId) => string;
   readonly onTreeChange: (update: (tree: DockNode) => DockNode) => void;
   readonly onLayoutChange?: (layout: DockLayout) => void;
+  readonly redockable?: boolean;
+}
+
+type DockDropZone = DockEdge | 'center';
+
+interface DockDropSpot {
+  readonly pane: PaneId;
+  readonly zone: DockDropZone;
+}
+
+interface DockDropTarget extends DockDropSpot {
+  readonly hint: DockRect;
+}
+
+interface DockRedock {
+  readonly pane: PaneId;
+  readonly client: { readonly x: number; readonly y: number };
+  readonly target: DockDropTarget | null;
+}
+
+function dropSpotAt(
+  layout: DockLayout,
+  dragged: PaneId,
+  point: { readonly x: number; readonly y: number },
+): DockDropSpot | null {
+  for (const [pane, rect] of layout.panes) {
+    if (pane === dragged) continue;
+    const fromStart = (point.x - rect.x) / rect.width;
+    const fromTop = (point.y - rect.y) / rect.height;
+    if (fromStart < 0 || fromStart > 1 || fromTop < 0 || fromTop > 1) continue;
+    const nearest = Math.min(fromStart, 1 - fromStart, fromTop, 1 - fromTop);
+    if (nearest > REDOCK_EDGE_FRACTION) return { pane, zone: 'center' };
+    if (nearest === fromStart) return { pane, zone: 'start' };
+    if (nearest === 1 - fromStart) return { pane, zone: 'end' };
+    if (nearest === fromTop) return { pane, zone: 'top' };
+    return { pane, zone: 'bottom' };
+  }
+  return null;
+}
+
+function droppedTree(tree: DockNode, dragged: PaneId, spot: DockDropSpot): DockNode {
+  return spot.zone === 'center'
+    ? swapDockPanes(tree, dragged, spot.pane)
+    : moveDockPane(tree, dragged, spot.pane, spot.zone, REDOCK_SHARE);
 }
 
 interface DockDrag {
@@ -103,6 +162,7 @@ export function DockWorkspace({
   paneLabel,
   onTreeChange,
   onLayoutChange,
+  redockable = false,
 }: DockWorkspaceProps) {
   const { t } = useLingui();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -112,6 +172,8 @@ export function DockWorkspace({
     () => new Map(),
   );
   const releaseDragRef = useRef<(() => void) | null>(null);
+  const [redock, setRedock] = useState<DockRedock | null>(null);
+  const releaseRedockRef = useRef<(() => void) | null>(null);
   const onTreeChangeRef = useRef(onTreeChange);
   useLayoutEffect(() => {
     onTreeChangeRef.current = onTreeChange;
@@ -184,6 +246,7 @@ export function DockWorkspace({
     if (dragOutlived) endOutlivedDrag();
   }, [dragOutlived]);
   useEffect(() => () => releaseDragRef.current?.(), []);
+  useEffect(() => () => releaseRedockRef.current?.(), []);
 
   function isRtl(): boolean {
     const element = containerRef.current;
@@ -235,6 +298,101 @@ export function DockWorkspace({
     setDrag(started);
   }
 
+  function stopRedock() {
+    releaseRedockRef.current?.();
+    releaseRedockRef.current = null;
+    setRedock(null);
+  }
+
+  const redockAt = useEffectEvent((pane: PaneId, event: globalThis.PointerEvent): DockRedock => {
+    const box = containerRef.current?.getBoundingClientRect();
+    const point =
+      box === undefined
+        ? null
+        : {
+            x: isRtl() ? box.right - event.clientX : event.clientX - box.left,
+            y: event.clientY - box.top,
+          };
+    const spot = point === null ? null : dropSpotAt(layout, pane, point);
+    const hint =
+      spot === null ? undefined : layoutOf(droppedTree(tree, pane, spot)).panes.get(pane);
+    return {
+      pane,
+      client: { x: event.clientX, y: event.clientY },
+      target: spot === null || hint === undefined ? null : { ...spot, hint },
+    };
+  });
+
+  const commitRedock = useEffectEvent((pane: PaneId, target: DockDropSpot) => {
+    onTreeChangeRef.current((current) => droppedTree(current, pane, target));
+  });
+
+  const startRedock = useEffectEvent((event: globalThis.PointerEvent) => {
+    const container = containerRef.current;
+    const pressed = event.target;
+    if (!redockable || event.button !== 0 || releaseRedockRef.current !== null) return;
+    if (container === null || !(pressed instanceof Element)) return;
+    const handle = pressed.closest(REDOCK_HANDLE);
+    const unit = handle?.closest('[data-dock-unit]');
+    if (handle == null || unit == null || !container.contains(unit)) return;
+    const ignored = pressed.closest(REDOCK_IGNORED);
+    if (ignored !== null && handle.contains(ignored)) return;
+    const pane = unit.getAttribute('data-dock-unit');
+    if (!isPaneId(pane) || !layout.panes.has(pane) || layout.panes.size < 2) return;
+    const pointerId = event.pointerId;
+    const start = { x: event.clientX, y: event.clientY };
+    let live = false;
+    const follow = (move: globalThis.PointerEvent) => {
+      if (move.pointerId !== pointerId) return;
+      if ((move.buttons & 1) === 0) {
+        stopRedock();
+        return;
+      }
+      if (!live) {
+        const travel = Math.abs(move.clientX - start.x) + Math.abs(move.clientY - start.y);
+        if (travel < REDOCK_START_DISTANCE_PX) return;
+        live = true;
+      }
+      setRedock(redockAt(pane, move));
+    };
+    const finish = (up: globalThis.PointerEvent) => {
+      if (up.pointerId !== pointerId) return;
+      const target = live ? redockAt(pane, up).target : null;
+      stopRedock();
+      if (target !== null) commitRedock(pane, target);
+    };
+    const abandon = (cancel: globalThis.PointerEvent) => {
+      if (cancel.pointerId === pointerId) stopRedock();
+    };
+    const abandonForMenu = () => stopRedock();
+    const cancelOnEscape = (key: globalThis.KeyboardEvent) => {
+      if (!live || key.key !== 'Escape') return;
+      key.preventDefault();
+      key.stopPropagation();
+      stopRedock();
+    };
+    window.addEventListener('pointermove', follow);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', abandon);
+    window.addEventListener('contextmenu', abandonForMenu);
+    window.addEventListener('keydown', cancelOnEscape, true);
+    releaseRedockRef.current = () => {
+      window.removeEventListener('pointermove', follow);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', abandon);
+      window.removeEventListener('contextmenu', abandonForMenu);
+      window.removeEventListener('keydown', cancelOnEscape, true);
+    };
+  });
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (element === null) return;
+    const press = (event: globalThis.PointerEvent) => startRedock(event);
+    element.addEventListener('pointerdown', press);
+    return () => element.removeEventListener('pointerdown', press);
+  }, []);
+
   function resizeFromKeyboard(seam: DockSeam, event: KeyboardEvent<HTMLDivElement>) {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     const row = seam.direction === 'row';
@@ -256,7 +414,7 @@ export function DockWorkspace({
     commitSeam(tree, seam, next);
   }
 
-  const dragging = liveDrag !== null;
+  const dragging = liveDrag !== null || redock !== null;
   const seamBefore = new Map<PaneId, DockSeam>();
   for (const seam of layout.seams) {
     const resized = seam.after[0];
@@ -276,9 +434,10 @@ export function DockWorkspace({
         hidden={shownRect === undefined}
         inert={rect === undefined}
         className={cn(
-          'absolute flex min-h-0 min-w-0',
+          'absolute flex min-h-0 min-w-0 transition-opacity duration-150 ease-out motion-reduce:transition-none',
           rect === undefined && 'invisible',
           dragging && 'pointer-events-none',
+          redock?.pane === pane && 'opacity-50',
         )}
         style={shownRect === undefined ? undefined : placement(shownRect)}
       >
@@ -333,7 +492,17 @@ export function DockWorkspace({
       ref={containerRef}
       data-dock-workspace=""
       data-dragging={dragging ? '' : undefined}
-      className={cn('relative min-h-0 min-w-0 flex-1', dragging && 'select-none')}
+      data-redocking={redock === null ? undefined : redock.pane}
+      className={cn(
+        'relative min-h-0 min-w-0 flex-1',
+        dragging && 'select-none',
+        redock !== null && 'cursor-grabbing',
+        redockable && [
+          '[&_[data-dock-handle]]:select-none',
+          '[&_[data-dock-handle][data-electron-drag]]:[-webkit-app-region:no-drag]',
+          '[&_[data-dock-handle]_[data-electron-drag]]:[-webkit-app-region:no-drag]',
+        ],
+      )}
     >
       {DOCK_PANES.map((pane) => {
         const seam = seamBefore.get(pane);
@@ -344,6 +513,31 @@ export function DockWorkspace({
           </Fragment>
         );
       })}
+      {redock?.target == null ? null : (
+        <div
+          aria-hidden="true"
+          data-dock-drop-pane={redock.target.pane}
+          data-dock-drop-zone={redock.target.zone}
+          className="pointer-events-none absolute z-30 rounded-xl bg-primary/10 ring-2 ring-primary ring-inset outline-current -outline-offset-2 forced-colors:outline-solid forced-colors:outline-2 contrast-more:outline-solid contrast-more:outline-2"
+          style={placement(redock.target.hint)}
+        />
+      )}
+      {redock === null
+        ? null
+        : createPortal(
+            <div
+              aria-hidden="true"
+              data-dock-drag-chip=""
+              className="pointer-events-none fixed z-50 rounded-lg bg-foreground px-2.5 py-1.5 font-semibold text-background text-xs shadow-lg outline-current forced-colors:outline-solid forced-colors:outline-1"
+              style={{
+                left: redock.client.x + REDOCK_CHIP_OFFSET_PX.x,
+                top: redock.client.y + REDOCK_CHIP_OFFSET_PX.y,
+              }}
+            >
+              {paneLabel(redock.pane)}
+            </div>,
+            document.body,
+          )}
     </div>
   );
 }

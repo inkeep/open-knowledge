@@ -6329,6 +6329,18 @@ msgstr "Mover {0} para Projeto"
 msgid "Move across"
 msgstr "São movidas"
 
+msgid "Move Agents to the bottom edge of the window"
+msgstr "Mover Agentes para a borda inferior da janela"
+
+msgid "Move Agents to the left edge of the window"
+msgstr "Mover Agentes para a borda esquerda da janela"
+
+msgid "Move Agents to the right edge of the window"
+msgstr "Mover Agentes para a borda direita da janela"
+
+msgid "Move Agents to the top edge of the window"
+msgstr "Mover Agentes para a borda superior da janela"
+
 msgid "Move between table cells"
 msgstr "Mover entre as células da tabela"
 
@@ -6337,6 +6349,18 @@ msgstr "Mover o bloco"
 
 msgid "Move down"
 msgstr "Mover para baixo"
+
+msgid "Move Editor to the bottom edge of the window"
+msgstr "Mover o Editor para a borda inferior da janela"
+
+msgid "Move Editor to the left edge of the window"
+msgstr "Mover o Editor para a borda esquerda da janela"
+
+msgid "Move Editor to the right edge of the window"
+msgstr "Mover o Editor para a borda direita da janela"
+
+msgid "Move Editor to the top edge of the window"
+msgstr "Mover o Editor para a borda superior da janela"
 
 msgid "Move OpenKnowledge.app to the Trash"
 msgstr "Mova OpenKnowledge.app para o Lixo"
@@ -6352,6 +6376,18 @@ msgstr "Mover o Terminal para a parte inferior"
 
 msgid "Move Terminal to right"
 msgstr "Mover o Terminal para a direita"
+
+msgid "Move Terminal to the bottom edge of the window"
+msgstr "Mover o Terminal para a borda inferior da janela"
+
+msgid "Move Terminal to the left edge of the window"
+msgstr "Mover o Terminal para a borda esquerda da janela"
+
+msgid "Move Terminal to the right edge of the window"
+msgstr "Mover o Terminal para a borda direita da janela"
+
+msgid "Move Terminal to the top edge of the window"
+msgstr "Mover o Terminal para a borda superior da janela"
 
 msgid "Move the current block up or down. In lists, move the current item or selected items."
 msgstr "Move o bloco atual para cima ou para baixo. Nas listas, move o item atual ou os itens selecionados."

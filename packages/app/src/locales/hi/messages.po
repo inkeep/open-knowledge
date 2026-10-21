@@ -6329,6 +6329,18 @@ msgstr "{0} स्किलें प्रोजेक्ट में ले �
 msgid "Move across"
 msgstr "स्थानांतरित होंगी"
 
+msgid "Move Agents to the bottom edge of the window"
+msgstr "एजेंट को विंडो के निचले किनारे पर ले जाएँ"
+
+msgid "Move Agents to the left edge of the window"
+msgstr "एजेंट को विंडो के बाएँ किनारे पर ले जाएँ"
+
+msgid "Move Agents to the right edge of the window"
+msgstr "एजेंट को विंडो के दाएँ किनारे पर ले जाएँ"
+
+msgid "Move Agents to the top edge of the window"
+msgstr "एजेंट को विंडो के ऊपरी किनारे पर ले जाएँ"
+
 msgid "Move between table cells"
 msgstr "तालिका की कोशिकाओं के बीच जाएँ"
 
@@ -6337,6 +6349,18 @@ msgstr "ब्लॉक हिलाएँ"
 
 msgid "Move down"
 msgstr "नीचे ले जाएँ"
+
+msgid "Move Editor to the bottom edge of the window"
+msgstr "संपादक को विंडो के निचले किनारे पर ले जाएँ"
+
+msgid "Move Editor to the left edge of the window"
+msgstr "संपादक को विंडो के बाएँ किनारे पर ले जाएँ"
+
+msgid "Move Editor to the right edge of the window"
+msgstr "संपादक को विंडो के दाएँ किनारे पर ले जाएँ"
+
+msgid "Move Editor to the top edge of the window"
+msgstr "संपादक को विंडो के ऊपरी किनारे पर ले जाएँ"
 
 msgid "Move OpenKnowledge.app to the Trash"
 msgstr "OpenKnowledge.app को ट्रैश में ले जाएँ"
@@ -6352,6 +6376,18 @@ msgstr "Terminal को नीचे ले जाएँ"
 
 msgid "Move Terminal to right"
 msgstr "Terminal को दाईं ओर ले जाएँ"
+
+msgid "Move Terminal to the bottom edge of the window"
+msgstr "Terminal को विंडो के निचले किनारे पर ले जाएँ"
+
+msgid "Move Terminal to the left edge of the window"
+msgstr "Terminal को विंडो के बाएँ किनारे पर ले जाएँ"
+
+msgid "Move Terminal to the right edge of the window"
+msgstr "Terminal को विंडो के दाएँ किनारे पर ले जाएँ"
+
+msgid "Move Terminal to the top edge of the window"
+msgstr "Terminal को विंडो के ऊपरी किनारे पर ले जाएँ"
 
 msgid "Move the current block up or down. In lists, move the current item or selected items."
 msgstr "मौजूदा ब्लॉक को ऊपर या नीचे ले जाएँ। सूचियों में, मौजूदा आइटम या चुने हुए आइटम ले जाएँ।"

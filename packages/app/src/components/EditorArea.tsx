@@ -2213,6 +2213,7 @@ function EditorAreaInner({
           paneLabel={(pane) => t(PANE_LABEL[pane])}
           onTreeChange={onDockTreeChange}
           onLayoutChange={setDockLayout}
+          redockable={!noteWindow}
         />
         {nothingOpen ? <NothingOpen /> : null}
       </div>

@@ -1,3 +1,5 @@
+export type PaneId = 'editor' | 'agents' | 'terminal';
+
 export const TERMINAL_PLACEMENTS = ['bottom', 'right'] as const;
 
 export type TerminalPlacement = (typeof TERMINAL_PLACEMENTS)[number];

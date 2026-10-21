@@ -272,6 +272,7 @@ export function TerminalTabStrip({
         <div
           ref={rowRef}
           data-terminal-tab-row=""
+          data-dock-handle={draggable ? undefined : ''}
           data-electron-drag={windowDragRegion ? '' : undefined}
           className={cn(
             'flex shrink-0 flex-row items-center gap-1 px-1.5 py-1',

@@ -4,12 +4,19 @@ import {
   bottomTerminalDockTree,
   DEFAULT_BOTTOM_TERMINAL_SHARE,
   DEFAULT_CHAT_SHARE,
+  DOCK_EDGE_SHARE,
+  type DockDirection,
+  type DockEdge,
   type DockNode,
+  dockEdgeDirection,
   dockPaneDirection,
-  dockPaneHeirShare,
+  dockPaneExtent,
   moveDockPane,
+  moveDockPaneToEdge,
   parseDockTree,
+  withoutDockPane,
 } from './dock-tree';
+import type { PaneId } from './pane-visibility-store';
 import { scopedStorageKey } from './storage-scope';
 import { readTerminalHeight } from './terminal-height-store';
 import { readTerminalPlacement } from './terminal-placement-store';
@@ -159,28 +166,71 @@ export function legacyDockArrangement(
   return seededDockArrangement(workspace, legacyStorage(storage));
 }
 
+const PLACEMENT_DIRECTION = {
+  bottom: 'column',
+  right: 'row',
+} as const satisfies Record<TerminalPlacement, DockDirection>;
+
 export function dockTerminalPlacement(tree: DockNode): TerminalPlacement {
   return dockPaneDirection(tree, 'terminal') === 'column' ? 'bottom' : 'right';
+}
+
+function terminalShareWithEditor(tree: DockNode, placement: TerminalPlacement): number | null {
+  const direction = PLACEMENT_DIRECTION[placement];
+  const terminal = dockPaneExtent(tree, 'terminal', direction);
+  const editor = dockPaneExtent(tree, 'editor', direction);
+  return terminal === null || editor === null ? null : terminal / (terminal + editor);
+}
+
+export function withDockTree(arrangement: DockArrangement, tree: DockNode): DockArrangement {
+  if (tree === arrangement.tree) return arrangement;
+  const leaving = dockTerminalPlacement(arrangement.tree);
+  const leavingShare =
+    dockTerminalPlacement(tree) === leaving
+      ? null
+      : terminalShareWithEditor(arrangement.tree, leaving);
+  return {
+    tree,
+    terminalShares:
+      leavingShare === null
+        ? arrangement.terminalShares
+        : { ...arrangement.terminalShares, [leaving]: leavingShare },
+  };
 }
 
 export function withDockTerminalPlacement(
   arrangement: DockArrangement,
   placement: TerminalPlacement,
 ): DockArrangement {
-  const leaving = dockTerminalPlacement(arrangement.tree);
-  if (leaving === placement) return arrangement;
-  const leavingShare = dockPaneHeirShare(arrangement.tree, 'terminal');
-  return {
-    tree: moveDockPane(
+  if (dockTerminalPlacement(arrangement.tree) === placement) return arrangement;
+  return withDockTree(
+    arrangement,
+    moveDockPane(
       arrangement.tree,
       'terminal',
       'editor',
       placement === 'bottom' ? 'bottom' : 'end',
       arrangement.terminalShares[placement],
     ),
-    terminalShares:
-      leavingShare === null
-        ? arrangement.terminalShares
-        : { ...arrangement.terminalShares, [leaving]: leavingShare },
-  };
+  );
+}
+
+function terminalEdgeShare(arrangement: DockArrangement, edge: DockEdge): number {
+  const direction = dockEdgeDirection(edge);
+  const placement: TerminalPlacement = direction === 'row' ? 'right' : 'bottom';
+  const current = dockPaneExtent(arrangement.tree, 'terminal', direction);
+  if (dockTerminalPlacement(arrangement.tree) === placement && current !== null) return current;
+  const share = arrangement.terminalShares[placement];
+  const rest = withoutDockPane(arrangement.tree, 'terminal');
+  const editor = rest === null ? null : dockPaneExtent(rest, 'editor', direction);
+  return editor === null ? share : (share * editor) / (1 - share + share * editor);
+}
+
+export function withDockPaneAtEdge(
+  arrangement: DockArrangement,
+  pane: PaneId,
+  edge: DockEdge,
+): DockArrangement {
+  const share = pane === 'terminal' ? terminalEdgeShare(arrangement, edge) : DOCK_EDGE_SHARE[pane];
+  return withDockTree(arrangement, moveDockPaneToEdge(arrangement.tree, pane, edge, share));
 }

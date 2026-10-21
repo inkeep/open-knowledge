@@ -1,12 +1,13 @@
 import { REDUCED_CHROME_HEADER_HEIGHT } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
-import { act, cleanup, render, screen } from '@testing-library/react';
-import { type ComponentProps, type ReactNode, useEffect } from 'react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { type ComponentProps, type ReactNode, useEffect, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
 import { ConfigContext } from '@/lib/config-context';
+import { DEFAULT_DOCK_TREE, type DockNode } from '@/lib/dock-tree';
 import {
   __resetPaneVisibilityStoreForTests,
   type PaneVisibility,
@@ -245,7 +246,7 @@ describe('EditorHeader runtime behavior', () => {
   });
 
   for (const state of ['expanded', 'collapsed'] as const) {
-    test(`an Electron project window tab row with the file list ${state} is a drag region holding only the tab strip`, async () => {
+    test(`an Electron project window tab row with the file list ${state} opts into the window drag region and holds only the tab strip`, async () => {
       setElectronHost(true);
       sidebarState = state;
       const header = await renderHeader(<div data-testid="editor-tabs">tabs</div>);
@@ -448,6 +449,81 @@ describe('EditorHeader runtime behavior', () => {
     expect(screen.queryByRole('group', { name: 'Panels' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Agents' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Terminal' })).toBeNull();
+  });
+
+  test('dragging the tab row onto the middle of the Agents panel trades the editor and the Agents panel', async () => {
+    const { DockWorkspace } = await import('./DockWorkspace');
+    const { EditorHeader } = await import('./EditorHeader');
+    const rects = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const [width, height] = this.hasAttribute('data-dock-workspace') ? [1200, 800] : [0, 0];
+        return {
+          x: 0,
+          y: 0,
+          top: 0,
+          left: 0,
+          right: width,
+          bottom: height,
+          width,
+          height,
+          toJSON() {},
+        } as DOMRect;
+      });
+    onTestFinished(() => rects.mockRestore());
+    function Workspace() {
+      const [tree, setTree] = useState<DockNode>(DEFAULT_DOCK_TREE);
+      return (
+        <ConfigContext value={configContextWithTerminal(projectTerminal)}>
+          <TooltipProvider delayDuration={0}>
+            <DockWorkspace
+              tree={tree}
+              visible={{ editor: true, agents: true, terminal: true }}
+              units={{
+                editor: (
+                  <EditorHeader>
+                    <div data-testid="editor-tabs">tabs</div>
+                  </EditorHeader>
+                ),
+                agents: <div>Agents</div>,
+                terminal: <div>Terminal</div>,
+              }}
+              gap={8}
+              minExtent={() => ({ width: 100, height: 100 })}
+              paneLabel={(pane) => pane}
+              onTreeChange={setTree}
+              redockable
+            />
+          </TooltipProvider>
+        </ConfigContext>
+      );
+    }
+    render(<Workspace />);
+    const placed = (pane: string) => {
+      const style = document.querySelector<HTMLElement>(`[data-dock-unit="${pane}"]`)?.style;
+      return {
+        start: Number.parseFloat(style?.insetInlineStart ?? ''),
+        top: Number.parseFloat(style?.insetBlockStart ?? ''),
+        width: Number.parseFloat(style?.width ?? ''),
+        height: Number.parseFloat(style?.height ?? ''),
+      };
+    };
+    const editor = placed('editor');
+    const agents = placed('agents');
+    expect(editor.width).toBeGreaterThan(0);
+    expect(agents.start).toBeGreaterThan(editor.start);
+    const middle = {
+      clientX: agents.start + agents.width / 2,
+      clientY: agents.top + agents.height / 2,
+    };
+    const tabs = screen.getByTestId('editor-tabs');
+
+    fireEvent.pointerDown(tabs, { button: 0, buttons: 1, pointerId: 3, clientX: 20, clientY: 10 });
+    fireEvent.pointerMove(tabs, { buttons: 1, pointerId: 3, ...middle });
+    fireEvent.pointerUp(tabs, { pointerId: 3, ...middle });
+
+    expect(placed('editor')).toEqual(agents);
+    expect(placed('agents')).toEqual(editor);
   });
 
   test('renders workspace tabs between the global action zones', async () => {

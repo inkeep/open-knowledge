@@ -6329,6 +6329,18 @@ msgstr "{0}টি স্কিল প্রকল্পে সরান"
 msgid "Move across"
 msgstr "সরে যাবে"
 
+msgid "Move Agents to the bottom edge of the window"
+msgstr "এজেন্ট উইন্ডোর নিচের প্রান্তে সরান"
+
+msgid "Move Agents to the left edge of the window"
+msgstr "এজেন্ট উইন্ডোর বাম প্রান্তে সরান"
+
+msgid "Move Agents to the right edge of the window"
+msgstr "এজেন্ট উইন্ডোর ডান প্রান্তে সরান"
+
+msgid "Move Agents to the top edge of the window"
+msgstr "এজেন্ট উইন্ডোর উপরের প্রান্তে সরান"
+
 msgid "Move between table cells"
 msgstr "টেবিলের ঘরগুলোর মধ্যে সরুন"
 
@@ -6337,6 +6349,18 @@ msgstr "ব্লক সরান"
 
 msgid "Move down"
 msgstr "নিচে সরান"
+
+msgid "Move Editor to the bottom edge of the window"
+msgstr "সম্পাদক উইন্ডোর নিচের প্রান্তে সরান"
+
+msgid "Move Editor to the left edge of the window"
+msgstr "সম্পাদক উইন্ডোর বাম প্রান্তে সরান"
+
+msgid "Move Editor to the right edge of the window"
+msgstr "সম্পাদক উইন্ডোর ডান প্রান্তে সরান"
+
+msgid "Move Editor to the top edge of the window"
+msgstr "সম্পাদক উইন্ডোর উপরের প্রান্তে সরান"
 
 msgid "Move OpenKnowledge.app to the Trash"
 msgstr "OpenKnowledge.app ট্র্যাশে সরান"
@@ -6352,6 +6376,18 @@ msgstr "Terminal নিচে সরান"
 
 msgid "Move Terminal to right"
 msgstr "Terminal ডান দিকে সরান"
+
+msgid "Move Terminal to the bottom edge of the window"
+msgstr "Terminal উইন্ডোর নিচের প্রান্তে সরান"
+
+msgid "Move Terminal to the left edge of the window"
+msgstr "Terminal উইন্ডোর বাম প্রান্তে সরান"
+
+msgid "Move Terminal to the right edge of the window"
+msgstr "Terminal উইন্ডোর ডান প্রান্তে সরান"
+
+msgid "Move Terminal to the top edge of the window"
+msgstr "Terminal উইন্ডোর উপরের প্রান্তে সরান"
 
 msgid "Move the current block up or down. In lists, move the current item or selected items."
 msgstr "বর্তমান ব্লকটি উপরে বা নিচে সরান। তালিকায়, বর্তমান আইটেম বা নির্বাচিত আইটেমগুলি সরান।"

@@ -90,6 +90,7 @@ export function EditorHeader({ children, trailing, noteModeToggle }: EditorHeade
   return (
     <header
       data-editor-header=""
+      data-dock-handle=""
       data-electron-drag={isElectronHost ? '' : undefined}
       style={
         reducedChrome

@@ -11,6 +11,7 @@ export interface DockLeaf {
 interface DockItem {
   readonly size: number;
   readonly node: DockNode;
+  readonly alongEdge?: true;
 }
 
 export interface DockGroup {
@@ -52,6 +53,11 @@ const MAX_DOCK_DEPTH = DOCK_PANES.length;
 export const DEFAULT_CHAT_SHARE = 1 / 3.5;
 export const DEFAULT_BOTTOM_TERMINAL_SHARE = 1 / 3.3;
 
+export const DOCK_EDGE_SHARE = {
+  editor: 1 - DEFAULT_CHAT_SHARE,
+  agents: DEFAULT_CHAT_SHARE,
+} as const satisfies Record<Exclude<PaneId, 'terminal'>, number>;
+
 export function bottomTerminalDockTree(chatShare: number, terminalShare: number): DockGroup {
   return {
     direction: 'row',
@@ -84,7 +90,7 @@ export function isVisibleDockLeaf(node: VisibleDockNode): node is VisibleDockLea
   return 'pane' in node;
 }
 
-function dockEdgeDirection(edge: DockEdge): DockDirection {
+export function dockEdgeDirection(edge: DockEdge): DockDirection {
   return edge === 'start' || edge === 'end' ? 'row' : 'column';
 }
 
@@ -106,11 +112,11 @@ function parseDockNode(value: unknown, depth: number): DockNode | null {
   const items: DockItem[] = [];
   for (const raw of record.items) {
     if (typeof raw !== 'object' || raw === null) return null;
-    const { size, node } = raw as Record<string, unknown>;
+    const { size, node, alongEdge } = raw as Record<string, unknown>;
     if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0) return null;
     const child = parseDockNode(node, depth + 1);
     if (child === null) return null;
-    items.push({ size, node: child });
+    items.push(alongEdge === true ? { size, node: child, alongEdge } : { size, node: child });
   }
   return { direction: record.direction, items };
 }
@@ -135,7 +141,7 @@ export function parseDockTree(value: unknown): DockNode | null {
 
 function normalizedItems(items: readonly DockItem[]): DockItem[] {
   const total = items.reduce((sum, item) => sum + item.size, 0);
-  return items.map((item) => ({ size: item.size / total, node: item.node }));
+  return items.map((item) => ({ ...item, size: item.size / total }));
 }
 
 export function normalizeDockTree(node: DockNode): DockNode {
@@ -145,10 +151,10 @@ export function normalizeDockTree(node: DockNode): DockNode {
     const child = normalizeDockTree(item.node);
     if (!isDockLeaf(child) && child.direction === node.direction) {
       for (const nested of child.items) {
-        items.push({ size: item.size * nested.size, node: nested.node });
+        items.push({ ...nested, size: item.size * nested.size });
       }
     } else {
-      items.push({ size: item.size, node: child });
+      items.push({ ...item, node: child });
     }
   }
   const only = items[0];
@@ -203,7 +209,7 @@ function replaceAt(tree: DockNode, path: DockPath, next: DockNode): DockNode {
   return {
     direction: tree.direction,
     items: tree.items.map((item, index) =>
-      index === slot ? { size: item.size, node: replaceAt(item.node, rest, next) } : item,
+      index === slot ? { ...item, node: replaceAt(item.node, rest, next) } : item,
     ),
   };
 }
@@ -226,9 +232,7 @@ export function resizeDockGroup(
   if (visibleTotal <= 0 || shareTotal <= 0) return tree;
   const items = group.items.map((item, slot) => {
     const share = shares.get(slot);
-    return share === undefined
-      ? item
-      : { size: (share / shareTotal) * visibleTotal, node: item.node };
+    return share === undefined ? item : { ...item, size: (share / shareTotal) * visibleTotal };
   });
   return replaceAt(tree, path, { direction: group.direction, items: normalizedItems(items) });
 }
@@ -237,31 +241,32 @@ function heirIndex(index: number): number {
   return index > 0 ? index - 1 : index + 1;
 }
 
-function withoutPane(node: DockNode, pane: PaneId): DockNode | null {
+export function withoutDockPane(node: DockNode, pane: PaneId): DockNode | null {
   if (isDockLeaf(node)) return node.pane === pane ? null : node;
-  const kept = node.items.map((item) => ({ size: item.size, node: withoutPane(item.node, pane) }));
-  const removed = kept.findIndex((item) => item.node === null);
-  const heir = kept[heirIndex(removed)];
-  const gone = kept[removed];
-  if (heir !== undefined && gone !== undefined) heir.size += gone.size;
-  const items = kept.flatMap((item) =>
-    item.node === null ? [] : [{ size: item.size, node: item.node }],
-  );
+  const kept = node.items.map((item) => ({ item, node: withoutDockPane(item.node, pane) }));
+  const removed = kept.findIndex((entry) => entry.node === null);
+  const gone = kept[removed]?.item;
+  const heir = gone?.alongEdge ? undefined : kept[heirIndex(removed)];
+  const items = kept.flatMap(({ item, node: child }) => {
+    if (child === null) return [];
+    const size = item.size + (gone !== undefined && heir?.item === item ? gone.size : 0);
+    return [{ ...item, size, node: child }];
+  });
   const only = items[0];
   if (items.length === 1 && only !== undefined) return only.node;
   if (items.length === 0) return null;
-  return { direction: node.direction, items };
+  return { direction: node.direction, items: gone?.alongEdge ? normalizedItems(items) : items };
 }
 
-export function dockPaneHeirShare(tree: DockNode, pane: PaneId): number | null {
-  if (isDockLeaf(tree)) return null;
-  const index = tree.items.findIndex((item) => isDockLeaf(item.node) && item.node.pane === pane);
-  const item = tree.items[index];
-  const heir = tree.items[heirIndex(index)];
-  if (item !== undefined && heir !== undefined) return item.size / (item.size + heir.size);
-  for (const child of tree.items) {
-    const share = dockPaneHeirShare(child.node, pane);
-    if (share !== null) return share;
+export function dockPaneExtent(
+  node: DockNode,
+  pane: PaneId,
+  direction: DockDirection,
+): number | null {
+  if (isDockLeaf(node)) return node.pane === pane ? 1 : null;
+  for (const item of node.items) {
+    const inner = dockPaneExtent(item.node, pane, direction);
+    if (inner !== null) return node.direction === direction ? item.size * inner : inner;
   }
   return null;
 }
@@ -283,7 +288,7 @@ function withPaneBeside(
   const index = node.items.findIndex((item) => isDockLeaf(item.node) && item.node.pane === target);
   const item = node.items[index];
   if (item !== undefined && node.direction === direction) {
-    const kept: DockItem = { size: item.size * (1 - share), node: item.node };
+    const kept: DockItem = { ...item, size: item.size * (1 - share) };
     const placed: DockItem = { size: item.size * share, node: { pane } };
     const items = [...node.items];
     items.splice(index, 1, ...(edgeLeads(edge) ? [placed, kept] : [kept, placed]));
@@ -292,7 +297,7 @@ function withPaneBeside(
   return {
     direction: node.direction,
     items: node.items.map((child) => ({
-      size: child.size,
+      ...child,
       node: withPaneBeside(child.node, target, pane, edge, share),
     })),
   };
@@ -310,9 +315,43 @@ export function moveDockPane(
   share = 0.5,
 ): DockNode {
   if (pane === target) return tree;
-  const rest = withoutPane(tree, pane);
+  const rest = withoutDockPane(tree, pane);
   if (rest === null || !dockTreePanes(rest).includes(target)) return tree;
   return normalizeDockTree(withPaneBeside(rest, target, pane, edge, clampDockShare(share)));
+}
+
+function isAlongEdge(tree: DockNode, pane: PaneId, edge: DockEdge): boolean {
+  if (isDockLeaf(tree) || tree.direction !== dockEdgeDirection(edge)) return false;
+  const outer = edgeLeads(edge) ? tree.items[0] : tree.items.at(-1);
+  return outer !== undefined && isDockLeaf(outer.node) && outer.node.pane === pane;
+}
+
+export function moveDockPaneToEdge(
+  tree: DockNode,
+  pane: PaneId,
+  edge: DockEdge,
+  share: number,
+): DockNode {
+  if (isAlongEdge(tree, pane, edge)) return tree;
+  const rest = withoutDockPane(tree, pane);
+  if (rest === null) return tree;
+  const placed: DockItem = { size: clampDockShare(share), node: { pane }, alongEdge: true };
+  const kept: DockItem = { size: 1 - placed.size, node: rest };
+  return normalizeDockTree({
+    direction: dockEdgeDirection(edge),
+    items: edgeLeads(edge) ? [placed, kept] : [kept, placed],
+  });
+}
+
+export function swapDockPanes(node: DockNode, a: PaneId, b: PaneId): DockNode {
+  if (isDockLeaf(node)) {
+    if (node.pane === a) return { pane: b };
+    return node.pane === b ? { pane: a } : node;
+  }
+  return {
+    direction: node.direction,
+    items: node.items.map((item) => ({ ...item, node: swapDockPanes(item.node, a, b) })),
+  };
 }
 
 export function dockPaneDirection(tree: DockNode, pane: PaneId): DockDirection | null {

@@ -3,6 +3,7 @@ import { MENU_LABELS } from '../constants/menu-labels.ts';
 import {
   COMMAND_IDENTITIES,
   type CommandContext,
+  DOCK_MOVE_COMMANDS,
   evaluateCommandAvailability,
 } from './command-identity.ts';
 
@@ -106,7 +107,16 @@ describe('COMMAND_IDENTITIES registry invariants', () => {
       (command) => command.palette && command.availability.requiresTerminalCapability,
     ).map((command) => command.id);
 
-    expect(gatedIds).toEqual(['toggle-terminal', 'new-terminal', 'move-terminal', 'kill-terminal']);
+    expect(gatedIds).toEqual([
+      'toggle-terminal',
+      'new-terminal',
+      'move-terminal',
+      'kill-terminal',
+      'move-terminal-left',
+      'move-terminal-right',
+      'move-terminal-top',
+      'move-terminal-bottom',
+    ]);
   });
 
   test('the menu-only terminal window command declares the terminal capability gate', () => {
@@ -166,5 +176,40 @@ describe('COMMAND_IDENTITIES registry invariants', () => {
         otherCount: true,
       });
     }
+  });
+});
+
+describe('dock move commands', () => {
+  test('every pane can be moved to every edge, each by one search-only command', () => {
+    const moves = DOCK_MOVE_COMMANDS.map((command) => `${command.pane}:${command.side}`);
+    expect(moves.toSorted()).toEqual(
+      ['editor', 'agents', 'terminal']
+        .flatMap((pane) => ['left', 'right', 'top', 'bottom'].map((side) => `${pane}:${side}`))
+        .toSorted(),
+    );
+    for (const command of DOCK_MOVE_COMMANDS) {
+      const identity = COMMAND_IDENTITIES.find((entry) => entry.id === command.id);
+      expect(identity?.palette?.visibility).toBe('search-only');
+    }
+  });
+
+  test.each([
+    ['move-editor-left', 'Move Editor to the left edge of the window'],
+    ['move-editor-right', 'Move Editor to the right edge of the window'],
+    ['move-editor-top', 'Move Editor to the top edge of the window'],
+    ['move-editor-bottom', 'Move Editor to the bottom edge of the window'],
+    ['move-agents-left', 'Move Agents to the left edge of the window'],
+    ['move-agents-right', 'Move Agents to the right edge of the window'],
+    ['move-agents-top', 'Move Agents to the top edge of the window'],
+    ['move-agents-bottom', 'Move Agents to the bottom edge of the window'],
+    ['move-terminal-left', 'Move Terminal to the left edge of the window'],
+    ['move-terminal-right', 'Move Terminal to the right edge of the window'],
+    ['move-terminal-top', 'Move Terminal to the top edge of the window'],
+    ['move-terminal-bottom', 'Move Terminal to the bottom edge of the window'],
+  ])('%s is labelled "%s"', (id, label) => {
+    const identity = COMMAND_IDENTITIES.find((entry) => entry.id === id);
+    expect(identity?.labelKey === undefined ? undefined : MENU_LABELS[identity.labelKey]).toBe(
+      label,
+    );
   });
 });
