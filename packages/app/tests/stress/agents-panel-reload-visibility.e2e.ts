@@ -147,41 +147,46 @@ async function latestRoster(
   );
 }
 
-async function purgeLiveThreads(port: number): Promise<void> {
-  const live = (await withThreadSocket(port, latestRoster)).filter(
-    (thread) => thread.archived !== true,
-  );
-  for (const thread of live) {
+async function purgeThreadRoster(port: number): Promise<void> {
+  const observed = await withThreadSocket(port, latestRoster);
+  for (const thread of observed) {
     await withThreadSocket(port, async (send, frames, recorder) => {
-      send({ op: 'close', threadId: thread.threadId });
-      const closeDeadline = Date.now() + 20_000;
-      let archived = false;
-      let discarded = false;
-      while (Date.now() < closeDeadline) {
-        const errored = recorder.frames.find((frame) => frame.op === 'error');
-        if (errored) {
+      let archived = thread.archived === true;
+      if (!archived) {
+        const closeFromIndex = frames.length;
+        send({ op: 'close', threadId: thread.threadId });
+        const closeDeadline = Date.now() + 20_000;
+        while (Date.now() < closeDeadline) {
+          const errored = recorder.frames.find((frame) => frame.op === 'error');
+          if (errored) {
+            throw new Error(
+              `purge close rejected for ${thread.threadId}: ${JSON.stringify(errored)}`,
+            );
+          }
+          const snapshot = frames
+            .slice(closeFromIndex)
+            .filter((frame) => frame.op === 'threads')
+            .at(-1);
+          if (!snapshot?.threads) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            continue;
+          }
+          const entry = snapshot.threads.find((t) => t.threadId === thread.threadId);
+          if (entry === undefined) return;
+          if (entry.archived === true) {
+            archived = true;
+            break;
+          }
+          send({ op: 'list' });
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        if (!archived) {
           throw new Error(
-            `purge close rejected for ${thread.threadId}: ${JSON.stringify(errored)}`,
+            `purge close confirmation never arrived for ${thread.threadId} (${recorder.unparseableCount} unparseable frame(s) observed)`,
           );
         }
-        const snapshot = frames.filter((frame) => frame.op === 'threads').at(-1);
-        const entry = snapshot?.threads?.find((t) => t.threadId === thread.threadId);
-        if (entry === undefined) {
-          discarded = true;
-          break;
-        }
-        if (entry.archived === true) {
-          archived = true;
-          break;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 100));
       }
-      if (!archived && !discarded) {
-        throw new Error(
-          `purge close confirmation never arrived for ${thread.threadId} (${recorder.unparseableCount} unparseable frame(s) observed)`,
-        );
-      }
-      if (discarded) return;
+      const deleteFromIndex = frames.length;
       send({ op: 'delete', threadId: thread.threadId });
       const deadline = Date.now() + 20_000;
       while (Date.now() < deadline) {
@@ -191,7 +196,10 @@ async function purgeLiveThreads(port: number): Promise<void> {
             `purge delete rejected for ${thread.threadId}: ${JSON.stringify(errored)}`,
           );
         }
-        const snapshot = frames.filter((frame) => frame.op === 'threads').at(-1);
+        const snapshot = frames
+          .slice(deleteFromIndex)
+          .filter((frame) => frame.op === 'threads')
+          .at(-1);
         if (snapshot?.threads && !snapshot.threads.some((t) => t.threadId === thread.threadId)) {
           return;
         }
@@ -202,12 +210,10 @@ async function purgeLiveThreads(port: number): Promise<void> {
       );
     });
   }
-  const remaining = (await withThreadSocket(port, latestRoster)).filter(
-    (thread) => thread.archived !== true,
-  );
+  const remaining = await withThreadSocket(port, latestRoster);
   if (remaining.length > 0) {
     throw new Error(
-      `live threads survived the roster purge: ${remaining.map((t) => t.threadId).join(', ')}`,
+      `threads survived the roster purge: ${remaining.map((t) => t.threadId).join(', ')}`,
     );
   }
 }
@@ -621,7 +627,7 @@ test.describe('agents panel resize', () => {
 test.describe('header Agents button', () => {
   test.afterEach(async ({ page, workerServer }) => {
     await page.evaluate(() => window.__acpThreadHarness?.reset());
-    await purgeLiveThreads(workerServer.port);
+    await purgeThreadRoster(workerServer.port);
   });
 
   test('clicking Agents while chat is hidden shows it at the share seeded from its stored width, with focus inside it', async ({
@@ -649,7 +655,7 @@ test.describe('header Agents button', () => {
     page,
     workerServer,
   }) => {
-    await purgeLiveThreads(workerServer.port);
+    await purgeThreadRoster(workerServer.port);
     writeSeedAgentFile(workerServer.contentDir);
     await registerSeedAgentAsDefault(page);
     await page.setViewportSize({ width: 1600, height: 900 });
@@ -1185,14 +1191,14 @@ test.describe('chat history navigation', () => {
 
 test.describe('agents panel reload visibility level', () => {
   test.afterEach(async ({ workerServer }) => {
-    await purgeLiveThreads(workerServer.port);
+    await purgeThreadRoster(workerServer.port);
   });
 
   test('a panel closed before a roster-delayed reload stays closed after it (level written by real open and close clicks on the header Agents button and asserted in localStorage before reload; storage-coercion edge cases are pinned by the co-located DOM suites)', async ({
     page,
     workerServer,
   }) => {
-    await purgeLiveThreads(workerServer.port);
+    await purgeThreadRoster(workerServer.port);
     await seedLiveThread(workerServer.port, workerServer.contentDir);
     await stubAgentCatalog(page);
     await openAppWithRoster(page);
@@ -1232,7 +1238,7 @@ test.describe('agents panel reload visibility level', () => {
     page,
     workerServer,
   }) => {
-    await purgeLiveThreads(workerServer.port);
+    await purgeThreadRoster(workerServer.port);
     await seedLiveThread(workerServer.port, workerServer.contentDir);
     await stubAgentCatalog(page);
     await openAppWithRoster(page);
@@ -1279,7 +1285,7 @@ test.describe('agents panel reload visibility level', () => {
     page,
     workerServer,
   }) => {
-    await purgeLiveThreads(workerServer.port);
+    await purgeThreadRoster(workerServer.port);
     await seedLiveThread(workerServer.port, workerServer.contentDir);
     await stubAgentCatalog(page);
     await openAppWithRoster(page);
@@ -1296,7 +1302,7 @@ test.describe('agents panel reload visibility level', () => {
     page,
     workerServer,
   }) => {
-    await purgeLiveThreads(workerServer.port);
+    await purgeThreadRoster(workerServer.port);
     await seedLiveThread(workerServer.port, workerServer.contentDir);
     await stubAgentCatalog(page);
     await openAppWithRoster(page);
@@ -1319,7 +1325,7 @@ test.describe('agents panel reload visibility level', () => {
     page,
     workerServer,
   }) => {
-    await purgeLiveThreads(workerServer.port);
+    await purgeThreadRoster(workerServer.port);
     await seedLiveThread(workerServer.port, workerServer.contentDir);
     await stubAgentCatalog(page);
     await openAppWithRoster(page);
@@ -1339,7 +1345,7 @@ test.describe('agents panel reload visibility level', () => {
     page,
     workerServer,
   }) => {
-    await purgeLiveThreads(workerServer.port);
+    await purgeThreadRoster(workerServer.port);
     await seedLiveThread(workerServer.port, workerServer.contentDir);
     await stubAgentCatalog(page);
     await openAppWithRoster(page);
