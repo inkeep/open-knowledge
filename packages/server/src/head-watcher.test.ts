@@ -97,6 +97,12 @@ describe('watchedGitFile', () => {
     expect(watchedGitFile('/x/.git/index.lock')).toBe('index.lock');
   });
 
+  test('recognizes watched files in Windows paths, as the native backend reports them', () => {
+    expect(watchedGitFile('C:\\work\\project\\.git\\HEAD')).toBe('HEAD');
+    expect(watchedGitFile('C:\\work\\project\\.git\\index')).toBe('index');
+    expect(watchedGitFile('C:\\work\\project\\.git\\config')).toBeNull();
+  });
+
   test('returns null for paths outside the watched set', () => {
     expect(watchedGitFile('/x/.git/config')).toBeNull();
     expect(watchedGitFile('/x/.git/objects/ab/cdef')).toBeNull();

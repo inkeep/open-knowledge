@@ -68,6 +68,7 @@ import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intak
 import type { FileObservation } from './disk-receipts.ts';
 import {
   assertNeverStorePublishOutcome,
+  type DeferredStoreDiscardCause,
   type DeferredStoreOutcome,
   type DeferredStoreSettlement,
   DocumentDurabilityState,
@@ -503,6 +504,7 @@ export interface PersistenceHandle {
   extension: Extension;
   readonly durabilityState: DocumentDurabilityState;
   flushDeferredStores: (mode?: 'within-branch' | 'discard-stale') => Promise<void>;
+  discardDeferredStore: (docName: string, cause: DeferredStoreDiscardCause) => void;
   flushPendingGitCommit: () => Promise<void>;
   flushContributors: () => Promise<void>;
   waitForPendingCommits: () => Promise<void>;
@@ -1359,9 +1361,9 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
   ): StoreFailureRemoval | undefined {
     if (frozenPathOccupied(documentName)) return { kind: 'path-occupied' };
     const newPath = document.getMap('lifecycle').get('newPath');
-    return status === 'renamed' && typeof newPath === 'string' && newPath !== ''
-      ? { kind: 'renamed', renamedTo: newPath }
-      : undefined;
+    if (status !== 'renamed' || typeof newPath !== 'string' || newPath === '') return undefined;
+    const carry = durabilityState.renameCarryOf(documentName);
+    return { kind: 'renamed', renamedTo: newPath, ...(carry ? { carry } : {}) };
   }
 
   function documentHadFileOnDisk(documentName: string, base: string | undefined): boolean {
@@ -2192,8 +2194,25 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
   }
 
   function discardDeferredStores(): void {
-    for (const entry of deferredStores.values()) entry.settlement.settle({ kind: 'discarded' });
+    for (const entry of deferredStores.values()) {
+      entry.settlement.settle({ kind: 'discarded', cause: { kind: 'branch-switch' } });
+    }
     deferredStores.clear();
+  }
+
+  function discardDeferredStore(documentName: string, cause: DeferredStoreDiscardCause): void {
+    deferredStores.get(documentName)?.settlement.settle({ kind: 'discarded', cause });
+    deferredStores.delete(documentName);
+  }
+
+  const isStoreHeld = (documentName: string): boolean =>
+    durabilityState.areStoresHeld(documentName);
+
+  function hasUnheldDeferredStores(): boolean {
+    for (const documentName of deferredStores.keys()) {
+      if (!isStoreHeld(documentName)) return true;
+    }
+    return false;
   }
 
   async function flushDeferredStores(mode: 'within-branch' | 'discard-stale' = 'within-branch') {
@@ -2210,13 +2229,13 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
       let drainMode = mode;
       while (true) {
         if (drainMode === 'discard-stale') discardDeferredStores();
-        const entries = [...deferredStores.entries()];
-        deferredStores.clear();
+        const entries = [...deferredStores.entries()].filter(([name]) => !isStoreHeld(name));
+        for (const [documentName] of entries) deferredStores.delete(documentName);
 
         if (drainMode !== 'discard-stale') {
           for (const [documentName, entry] of entries) {
             if (entry.branch !== durabilityState.getActiveBranch()) {
-              entry.settlement.settle({ kind: 'discarded' });
+              entry.settlement.settle({ kind: 'discarded', cause: { kind: 'branch-switch' } });
               continue;
             }
             let outcome: DeferredStoreOutcome = { kind: 'completed' };
@@ -2278,7 +2297,7 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
 
         const nextMode = pendingDeferredStoreFlushMode;
         pendingDeferredStoreFlushMode = null;
-        if (deferredStores.size === 0 && nextMode === null) break;
+        if (!hasUnheldDeferredStores() && nextMode === null) break;
         drainMode = nextMode ?? 'within-branch';
       }
     })().finally(() => {
@@ -2511,7 +2530,7 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
         await storeMermaidDoc(document, documentName, lastTransactionOrigin, mermaidPersistenceCtx);
         return;
       }
-      if (durabilityState.isBatchInProgress()) {
+      if (durabilityState.isBatchInProgress() || isStoreHeld(documentName)) {
         deferStore({ document, documentName, lastTransactionOrigin });
         return;
       }
@@ -2553,7 +2572,7 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
     if (isPersistenceExcludedDoc(documentName)) {
       return;
     }
-    if (durabilityState.isBatchInProgress()) {
+    if (durabilityState.isBatchInProgress() || isStoreHeld(documentName)) {
       deferStore({ document, documentName, lastTransactionOrigin: null });
       return;
     }
@@ -2568,6 +2587,7 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
     extension,
     durabilityState,
     flushDeferredStores,
+    discardDeferredStore,
     flushPendingGitCommit,
     flushContributors,
     waitForPendingCommits,

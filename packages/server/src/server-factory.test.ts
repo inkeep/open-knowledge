@@ -6390,7 +6390,7 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
     }
   }, 60_000);
 
-  test('a parked WIP restored after a branch round trip is saved by the next store instead of being merged away', async () => {
+  test('unsaved WIP survives a branch round trip and is saved by the next store instead of being merged away', async () => {
     const projectDir = await realpath(mkdtempSync(join(tmpdir(), 'ok-reconcile-park-store-')));
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
@@ -6443,7 +6443,10 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
       expect(source.toString()).toBe(withWip);
 
       await git.checkout('feature');
-      await vi.waitFor(() => expect(source.toString()).toBe(featureContent), {
+      const featureWithWip =
+        '# Park store target\n\nFeature branch body.\n\nUnsaved WIP.\n\nTail.\n';
+      expect(featureWithWip).not.toBe(featureContent);
+      await vi.waitFor(() => expect(source.toString()).toBe(featureWithWip), {
         timeout: 15_000,
         interval: 25,
       });
@@ -6468,7 +6471,7 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
     }
   }, 60_000);
 
-  test('a branch-switch reset rescues unflushed WIP on an absent-base doc before overwriting with disk content', async () => {
+  test("a branch switch that leaves an absent-base doc's file unchanged keeps its unsaved typing live", async () => {
     const projectDir = await realpath(mkdtempSync(join(tmpdir(), 'ok-reconcile-bs-rescue-')));
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
@@ -6531,40 +6534,23 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
       expect(wipText).not.toBe(diskContent);
 
       const warnSpy = vi.spyOn(getLogger('server'), 'warn');
+      const switched = vi.spyOn(server.cc1Broadcaster, 'emitBranchSwitched');
       try {
         await git.checkout('feature');
+        await vi.waitFor(() => expect(switched).toHaveBeenCalledWith('feature'), {
+          timeout: 15_000,
+          interval: 25,
+        });
 
-        await vi.waitFor(
-          () =>
-            expect(serverDoc.getText('source').toString()).not.toContain('Unflushed WIP paragraph'),
-          { timeout: 15_000, interval: 25 },
-        );
-        expect(serverDoc.getText('source').toString()).toBe(diskContent);
-        expect(server.durabilityState.getReconciledBase(docName)).toBe(diskContent);
+        expect(serverDoc.getText('source').toString()).toBe(wipText);
         expect(serverDoc.getMap('lifecycle').get('status')).toBeUndefined();
-
-        await vi.waitFor(
-          async () => {
-            const rescues = await listRescueCheckpoints(rig.shadow, 'feature');
-            const rescue = rescues.find((r) => r.docName === docName);
-            expect(rescue).toBeDefined();
-            expect(rescue?.incomingDiskSha).toBe('');
-            expect(rescue?.size).toBe(wipText.length);
-          },
-          { timeout: 10_000, interval: 50 },
-        );
-
-        const branchSwitchRescue = (await listRescueCheckpoints(rig.shadow, 'feature')).find(
-          (r) => r.docName === docName,
-        );
-        const branchSwitchBody = (
-          await shadowGit(rig.shadow).raw('log', '-1', '--format=%B', branchSwitchRescue?.sha ?? '')
-        ).trim();
-        expect(parseCheckpoint(branchSwitchBody)?.kind).toBe('external-change-rescue');
+        const rescues = await listRescueCheckpoints(rig.shadow, 'feature');
+        expect(rescues.filter((r) => r.docName === docName)).toEqual([]);
 
         const warnTexts = warnSpy.mock.calls.map((call) => String(call[1] ?? ''));
         expect(warnTexts.some((s) => s.includes('skipped parking'))).toBe(true);
       } finally {
+        switched.mockRestore();
         warnSpy.mockRestore();
       }
 

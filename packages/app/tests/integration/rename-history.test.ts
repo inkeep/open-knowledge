@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -744,6 +744,62 @@ describe('Timeline rename-history mitigation — integration', () => {
     expect(matching).toHaveLength(1);
     expect(matching[0].commitSha).toMatch(/^[0-9a-f]{40}$/);
   }, 60_000);
+
+  test('an outside rename of an open document is claimed by a commit, and its history follows across a restart even when a recorded writer head is gone', async () => {
+    const first = await createRestartableServer({ gitEnabled: true, commitDebounceMs: 50 });
+    cleanups.push(() => first.shutdown());
+    await agentWriteMdAndAwaitWip(first, '# Outside v1\n', {
+      docName: 'outside-a',
+      position: 'replace',
+      ...AGENT,
+    });
+    const preRenameShas = await getWipShas(first, 'outside-a');
+    expect(preRenameShas.size).toBeGreaterThan(0);
+    const client = await createTestClient(first.port, 'outside-a', { skipInvariantWatcher: true });
+    cleanups.push(() => client.cleanup());
+    await pollUntil(() => client.ytext.toString().includes('Outside v1'), 15_000, 50);
+    await crossSecondBoundary();
+
+    renameSync(join(first.contentDir, 'outside-a.md'), join(first.contentDir, 'outside-b.md'));
+    await pollUntil(
+      () =>
+        readRenameLogEntries(first).some(
+          (entry) =>
+            entry.from === 'outside-a' && entry.to === 'outside-b' && entry.commitSha !== '',
+        ),
+      20_000,
+      100,
+      'the outside rename to be claimed by a commit',
+    );
+    expect([...(await getWipShas(first, 'outside-b'))]).toEqual(
+      expect.arrayContaining([...preRenameShas]),
+    );
+
+    const goneHead = 'f'.repeat(40);
+    const logPath = renameLogPath(resolveShadowDir(first.contentDir));
+    const plantedLines = readFileSync(logPath, 'utf-8')
+      .split('\n')
+      .filter((line) => line.length > 0)
+      .map((line) => {
+        const entry = JSON.parse(line) as RenameLogEntry;
+        if (entry.from !== 'outside-a' || entry.to !== 'outside-b') return line;
+        expect(entry.anchors?.length ?? 0).toBeGreaterThan(0);
+        return JSON.stringify({ ...entry, anchors: [goneHead, ...(entry.anchors ?? [])] });
+      });
+    writeFileSync(logPath, `${plantedLines.join('\n')}\n`, 'utf-8');
+
+    const second = await first.shutdownAndRestartOnSamePort({ downtimeMs: 0 });
+    cleanups.push(() => second.shutdown());
+    resetRenameLogIndexCache();
+    expect(
+      readRenameLogEntries(second).find(
+        (entry) => entry.from === 'outside-a' && entry.to === 'outside-b',
+      )?.anchors,
+    ).toContain(goneHead);
+    expect([...(await getWipShas(second, 'outside-b'))]).toEqual(
+      expect.arrayContaining([...preRenameShas]),
+    );
+  }, 90_000);
 
   test('rename followed at once by a graceful restart keeps the pre-rename history', async () => {
     const first = await createRestartableServer({

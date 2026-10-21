@@ -139,7 +139,7 @@ function matchesAuthor(entry: TimelineEntry, authors: string[]): boolean {
  */
 function filterEntriesByOkActorDocs(
   entries: ParsedEntry[],
-  chain: Array<{ path: string; renameCommit: string | null }>,
+  chain: Array<{ path: string; renameCommit: string | null; anchors?: readonly string[] }>,
   predecessorAncestors: Array<Set<string> | null>,
 ): ParsedEntry[] {
   if (entries.length === 0) return entries;
@@ -174,7 +174,7 @@ function filterEntriesByOkActorDocs(
 async function filterEntriesByChain<E extends { sha: string }>(
   shadow: ShadowHandle,
   entries: E[],
-  chain: Array<{ path: string; renameCommit: string | null }>,
+  chain: Array<{ path: string; renameCommit: string | null; anchors?: readonly string[] }>,
   branch: string,
   pathCandidatesFor: (name: string) => readonly string[],
   cache: AncestorShaSetCache,
@@ -186,7 +186,7 @@ async function filterEntriesByChain<E extends { sha: string }>(
   const predecessorAncestors: Array<Set<string> | null> = await Promise.all(
     chain.map(async (step) => {
       if (step.renameCommit === null) return null;
-      const seeds = await buildSeeds(shadow, step.renameCommit, branch, seedsCache);
+      const seeds = await buildSeeds(shadow, step.renameCommit, branch, seedsCache, step.anchors);
       if (seeds.length === 0) return new Set<string>();
       return buildAncestorShaSet(shadow, seeds, branch, cache);
     }),
@@ -222,7 +222,7 @@ async function filterEntriesByChain<E extends { sha: string }>(
 async function dropByteIdenticalRows(
   shadow: ShadowHandle,
   entries: ParsedEntry[],
-  chain: Array<{ path: string; renameCommit: string | null }>,
+  chain: Array<{ path: string; renameCommit: string | null; anchors?: readonly string[] }>,
   predecessorAncestors: Array<Set<string> | null>,
   pathFor: (name: string) => string,
 ): Promise<ParsedEntry[]> {
@@ -558,7 +558,13 @@ export async function getDocumentHistory(
           const step = chain[i];
           if (step.renameCommit === null) continue;
           try {
-            const seeds = await buildSeeds(shadow, step.renameCommit, branch, seedsCache);
+            const seeds = await buildSeeds(
+              shadow,
+              step.renameCommit,
+              branch,
+              seedsCache,
+              step.anchors,
+            );
             if (seeds.length === 0) continue;
             const predecessorPath = pathFor(step.path);
             const predRaw = await logSeededReachable(
@@ -603,7 +609,13 @@ export async function getDocumentHistory(
       filterAncestors = await Promise.all(
         chain.map(async (step) => {
           if (step.renameCommit === null) return null;
-          const seeds = await buildSeeds(shadow, step.renameCommit, branch, seedsCache);
+          const seeds = await buildSeeds(
+            shadow,
+            step.renameCommit,
+            branch,
+            seedsCache,
+            step.anchors,
+          );
           if (seeds.length === 0) return new Set<string>();
           return buildAncestorShaSet(shadow, seeds, branch, ancestorSetCache);
         }),

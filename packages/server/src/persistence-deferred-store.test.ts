@@ -300,7 +300,10 @@ describe('batch-gated L1 persistence', () => {
 
     expect(readFileSync(docPath, 'utf-8')).toBe('target branch content\n');
     expect(acks).toHaveLength(0);
-    await expect(outcome).resolves.toEqual({ kind: 'discarded' });
+    await expect(outcome).resolves.toEqual({
+      kind: 'discarded',
+      cause: { kind: 'branch-switch' },
+    });
   });
 
   test('a within-branch flush discards a store deferred on another branch', async () => {
@@ -327,7 +330,10 @@ describe('batch-gated L1 persistence', () => {
     await persistence.flushDeferredStores('within-branch');
 
     expect(readFileSync(docPath, 'utf-8')).toBe('branch A base\n');
-    await expect(outcome).resolves.toEqual({ kind: 'discarded' });
+    await expect(outcome).resolves.toEqual({
+      kind: 'discarded',
+      cause: { kind: 'branch-switch' },
+    });
 
     document.destroy();
   });
@@ -383,7 +389,10 @@ describe('batch-gated L1 persistence', () => {
     expect(readFileSync(secondPath, 'utf-8')).toBe('second base\n');
     await expect(firstOutcome).resolves.toEqual({ kind: 'completed' });
     await expect(secondPendingAfterDiscardCall).resolves.toBeUndefined();
-    await expect(secondOutcome).resolves.toEqual({ kind: 'discarded' });
+    await expect(secondOutcome).resolves.toEqual({
+      kind: 'discarded',
+      cause: { kind: 'branch-switch' },
+    });
 
     firstDoc.destroy();
     secondDoc.destroy();

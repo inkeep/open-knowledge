@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { currentCliCommandName } from '@inkeep/open-knowledge-core';
 import { atomicTempPath } from '@inkeep/open-knowledge-core/server';
+import { type Doc, getState } from 'yjs';
 import { type DiskReceipt, DiskReceiptLog, type FileObservation } from './disk-receipts.ts';
 import {
   tracedMkdirSync,
@@ -20,6 +21,39 @@ import {
 } from './metrics.ts';
 import { contentHash } from './version-hash.ts';
 
+export interface WrittenThrough {
+  readonly clientId: number;
+  readonly clock: number;
+}
+
+export function writtenThroughOf(document: Doc): WrittenThrough {
+  return { clientId: document.clientID, clock: getState(document.store, document.clientID) };
+}
+
+export function editWasCarried(
+  write: WrittenThrough | undefined,
+  carried: WrittenThrough | null,
+): boolean {
+  return (
+    write !== undefined &&
+    carried !== null &&
+    write.clientId === carried.clientId &&
+    write.clock <= carried.clock
+  );
+}
+
+export type RenameCarryAnswer =
+  | { readonly kind: 'settled'; readonly carried: WrittenThrough | null }
+  | { readonly kind: 'unsettled' };
+
+type RenameCarry =
+  | {
+      readonly state: 'pending';
+      ended: boolean;
+      readonly answer: PromiseWithResolvers<RenameCarryAnswer>;
+    }
+  | { readonly state: 'settled'; readonly carried: WrittenThrough | null };
+
 export interface StoreFailure {
   code?: string;
   message: string;
@@ -32,8 +66,9 @@ export interface StoreFailure {
 }
 
 export type StoreFailureRemoval =
-  | { kind: 'renamed'; renamedTo: string }
-  | { kind: 'path-occupied' };
+  | { kind: 'renamed'; renamedTo: string; carry?: Promise<RenameCarryAnswer> }
+  | { kind: 'path-occupied' }
+  | { kind: 'deleted-outside' };
 
 export interface StoreAttemptToken {
   readonly docName: string;
@@ -42,10 +77,20 @@ export interface StoreAttemptToken {
 
 export type StorePublishOutcome = 'published' | 'stale' | 'reentrant';
 
+export type DeferredStoreDiscardCause =
+  | { readonly kind: 'branch-switch' }
+  | {
+      readonly kind: 'renamed-outside';
+      readonly to: string;
+      readonly carry?: Promise<RenameCarryAnswer>;
+    }
+  | { readonly kind: 'deleted-outside' }
+  | { readonly kind: 'shutdown' };
+
 export type DeferredStoreOutcome =
   | { readonly kind: 'completed' }
   | { readonly kind: 'failed'; readonly failure: StoreFailure }
-  | { readonly kind: 'discarded' };
+  | { readonly kind: 'discarded'; readonly cause: DeferredStoreDiscardCause };
 
 export type DeferredStoreWait = DeferredStoreOutcome | { readonly kind: 'unsettled' };
 
@@ -66,6 +111,8 @@ export const OK_PATH_UNRESOLVABLE = 'OK_PATH_UNRESOLVABLE';
 export const OK_STORE_REFUSED = 'OK_STORE_REFUSED';
 export const OK_STORE_HELD = 'OK_STORE_HELD';
 export const OK_STORE_DISCARDED = 'OK_STORE_DISCARDED';
+export const OK_DOC_MOVED = 'OK_DOC_MOVED';
+export const OK_SERVER_STOPPED = 'OK_SERVER_STOPPED';
 
 const IN_FLIGHT_FLUSH_TTL_MS = 60_000;
 
@@ -306,6 +353,9 @@ export class DocumentDurabilityState {
   private nextDisplacedExpiryAt = Number.POSITIVE_INFINITY;
   private activeBranch: string;
   private batchInProgress = false;
+  private readonly batchHolders = new Set<string>();
+  private readonly heldStores = new Set<string>();
+  private readonly renameCarries = new Map<string, RenameCarry>();
   private writeAdmissionHolds = 0;
   private readonly writeAdmissionWaiters = new Set<() => void>();
   private readonly writeWaitDeadline = new AsyncLocalStorage<number>();
@@ -325,10 +375,20 @@ export class DocumentDurabilityState {
 
   switchReconciledBaseScope(branch: string): void {
     this.persist();
-    this.activeBranch = branch;
-    if (!this.reconciledBaseByBranch.has(branch)) {
-      this.reconciledBaseByBranch.set(branch, new Map());
+    const carried = new Map(this.reconciledBaseByBranch.get(this.activeBranch) ?? []);
+    const target = this.reconciledBaseByBranch.get(branch);
+    if (target) {
+      const branchScoped = new Set([
+        ...(this.displacedVersionsByBranch.get(branch)?.keys() ?? []),
+        ...(this.staleExternalWritesByBranch.get(branch)?.keys() ?? []),
+      ]);
+      for (const docName of branchScoped) {
+        const own = target.get(docName);
+        if (own !== undefined) carried.set(docName, own);
+      }
     }
+    this.activeBranch = branch;
+    this.reconciledBaseByBranch.set(branch, carried);
   }
 
   getActiveBranch(): string {
@@ -886,6 +946,97 @@ export class DocumentDurabilityState {
     }
   }
 
+  holdStores(docName: string): void {
+    this.heldStores.add(docName);
+  }
+
+  releaseStores(docName: string): void {
+    this.heldStores.delete(docName);
+  }
+
+  areStoresHeld(docName: string): boolean {
+    return this.heldStores.has(docName);
+  }
+
+  beginRenameCarry(docName: string): Promise<RenameCarryAnswer> {
+    const current = this.renameCarries.get(docName);
+    if (current?.state === 'pending') {
+      current.ended = false;
+      return current.answer.promise;
+    }
+    const answer = Promise.withResolvers<RenameCarryAnswer>();
+    this.renameCarries.set(docName, { state: 'pending', ended: false, answer });
+    return answer.promise;
+  }
+
+  renameCarryOf(docName: string): Promise<RenameCarryAnswer> | undefined {
+    const current = this.renameCarries.get(docName);
+    if (current === undefined) return undefined;
+    return current.state === 'pending'
+      ? current.answer.promise
+      : Promise.resolve({ kind: 'settled', carried: current.carried });
+  }
+
+  settleRenameCarry(docName: string, carried: WrittenThrough | null): void {
+    const current = this.renameCarries.get(docName);
+    if (current?.state !== 'pending') return;
+    current.answer.resolve({ kind: 'settled', carried });
+    if (current.ended) this.renameCarries.delete(docName);
+    else this.renameCarries.set(docName, { state: 'settled', carried });
+  }
+
+  abandonRenameCarry(docName: string): void {
+    this.settleRenameCarry(docName, null);
+  }
+
+  endRenameCarry(docName: string): void {
+    const current = this.renameCarries.get(docName);
+    if (current?.state === 'pending') current.ended = true;
+    else this.renameCarries.delete(docName);
+  }
+
+  endAllRenameCarries(): void {
+    for (const current of this.renameCarries.values()) {
+      if (current.state === 'pending') current.answer.resolve({ kind: 'unsettled' });
+    }
+    this.renameCarries.clear();
+  }
+
+  async awaitRenameCarry(
+    docName: string,
+    carry: Promise<RenameCarryAnswer> | undefined,
+    timeoutMs = WRITE_WAIT_BUDGET_MS,
+  ): Promise<RenameCarryAnswer> {
+    if (carry === undefined) return { kind: 'settled', carried: null };
+    const bound = this.remainingWriteWait(timeoutMs);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<'expired'>((resolve) => {
+      timer = setTimeout(() => resolve('expired'), bound);
+    });
+    try {
+      const answer = await Promise.race([carry, expired]);
+      if (answer !== 'expired') return answer;
+      getLogger('document-durability-state').warn(
+        { docName, waitedMs: bound },
+        `[durability] the rename carry of ${docName} did not settle within the write's wait; the wait expired`,
+      );
+      return { kind: 'unsettled' };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  holdBatch(owner: string): void {
+    this.batchHolders.add(owner);
+    this.batchInProgress = true;
+  }
+
+  releaseBatch(owner: string): boolean {
+    if (!this.batchHolders.delete(owner) || this.batchHolders.size > 0) return false;
+    this.batchInProgress = false;
+    return true;
+  }
+
   setBatchInProgress(value: boolean): void {
     this.batchInProgress = value;
   }
@@ -964,7 +1115,8 @@ export class DocumentDurabilityState {
     timeoutMs = WRITE_WAIT_BUDGET_MS,
   ): Promise<DeferredStoreWait | undefined> {
     const pending = this.deferredStoreOutcomes.get(docName);
-    if (pending === undefined || !this.isWriteAdmissionHeld()) return undefined;
+    if (pending === undefined) return undefined;
+    if (!this.isWriteAdmissionHeld() && !this.heldStores.has(docName)) return undefined;
     const unsettled = { kind: 'unsettled' } as const;
     const bound = this.remainingWriteWait(timeoutMs);
     if (bound === 0) return unsettled;

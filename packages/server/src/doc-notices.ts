@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { dirname, extname, join } from 'node:path';
 import { type DocNoticeWire, DocNoticeWireSchema } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { getLocalDir } from './config/paths.ts';
 import { docNameToRelativePath } from './doc-extensions.ts';
 import { tracedMkdirSync, tracedRenameSync, tracedWriteFileSync } from './fs-traced.ts';
+import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 import { type ShadowHandle, shadowGit } from './shadow-repo.ts';
 
@@ -15,6 +16,7 @@ const log = getLogger('doc-notices');
 const DOC_NOTICES_FILENAME = 'doc-notices.json';
 const DOC_NOTICES_VERSION = 1;
 const MAX_NOTICES = 200;
+export const NOTICE_WITHDRAW_AFTER_MS = 10_000;
 const MAX_ENTRIES_PER_NOTICE = 8;
 
 type BothKeptNotice = Extract<DocNoticeWire, { kind: 'both-kept' }>;
@@ -40,6 +42,8 @@ export interface DocNoticeLedgerOptions {
   getShadow: () => ShadowHandle | null | undefined;
   isReady: () => boolean;
   signal: () => void;
+  isHeld?: (docName: string) => boolean;
+  now?: () => number;
 }
 
 const StoredNoticeSchema = z.object({
@@ -69,6 +73,7 @@ export class DocNoticeLedger implements DocNoticeSink {
   private readonly options: DocNoticeLedgerOptions;
   private readonly storePath: string;
   private readonly byKey = new Map<string, StoredNotice>();
+  private readonly missingSince = new Map<string, number>();
 
   constructor(options: DocNoticeLedgerOptions) {
     this.options = options;
@@ -98,6 +103,7 @@ export class DocNoticeLedger implements DocNoticeSink {
         ? { ...common, kind: 'both-kept', kept: event.kept }
         : { ...common, kind: 'moved-to-history', side: event.side, reason: event.reason };
     this.byKey.delete(key);
+    this.missingSince.delete(key);
     this.byKey.set(key, { branch, notice });
     for (const oldest of this.byKey.keys()) {
       if (this.byKey.size <= MAX_NOTICES) break;
@@ -122,6 +128,31 @@ export class DocNoticeLedger implements DocNoticeSink {
     }
   }
 
+  rename(oldDocName: string, newDocName: string, branch: string, newFile?: string): void {
+    if (!isNoticeDoc(oldDocName) || !isNoticeDoc(newDocName)) return;
+    const oldKey = keyOf(branch, oldDocName);
+    const stored = this.byKey.get(oldKey);
+    if (!stored) return;
+    this.byKey.delete(oldKey);
+    this.missingSince.delete(oldKey);
+    const newKey = keyOf(branch, newDocName);
+    this.byKey.delete(newKey);
+    this.missingSince.delete(newKey);
+    this.byKey.set(newKey, {
+      branch,
+      notice: {
+        ...stored.notice,
+        docName: newDocName,
+        file: newFile ?? `${newDocName}${extname(stored.notice.file)}`,
+      },
+    });
+    log.info(
+      { docName: newDocName, from: oldDocName, branch },
+      `[doc-notices] notice followed a rename: ${oldDocName} -> ${newDocName}`,
+    );
+    this.commit();
+  }
+
   async list(branch: string): Promise<DocNoticeWire[]> {
     if (this.options.isReady()) await this.withdrawStale(branch);
     return [...this.byKey.values()]
@@ -132,7 +163,18 @@ export class DocNoticeLedger implements DocNoticeSink {
 
   private async withdrawStale(branch: string): Promise<void> {
     const onBranch = [...this.byKey].filter(([, stored]) => stored.branch === branch);
-    const gone = onBranch.filter(([, stored]) => !this.fileExists(stored.notice.file));
+    const gone: Array<[string, StoredNotice]> = [];
+    const now = this.options.now?.() ?? Date.now();
+    for (const [key, stored] of onBranch) {
+      const presence = this.filePresence(stored.notice.file);
+      if (presence === 'present' || this.options.isHeld?.(stored.notice.docName) === true) {
+        this.missingSince.delete(key);
+      } else if (presence === 'missing') {
+        const since = this.missingSince.get(key);
+        if (since === undefined) this.missingSince.set(key, now);
+        else if (now - since >= NOTICE_WITHDRAW_AFTER_MS) gone.push([key, stored]);
+      }
+    }
     const left = await this.versionsLeftHistory(
       branch,
       onBranch.filter(([key]) => !gone.some(([goneKey]) => goneKey === key)),
@@ -140,6 +182,7 @@ export class DocNoticeLedger implements DocNoticeSink {
     const removed = [...gone, ...left].filter(([key, stored]) => this.byKey.get(key) === stored);
     for (const [key, stored] of removed) {
       this.byKey.delete(key);
+      this.missingSince.delete(key);
       log.info(
         { docName: stored.notice.docName, branch },
         `[doc-notices] notice withdrawn: ${stored.notice.docName}`,
@@ -153,6 +196,7 @@ export class DocNoticeLedger implements DocNoticeSink {
     for (const [key, stored] of this.byKey) {
       if (stored.notice.docName !== docName || stored.notice.id !== id) continue;
       this.byKey.delete(key);
+      this.missingSince.delete(key);
       log.info({ docName }, `[doc-notices] notice dismissed: ${docName}`);
       this.commit();
       return true;
@@ -160,8 +204,16 @@ export class DocNoticeLedger implements DocNoticeSink {
     return false;
   }
 
-  private fileExists(file: string): boolean {
-    return existsSync(join(this.options.contentDir, file));
+  private filePresence(file: string): 'present' | 'missing' | 'unknown' {
+    try {
+      statSync(join(this.options.contentDir, file));
+      return 'present';
+    } catch (err) {
+      const code = errnoCode(err);
+      if (code === 'ENOENT' || code === 'ENOTDIR') return 'missing';
+      log.warn({ err, code }, '[doc-notices] could not check a notice file; notice kept');
+      return 'unknown';
+    }
   }
 
   private async versionsLeftHistory(

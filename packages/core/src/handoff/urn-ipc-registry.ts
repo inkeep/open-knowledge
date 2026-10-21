@@ -63,6 +63,8 @@ export const URN_HTTP_ONLY: ReadonlySet<ProblemType> = new Set<ProblemType>([
   'urn:ok:error:save-held',
   'urn:ok:error:doc-removed',
   'urn:ok:error:branch-switched',
+  'urn:ok:error:doc-moved',
+  'urn:ok:error:server-stopped',
   'urn:ok:error:doc-in-conflict',
   'urn:ok:error:no-conflict-tracked',
   'urn:ok:error:unresolved-conflict-markers',

@@ -19,7 +19,8 @@ import {
   createContentFilter,
   createContentFilterAsync,
 } from './content-filter.ts';
-import { installTestLoggers, loggerFactory } from './logger.ts';
+import { getLogger, installTestLoggers, loggerFactory } from './logger.ts';
+import { getMetrics } from './metrics.ts';
 
 describe('ContentFilter', () => {
   let projectDir: string;
@@ -1932,6 +1933,54 @@ describe('ContentFilter', () => {
       expect(filter.isPathIgnored('docs/screenshot.png')).toBe(false);
     });
   });
+
+  test.each([
+    ['sync', createContentFilter],
+    ['async', createContentFilterAsync],
+  ] as const)(
+    'a %s filter warns once per in-place skill re-scan fault, says when it clears, and counts every failure',
+    async (_label, create) => {
+      let failing = false;
+      const filter = await create({
+        projectDir,
+        contentDir: projectDir,
+        rescanInPlaceSkillDirs: () => {
+          if (failing) throw new Error('scan fault');
+          return new Set<string>();
+        },
+      });
+      const log = getLogger('content-filter');
+      const warn = vi.spyOn(log, 'warn');
+      const info = vi.spyOn(log, 'info');
+      try {
+        const faultWarnings = () =>
+          warn.mock.calls.filter(([, message]) =>
+            String(message).startsWith('in-place skill re-scan failed'),
+          );
+        const clearedNotes = () =>
+          info.mock.calls.filter(([, message]) => message === 'in-place skill re-scan works again');
+        const before = getMetrics().inPlaceSkillRescanFailures;
+
+        failing = true;
+        for (let pass = 0; pass < 3; pass++) filter.refreshInPlaceSkillDirs();
+        expect(getMetrics().inPlaceSkillRescanFailures - before).toBe(3);
+        expect(faultWarnings()).toHaveLength(1);
+
+        failing = false;
+        filter.refreshInPlaceSkillDirs();
+        filter.refreshInPlaceSkillDirs();
+        expect(clearedNotes()).toHaveLength(1);
+
+        failing = true;
+        filter.refreshInPlaceSkillDirs();
+        expect(faultWarnings()).toHaveLength(2);
+        expect(getMetrics().inPlaceSkillRescanFailures - before).toBe(4);
+      } finally {
+        warn.mockRestore();
+        info.mockRestore();
+      }
+    },
+  );
 
   describe('rebuildIgnorePatterns', () => {
     test('concurrent rebuild calls coalesce into one flight plus one trailing run', async () => {

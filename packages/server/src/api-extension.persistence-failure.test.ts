@@ -2,6 +2,9 @@ import type { ServerResponse } from 'node:http';
 import { describe, expect, test } from 'vitest';
 import { respondPersistenceFailure } from './api-extension.ts';
 import {
+  OK_DOC_MOVED,
+  OK_DOC_REMOVED,
+  OK_SERVER_STOPPED,
   OK_STORE_DISCARDED,
   OK_STORE_HELD,
   OK_STORE_REFUSED,
@@ -169,7 +172,7 @@ describe('respondPersistenceFailure: a held save', () => {
 });
 
 describe('respondPersistenceFailure: store discarded by a branch switch', () => {
-  test('an OK_STORE_DISCARDED failure renders a 409 telling the agent the edit was not saved', () => {
+  test('an OK_STORE_DISCARDED failure renders a 409 telling the agent the edit stays in the open document', () => {
     const { res, writeHeadCalls, endCalls } = makeMockRes();
     const failure: StoreFailure = {
       code: OK_STORE_DISCARDED,
@@ -181,7 +184,97 @@ describe('respondPersistenceFailure: store discarded by a branch switch', () => 
     expect(writeHeadCalls[0]?.status).toBe(409);
     const body = JSON.parse(endCalls[0] ?? '{}') as Record<string, unknown>;
     expect(body.type).toBe('urn:ok:error:branch-switched');
-    expect(String(body.title)).toContain('not saved');
-    expect(String(body.detail)).toContain('Re-read');
+    expect(String(body.title)).toContain('kept in the open document');
+    expect(String(body.detail)).toContain('do not repeat the edit');
+  });
+});
+
+describe('respondPersistenceFailure: the save of a document whose file went missing', () => {
+  test('a move followed outside the app renders a 409 doc-moved that names the new name', () => {
+    const { res, writeHeadCalls, endCalls } = makeMockRes();
+    const failure: StoreFailure = {
+      code: OK_DOC_MOVED,
+      message: 'notes was moved outside the app to archive/notes, and its open document followed',
+      removal: { kind: 'renamed', renamedTo: 'archive/notes' },
+    };
+
+    respondPersistenceFailure(res, failure, 'agent-write-md');
+
+    expect(writeHeadCalls[0]?.status).toBe(409);
+    const body = JSON.parse(endCalls[0] ?? '{}') as Record<string, unknown>;
+    expect(body.type).toBe('urn:ok:error:doc-moved');
+    expect(String(body.detail)).toContain('archive/notes');
+    expect(String(body.detail)).toContain('Do not repeat the edit');
+  });
+
+  test('a delete that stood renders a 409 doc-removed saying the edit is in the history', () => {
+    const { res, writeHeadCalls, endCalls } = makeMockRes();
+    const failure: StoreFailure = {
+      code: OK_DOC_REMOVED,
+      message: 'notes was deleted outside the app before the edit reached disk',
+      removal: { kind: 'deleted-outside' },
+    };
+
+    respondPersistenceFailure(res, failure, 'agent-write-md');
+
+    expect(writeHeadCalls[0]?.status).toBe(409);
+    const body = JSON.parse(endCalls[0] ?? '{}') as Record<string, unknown>;
+    expect(body.type).toBe('urn:ok:error:doc-removed');
+    expect(String(body.title)).toContain('deleted outside the app');
+    expect(String(body.detail)).toContain('history');
+  });
+
+  test('a shutdown while the file was missing renders a 503 server-stopped', () => {
+    const { res, writeHeadCalls, endCalls } = makeMockRes();
+    const failure: StoreFailure = {
+      code: OK_SERVER_STOPPED,
+      message: 'The server stopped while the file of notes was missing',
+    };
+
+    respondPersistenceFailure(res, failure, 'agent-write-md');
+
+    expect(writeHeadCalls[0]?.status).toBe(503);
+    const body = JSON.parse(endCalls[0] ?? '{}') as Record<string, unknown>;
+    expect(body.type).toBe('urn:ok:error:server-stopped');
+    expect(String(body.detail)).toContain('history');
+  });
+});
+
+describe('respondPersistenceFailure: a document renamed outside the app', () => {
+  test('an OK_DOC_MOVED failure renders doc-moved without the re-apply instruction', () => {
+    const { res, writeHeadCalls, endCalls } = makeMockRes();
+    respondPersistenceFailure(
+      res,
+      {
+        code: OK_DOC_MOVED,
+        message: 'notes was renamed to archive/notes on disk',
+        removal: { kind: 'renamed', renamedTo: 'archive/notes' },
+      },
+      'agent-write-md',
+    );
+
+    expect(writeHeadCalls[0]?.status).toBe(409);
+    const body = JSON.parse(endCalls[0] ?? '{}') as Record<string, unknown>;
+    expect(body.type).toBe('urn:ok:error:doc-moved');
+    expect(String(body.detail)).toContain('Do not repeat the edit');
+    expect(String(body.detail)).not.toContain('re-apply');
+  });
+
+  test('an OK_DOC_REMOVED renamed failure renders doc-removed asking to re-apply at the new name', () => {
+    const { res, writeHeadCalls, endCalls } = makeMockRes();
+    respondPersistenceFailure(
+      res,
+      {
+        code: OK_DOC_REMOVED,
+        message: 'notes was renamed to archive/notes on disk',
+        removal: { kind: 'renamed', renamedTo: 'archive/notes' },
+      },
+      'agent-write-md',
+    );
+
+    expect(writeHeadCalls[0]?.status).toBe(409);
+    const body = JSON.parse(endCalls[0] ?? '{}') as Record<string, unknown>;
+    expect(body.type).toBe('urn:ok:error:doc-removed');
+    expect(String(body.detail)).toContain('re-apply your change there');
   });
 });

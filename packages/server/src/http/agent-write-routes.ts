@@ -67,7 +67,12 @@ import {
 } from '../content-divergence-gate.ts';
 import { recordContributor } from '../contributor-tracker.ts';
 import { canonicalDocName, registerDocExtension, stripDocExtension } from '../doc-extensions.ts';
-import type { DocumentDurabilityState, StoreFailure } from '../document-durability-state.ts';
+import {
+  type DocumentDurabilityState,
+  type StoreFailure,
+  type WrittenThrough,
+  writtenThroughOf,
+} from '../document-durability-state.ts';
 import {
   type ReconcileBeforeWriteResult,
   reconcileDiskBeforeAgentWrite,
@@ -188,6 +193,7 @@ export interface AgentWriteRouteDeps {
   countNormalizedSummary: (normalized: NormalizedSummary, fromDefault?: boolean) => void;
   flushDiskAndDetectOutcome: (
     docName: string,
+    writtenThrough?: WrittenThrough,
   ) => Promise<
     { kind: 'failure'; failure: StoreFailure } | { kind: 'stale-external-write' } | null
   >;
@@ -389,6 +395,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           const timestamp = new Date().toISOString();
           let writeDivergence: AgentWriteContentDivergence | undefined;
           let disposeEffectCapture: (() => void) | undefined;
+          let writtenThrough: WrittenThrough | undefined;
           try {
             const icon = iconFromClientName(clientName);
             const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(colorSeed ?? agentId);
@@ -430,6 +437,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
                 ...(changedBlocks !== undefined ? { changedBlocks } : {}),
               });
             }, session.origin);
+            writtenThrough = writtenThroughOf(session.dc.document);
             if (writeDivergence !== undefined) {
               console.warn(
                 JSON.stringify({
@@ -460,7 +468,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
             disposeEffectCapture?.();
             agentPresenceBroadcaster?.touchMode(agentId, 'idle');
           }
-          const flushOutcome = await flushDiskAndDetectOutcome(resolvedDocName);
+          const flushOutcome = await flushDiskAndDetectOutcome(resolvedDocName, writtenThrough);
           if (flushOutcome?.kind === 'failure') {
             respondPersistenceFailure(res, flushOutcome.failure, 'agent-write-md');
             return;

@@ -301,7 +301,10 @@ describe('successful publication receipt ownership', () => {
     writeFileSync(fixture.docPath, 'other branch\n');
     durability.setBatchInProgress(false);
     await persistence.flushDeferredStores('discard-stale');
-    await expect(outcome).resolves.toEqual({ kind: 'discarded' });
+    await expect(outcome).resolves.toEqual({
+      kind: 'discarded',
+      cause: { kind: 'branch-switch' },
+    });
     releaseAdmission();
     expect(fixture.disk()).toBe('other branch\n');
     expect(authority.canRetire(discarded)).toBe(true);

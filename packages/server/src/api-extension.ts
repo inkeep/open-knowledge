@@ -64,7 +64,6 @@ import {
   stripFrontmatter,
   type ValidationDiagnostic,
 } from '@inkeep/open-knowledge-core';
-import { formatRenameSubject } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import {
   parseSkillDir,
   pluginRepositoryUrl,
@@ -226,13 +225,19 @@ import {
 import type { DocNoticeLedger } from './doc-notices.ts';
 import {
   assertNeverDeferredStoreWait,
+  type DeferredStoreDiscardCause,
   type DocumentDurabilityState,
+  editWasCarried,
+  OK_DOC_MOVED,
   OK_DOC_REMOVED,
   OK_PATH_UNRESOLVABLE,
+  OK_SERVER_STOPPED,
   OK_STORE_DISCARDED,
   OK_STORE_HELD,
   OK_STORE_REFUSED,
   type StoreFailure,
+  type WrittenThrough,
+  writtenThroughOf,
 } from './document-durability-state.ts';
 import type { RefreshDocumentsFromDisk } from './document-refresh.ts';
 import {
@@ -368,11 +373,7 @@ import {
 import { isWithinDir, toPosix } from './path-utils.ts';
 import { assertProjectContentSubtree } from './project-content-scope.ts';
 import { isValidRelativeContentPath } from './relative-content-path.ts';
-import {
-  appendRenameLogEntry,
-  getOrLoadRenameLogIndex,
-  type RenameLogEntry,
-} from './rename-log.ts';
+import { followRenameRecords } from './rename-records.ts';
 import { ServerMutationShuttingDownError } from './server-content-policy.ts';
 import type { PairedWriteOrigin } from './server-observers.ts';
 import { createAssetService } from './services/assets.ts';
@@ -1441,6 +1442,13 @@ function removedDocProblem(failure: StoreFailure) {
         title: 'Edit applied in memory; disk write refused because the document was renamed.',
         detail: `${failure.message}. Retrying will not help: re-read the document at ${failure.removal.renamedTo} and re-apply your change there.`,
       } satisfies BatchEntryError;
+    case 'deleted-outside':
+      return {
+        type: 'urn:ok:error:doc-removed' as const,
+        title:
+          'Edit not saved to disk: the document was deleted outside the app, and the edit went to its history.',
+        detail: `${failure.message}. Retrying will not help: the document is closed. Its history (the timeline) has the edit; re-create the document with write if you still want the content.`,
+      } satisfies BatchEntryError;
     case undefined:
       return {
         type: 'urn:ok:error:doc-removed' as const,
@@ -1449,6 +1457,24 @@ function removedDocProblem(failure: StoreFailure) {
         detail: `${failure.message}. Retrying will not help: re-create the document before writing this content again.`,
       } satisfies BatchEntryError;
   }
+}
+
+function movedDocProblem(failure: StoreFailure) {
+  const movedTo = failure.removal?.kind === 'renamed' ? failure.removal.renamedTo : 'its new name';
+  return {
+    type: 'urn:ok:error:doc-moved' as const,
+    title: 'Edit kept: the document was moved outside the app, and the edit moved with it.',
+    detail: `${failure.message}. Do not repeat the edit: it is in ${movedTo}, which saves it under that name. Re-read ${movedTo} to confirm.`,
+  } satisfies BatchEntryError;
+}
+
+function stoppedServerProblem(failure: StoreFailure) {
+  return {
+    type: 'urn:ok:error:server-stopped' as const,
+    title:
+      "Edit not saved to disk: the server stopped while the document's file was missing, and the edit went to its history.",
+    detail: `${failure.message}. After OpenKnowledge restarts, find the edit in the document's history (the timeline), and re-create the document with write if you still want it.`,
+  } satisfies BatchEntryError;
 }
 
 function pathFaultProblem(failure: StoreFailure) {
@@ -1460,11 +1486,46 @@ function pathFaultProblem(failure: StoreFailure) {
   } satisfies BatchEntryError;
 }
 
+function discardedStoreFailure(docName: string, cause: DeferredStoreDiscardCause): StoreFailure {
+  switch (cause.kind) {
+    case 'branch-switch':
+      return {
+        code: OK_STORE_DISCARDED,
+        message: `A Git branch switch discarded the pending save of ${docName}`,
+      };
+    case 'renamed-outside':
+      return {
+        code: OK_DOC_REMOVED,
+        message: `${docName} was moved outside the app to ${cause.to}, and its open document followed`,
+        removal: {
+          kind: 'renamed',
+          renamedTo: cause.to,
+          ...(cause.carry ? { carry: cause.carry } : {}),
+        },
+      };
+    case 'deleted-outside':
+      return {
+        code: OK_DOC_REMOVED,
+        message: `${docName} was deleted outside the app before the edit reached disk`,
+        removal: { kind: 'deleted-outside' },
+      };
+    case 'shutdown':
+      return {
+        code: OK_SERVER_STOPPED,
+        message: `The server stopped while the file of ${docName} was missing`,
+      };
+    default: {
+      const unhandled: never = cause;
+      throw new Error(`unhandled discard cause: ${JSON.stringify(unhandled)}`);
+    }
+  }
+}
+
 function discardedStoreProblem(failure: StoreFailure) {
   return {
     type: 'urn:ok:error:branch-switched' as const,
-    title: 'Edit not saved: the Git branch changed before it reached disk.',
-    detail: `${failure.message}. The document now shows the checked-out branch. Re-read it, then repeat the edit if it is still needed.`,
+    title: 'Edit kept in the open document: the Git branch changed before it reached disk.',
+    detail: `${failure.message}. The edit stays in the open document, merged with the checked-out branch's version of the file, and is saved with the document's next save; do not repeat the edit. Re-read the document to confirm it.`,
   } satisfies BatchEntryError;
 }
 
@@ -1558,6 +1619,16 @@ export function respondPersistenceFailure(
   if (failure.code === OK_STORE_DISCARDED) {
     const { type, title, detail } = discardedStoreProblem(failure);
     errorResponse(res, 409, type, title, { handler, detail });
+    return;
+  }
+  if (failure.code === OK_DOC_MOVED) {
+    const { type, title, detail } = movedDocProblem(failure);
+    errorResponse(res, 409, type, title, { handler, detail });
+    return;
+  }
+  if (failure.code === OK_SERVER_STOPPED) {
+    const { type, title, detail } = stoppedServerProblem(failure);
+    errorResponse(res, 503, type, title, { handler, detail });
     return;
   }
   if (failure.code === OK_PATH_UNRESOLVABLE) {
@@ -1680,6 +1751,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     githubReferenceFetch,
     getConfigDiagnostics,
   } = options;
+  const docNoticeLedger = options.docNotices;
   const declaredGitHubHosts =
     options.declaredGitHubHosts ?? readDeclaredGitHubHosts(homeDirOverride);
   const resolveSyncCredentialConfig =
@@ -1993,7 +2065,39 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     | { kind: 'stale-external-write' }
     | null;
 
-  async function flushDiskAndDetectOutcome(docName: string): Promise<FlushOutcome> {
+  async function answerForCarriedEdit(
+    docName: string,
+    failure: StoreFailure,
+    writtenThrough: WrittenThrough | undefined,
+  ): Promise<FlushOutcome> {
+    if (failure.code !== OK_DOC_REMOVED || failure.removal?.kind !== 'renamed') {
+      return { kind: 'failure', failure };
+    }
+    const answer = await durabilityState.awaitRenameCarry(docName, failure.removal.carry);
+    if (answer.kind === 'unsettled') {
+      log.warn(
+        { docName },
+        "[agent-write] the rename carry did not settle within the write's wait; acknowledging before it reaches disk",
+      );
+      return null;
+    }
+    return {
+      kind: 'failure',
+      failure: editWasCarried(writtenThrough, answer.carried)
+        ? { ...failure, code: OK_DOC_MOVED }
+        : failure,
+    };
+  }
+
+  function writtenThroughOfResident(docName: string): WrittenThrough | undefined {
+    const resident = hocuspocus.documents.get(docName);
+    return resident ? writtenThroughOf(resident) : undefined;
+  }
+
+  async function flushDiskAndDetectOutcome(
+    docName: string,
+    writtenThrough: WrittenThrough | undefined = writtenThroughOfResident(docName),
+  ): Promise<FlushOutcome> {
     const debounceId = `onStoreDocument-${docName}`;
     if (hocuspocus.debouncer.isDebounced(debounceId)) {
       durabilityState.markAgentWriteStore(docName);
@@ -2001,23 +2105,17 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     }
     const deferredWaitStarted = Date.now();
     const deferredWait = await durabilityState.awaitDeferredStoreOutcome(docName);
+    let failure: StoreFailure | undefined;
     switch (deferredWait?.kind) {
       case undefined:
       case 'completed':
         break;
       case 'discarded':
-        return {
-          kind: 'failure',
-          failure: {
-            code: OK_STORE_DISCARDED,
-            message: `A Git branch switch discarded the pending save of ${docName}`,
-          },
-        };
+        failure = discardedStoreFailure(docName, deferredWait.cause);
+        break;
       case 'failed':
-        return {
-          kind: 'failure',
-          failure: durabilityState.takeStoreFailure(docName) ?? deferredWait.failure,
-        };
+        failure = durabilityState.takeStoreFailure(docName) ?? deferredWait.failure;
+        break;
       case 'unsettled': {
         const waitedMs = Date.now() - deferredWaitStarted;
         console.warn(
@@ -2037,8 +2135,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
       default:
         assertNeverDeferredStoreWait(deferredWait);
     }
-    const failure = durabilityState.takeStoreFailure(docName);
-    if (failure) return { kind: 'failure', failure };
+    failure ??= durabilityState.takeStoreFailure(docName) ?? undefined;
+    if (failure) return answerForCarriedEdit(docName, failure, writtenThrough);
     if (durabilityState.takeStaleExternalWriteFreeze(docName)) {
       return { kind: 'stale-external-write' };
     }
@@ -3282,7 +3380,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
             }
 
             const liveContents = await captureAndCloseDocuments([...renameMap.keys()], 'renamed');
-
             if (
               process.env.NODE_ENV === 'test' &&
               process.env.OK_TEST_RENAME_FAULT === 'pre-append'
@@ -3290,70 +3387,29 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
               throw new Error('OK_TEST_RENAME_FAULT=pre-append');
             }
 
-            if (shadowRef?.current) {
-              const shadow = shadowRef.current;
-              const loggableAffectedDocs = affectedDocs.filter(
-                ({ from, to }) => stripDocExtension(from) !== stripDocExtension(to),
-              );
-              if (loggableAffectedDocs.length > 0) {
-                withSpanSync(
-                  'rename.appendLog',
-                  { attributes: { 'rename.kind': kind } },
-                  (span) => {
-                    const groupId = randomUUID();
-                    const at = new Date().toISOString();
-                    const branch = getCurrentBranch?.() ?? 'main';
-                    const renameLogIndex = getOrLoadRenameLogIndex(shadow.gitDir);
-                    const actorWriter = options?.actor
-                      ? {
-                          writerId: options.actor.writerId,
-                          displayName: options.actor.displayName,
-                        }
-                      : { writerId: SERVICE_WRITER.id, displayName: SERVICE_WRITER.name };
-                    let entriesAppended = 0;
-                    for (const { from, to } of loggableAffectedDocs) {
-                      const logEntry: RenameLogEntry = {
-                        v: 1,
-                        from,
-                        to,
-                        at,
-                        commitSha: '',
-                        branch,
-                        groupId,
-                        kind,
-                        actor: actorWriter,
-                      };
-                      appendRenameLogEntry(shadow.gitDir, logEntry, renameLogIndex, shadow);
-                      entriesAppended += 1;
-                      if (options?.actor) {
-                        recordContributor(
-                          to,
-                          options.actor.writerId,
-                          options.actor.displayName,
-                          options.actor.colorSeed,
-                          formatRenameSubject(from, to),
-                          options.actor.actorMetadata,
-                          undefined,
-                          [{ from, to }],
-                        );
-                      } else {
-                        recordContributor(
-                          to,
-                          SERVICE_WRITER.id,
-                          SERVICE_WRITER.name,
-                          SERVICE_WRITER.id,
-                          formatRenameSubject(from, to),
-                          undefined,
-                          undefined,
-                          [{ from, to }],
-                        );
-                      }
+            withSpanSync('rename.appendLog', { attributes: { 'rename.kind': kind } }, (span) => {
+              const actor = options?.actor;
+              const entriesAppended = followRenameRecords({
+                moves: affectedDocs,
+                kind,
+                branch: getCurrentBranch?.() ?? 'main',
+                writer: actor
+                  ? {
+                      writerId: actor.writerId,
+                      displayName: actor.displayName,
+                      colorSeed: actor.colorSeed,
+                      actor: actor.actorMetadata,
                     }
-                    span.setAttribute('rename.entries_appended', entriesAppended);
-                  },
-                );
-              }
-            }
+                  : {
+                      writerId: SERVICE_WRITER.id,
+                      displayName: SERVICE_WRITER.name,
+                      colorSeed: SERVICE_WRITER.id,
+                    },
+                shadow: shadowRef?.current,
+                notices: docNoticeLedger,
+              });
+              span.setAttribute('rename.entries_appended', entriesAppended);
+            });
 
             const explicitDestExt: string | null =
               kind === 'file' && isSupportedDocFile(toPath) ? extname(toPath) : null;
@@ -3720,6 +3776,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
           summaryResponseFields(normalizedSummary);
 
         let disposeEffectCapture: (() => void) | undefined;
+        let writtenThrough: WrittenThrough | undefined;
         try {
           const icon = iconFromClientName(clientName);
           const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(colorSeed ?? agentId);
@@ -3764,6 +3821,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
               ...(changedBlocks !== undefined ? { changedBlocks } : {}),
             });
           }, session.origin);
+          writtenThrough = writtenThroughOf(session.dc.document);
           recordContributor(
             docName,
             agentId,
@@ -3780,7 +3838,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
           agentPresenceBroadcaster?.touchMode(agentId, 'idle');
         }
 
-        const flushOutcome = await flushDiskAndDetectOutcome(docName);
+        const flushOutcome = await flushDiskAndDetectOutcome(docName, writtenThrough);
         if (flushOutcome?.kind === 'failure') {
           respondPersistenceFailure(res, flushOutcome.failure, 'agent-write');
           return;
@@ -3944,6 +4002,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
 
         const results: (BatchResult | undefined)[] = new Array(body.docs.length);
         const pending: PendingEntry[] = [];
+        const writtenThroughByDoc = new Map<string, WrittenThrough>();
 
         try {
           const icon = iconFromClientName(clientName);
@@ -4043,6 +4102,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
                       ...(changedBlocks !== undefined ? { changedBlocks } : {}),
                     });
                   }, session.origin);
+                  writtenThroughByDoc.set(resolvedDocName, writtenThroughOf(session.dc.document));
                 } finally {
                   disposeEntryEffectCapture();
                 }
@@ -4082,7 +4142,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
             const flushErrors = new Map<string, BatchErrorResult['error'] | undefined>();
             for (const p of pending) {
               if (flushErrors.has(p.docName)) continue;
-              const flushOutcome = await flushDiskAndDetectOutcome(p.docName);
+              const flushOutcome = await flushDiskAndDetectOutcome(
+                p.docName,
+                writtenThroughByDoc.get(p.docName),
+              );
               if (flushOutcome?.kind === 'failure') {
                 if (flushOutcome.failure.code === OK_DOC_REMOVED) {
                   flushErrors.set(p.docName, removedDocProblem(flushOutcome.failure));
@@ -4094,6 +4157,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
                   flushErrors.set(p.docName, heldSaveProblem(flushOutcome.failure));
                 } else if (flushOutcome.failure.code === OK_STORE_DISCARDED) {
                   flushErrors.set(p.docName, discardedStoreProblem(flushOutcome.failure));
+                } else if (flushOutcome.failure.code === OK_DOC_MOVED) {
+                  flushErrors.set(p.docName, movedDocProblem(flushOutcome.failure));
+                } else if (flushOutcome.failure.code === OK_SERVER_STOPPED) {
+                  flushErrors.set(p.docName, stoppedServerProblem(flushOutcome.failure));
                 } else {
                   const reason = classifyUploadErrno({
                     code: flushOutcome.failure.code,

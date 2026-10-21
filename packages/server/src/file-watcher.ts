@@ -287,6 +287,7 @@ export interface RecheckResult {
   status: RecheckStatus;
   candidates: number;
   dispatched: number;
+  partial?: boolean;
 }
 
 interface RecoveryOutcome {
@@ -301,7 +302,8 @@ interface DispatchCounter {
 
 export interface WatcherHandle {
   unsubscribe: () => Promise<void>;
-  recheck: () => Promise<RecheckResult>;
+  recheck: (mode?: RecoveryMode) => Promise<RecheckResult>;
+  recoveryPassesStarted: () => number;
   recheckPaths: (paths: readonly string[]) => Promise<{ checked: number; found: number }>;
   getFileIndex: () => ReadonlyMap<string, FileIndexEntry>;
   getAllFilesIndex: () => AllFileEntries;
@@ -830,6 +832,52 @@ type MarkdownRemovalObservation = {
 const removalOrigins = new WeakMap<RawFileEvent, MarkdownRemovalOrigin>();
 const removalObservations = new WeakMap<MarkdownDiskEvent, MarkdownRemovalObservation>();
 
+export interface MarkdownEventFacts {
+  readonly identity?: string;
+  readonly lastHash?: string;
+  readonly size?: number;
+  readonly modified?: string;
+}
+
+export function usableFileIdentity(identity: string | undefined): string | undefined {
+  if (identity === undefined || identity === '' || identity.endsWith(':0')) return undefined;
+  return identity;
+}
+
+interface CreatedFileFacts {
+  readonly identity: string | undefined;
+  readonly size: number;
+  readonly modified: string;
+}
+
+const markdownEventFacts = new WeakMap<MarkdownDiskEvent, MarkdownEventFacts>();
+
+export function getMarkdownEventFacts(event: DiskEvent): MarkdownEventFacts {
+  if (event.kind !== 'create' && event.kind !== 'delete' && event.kind !== 'rename') return {};
+  return markdownEventFacts.get(event) ?? {};
+}
+
+function fileIdentityOf(path: string): string | undefined {
+  return createdFileFactsOf(path)?.identity;
+}
+
+function createdFileFactsOf(path: string): CreatedFileFacts | undefined {
+  try {
+    const stats = statSync(path, { bigint: true });
+    return {
+      identity: usableFileIdentity(filesystemIdentity(stats)),
+      size: Number(stats.size),
+      modified: statMtime(stats).toISOString(),
+    };
+  } catch (err) {
+    const code = errnoCode(err);
+    if (code !== 'ENOENT' && code !== 'ENOTDIR' && code !== 'ELOOP') {
+      log.debug({ err, path, code }, `could not read the file identity of ${path}`);
+    }
+    return undefined;
+  }
+}
+
 export function getMarkdownRemovalCurrentness(
   event: Extract<DiskEvent, { kind: 'delete' | 'rename' }>,
 ): (() => boolean) | undefined {
@@ -983,11 +1031,14 @@ async function classifyEventsInternal(
   }
 
   const createContents = new Map<string, string>();
+  const createFacts = new Map<string, CreatedFileFacts>();
   const updateContents = new Map<string, string>();
   for (const event of creates) {
     beginOwnWriteObservation(event.path, observations);
     try {
       createContents.set(event.path, await readFile(event.path, 'utf-8'));
+      const facts = createdFileFactsOf(event.path);
+      if (facts !== undefined) createFacts.set(event.path, facts);
     } catch (e) {
       recordWatcherDecision('drop-read-failed', event.type, event.path);
       if (errnoCode(e) !== 'ENOENT') {
@@ -1081,18 +1132,35 @@ async function classifyEventsInternal(
   const results: MarkdownDiskEvent[] = [];
   const pairedCreates = new Set<string>();
   const pairedDeletes = new Set<string>();
+  const deletedFacts = new Map<string, MarkdownEventFacts>();
 
   for (const del of deletes) {
     if (aliasContext?.removals.get(del)?.isCurrent() === false) continue;
+    const indexed = aliasContext?.fileIndex.get(pathToDocName(del.path, contentDir));
+    const indexedHere =
+      indexed?.kind === 'markdown' && indexed.canonicalPath === del.path ? indexed : undefined;
+    const deletedIdentity = usableFileIdentity(indexedHere?.inode);
     const deletedHash = removeLastKnownHash(del.path);
-    if (!deletedHash) continue;
+    deletedFacts.set(del.path, {
+      identity: deletedIdentity,
+      lastHash: deletedHash,
+      size: indexedHere?.size,
+      modified: indexedHere?.modified,
+    });
+    if (!deletedHash && deletedIdentity === undefined) continue;
 
     for (const create of creates) {
       if (pairedCreates.has(create.path)) continue;
       const content = createContents.get(create.path);
       if (content === undefined) continue;
       const hash = contentHash(content);
-      if (hash === deletedHash) {
+      const created = createFacts.get(create.path);
+      const sameUnchangedFile =
+        deletedIdentity !== undefined &&
+        created?.identity === deletedIdentity &&
+        created.size === indexedHere?.size &&
+        created.modified === indexedHere?.modified;
+      if (hash === deletedHash || sameUnchangedFile) {
         pairedCreates.add(create.path);
         pairedDeletes.add(del.path);
         updateLastKnownHash(create.path, hash);
@@ -1106,6 +1174,10 @@ async function classifyEventsInternal(
         };
         const observation = aliasContext?.removals.get(del);
         if (observation) removalObservations.set(renamed, observation);
+        markdownEventFacts.set(renamed, {
+          ...createFacts.get(create.path),
+          lastHash: deletedHash,
+        });
         results.push(renamed);
         break;
       }
@@ -1123,6 +1195,8 @@ async function classifyEventsInternal(
       docName: origin?.kind === 'recovery' ? origin.docName : resolveDocName(del),
     };
     if (observation) removalObservations.set(event, observation);
+    const facts = deletedFacts.get(del.path);
+    if (facts) markdownEventFacts.set(event, facts);
     results.push(event);
   }
 
@@ -1141,12 +1215,14 @@ async function classifyEventsInternal(
         content,
       });
     } else {
-      results.push({
+      const created: MarkdownDiskEvent = {
         kind: 'create',
         path: create.path,
         docName: resolveDocName(create),
         content,
-      });
+      };
+      markdownEventFacts.set(created, { ...createFacts.get(create.path) });
+      results.push(created);
     }
   }
 
@@ -2558,11 +2634,12 @@ export function updateFileIndex(event: DiskEvent, fileIndex: Map<string, FileInd
       const existing = fileIndex.get(docName);
       const ext = extractDocExtension(event.path);
       if (ext) registerDocExtension(docName, ext);
+      const canonicalPath = existing?.canonicalPath ?? event.path;
       fileIndex.set(docName, {
         size: Buffer.byteLength(event.content, 'utf-8'),
         modified: new Date().toISOString(),
-        canonicalPath: existing?.canonicalPath ?? event.path,
-        inode: existing?.inode ?? '',
+        canonicalPath,
+        inode: fileIdentityOf(canonicalPath) ?? existing?.inode ?? '',
         aliases: existing?.aliases ?? [],
         kind: 'markdown',
         ...derivePageMeta(event.content, docName),
@@ -2594,7 +2671,7 @@ export function updateFileIndex(event: DiskEvent, fileIndex: Map<string, FileInd
         size: Buffer.byteLength(event.content, 'utf-8'),
         modified: new Date().toISOString(),
         canonicalPath: event.newPath,
-        inode: existing?.inode ?? '',
+        inode: fileIdentityOf(event.newPath) ?? existing?.inode ?? '',
         aliases: existing?.aliases ?? [],
         kind: 'markdown',
         ...derivePageMeta(event.content, event.newDocName),
@@ -3338,6 +3415,7 @@ function protectedGeneralNames(
 interface HandedObservation {
   readonly observed: DiskObservation;
   readonly sinceEpoch: number;
+  readonly pass: number;
 }
 
 async function recoverDiskChanges(
@@ -3850,13 +3928,20 @@ interface RecoveryDriverDeps {
   ) => Promise<RecoveryOutcome>;
   setActivePublicMutations: (mutations: RecoveryPublicMutations | null) => void;
   onAfterMutation: () => void;
-  onRecoveryComplete?: () => Promise<void>;
+  recoveryHooks: RecoveryHooks;
   backendName: WatcherBackend;
+}
+
+interface RecoveryHooks {
+  readonly onRecoveryComplete?: () => Promise<void>;
+  readonly onRecoveryPassCompleted?: (pass: number, whole: boolean) => Promise<void>;
 }
 
 interface RecoveryDriver {
   requestRecovery: (mode: RecoveryMode, handed?: HandedObservation) => Promise<RecheckResult>;
   isIdle: () => boolean;
+  passesStarted: () => number;
+  beginPass: () => number;
 }
 
 function createRecoveryDriver(deps: RecoveryDriverDeps): RecoveryDriver {
@@ -3865,6 +3950,7 @@ function createRecoveryDriver(deps: RecoveryDriverDeps): RecoveryDriver {
   let nextMode: RecoveryMode = 'metadata';
   let nextHanded: HandedObservation | undefined;
   let followUpRecovery: PromiseWithResolvers<RecheckResult> | undefined;
+  let passesStarted = 0;
   const closed = (): RecheckResult => ({ status: 'closed', candidates: 0, dispatched: 0 });
   const recoverOnce = async (): Promise<RecheckResult> => {
     const mode = nextMode;
@@ -3873,6 +3959,7 @@ function createRecoveryDriver(deps: RecoveryDriverDeps): RecoveryDriver {
     nextMode = 'metadata';
     nextHanded = undefined;
     if (deps.isClosed()) return closed();
+    const pass = handed?.pass ?? ++passesStarted;
     recoveryRunning = true;
     const recoveryMutations: RecoveryPublicMutations = {
       markdownNames: new Set(),
@@ -3888,11 +3975,13 @@ function createRecoveryDriver(deps: RecoveryDriverDeps): RecoveryDriver {
       const outcome = await deps.recover(recoveryMutations, counter, mode, handed);
       deps.onAfterMutation();
       if (outcome.completed) {
-        if (!outcome.partial) await deps.onRecoveryComplete?.();
+        if (!outcome.partial) await deps.recoveryHooks.onRecoveryComplete?.();
+        await deps.recoveryHooks.onRecoveryPassCompleted?.(pass, !outcome.partial);
         result = {
           status: 'completed',
           candidates: outcome.candidates,
           dispatched: counter.dispatched,
+          ...(outcome.partial ? { partial: true } : {}),
         };
         const finished = {
           mode: handed ? 'timed' : mode,
@@ -3957,13 +4046,20 @@ function createRecoveryDriver(deps: RecoveryDriverDeps): RecoveryDriver {
     }
     return nextRecovery;
   };
-  return { requestRecovery, isIdle: () => !recoveryRunning && nextRecovery === undefined };
+  return {
+    requestRecovery,
+    isIdle: () => !recoveryRunning && nextRecovery === undefined,
+    passesStarted: () => passesStarted,
+    beginPass: () => ++passesStarted,
+  };
 }
 
 interface WatcherBackendSubscription extends AsyncSubscription {
   runOrdered(work: () => Promise<void>): Promise<void>;
   requestRecovery(mode: RecoveryMode, handed?: HandedObservation): Promise<RecheckResult>;
   isRecoveryIdle(): boolean;
+  recoveryPassesStarted(): number;
+  beginRecoveryPass(): number;
   noticeRootMissing(): void;
 }
 
@@ -3983,7 +4079,7 @@ async function startParcelWatcher(
   platform: NodeJS.Platform,
   onRawBatch?: (absPaths: readonly string[]) => void,
   discoveredStructuralDirs?: ReadonlySet<string>,
-  onRecoveryComplete?: () => Promise<void>,
+  recoveryHooks: RecoveryHooks = {},
   clock: WatcherClock = watcherClock(),
   nativeBackend?: NativeWatcherBackend,
   carryOver: Set<string> = new Set(),
@@ -4032,7 +4128,7 @@ async function startParcelWatcher(
         });
       return next;
     };
-    const { requestRecovery, isIdle } = createRecoveryDriver({
+    const { requestRecovery, isIdle, passesStarted, beginPass } = createRecoveryDriver({
       runOrdered,
       isClosed: () => closed,
       recover: (recoveryMutations, counter, mode, handed) =>
@@ -4056,7 +4152,7 @@ async function startParcelWatcher(
         ),
       setActivePublicMutations,
       onAfterMutation,
-      onRecoveryComplete,
+      recoveryHooks,
       backendName: 'parcel',
     });
     const notificationsFor =
@@ -4148,6 +4244,8 @@ async function startParcelWatcher(
       runOrdered,
       requestRecovery,
       isRecoveryIdle: isIdle,
+      recoveryPassesStarted: passesStarted,
+      beginRecoveryPass: beginPass,
       noticeRootMissing: () => resubscriber.noticeRootMissing(),
       async settle() {
         if (closed) return;
@@ -4268,7 +4366,7 @@ async function startChokidarWatcher(
   platform: NodeJS.Platform,
   clock: WatcherClock,
   onRawBatch?: (absPaths: readonly string[]) => void,
-  onRecoveryComplete?: () => Promise<void>,
+  recoveryHooks: RecoveryHooks = {},
   carryOver: Set<string> = new Set(),
   coverageWhileLost: string = coverageWithoutWatcher(null),
 ): Promise<WatcherBackendSubscription> {
@@ -4284,7 +4382,7 @@ async function startChokidarWatcher(
     });
     return next;
   };
-  const { requestRecovery, isIdle } = createRecoveryDriver({
+  const { requestRecovery, isIdle, passesStarted, beginPass } = createRecoveryDriver({
     runOrdered,
     isClosed: () => closed,
     recover: (recoveryMutations, counter, mode, handed) =>
@@ -4308,7 +4406,7 @@ async function startChokidarWatcher(
       ),
     setActivePublicMutations,
     onAfterMutation,
-    onRecoveryComplete,
+    recoveryHooks,
     backendName: 'chokidar',
   });
 
@@ -4415,6 +4513,8 @@ async function startChokidarWatcher(
     runOrdered,
     requestRecovery,
     isRecoveryIdle: isIdle,
+    recoveryPassesStarted: passesStarted,
+    beginRecoveryPass: beginPass,
     noticeRootMissing: () => resubscriber.noticeRootMissing(),
     unsubscribe: async () => {
       closed = true;
@@ -4442,6 +4542,7 @@ export interface StartWatcherOptions {
   forceBackend?: 'parcel' | 'chokidar';
   onRawBatch?: (absPaths: readonly string[]) => void;
   onRecoveryComplete?: () => Promise<void>;
+  onRecoveryPassCompleted?: (pass: number, whole: boolean) => Promise<void>;
   platform?: NodeJS.Platform;
   nativeBackend?: NativeWatcherBackend;
   clock?: WatcherClock;
@@ -4479,7 +4580,8 @@ async function startWatcherWithClock(
   clock: WatcherClock,
   restoreClock: () => void,
 ): Promise<WatcherHandle> {
-  const { onRawBatch, onRecoveryComplete } = opts;
+  const { onRawBatch, onRecoveryComplete, onRecoveryPassCompleted } = opts;
+  const recoveryHooks: RecoveryHooks = { onRecoveryComplete, onRecoveryPassCompleted };
   const contentDir = resolveDirectoryRoot(contentDirRaw, {
     root: 'content',
     component: 'file-watcher',
@@ -4560,7 +4662,7 @@ async function startWatcherWithClock(
             platform,
             onRawBatch,
             structuralIgnoreDirs,
-            onRecoveryComplete,
+            recoveryHooks,
             clock,
             opts.nativeBackend,
             carryOver,
@@ -4593,7 +4695,7 @@ async function startWatcherWithClock(
         platform,
         clock,
         onRawBatch,
-        onRecoveryComplete,
+        recoveryHooks,
         carryOver,
         coverageWhileLost,
       );
@@ -4647,11 +4749,12 @@ async function startWatcherWithClock(
     const startedAt = clock.now();
     let elapsedMs = 0;
     const sinceEpoch = openObservationWindow();
+    const pass = backendSubscription.beginRecoveryPass();
     try {
       const observed = await walkForFreshness();
       if (observed === null) return;
       const result = observed.complete
-        ? await backendSubscription.requestRecovery('metadata', { observed, sinceEpoch })
+        ? await backendSubscription.requestRecovery('metadata', { observed, sinceEpoch, pass })
         : { status: 'incomplete' as const, candidates: 0, dispatched: 0 };
       if (handleClosed) return;
       elapsedMs = clock.now() - startedAt;
@@ -4696,8 +4799,11 @@ async function startWatcherWithClock(
         restoreClock();
       }
     },
-    recheck() {
-      return backendSubscription.requestRecovery('full');
+    recheck(mode = 'full') {
+      return backendSubscription.requestRecovery(mode);
+    },
+    recoveryPassesStarted() {
+      return backendSubscription.recoveryPassesStarted();
     },
     async recheckPaths(paths) {
       const unique = [...new Set(paths)];

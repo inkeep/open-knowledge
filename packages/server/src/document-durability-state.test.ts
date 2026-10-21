@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
+import * as Y from 'yjs';
 import { DiskReceiptLog } from './disk-receipts.ts';
 import {
   _resetDocExtensionsForTests,
@@ -25,8 +26,10 @@ import {
   DISPLACED_VERSION_TTL_MS,
   DocumentDurabilityState,
   DocumentDurabilityStateError,
+  editWasCarried,
   type StorePublishOutcome,
   WRITE_WAIT_BUDGET_MS,
+  writtenThroughOf,
 } from './document-durability-state.ts';
 import * as tracedFs from './fs-traced.ts';
 import { getLogger } from './logger.ts';
@@ -45,28 +48,52 @@ describe('DocumentDurabilityState', () => {
     expect(state.takeStoreFailure('doc')).toBeNull();
   });
 
-  test('retains reconciled bases independently for each visited branch', () => {
+  test('a batch held by two owners lasts until both release it, and only the last release ends it', () => {
     const state = new DocumentDurabilityState();
-    state.setReconciledBase('doc', 'main bytes');
-    state.switchReconciledBaseScope('feature');
-    state.setReconciledBase('doc', 'feature bytes');
+    state.holdBatch('head-watcher');
+    state.holdBatch('sync-engine');
+    state.holdBatch('sync-engine');
 
-    expect(state.getReconciledBase('doc')).toBe('feature bytes');
-    state.switchReconciledBaseScope('main');
-    expect(state.getReconciledBase('doc')).toBe('main bytes');
+    expect(state.releaseBatch('conflict-resolve')).toBe(false);
+    expect(state.isBatchInProgress()).toBe(true);
+    expect(state.releaseBatch('sync-engine')).toBe(false);
+    expect(state.isBatchInProgress()).toBe(true);
+    expect(state.releaseBatch('head-watcher')).toBe(true);
+    expect(state.isBatchInProgress()).toBe(false);
+    expect(state.releaseBatch('head-watcher')).toBe(false);
   });
 
-  test('deletes a reconciled base only from the active branch', () => {
+  test('keeps one reconciled base across branch switches, the bytes last agreed with disk', () => {
     const state = new DocumentDurabilityState();
     state.setReconciledBase('doc', 'main bytes');
     state.switchReconciledBaseScope('feature');
+    expect(state.getReconciledBase('doc')).toBe('main bytes');
+
     state.setReconciledBase('doc', 'feature bytes');
+    state.switchReconciledBaseScope('main');
+    expect(state.getReconciledBase('doc')).toBe('feature bytes');
+  });
+
+  test('a base deleted on one branch stays deleted after a switch', () => {
+    const state = new DocumentDurabilityState();
+    state.setReconciledBase('doc', 'main bytes');
+    state.switchReconciledBaseScope('feature');
+    state.deleteReconciledBase('doc');
 
     state.switchReconciledBaseScope('main');
-    state.deleteReconciledBase('doc');
     expect(state.getReconciledBase('doc')).toBeUndefined();
+  });
+
+  test('a document with a stale external write on the target branch keeps that branch base', () => {
+    const state = new DocumentDurabilityState();
     state.switchReconciledBaseScope('feature');
-    expect(state.getReconciledBase('doc')).toBe('feature bytes');
+    state.setReconciledBase('doc', 'feature acknowledged');
+    state.recordStaleExternalWrite('doc', 'stale bytes');
+    state.switchReconciledBaseScope('main');
+    state.setReconciledBase('doc', 'main bytes');
+
+    state.switchReconciledBaseScope('feature');
+    expect(state.getReconciledBase('doc')).toBe('feature acknowledged');
   });
 
   test('isolates every owned coordination channel between instances', async () => {
@@ -1542,5 +1569,110 @@ describe('the durable receipt follows the acknowledged base', () => {
     state.setReconciledBase('loaded', 'v1\n');
     state.refreshReceiptWithoutBase('loaded', 'v2\n');
     expect(state.getReceipt('loaded')?.hash).toBe(contentHash('v1\n'));
+  });
+});
+
+describe('which edits a rename outside the app carried to the new name', () => {
+  function frozenDocWithCarriedAndLaterEdit() {
+    const document = new Y.Doc();
+    const source = document.getText('source');
+    source.insert(0, 'Before the move.\n');
+    const carriedEdit = writtenThroughOf(document);
+    const carried = writtenThroughOf(document);
+    source.insert(source.length, 'After the move.\n');
+    const laterEdit = writtenThroughOf(document);
+    return { carriedEdit, carried, laterEdit };
+  }
+
+  test('an edit the carry included is carried, and an edit made after it is not', () => {
+    const { carriedEdit, carried, laterEdit } = frozenDocWithCarriedAndLaterEdit();
+    expect(editWasCarried(carriedEdit, carried)).toBe(true);
+    expect(editWasCarried(laterEdit, carried)).toBe(false);
+    expect(editWasCarried(carriedEdit, null)).toBe(false);
+    expect(editWasCarried(undefined, carried)).toBe(false);
+    expect(editWasCarried({ ...carriedEdit, clientId: carriedEdit.clientId + 1 }, carried)).toBe(
+      false,
+    );
+  });
+
+  test('a write refused while the carry runs waits for it, and a failed carry answers not carried', async () => {
+    const state = new DocumentDurabilityState();
+    const { carried } = frozenDocWithCarriedAndLaterEdit();
+    const carry = state.beginRenameCarry('notes');
+    let answered = false;
+    const answer = state.awaitRenameCarry('notes', carry).then((value) => {
+      answered = true;
+      return value;
+    });
+    await Promise.resolve();
+    expect(answered).toBe(false);
+    state.settleRenameCarry('notes', null);
+    expect(await answer).toEqual({ kind: 'settled', carried: null });
+
+    const archive = state.beginRenameCarry('archive');
+    const carriedAnswer = state.awaitRenameCarry('archive', archive);
+    state.settleRenameCarry('archive', carried);
+    expect(await carriedAnswer).toEqual({ kind: 'settled', carried });
+    expect(await state.awaitRenameCarry('archive', state.renameCarryOf('archive'))).toEqual({
+      kind: 'settled',
+      carried,
+    });
+  });
+
+  test('a route that begins a carry and never reaches it answers not carried', async () => {
+    const state = new DocumentDurabilityState();
+    const carry = state.beginRenameCarry('notes');
+    expect(state.beginRenameCarry('notes')).toBe(carry);
+    state.abandonRenameCarry('notes');
+    expect(await carry).toEqual({ kind: 'settled', carried: null });
+  });
+
+  test('a revive while the carry runs still answers the waiting write, and the late settle leaves no record', async () => {
+    const state = new DocumentDurabilityState();
+    const { carried } = frozenDocWithCarriedAndLaterEdit();
+    const carry = state.beginRenameCarry('notes');
+    state.endRenameCarry('notes');
+    state.settleRenameCarry('notes', carried);
+    expect(await carry).toEqual({ kind: 'settled', carried });
+    expect(state.renameCarryOf('notes')).toBeUndefined();
+
+    state.beginRenameCarry('archive');
+    state.settleRenameCarry('archive', carried);
+    state.endRenameCarry('archive');
+    expect(state.renameCarryOf('archive')).toBeUndefined();
+    state.settleRenameCarry('archive', carried);
+    expect(state.renameCarryOf('archive')).toBeUndefined();
+  });
+
+  test('ending every record at shutdown answers a waiting write as unsettled and leaves none', async () => {
+    const state = new DocumentDurabilityState();
+    const { carried } = frozenDocWithCarriedAndLaterEdit();
+    const pending = state.beginRenameCarry('notes');
+    state.beginRenameCarry('archive');
+    state.settleRenameCarry('archive', carried);
+    state.endAllRenameCarries();
+    expect(await pending).toEqual({ kind: 'unsettled' });
+    expect(state.renameCarryOf('notes')).toBeUndefined();
+    expect(state.renameCarryOf('archive')).toBeUndefined();
+  });
+
+  test("a carry that outlasts the write's remaining wait answers unsettled, never not carried", async () => {
+    const state = new DocumentDurabilityState();
+    const carry = state.beginRenameCarry('notes');
+    const warn = vi
+      .spyOn(getLogger('document-durability-state'), 'warn')
+      .mockImplementation(() => {});
+    try {
+      const started = Date.now();
+      const answer = await state.runWithinWriteWaitBudget(
+        () => state.awaitRenameCarry('notes', carry),
+        20,
+      );
+      expect(answer).toEqual({ kind: 'unsettled' });
+      expect(Date.now() - started).toBeLessThan(WRITE_WAIT_BUDGET_MS);
+      expect(warn).toHaveBeenCalledOnce();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

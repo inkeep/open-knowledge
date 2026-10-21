@@ -193,6 +193,7 @@ export function reviveFrozenResidentDoc(
   }
   lifecycle.delete('status');
   lifecycle.delete('newPath');
+  durabilityState.endRenameCarry(docName);
   getLogger('reconcile').info(
     { docName, status, replacedInMemoryContent },
     `[reconcile] revived ${docName}: its name is occupied on disk again, so the ${status} freeze no longer applies`,

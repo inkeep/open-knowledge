@@ -193,6 +193,9 @@ async function recoveryScenario(recreate: boolean) {
   } else {
     handlerRelease.resolve();
     await recovery;
+    await expect
+      .poll(() => running.instance.hocuspocus.documents.has(docName), { timeout: 10_000 })
+      .toBe(false);
     const { resident, ...after } = await snapshot(initial);
     expect({ residentPresent: resident !== undefined, ...after }).toMatchObject({
       disk: null,

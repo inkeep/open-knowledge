@@ -95,7 +95,7 @@ async function settledWithin<T>(promise: Promise<T>, ms: number): Promise<boolea
 
 describe('agent writes during a git branch switch', () => {
   test.runIf(process.platform !== 'win32')(
-    'a patch sent after the reset but before the switch settles is written to the new branch',
+    'a patch sent while the switch settles is held, then written to the new branch',
     async () => {
       let releaseSettle: () => void = () => {};
       const settleHeld = new Promise<void>((resolve) => {
@@ -120,11 +120,10 @@ describe('agent writes during a git branch switch', () => {
 
       git(contentDir, 'checkout feature');
       await pollUntil(
-        () =>
-          settleSpy.mock.calls.length > 0 && serverText(server, 'notes').includes('On feature.'),
+        () => settleSpy.mock.calls.length > 0,
         20_000,
         50,
-        'the branch switch to reset the open document and reach the held settle',
+        'the branch switch to reach the held settle',
       );
       expect(server.instance.durabilityState.isBatchInProgress()).toBe(true);
 
@@ -181,7 +180,7 @@ describe('agent writes during a git branch switch', () => {
   );
 
   test.runIf(process.platform !== 'win32')(
-    'a write whose deferred store is discarded by the switch is not acknowledged as saved',
+    'a write whose deferred store is discarded by the switch is reported as kept in the open document',
     async () => {
       const { contentDir, server } = await bootOnMainWithFeatureBranch();
       const durability = server.instance.durabilityState;
@@ -218,11 +217,12 @@ describe('agent writes during a git branch switch', () => {
       );
 
       expect(response.status).toBe(409);
-      expect((response.body as { type?: string } | null)?.type).toBe(
-        'urn:ok:error:branch-switched',
-      );
+      const problem = response.body as { type?: string; detail?: string } | null;
+      expect(problem?.type).toBe('urn:ok:error:branch-switched');
+      expect(problem?.detail).toContain('do not repeat the edit');
       expect(ackedBeforeSwitch).toBe(false);
       expect(readNotes(contentDir)).not.toContain('Appended before the switch.');
+      expect(serverText(server, 'notes')).toContain('Appended before the switch.');
     },
     90_000,
   );

@@ -72,7 +72,7 @@ export function readProjectHeadState(projectRoot: string): ProjectHeadState {
 type HeadEventDispatch = (rawPath: string) => void;
 
 export function watchedGitFile(rawPath: string): string | null {
-  const fileName = rawPath.split('/').pop() ?? '';
+  const fileName = rawPath.split(/[\\/]/).pop() ?? '';
   return WATCHED_FILES.has(fileName) ? fileName : null;
 }
 

@@ -3,6 +3,7 @@ import {
   readFileSync,
   realpathSync,
   renameSync,
+  statSync,
   symlinkSync,
   unlinkSync,
   writeFileSync,
@@ -10,6 +11,7 @@ import {
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { statMtime } from '@inkeep/open-knowledge-core/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createContentFilter } from './content-filter.ts';
 import type { DiskEvent } from './file-watcher';
@@ -17,6 +19,7 @@ import {
   classifyEvents,
   contentHash,
   evictStaleTrackerEntries,
+  type FileIndexEntry,
   handleRawEvents,
   isSelfRemoval,
   isSelfWrite,
@@ -549,6 +552,53 @@ describe('classifyEvents', () => {
       expect(events[0].newDocName).toBe('new-name');
       expect(events[0].content).toBe(content);
     }
+  });
+
+  test("a new file that reuses a removed file's inode number is not a rename unless its size and time match", async () => {
+    const removed = resolve(contentDir, 'removed.md');
+    const external = resolve(contentDir, 'external.md');
+    updateLastKnownHash(removed, contentHash('# Removed\n'));
+    writeFileSync(external, '# External, a different file\n');
+    const reused = statSync(external, { bigint: true });
+    const indexWith = (size: number, modified: string) =>
+      new Map<string, FileIndexEntry>([
+        [
+          'removed',
+          {
+            kind: 'markdown',
+            canonicalPath: removed,
+            inode: `${reused.dev}:${reused.ino}`,
+            size,
+            modified,
+            aliases: [],
+          },
+        ],
+      ]);
+    const classify = async (index: Map<string, FileIndexEntry>) => {
+      const collected: DiskEvent[] = [];
+      await handleRawEvents(
+        [
+          { type: 'delete', path: removed },
+          { type: 'create', path: external },
+        ],
+        contentDir,
+        undefined,
+        index,
+        new Map(),
+        async (event) => {
+          collected.push(event);
+        },
+      );
+      return collected.map((event) => event.kind).sort();
+    };
+
+    expect(await classify(indexWith(9, '2020-01-01T00:00:00.000Z'))).toEqual(['create', 'delete']);
+
+    updateLastKnownHash(removed, contentHash('# Removed\n'));
+    lastKnownHash.delete(external);
+    expect(await classify(indexWith(Number(reused.size), statMtime(reused).toISOString()))).toEqual(
+      ['rename'],
+    );
   });
 
   test('emits separate delete+create when content hashes differ', async () => {

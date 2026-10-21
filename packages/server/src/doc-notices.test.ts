@@ -6,7 +6,7 @@ import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { _resetDocExtensionsForTests, registerDocExtension } from './doc-extensions.ts';
-import { DocNoticeLedger, docNoticesPath } from './doc-notices.ts';
+import { DocNoticeLedger, docNoticesPath, NOTICE_WITHDRAW_AFTER_MS } from './doc-notices.ts';
 import { createMergeHistoryRecorder } from './merge-history.ts';
 import {
   DEFAULT_CHECKPOINT_RETENTION,
@@ -21,9 +21,14 @@ describe('DocNoticeLedger', () => {
   let projectDir: string;
   let signal: ReturnType<typeof vi.fn<() => void>>;
 
+  let clock = 0;
+  let held = new Set<string>();
+
   beforeEach(() => {
     projectDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-doc-notices-')));
     signal = vi.fn<() => void>();
+    clock = 0;
+    held = new Set();
   });
 
   afterEach(() => {
@@ -44,6 +49,8 @@ describe('DocNoticeLedger', () => {
       getShadow: () => options.shadow,
       isReady: () => options.ready ?? true,
       signal,
+      isHeld: (docName) => held.has(docName),
+      now: () => clock,
     });
   }
 
@@ -132,7 +139,7 @@ describe('DocNoticeLedger', () => {
     expect(signal).not.toHaveBeenCalled();
   });
 
-  test('a notice for a document whose file is gone is withdrawn', async () => {
+  test('a notice is withdrawn once its file has been missing on reads ten seconds apart', async () => {
     seedDoc('notes');
     seedDoc('folder/kept');
     const notices = ledger();
@@ -141,8 +148,64 @@ describe('DocNoticeLedger', () => {
 
     rmSync(join(projectDir, 'notes.md'));
 
-    expect((await notices.list('main')).map((notice) => notice.docName)).toEqual(['folder/kept']);
+    const listed = async () => (await notices.list('main')).map((notice) => notice.docName);
+    expect(await listed()).toEqual(['folder/kept', 'notes']);
+    expect(await listed()).toEqual(['folder/kept', 'notes']);
+    clock += NOTICE_WITHDRAW_AFTER_MS - 1;
+    expect(await listed()).toEqual(['folder/kept', 'notes']);
+    clock += 1;
+    expect(await listed()).toEqual(['folder/kept']);
     expect((await ledger().list('main')).map((notice) => notice.docName)).toEqual(['folder/kept']);
+  });
+
+  test('a notice whose document the server holds as vanished is not withdrawn', async () => {
+    seedDoc('notes');
+    const notices = ledger();
+    notices.record('notes', 'main', { kind: 'both-kept', kept: KEPT_ONE });
+    rmSync(join(projectDir, 'notes.md'));
+    held.add('notes');
+
+    const listed = async () => (await notices.list('main')).map((notice) => notice.docName);
+    expect(await listed()).toEqual(['notes']);
+    clock += NOTICE_WITHDRAW_AFTER_MS * 3;
+    expect(await listed()).toEqual(['notes']);
+
+    held.delete('notes');
+    expect(await listed()).toEqual(['notes']);
+    clock += NOTICE_WITHDRAW_AFTER_MS;
+    expect(await listed()).toEqual([]);
+  });
+
+  test('a file missing for one read, as during a save that deletes then writes, keeps its notice', async () => {
+    seedDoc('notes');
+    const notices = ledger();
+    notices.record('notes', 'main', { kind: 'both-kept', kept: KEPT_ONE });
+
+    rmSync(join(projectDir, 'notes.md'));
+    expect((await notices.list('main')).map((notice) => notice.docName)).toEqual(['notes']);
+    seedDoc('notes');
+    expect((await notices.list('main')).map((notice) => notice.docName)).toEqual(['notes']);
+    rmSync(join(projectDir, 'notes.md'));
+    clock += NOTICE_WITHDRAW_AFTER_MS;
+    expect((await notices.list('main')).map((notice) => notice.docName)).toEqual(['notes']);
+  });
+
+  test('a renamed document keeps its notice under the new name and file', async () => {
+    seedDoc('notes');
+    const notices = ledger();
+    const id = notices.record('notes', 'main', { kind: 'both-kept', kept: KEPT_ONE });
+    rmSync(join(projectDir, 'notes.md'));
+    seedDoc('archive/notes');
+
+    notices.rename('notes', 'archive/notes', 'main', 'archive/notes.md');
+
+    const listed = await notices.list('main');
+    expect(listed).toEqual([
+      expect.objectContaining({ id, docName: 'archive/notes', file: 'archive/notes.md' }),
+    ]);
+    expect((await ledger().list('main')).map((notice) => notice.docName)).toEqual([
+      'archive/notes',
+    ]);
   });
 
   test('a notice for an .mdx document keeps its file name and survives a restart before the extensions are known again', async () => {
@@ -165,7 +228,10 @@ describe('DocNoticeLedger', () => {
     rmSync(join(projectDir, 'notes.md'));
 
     expect((await ledger({ ready: false }).list('main')).map((n) => n.docName)).toEqual(['notes']);
-    expect((await ledger().list('main')).map((n) => n.docName)).toEqual([]);
+    const ready = ledger();
+    expect((await ready.list('main')).map((n) => n.docName)).toEqual(['notes']);
+    clock += NOTICE_WITHDRAW_AFTER_MS;
+    expect((await ready.list('main')).map((n) => n.docName)).toEqual([]);
   });
 
   test('every change tells the app to refetch, and a read that changes nothing does not', async () => {

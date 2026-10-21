@@ -10,7 +10,13 @@ import {
   createApiExtension,
   createDerivedDocumentIndexApiPortStub,
 } from './api-extension.test-helper.ts';
-import { DocumentDurabilityState, WRITE_WAIT_BUDGET_MS } from './document-durability-state.ts';
+import {
+  DocumentDurabilityState,
+  OK_DOC_REMOVED,
+  type RenameCarryAnswer,
+  WRITE_WAIT_BUDGET_MS,
+  writtenThroughOf,
+} from './document-durability-state.ts';
 
 interface CapturedResponse {
   status: number;
@@ -252,7 +258,7 @@ describe('agent-write flush: bounded wait for a deferred store', () => {
     const responding = postAgentWrite(docName);
     await flushWaiting;
     await vi.advanceTimersByTimeAsync(WRITE_WAIT_BUDGET_MS - 1);
-    deferral.settle({ kind: 'discarded' });
+    deferral.settle({ kind: 'discarded', cause: { kind: 'branch-switch' } });
     const response = await responding;
 
     expect(response.status).toBe(409);
@@ -260,5 +266,120 @@ describe('agent-write flush: bounded wait for a deferred store', () => {
       'urn:ok:error:branch-switched',
     );
     expect(unsettledEvents(warn)).toEqual([]);
+  });
+});
+
+describe('agent-write flush: a document renamed outside the app while the write waits', () => {
+  function renameOutsideWithCarry(docName: string, movedTo: string): Promise<RenameCarryAnswer> {
+    const carry = durabilityState.beginRenameCarry(docName);
+    const document = hocuspocus.documents.get(docName);
+    if (!document) throw new Error(`${docName} is not loaded`);
+    const carried = writtenThroughOf(document);
+    const lifecycle = document.getMap('lifecycle');
+    lifecycle.set('status', 'renamed');
+    lifecycle.set('newPath', movedTo);
+    durabilityState.settleRenameCarry(docName, carried);
+    return carry;
+  }
+
+  function refusedAsRenamed(docName: string, movedTo: string, carry: Promise<RenameCarryAnswer>) {
+    return {
+      code: OK_DOC_REMOVED,
+      message: `${docName} was renamed to ${movedTo} on disk`,
+      removal: { kind: 'renamed' as const, renamedTo: movedTo, carry },
+    };
+  }
+
+  test('a batch edit the rename carried is reported as moved when an earlier document held the flush', async () => {
+    durabilityState.holdStores('held-first');
+    const deferral = durabilityState.openDeferredStore('held-first');
+    const flushWaiting = whenFlushStartsWaiting();
+
+    const responding = postAgentWriteBatch(['held-first', 'renamed-later']);
+    await flushWaiting;
+    const carry = renameOutsideWithCarry('renamed-later', 'moved-later');
+    durabilityState.recordStoreFailure(
+      'renamed-later',
+      refusedAsRenamed('renamed-later', 'moved-later', carry),
+    );
+    deferral.settle({ kind: 'completed' });
+    const response = await responding;
+
+    expect(response.status).toBe(200);
+    const { results } = JSON.parse(response.body) as {
+      results: Array<{
+        docName: string;
+        status: string;
+        error?: { type?: string; detail?: string };
+      }>;
+    };
+    expect(results[0]?.status).toBe('written');
+    expect(results[1]?.error?.type).toBe('urn:ok:error:doc-moved');
+    expect(results[1]?.error?.detail).toContain('moved-later');
+  });
+
+  test('a deferred store refused as renamed reports a carried edit as moved', async () => {
+    const docName = 'renamed-deferred';
+    durabilityState.holdStores(docName);
+    const deferral = durabilityState.openDeferredStore(docName);
+    const flushWaiting = whenFlushStartsWaiting();
+
+    const responding = postAgentWrite(docName);
+    await flushWaiting;
+    const carry = renameOutsideWithCarry(docName, 'moved-deferred');
+    deferral.settle({
+      kind: 'failed',
+      failure: refusedAsRenamed(docName, 'moved-deferred', carry),
+    });
+    const response = await responding;
+
+    expect(response.status).toBe(409);
+    const body = JSON.parse(response.body) as { type: string; detail: string };
+    expect(body.type).toBe('urn:ok:error:doc-moved');
+    expect(body.detail).not.toContain('re-apply');
+  });
+
+  test('an edit made after the carry took its text is asked to be re-applied', async () => {
+    const docName = 'renamed-after';
+    await postAgentWrite(docName);
+    const carry = renameOutsideWithCarry(docName, 'moved-after');
+    durabilityState.holdStores(docName);
+    const deferral = durabilityState.openDeferredStore(docName);
+    const flushWaiting = whenFlushStartsWaiting();
+
+    const responding = postAgentWrite(docName);
+    await flushWaiting;
+    deferral.settle({ kind: 'failed', failure: refusedAsRenamed(docName, 'moved-after', carry) });
+    const response = await responding;
+
+    expect(response.status).toBe(409);
+    const body = JSON.parse(response.body) as { type: string; detail: string };
+    expect(body.type).toBe('urn:ok:error:doc-removed');
+    expect(body.detail).toContain('re-apply your change there');
+  });
+
+  test("a carry still running when the write's wait runs out is acknowledged, never re-applied", async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const docName = 'renamed-slow';
+    durabilityState.holdStores(docName);
+    const deferral = durabilityState.openDeferredStore(docName);
+    const flushWaiting = whenFlushStartsWaiting();
+
+    let answered = false;
+    const responding = postAgentWrite(docName).then((response) => {
+      answered = true;
+      return response;
+    });
+    await flushWaiting;
+    const carry = durabilityState.beginRenameCarry(docName);
+    deferral.settle({ kind: 'failed', failure: refusedAsRenamed(docName, 'moved-slow', carry) });
+    await vi.advanceTimersByTimeAsync(WRITE_WAIT_BUDGET_MS - 1);
+    expect(answered).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    const response = await responding;
+
+    expect(response.status).toBe(200);
   });
 });

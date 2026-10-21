@@ -159,7 +159,7 @@ describe('timed freshness re-check', () => {
 
   async function watch(
     freshnessIntervalMs?: number | null,
-    extra: Pick<StartWatcherOptions, 'onRecoveryComplete'> = {},
+    extra: Pick<StartWatcherOptions, 'onRecoveryComplete' | 'onRecoveryPassCompleted'> = {},
   ): Promise<WatcherHandle> {
     double = createWatcherDouble();
     handle = await startWatcher(
@@ -605,6 +605,43 @@ describe('timed freshness re-check', () => {
       expect(events).toHaveLength(0);
     },
   );
+
+  test.runIf(CAN_REVOKE_READ)(
+    'the per-pass hook says whether a completed pass observed the whole tree',
+    async () => {
+      writeFileSync(join(contentDir, 'open.md'), '# Open\n');
+      const passes: Array<{ pass: number; whole: boolean }> = [];
+      await watch(null, {
+        onRecoveryPassCompleted: async (pass, whole) => {
+          passes.push({ pass, whole });
+        },
+      });
+
+      await (handle as WatcherHandle).recheck();
+      expect(passes.at(-1)?.whole).toBe(true);
+
+      mkdirSync(join(contentDir, 'locked'));
+      revokeRead(join(contentDir, 'locked'));
+      await (handle as WatcherHandle).recheck();
+      expect(passes.at(-1)?.whole).toBe(false);
+    },
+  );
+
+  test('a pass that cannot read the content root reports no completed pass', async () => {
+    writeFileSync(join(contentDir, 'kept.md'), '# Kept\n');
+    const passes: number[] = [];
+    await watch(null, {
+      onRecoveryPassCompleted: async (pass) => {
+        passes.push(pass);
+      },
+    });
+    const before = passes.length;
+
+    rmSync(contentDir, { recursive: true, force: true });
+    const result = await (handle as WatcherHandle).recheck();
+    expect(result.status).toBe('incomplete');
+    expect(passes).toHaveLength(before);
+  });
 
   test('a content root that is gone leaves the known documents in place instead of deleting them', async () => {
     writeFileSync(join(contentDir, 'kept.md'), '# Kept\n');

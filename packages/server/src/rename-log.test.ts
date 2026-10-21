@@ -18,9 +18,11 @@ import {
   expandPredecessors,
   gcRenameLog,
   loadRenameLogIndex,
+  logSeededReachable,
   MAX_PREDECESSOR_CHAIN_DEPTH,
   pendingRenameLogEntries,
   RENAME_LOG_HARD_CAP_BYTES,
+  RENAME_LOG_MAX_LINE_BYTES,
   type RenameLogEntry,
   renameLogPath,
   resolveDocPathAtCommit,
@@ -292,6 +294,39 @@ describe('appendRenameLogEntry', () => {
       warnSpy.mockRestore();
     }
     expect(warned).toBe(true);
+  });
+
+  test('keeps the entry and the leading writer anchors that fit the line limit, before and after the claim', () => {
+    const index = createEmptyIndex();
+    const anchors = Array.from({ length: 200 }, (_, i) => i.toString(16).padStart(40, '0'));
+    const writerId = 'agent-conn-abc';
+    appendRenameLogEntry(shadowDir, entry({ from: 'a', to: 'b', anchors }), index);
+    expect(Buffer.byteLength(readFileSync(renameLogPath(shadowDir), 'utf-8'))).toBeLessThanOrEqual(
+      RENAME_LOG_MAX_LINE_BYTES,
+    );
+
+    backfillRenameLogCommitSha(
+      shadowDir,
+      writerId,
+      'c'.repeat(40),
+      index,
+      pendingRenameLogEntries(index),
+    );
+    const line = readFileSync(renameLogPath(shadowDir), 'utf-8');
+    expect(Buffer.byteLength(line, 'utf-8')).toBeLessThanOrEqual(RENAME_LOG_MAX_LINE_BYTES);
+    const reloaded = loadRenameLogIndex(shadowDir).byTo.get('b');
+    expect(reloaded?.commitSha).toBe('c'.repeat(40));
+    const kept = reloaded?.anchors ?? [];
+    expect(kept.length).toBeGreaterThan(0);
+    expect(kept).toEqual(anchors.slice(0, kept.length));
+    expect(index.byTo.get('b')?.anchors).toEqual(kept);
+    const withOneMore = JSON.stringify({
+      ...JSON.parse(line),
+      anchors: anchors.slice(0, kept.length + 1),
+    });
+    expect(Buffer.byteLength(`${withOneMore}\n`, 'utf-8')).toBeGreaterThan(
+      RENAME_LOG_MAX_LINE_BYTES,
+    );
   });
 });
 
@@ -637,6 +672,30 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
     const set = await buildAncestorShaSet(shadow, [sha2], 'main');
     expect(set.has(sha1)).toBe(true);
     expect(set.has(sha2)).toBe(true);
+  });
+
+  test('buildSeeds — a writer anchor whose commit is gone is dropped, and the live ones keep their ancestry', async () => {
+    const sha1 = await commit('# v1\n', 'a.md', 'WIP: v1');
+    const anchor = await commit('# v2\n', 'a.md', 'WIP: v2');
+    const renameSha = await commit('# v3\n', 'b.md', 'rename: a -> b');
+    const gone = 'f'.repeat(40);
+    const seeds = await buildSeeds(shadow, renameSha, 'main', undefined, [gone, anchor]);
+    expect(seeds).toContain(renameSha);
+    expect(seeds).toContain(anchor);
+    expect(seeds).not.toContain(gone);
+    const set = await buildAncestorShaSet(shadow, seeds, 'main');
+    expect(set.has(sha1)).toBe(true);
+    const walked = await logSeededReachable(shadow, ['--format=%H'], seeds, 'content/a.md');
+    expect(walked.split('\n')).toContain(sha1);
+  });
+
+  test('buildAncestorShaSet — a seed whose object is gone still fails the walk', async () => {
+    const sha1 = await commit('# v1\n', 'a.md', 'WIP: v1');
+    const set = await buildAncestorShaSet(shadow, [sha1, 'f'.repeat(40)], 'main');
+    expect(set.size).toBe(0);
+    await expect(
+      logSeededReachable(shadow, ['--format=%H'], [sha1, 'f'.repeat(40)], 'content/a.md'),
+    ).rejects.toThrow();
   });
 
   test('buildAncestorShaSet — cache hit on identical seeds key', async () => {
@@ -1618,6 +1677,21 @@ describe('buildSeeds — SeedsCache (Consider C2)', () => {
     const feature = await buildSeeds(shadow, sha, 'feature-x', cache);
     expect(feature).not.toBe(main);
     expect(cache.size).toBe(2);
+  });
+
+  test('cache miss when anchors differ for the same rename commit', async () => {
+    writeFileSync(resolve(projectRoot, 'content', 'a.md'), '# A\n');
+    const firstAnchor = await commitWip(shadow, writer, 'content', 'WIP: a');
+    writeFileSync(resolve(projectRoot, 'content', 'a.md'), '# A2\n');
+    const secondAnchor = await commitWip(shadow, writer, 'content', 'WIP: a2');
+    writeFileSync(resolve(projectRoot, 'content', 'b.md'), '# B\n');
+    const sha = await commitWip(shadow, writer, 'content', 'rename: a -> b');
+    const cache = createSeedsCache();
+    const first = await buildSeeds(shadow, sha, 'main', cache, [firstAnchor]);
+    const second = await buildSeeds(shadow, sha, 'main', cache, [secondAnchor]);
+    expect(first).toContain(firstAnchor);
+    expect(second).toContain(secondAnchor);
+    expect(second).not.toContain(firstAnchor);
   });
 });
 

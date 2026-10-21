@@ -181,7 +181,18 @@ export interface ReconciliationMetrics {
   watcherResubscribes: number;
   watcherRootMissing: number;
   watcherUnreadableEntries: number;
+  inPlaceSkillRescanFailures: number;
   watcherResubscribesAbandoned: number;
+  vanishPending: number;
+  vanishPairedIdentity: number;
+  vanishPairedHash: number;
+  vanishRecreated: number;
+  vanishDeleted: number;
+  vanishShutdown: number;
+  vanishUnconfirmed: number;
+  outsideRenameRecordFailures: number;
+  outsideRenameClaimFailures: number;
+  branchSwitchRecheckShortfalls: number;
 }
 
 const counters: ReconciliationMetrics = {
@@ -313,7 +324,18 @@ const counters: ReconciliationMetrics = {
   watcherResubscribes: 0,
   watcherRootMissing: 0,
   watcherUnreadableEntries: 0,
+  inPlaceSkillRescanFailures: 0,
   watcherResubscribesAbandoned: 0,
+  vanishPending: 0,
+  vanishPairedIdentity: 0,
+  vanishPairedHash: 0,
+  vanishRecreated: 0,
+  vanishDeleted: 0,
+  vanishShutdown: 0,
+  vanishUnconfirmed: 0,
+  outsideRenameRecordFailures: 0,
+  outsideRenameClaimFailures: 0,
+  branchSwitchRecheckShortfalls: 0,
 };
 
 export function incrementReconcile(): void {
@@ -787,8 +809,63 @@ export function incrementWatcherUnreadableEntries(): void {
   counters.watcherUnreadableEntries++;
 }
 
+export function incrementInPlaceSkillRescanFailures(): void {
+  counters.inPlaceSkillRescanFailures++;
+}
+
 export function incrementWatcherResubscribesAbandoned(): void {
   counters.watcherResubscribesAbandoned++;
+}
+
+export type VanishOutcome =
+  | 'pending'
+  | 'paired-identity'
+  | 'paired-hash'
+  | 'recreated'
+  | 'deleted'
+  | 'shutdown'
+  | 'unconfirmed';
+
+export function recordVanishOutcome(outcome: VanishOutcome): void {
+  switch (outcome) {
+    case 'pending':
+      counters.vanishPending++;
+      return;
+    case 'paired-identity':
+      counters.vanishPairedIdentity++;
+      return;
+    case 'paired-hash':
+      counters.vanishPairedHash++;
+      return;
+    case 'recreated':
+      counters.vanishRecreated++;
+      return;
+    case 'deleted':
+      counters.vanishDeleted++;
+      return;
+    case 'shutdown':
+      counters.vanishShutdown++;
+      return;
+    case 'unconfirmed':
+      counters.vanishUnconfirmed++;
+      return;
+    default: {
+      const unhandled: never = outcome;
+      throw new Error(`unhandled vanish outcome: ${String(unhandled)}`);
+    }
+  }
+}
+
+export function incrementOutsideRenameRecordFailures(): void {
+  counters.outsideRenameRecordFailures++;
+}
+
+export function incrementOutsideRenameClaimFailures(): void {
+  counters.outsideRenameClaimFailures++;
+}
+
+export function incrementBranchSwitchRecheckShortfalls(): void {
+  counters.branchSwitchRecheckShortfalls++;
 }
 
 export function incrementCollabSocketFilteredError(code: 'EPIPE' | 'ECONNRESET'): void {
@@ -981,5 +1058,16 @@ export function resetMetrics(): void {
   counters.watcherResubscribes = 0;
   counters.watcherRootMissing = 0;
   counters.watcherUnreadableEntries = 0;
+  counters.inPlaceSkillRescanFailures = 0;
   counters.watcherResubscribesAbandoned = 0;
+  counters.vanishPending = 0;
+  counters.vanishPairedIdentity = 0;
+  counters.vanishPairedHash = 0;
+  counters.vanishRecreated = 0;
+  counters.vanishDeleted = 0;
+  counters.vanishShutdown = 0;
+  counters.vanishUnconfirmed = 0;
+  counters.outsideRenameRecordFailures = 0;
+  counters.outsideRenameClaimFailures = 0;
+  counters.branchSwitchRecheckShortfalls = 0;
 }

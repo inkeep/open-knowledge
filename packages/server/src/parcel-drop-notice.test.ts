@@ -29,6 +29,7 @@ import {
   createContentFilter,
   createContentFilterAsync,
 } from './content-filter.ts';
+import { DerivedDocumentIndex } from './derived-document-index.ts';
 import { _resetDocExtensionsForTests, getDocExtension } from './doc-extensions.ts';
 import {
   classifyEvents,
@@ -4089,8 +4090,6 @@ test.each([
       server = await bootCompositionRig(contentDir);
       await server.ready;
       const active = server;
-      const firstConnection = await active.serverInstance.hocuspocus.openDirectConnection('first');
-      connections.push(firstConnection);
       const laterConnection = await active.serverInstance.hocuspocus.openDirectConnection('later');
       connections.push(laterConnection);
       const lifecycle = laterConnection.document.getMap('lifecycle');
@@ -4106,13 +4105,16 @@ test.each([
         expect(readFileSync(later, 'utf8')).toBe(recreatedBytes);
         recreationCount += 1;
       };
-      active.serverInstance.hocuspocus.configuration.extensions.push({
-        async afterUnloadDocument({ documentName }: { documentName: string }) {
-          if (!armed || documentName !== 'first') return;
-          hookCount += 1;
-          if (timing === 'during') await recreate();
+      const recordDiskDelete = DerivedDocumentIndex.prototype.recordDiskDelete;
+      vi.spyOn(DerivedDocumentIndex.prototype, 'recordDiskDelete').mockImplementation(
+        async function (this: DerivedDocumentIndex, documentName: string) {
+          if (armed && documentName === 'first') {
+            hookCount += 1;
+            if (timing === 'during') await recreate();
+          }
+          return recordDiskDelete.call(this, documentName);
         },
-      });
+      );
       const subscription = nativeSubscriptionOn(contentDir);
       unlinkSync(first);
       unlinkSync(later);
@@ -4220,7 +4222,6 @@ test.each(['before', 'during'] as const)(
       server = await bootCompositionRig(contentDir);
       await server.ready;
       const active = server;
-      connections.push(await active.serverInstance.hocuspocus.openDirectConnection('first'));
       connections.push(await active.serverInstance.hocuspocus.openDirectConnection('later'));
       const recreate = async () => {
         const response = await fetch(`http://127.0.0.1:${active.port}/api/create-page`, {
@@ -4234,15 +4235,19 @@ test.each(['before', 'during'] as const)(
         recreations += 1;
         phases.push('recreated');
       };
+      const recordDiskDelete = DerivedDocumentIndex.prototype.recordDiskDelete;
+      vi.spyOn(DerivedDocumentIndex.prototype, 'recordDiskDelete').mockImplementation(
+        async function (this: DerivedDocumentIndex, documentName: string) {
+          if (armed && documentName === 'first') {
+            phases.push('first-deleted');
+            if (timing === 'during') await recreate();
+          }
+          return recordDiskDelete.call(this, documentName);
+        },
+      );
       active.serverInstance.hocuspocus.configuration.extensions.push({
         async afterUnloadDocument({ documentName }: { documentName: string }) {
-          if (!armed) return;
-          if (documentName === 'first') {
-            phases.push('first-unloaded');
-            if (timing === 'during') await recreate();
-          } else if (documentName === 'later') {
-            phases.push('later-unloaded');
-          }
+          if (armed && documentName === 'later') phases.push('later-unloaded');
         },
       });
       unlinkSync(first);
@@ -4261,8 +4266,8 @@ test.each(['before', 'during'] as const)(
       armed = false;
       expect(phases).toEqual(
         timing === 'before'
-          ? ['recreated', 'first-unloaded', 'later-unloaded']
-          : ['first-unloaded', 'recreated', 'later-unloaded'],
+          ? ['recreated', 'first-deleted', 'later-unloaded']
+          : ['first-deleted', 'recreated', 'later-unloaded'],
       );
       expect(recreations).toBe(1);
       expect(readFileSync(later, 'utf8')).toBe(recreatedBytes);
@@ -10193,6 +10198,8 @@ test.each([
       } else {
         await nativeSubscriptionOn(contentDir).deliver([{ type: 'delete', path: canonical }]);
       }
+      expect(lifecycle.get('status')).not.toBe('deleted-upstream');
+      await server.serverInstance.recheckDisk();
       expect(lifecycle.get('status')).toBe('deleted-upstream');
       expect(server.serverInstance.hocuspocus.documents.has('real/note')).toBe(false);
       expect(
@@ -10403,6 +10410,8 @@ test.each([
       rmSync(folder, { recursive: true });
       unlinkSync(gone);
       await nativeSubscriptionOn(contentDir).deliver([], new Error(notices[0]));
+      expect(removedLifecycle.get('status')).not.toBe('deleted-upstream');
+      await server.serverInstance.recheckDisk();
       expect.soft(lifecycle.get('status')).not.toBe('deleted-upstream');
       expect.soft(server.serverInstance.hocuspocus.documents.get('notes') === document).toBe(true);
       expect.soft(getDocExtension('notes')).toBe(docExt);

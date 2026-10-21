@@ -47,11 +47,12 @@ export interface RenameLogEntry {
     writerId: string;
     displayName: string;
   };
+  anchors?: string[];
 }
 
 export const RENAME_LOG_HARD_CAP_BYTES = 5 * 1024 * 1024;
 
-const RENAME_LOG_MAX_LINE_BYTES = 4 * 1024;
+export const RENAME_LOG_MAX_LINE_BYTES = 4 * 1024;
 
 const RENAME_LOG_FILENAME = 'renames.jsonl';
 
@@ -85,6 +86,13 @@ function validateEntry(obj: unknown): RenameLogEntry | null {
   const actor = o.actor as Record<string, unknown>;
   if (typeof actor.writerId !== 'string' || actor.writerId.length === 0) return null;
   if (typeof actor.displayName !== 'string') return null;
+  let anchors: string[] | undefined;
+  if (o.anchors !== undefined) {
+    if (!Array.isArray(o.anchors)) return null;
+    if (!o.anchors.every((sha) => typeof sha === 'string' && /^[0-9a-f]{40}$/.test(sha)))
+      return null;
+    anchors = o.anchors as string[];
+  }
   return {
     v: 1,
     from: o.from,
@@ -95,6 +103,7 @@ function validateEntry(obj: unknown): RenameLogEntry | null {
     groupId: o.groupId,
     kind: o.kind,
     actor: { writerId: actor.writerId, displayName: actor.displayName },
+    ...(anchors !== undefined && anchors.length > 0 ? { anchors } : {}),
   };
 }
 
@@ -174,6 +183,31 @@ export function loadRenameLogIndex(shadowDir: string): RenameLogIndex {
   return index;
 }
 
+function renameLogLineBytes(entry: RenameLogEntry): number {
+  return Buffer.byteLength(`${JSON.stringify(entry)}\n`, 'utf-8');
+}
+
+function anchorsWithinLineLimit(entry: RenameLogEntry): RenameLogEntry {
+  const anchors = entry.anchors;
+  if (!anchors || anchors.length === 0) return entry;
+  const claimed = entry.commitSha === '' ? { ...entry, commitSha: '0'.repeat(40) } : entry;
+  if (renameLogLineBytes(claimed) <= RENAME_LOG_MAX_LINE_BYTES) return entry;
+  let bytes = renameLogLineBytes({ ...claimed, anchors: [] });
+  const kept: string[] = [];
+  for (const anchor of anchors) {
+    const added = Buffer.byteLength(JSON.stringify(anchor), 'utf-8') + (kept.length > 0 ? 1 : 0);
+    if (bytes + added > RENAME_LOG_MAX_LINE_BYTES) break;
+    bytes += added;
+    kept.push(anchor);
+  }
+  log.warn(
+    { to: entry.to, kept: kept.length, dropped: anchors.length - kept.length },
+    `[rename-log] the entry for ${entry.to} keeps ${kept.length} of ${anchors.length} writer anchors to fit the ${RENAME_LOG_MAX_LINE_BYTES}-byte line limit`,
+  );
+  const { anchors: _dropped, ...withoutAnchors } = entry;
+  return kept.length > 0 ? { ...withoutAnchors, anchors: kept } : withoutAnchors;
+}
+
 export function appendRenameLogEntry(
   shadowDir: string,
   entry: RenameLogEntry,
@@ -184,7 +218,8 @@ export function appendRenameLogEntry(
   if (!validated) {
     throw new Error('[rename-log] refusing to append malformed entry');
   }
-  const serialized = `${JSON.stringify(validated)}\n`;
+  const persisted = anchorsWithinLineLimit(validated);
+  const serialized = `${JSON.stringify(persisted)}\n`;
   if (Buffer.byteLength(serialized, 'utf-8') > RENAME_LOG_MAX_LINE_BYTES) {
     throw new Error(
       `[rename-log] entry exceeds max line size (${RENAME_LOG_MAX_LINE_BYTES} bytes)`,
@@ -205,7 +240,7 @@ export function appendRenameLogEntry(
     } catch {}
   }
   tracedAppendFileSync(path, serialized, { flag: 'a' });
-  indexInsert(index, validated);
+  indexInsert(index, persisted);
   liveEntriesGauge().add(1);
 
   if (overCap && shadow) {
@@ -258,6 +293,7 @@ function parseGitTimeoutMs(): number {
 interface PredecessorChainEntry {
   path: string;
   renameCommit: string | null;
+  anchors?: readonly string[];
 }
 
 export const MAX_PREDECESSOR_CHAIN_DEPTH = 100;
@@ -299,7 +335,7 @@ export function expandPredecessors(
       skipped += 1;
       break;
     }
-    chain.push({ path: entry.from, renameCommit: entry.commitSha });
+    chain.push({ path: entry.from, renameCommit: entry.commitSha, anchors: entry.anchors });
     cursor = entry.from;
   }
   chain.reverse();
@@ -319,15 +355,45 @@ export function createSeedsCache(): SeedsCache {
   return new Map();
 }
 
+async function anchorsStillInHistory(
+  shadow: ShadowHandle,
+  renameCommit: string,
+  anchors: readonly string[],
+): Promise<string[]> {
+  const candidates = [...new Set(anchors)].filter((anchor) => anchor !== renameCommit);
+  if (candidates.length === 0) return [];
+  let raw: string;
+  try {
+    raw = await shadowGit(shadow).raw('rev-list', '--no-walk', '--ignore-missing', ...candidates);
+  } catch (err) {
+    log.warn(
+      { renameCommit, anchors: candidates.length, err },
+      `[rename-log] WARN: buildSeeds: could not check the writer anchors of rename commit ${renameCommit}; walking without them`,
+    );
+    return [];
+  }
+  const present = new Set(raw.split('\n').map((line) => line.trim()));
+  const kept = candidates.filter((anchor) => present.has(anchor));
+  if (kept.length < candidates.length) {
+    log.info(
+      { renameCommit, dropped: candidates.length - kept.length },
+      `[rename-log] buildSeeds: skipped ${candidates.length - kept.length} writer anchors of rename commit ${renameCommit} whose commits are gone`,
+    );
+  }
+  return kept;
+}
+
 export async function buildSeeds(
   shadow: ShadowHandle,
   renameCommit: string,
   branch: string,
   cache?: SeedsCache,
+  anchors: readonly string[] = [],
 ): Promise<string[]> {
   return withSpan('rename.buildSeeds', undefined, async (span) => {
+    const cacheKey = `${branch}:${renameCommit}:${[...anchors].sort().join(',')}`;
     if (cache) {
-      const hit = cache.get(`${branch}:${renameCommit}`);
+      const hit = cache.get(cacheKey);
       if (hit) {
         span.setAttribute('rename.seeds_count', hit.length);
         span.setAttribute('rename.cache_hit', true);
@@ -336,6 +402,7 @@ export async function buildSeeds(
     }
 
     const sg = shadowGit(shadow);
+    const liveAnchors = await anchorsStillInHistory(shadow, renameCommit, anchors);
 
     let renameAuthorDate: string;
     try {
@@ -345,12 +412,12 @@ export async function buildSeeds(
         { renameCommit, err },
         `[rename-log] WARN: buildSeeds: git show failed for rename commit ${renameCommit}; falling back to single-seed`,
       );
-      span.setAttribute('rename.seeds_count', 1);
-      return [renameCommit];
+      span.setAttribute('rename.seeds_count', 1 + liveAnchors.length);
+      return [renameCommit, ...liveAnchors];
     }
     if (!renameAuthorDate) {
-      span.setAttribute('rename.seeds_count', 1);
-      return [renameCommit];
+      span.setAttribute('rename.seeds_count', 1 + liveAnchors.length);
+      return [renameCommit, ...liveAnchors];
     }
 
     let raw: string;
@@ -366,11 +433,12 @@ export async function buildSeeds(
         { branch, err },
         `[rename-log] WARN: buildSeeds: for-each-ref failed for branch ${branch}; falling back to single-seed`,
       );
-      span.setAttribute('rename.seeds_count', 1);
-      return [renameCommit];
+      span.setAttribute('rename.seeds_count', 1 + liveAnchors.length);
+      return [renameCommit, ...liveAnchors];
     }
 
     const seeds: string[] = [renameCommit];
+    seeds.push(...liveAnchors);
     for (const line of raw.split('\n')) {
       const trimmed = line.trim();
       if (!trimmed) continue;
@@ -383,7 +451,7 @@ export async function buildSeeds(
       if (date < renameAuthorDate) seeds.push(sha);
     }
     span.setAttribute('rename.seeds_count', seeds.length);
-    if (cache) cache.set(`${branch}:${renameCommit}`, seeds);
+    if (cache) cache.set(cacheKey, seeds);
     return seeds;
   });
 }
@@ -1030,7 +1098,7 @@ export async function resolveDocPathAtCommit(
   const predecessorAncestors: Array<Set<string> | null> = await Promise.all(
     chain.map(async (step) => {
       if (step.renameCommit === null) return null;
-      const seeds = await buildSeeds(shadow, step.renameCommit, branch, seedsCache);
+      const seeds = await buildSeeds(shadow, step.renameCommit, branch, seedsCache, step.anchors);
       if (seeds.length === 0) return new Set<string>();
       return buildAncestorShaSet(shadow, seeds, branch, cache);
     }),

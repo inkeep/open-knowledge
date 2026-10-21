@@ -18,6 +18,7 @@ import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
 import { isProjectRoot } from './fs/find-project-root.ts';
 import { getLogger } from './logger.ts';
+import { incrementInPlaceSkillRescanFailures } from './metrics.ts';
 import { toPosix } from './path-utils.ts';
 import { withSpan } from './telemetry.ts';
 
@@ -648,9 +649,30 @@ export interface ContentFilter {
   peekFreshInPlaceSkillDirsFingerprint(): string;
 }
 
+function createSkillRescanReporter(): { failed(err: unknown): void; succeeded(): void } {
+  let faulted = false;
+  return {
+    failed(err) {
+      incrementInPlaceSkillRescanFailures();
+      if (faulted) return;
+      faulted = true;
+      log.warn(
+        { err },
+        'in-place skill re-scan failed; the previous allow-list stays until a re-scan succeeds, and further failures are only counted',
+      );
+    },
+    succeeded() {
+      if (!faulted) return;
+      faulted = false;
+      log.info({}, 'in-place skill re-scan works again');
+    },
+  };
+}
+
 export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
   const { projectDir, contentDir, onAfterRebuild, singleDocRelPath } = opts;
   let inPlaceSkillDirs: ReadonlySet<string> = opts.inPlaceSkillDirs ?? new Set();
+  const skillRescan = createSkillRescanReporter();
   let configuredAttachmentFolder = attachmentFolderShape(
     opts.attachmentFolderPath ?? DEFAULT_ATTACHMENT_FOLDER_PATH,
   );
@@ -980,8 +1002,9 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       if (!opts.rescanInPlaceSkillDirs) return;
       try {
         inPlaceSkillDirs = opts.rescanInPlaceSkillDirs(inPlaceSkillDirs);
+        skillRescan.succeeded();
       } catch (err) {
-        log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
+        skillRescan.failed(err);
       }
     },
 
@@ -1010,8 +1033,9 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
         if (opts.rescanInPlaceSkillDirs) {
           try {
             inPlaceSkillDirs = opts.rescanInPlaceSkillDirs(inPlaceSkillDirs);
+            skillRescan.succeeded();
           } catch (err) {
-            log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
+            skillRescan.failed(err);
           }
         }
 
@@ -1313,6 +1337,7 @@ async function initContentDirStateAsync(
 export async function createContentFilterAsync(opts: ContentFilterOptions): Promise<ContentFilter> {
   const { projectDir, contentDir, onAfterRebuild, singleDocRelPath } = opts;
   let inPlaceSkillDirs: ReadonlySet<string> = opts.inPlaceSkillDirs ?? new Set();
+  const skillRescan = createSkillRescanReporter();
   let configuredAttachmentFolder = attachmentFolderShape(
     opts.attachmentFolderPath ?? DEFAULT_ATTACHMENT_FOLDER_PATH,
   );
@@ -1604,8 +1629,9 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       if (!opts.rescanInPlaceSkillDirs) return;
       try {
         inPlaceSkillDirs = opts.rescanInPlaceSkillDirs(inPlaceSkillDirs);
+        skillRescan.succeeded();
       } catch (err) {
-        log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
+        skillRescan.failed(err);
       }
     },
 
@@ -1634,8 +1660,9 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
         if (opts.rescanInPlaceSkillDirs) {
           try {
             inPlaceSkillDirs = opts.rescanInPlaceSkillDirs(inPlaceSkillDirs);
+            skillRescan.succeeded();
           } catch (err) {
-            log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
+            skillRescan.failed(err);
           }
         }
         const prevIg = ig;

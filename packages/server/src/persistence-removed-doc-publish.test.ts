@@ -217,14 +217,14 @@ describe('persistence publish guard — a removed document is never republished'
     expect(refusalEvents(warn).at(-1)?.reason).toBe('file-absent');
   });
 
-  test('refuses after a branch switch has dropped the reconciled base', async () => {
+  test('refuses after the reconciled base has been dropped', async () => {
     writeFileSync(docPath, SEEDED, 'utf-8');
     const persistence = persistenceWith();
     await loadFromDisk(persistence);
 
     document.transact(() => appendUnflushedEdit(document), BROWSER_ORIGIN);
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    durabilityState.switchReconciledBaseScope('feature');
+    durabilityState.deleteReconciledBase(docName);
     expect(durabilityState.getReconciledBase(docName)).toBeUndefined();
     rmSync(docPath);
 
