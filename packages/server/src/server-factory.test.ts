@@ -63,7 +63,7 @@ import { getMetrics, resetMetrics } from './metrics.ts';
 import { ensureProjectGit } from './project-git.ts';
 import { MAX_LCS_CELLS } from './reconciliation.ts';
 import { saveRemovedDocsJournal } from './removed-docs-journal.ts';
-import { createServer, type ServerInstance } from './server-factory.ts';
+import { createServer, type ServerInstance, type ServerOptions } from './server-factory.ts';
 import { releaseServerLock } from './server-lock.ts';
 import {
   initShadowRepo,
@@ -73,6 +73,7 @@ import {
 } from './shadow-repo.ts';
 import { TagIndex } from './tag-index.ts';
 import { contentHash } from './version-hash.ts';
+import { createWatcherDouble } from './watcher-double.test-helper.ts';
 
 const watcherStartupFailures = vi.hoisted(() => ({ file: false, head: false }));
 
@@ -5660,7 +5661,10 @@ async function setupReconcileRig(prefix: string): Promise<ReconcileRig> {
   };
 }
 
-function createReconcileServer(rig: ReconcileRig): ServerInstance {
+function createReconcileServer(
+  rig: ReconcileRig,
+  watcher: Pick<ServerOptions, 'watcherBackend' | 'freshnessIntervalMs'> = {},
+): ServerInstance {
   return createServer({
     contentDir: rig.tmpDir,
     projectDir: rig.tmpDir,
@@ -5669,6 +5673,7 @@ function createReconcileServer(rig: ReconcileRig): ServerInstance {
     maxDebounce: 500,
     gitEnabled: false,
     shadowRepo: rig.shadow,
+    ...watcher,
   });
 }
 
@@ -6910,8 +6915,7 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
     }
   }, 45_000);
 
-  test('an ingest that loses its rescue and then fails to apply is not counted as an unrescued clean ingest', async (ctx) => {
-    ctx.skip(runningAsRoot, 'root bypasses the chmod refusal this test induces');
+  async function expectFailedIngestsNotCountedUnrescued(deliveries: number): Promise<void> {
     rig = await setupReconcileRig('ok-reconcile-compound-ingest-failure-');
     const docName = 'compound-ingest-failure-target';
     const initial =
@@ -6921,7 +6925,11 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
     const docPath = join(rig.tmpDir, `${docName}.md`);
     writeFileSync(docPath, initial, 'utf-8');
 
-    const server = createReconcileServer(rig);
+    const watcher = createWatcherDouble();
+    const server = createReconcileServer(rig, {
+      watcherBackend: watcher.backend,
+      freshnessIntervalMs: null,
+    });
     const chmodEntries: Array<{ path: string; mode: number }> = [];
     const warnSpy = vi.spyOn(getLogger('server'), 'warn');
     const infoSpy = vi.spyOn(getLogger('server'), 'info');
@@ -6968,10 +6976,15 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
 
       try {
         writeFileSync(docPath, theirs, 'utf-8');
+        for (let delivery = 0; delivery < deliveries; delivery++) {
+          watcher.subscriptionFor(rig.tmpDir).deliver([{ type: 'update', path: docPath }]);
+        }
 
         await vi.waitFor(
           () =>
-            expect(getMetrics().diskAuthoritativeIngestApplyFailures).toBe(applyFailuresBefore + 1),
+            expect(getMetrics().diskAuthoritativeIngestApplyFailures).toBe(
+              applyFailuresBefore + deliveries,
+            ),
           { timeout: 10_000, interval: 25 },
         );
       } finally {
@@ -7002,7 +7015,18 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
       errorSpy.mockRestore();
       await server.destroy();
     }
+  }
+
+  test('an ingest that loses its rescue and then fails to apply is not counted as an unrescued clean ingest', async (ctx) => {
+    ctx.skip(runningAsRoot, 'root bypasses the chmod refusal this test induces');
+    await expectFailedIngestsNotCountedUnrescued(1);
   }, 45_000);
+
+  test('a disk update delivered twice whose ingest loses its rescue and fails to apply both times is not counted as an unrescued clean ingest', async (ctx) => {
+    ctx.skip(runningAsRoot, 'root bypasses the chmod refusal this test induces');
+    await expectFailedIngestsNotCountedUnrescued(2);
+  }, 45_000);
+
   test('an ingest that loses its rescue and then fails to apply after the live Y.Text is overwritten is reported as an unrescued loss', async (ctx) => {
     ctx.skip(runningAsRoot, 'root bypasses the chmod refusal this test induces');
     rig = await setupReconcileRig('ok-reconcile-post-write-ingest-failure-');
