@@ -2538,12 +2538,20 @@ section[data-editor-pane-id] {
   }
 }
 
-.ProseMirror p.is-empty::before {
-  content: attr(data-placeholder);
+.ProseMirror p.is-empty::before,
+.ProseMirror[data-empty-placeholder]:empty::before {
   pointer-events: none;
   float: left;
   height: 0;
   @apply text-muted-foreground/60;
+}
+
+.ProseMirror p.is-empty::before {
+  content: attr(data-placeholder);
+}
+
+.ProseMirror[data-empty-placeholder]:empty::before {
+  content: attr(data-empty-placeholder);
 }
 
 /* When any JSX prop panel is open in this editor, suppress the slash-command

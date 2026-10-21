@@ -367,7 +367,7 @@ function admitFocusedTextCaret(view: PMEditorView, event: KeyboardEvent): void {
 }
 
 function buildEditorOptions(args: BuildEditorOptionsArgs): Partial<EditorOptions> {
-  const { provider, clipboard, ctorStart } = args;
+  const { provider, placeholder, clipboard, ctorStart } = args;
   return {
     onBeforeCreate: ({ editor }) => {
       editorCtorStartTimes.set(editor, ctorStart);
@@ -390,6 +390,7 @@ function buildEditorOptions(args: BuildEditorOptionsArgs): Partial<EditorOptions
     editorProps: {
       attributes: {
         class: 'pt-4 pb-4 h-full',
+        ...(placeholder === undefined ? {} : { 'data-empty-placeholder': placeholder }),
       },
       clipboardTextParser: (text, _context, _plain, view) => {
         const json = clipboard.mdManager.parse(text);
