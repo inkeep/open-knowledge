@@ -3699,6 +3699,21 @@ html.dark [data-app-header] button[data-variant="ghost"]:is(:hover, [data-state=
   background-color: oklch(from var(--desk) calc(l + 0.04) c h);
 }
 
+@media (hover: hover) {
+  [data-app-header]
+    [data-pane-switcher]
+    button[data-variant="ghost"]:not([aria-pressed="true"]):hover {
+    background-color: oklch(from var(--foreground) l c h / 0.1);
+  }
+}
+
+html.dark
+  [data-app-header]
+  [data-pane-switcher]
+  button[data-variant="ghost"][aria-pressed="true"]:is(:hover, [data-state="open"]) {
+  background-color: oklch(from var(--foreground) l c h / 0.15);
+}
+
 /*
   Electron-mode outer-canvas alpha-aware retrofit.
 

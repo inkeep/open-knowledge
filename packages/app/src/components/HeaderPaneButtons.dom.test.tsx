@@ -33,6 +33,8 @@ const HIGH_CONTRAST_OUTLINE = [
   'contrast-more:outline-solid',
   'contrast-more:outline-2',
 ];
+const SWITCHER_TRACK = ['bg-foreground/5', 'p-0.5', 'rounded-[10px]'];
+const RAISED_SEGMENT = ['bg-background', 'shadow-sm'];
 
 const ORIGINAL_PLATFORM = globalThis.navigator.platform;
 
@@ -324,6 +326,35 @@ describe('HeaderPaneButtons', () => {
       ...PRESSED_HOVER_LOOK,
       ...HIGH_CONTRAST_OUTLINE,
     ]);
+  });
+
+  test('with one pane shown at a time the buttons sit on one track with the shown pane raised, and a press on it asks for nothing', async () => {
+    const user = userEvent.setup();
+    paneVisibilityStore.publish({ editor: SHOWN, agents: HIDDEN, terminal: null }, true);
+    const requests = recordRequests();
+    renderButtons();
+
+    const group = screen.getByRole('group', { name: 'Panels' });
+    const shown = screen.getByRole('button', { name: 'Editor' });
+    const idle = screen.getByRole('button', { name: 'Agents' });
+    expectVisualClassTokens(group.className, SWITCHER_TRACK);
+    expect(shown.getAttribute('aria-pressed')).toBe('true');
+    expect(idle.getAttribute('aria-pressed')).toBe('false');
+    expectVisualClassTokens(shown.className, [...RAISED_SEGMENT, ...HIGH_CONTRAST_OUTLINE]);
+    expectVisualClassTokensAbsent(shown.className, PRESSED_LOOK);
+    expectVisualClassTokensAbsent(idle.className, [...RAISED_SEGMENT, ...PRESSED_LOOK]);
+
+    await user.click(shown);
+    expect(requests).toEqual([]);
+    await user.click(idle);
+    expect(requests).toEqual([{ pane: 'agents', open: true, reason: 'user' }]);
+
+    act(() => {
+      paneVisibilityStore.publish({ editor: SHOWN, agents: HIDDEN, terminal: null }, false);
+    });
+    expectVisualClassTokensAbsent(group.className, SWITCHER_TRACK);
+    expectVisualClassTokens(shown.className, PRESSED_LOOK);
+    expectVisualClassTokensAbsent(shown.className, RAISED_SEGMENT);
   });
 
   test('useHeaderPaneButtonSet lists the panes to render in header order', () => {

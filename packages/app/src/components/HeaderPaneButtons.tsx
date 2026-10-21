@@ -33,8 +33,20 @@ const PANE_SHORTCUT = {
   terminal: 'toggle-terminal-panel',
 } as const satisfies Record<PaneId, KeyboardShortcutId | null>;
 
-const PRESSED_CLASSES =
-  'bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary outline-current -outline-offset-2 forced-colors:outline-solid forced-colors:outline-2 contrast-more:outline-solid contrast-more:outline-2';
+const HIGH_CONTRAST_OUTLINE_CLASSES =
+  'outline-current -outline-offset-2 forced-colors:outline-solid forced-colors:outline-2 contrast-more:outline-solid contrast-more:outline-2';
+
+const PRESSED_CLASSES = cn(
+  'bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary',
+  HIGH_CONTRAST_OUTLINE_CLASSES,
+);
+
+const SWITCHER_TRACK_CLASSES = '-m-0.5 rounded-[10px] bg-foreground/5 p-0.5';
+
+const SWITCHER_SHOWN_CLASSES = cn(
+  'bg-background text-foreground shadow-sm hover:bg-background hover:text-foreground dark:bg-foreground/15',
+  HIGH_CONTRAST_OUTLINE_CLASSES,
+);
 
 function useTerminalTurnedOff(): boolean {
   const { enabled, synced } = useTerminalConsentState();
@@ -64,7 +76,24 @@ export function useHeaderPaneButtonSet(): readonly PaneId[] {
   return useHeaderPaneButtonStates().map(({ pane }) => pane);
 }
 
-function HeaderPaneButton({ pane, pressed }: HeaderPaneButtonState) {
+function useOnePaneAtATime(): boolean {
+  return useSyncExternalStore(
+    paneVisibilityStore.subscribe,
+    paneVisibilityStore.isExclusive,
+    paneVisibilityStore.isExclusive,
+  );
+}
+
+function pressedLook(pressed: boolean, switcher: boolean): string | false {
+  if (switcher) return pressed && SWITCHER_SHOWN_CLASSES;
+  return pressed && PRESSED_CLASSES;
+}
+
+function HeaderPaneButton({
+  pane,
+  pressed,
+  switcher,
+}: HeaderPaneButtonState & { readonly switcher: boolean }) {
   const { t } = useLingui();
   const name = t(PANE_LABEL[pane]);
   const Icon = PANE_ICON[pane];
@@ -86,7 +115,7 @@ function HeaderPaneButton({ pane, pressed }: HeaderPaneButtonState) {
             paneVisibilityStore.request(pane, !pressed, 'user');
             if (pressed) queueMicrotask(() => button.focus());
           }}
-          className={cn('text-muted-foreground', pressed && PRESSED_CLASSES)}
+          className={cn('text-muted-foreground', pressedLook(pressed, switcher))}
         >
           <Icon aria-hidden="true" className="size-4" />
         </Button>
@@ -107,6 +136,7 @@ function HeaderPaneButton({ pane, pressed }: HeaderPaneButtonState) {
 export function HeaderPaneButtons() {
   const { t } = useLingui();
   const buttons = useHeaderPaneButtonStates();
+  const switcher = useOnePaneAtATime();
   if (buttons.length === 0) return null;
 
   return (
@@ -117,9 +147,14 @@ export function HeaderPaneButtons() {
         className="mx-1 h-4 data-vertical:self-center forced-colors:border-l"
       />
       {/* biome-ignore lint/a11y/useSemanticElements: a cluster of pane toggles is not a form-control set; <fieldset> would impose form chrome, and ButtonGroup squares the pressed tint. */}
-      <div role="group" aria-label={t`Panels`} className="flex items-center gap-0.5">
+      <div
+        role="group"
+        aria-label={t`Panels`}
+        data-pane-switcher={switcher ? '' : undefined}
+        className={cn('flex items-center gap-0.5', switcher && SWITCHER_TRACK_CLASSES)}
+      >
         {buttons.map(({ pane, pressed }) => (
-          <HeaderPaneButton key={pane} pane={pane} pressed={pressed} />
+          <HeaderPaneButton key={pane} pane={pane} pressed={pressed} switcher={switcher} />
         ))}
       </div>
     </div>

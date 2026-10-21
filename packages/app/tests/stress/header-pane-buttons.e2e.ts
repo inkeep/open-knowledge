@@ -1046,6 +1046,101 @@ test.describe('the pane buttons for keyboard, screen-reader and high-contrast us
     });
   }
 
+  for (const theme of ['light', 'dark'] as const) {
+    test(`below 48rem the pane buttons sit on one track with the shown pane raised in the ${theme} theme, and widening brings back the separate toggles`, async ({
+      page,
+      api,
+    }) => {
+      await page.emulateMedia({ colorScheme: theme });
+      await page.addInitScript((value) => window.localStorage.setItem('ok-theme-v1', value), theme);
+      await openWeb(page, api, `switcher-${theme}`);
+      await expect(page.locator('html')).toHaveClass(new RegExp(`\\b${theme}\\b`));
+      const group = page.getByRole('group', { name: 'Panels', exact: true });
+      const editor = headerPaneButton(page, 'editor');
+      const agents = headerPaneButton(page, 'agents');
+      await movePointerOffHeader(page);
+      const wideIdle = await readToggleLook(agents);
+      await expect(group).not.toHaveAttribute('data-pane-switcher');
+
+      await page.setViewportSize({ width: 767, height: 800 });
+      await expect(group).toHaveAttribute('data-pane-switcher', '');
+      await expect(editor).toHaveAttribute('aria-pressed', 'true');
+      await expect(agents).toHaveAttribute('aria-pressed', 'false');
+      await movePointerOffHeader(page);
+      const shown = await readToggleLook(editor);
+      const idle = await readToggleLook(agents);
+      await agents.hover();
+      const hoveredIdle = await readToggleLook(agents);
+      await editor.hover();
+      const hoveredShown = await readToggleLook(editor);
+
+      expect(
+        contrastRatio(idle.background, wideIdle.background),
+        'the track against the header',
+      ).toBeGreaterThanOrEqual(1.03);
+      expect(
+        contrastRatio(shown.background, idle.background),
+        'the shown pane against the track',
+      ).toBeGreaterThanOrEqual(1.03);
+      expect(shown.boxShadow, 'the shown pane is raised').not.toBe('none');
+      expect(idle.boxShadow).toBe('none');
+      expect(
+        contrastRatio(hoveredIdle.background, idle.background),
+        'a hovered pane against the track',
+      ).toBeGreaterThanOrEqual(1.03);
+      expect(hoveredIdle.background).not.toEqual(shown.background);
+      const lightness = (color: readonly number[]) =>
+        color.reduce((sum, channel) => sum + channel, 0);
+      if (theme === 'light') {
+        expect(lightness(hoveredIdle.background), 'a hovered pane darkens the track').toBeLessThan(
+          lightness(idle.background),
+        );
+      } else {
+        expect(
+          lightness(hoveredIdle.background),
+          'a hovered pane lightens the track',
+        ).toBeGreaterThan(lightness(idle.background));
+      }
+      expect(hoveredShown.background, 'the shown pane stays raised under the pointer').toEqual(
+        shown.background,
+      );
+
+      await page.setViewportSize({ width: 1600, height: 900 });
+      await expect(group).not.toHaveAttribute('data-pane-switcher');
+      await movePointerOffHeader(page);
+      expect((await readToggleLook(agents)).background).toEqual(wideIdle.background);
+    });
+  }
+
+  test('below 48rem forced colors and increased contrast outline only the shown pane on the track', async ({
+    page,
+    api,
+  }) => {
+    await openWeb(page, api, 'switcher-high-contrast');
+    await page.setViewportSize({ width: 767, height: 800 });
+    await expect(page.getByRole('group', { name: 'Panels', exact: true })).toHaveAttribute(
+      'data-pane-switcher',
+      '',
+    );
+    const editor = headerPaneButton(page, 'editor');
+    const agents = headerPaneButton(page, 'agents');
+    await expect(editor).toHaveAttribute('aria-pressed', 'true');
+
+    for (const { media, query } of [
+      { media: { forcedColors: 'active' }, query: '(forced-colors: active)' },
+      { media: { contrast: 'more' }, query: '(prefers-contrast: more)' },
+    ] as const) {
+      await page.emulateMedia({ forcedColors: 'none', contrast: 'no-preference', ...media });
+      expect(await page.evaluate((mediaQuery) => matchMedia(mediaQuery).matches, query)).toBe(true);
+      await movePointerOffHeader(page);
+      const shown = await readToggleLook(editor);
+      expect(shown.outlineStyle, query).toBe('solid');
+      expect(shown.outlineWidthPx, query).toBeGreaterThanOrEqual(1);
+      expect(contrastRatio(shown.outlineColor, shown.background), query).toBeGreaterThanOrEqual(3);
+      expect((await readToggleLook(agents)).outlineStyle, query).toBe('none');
+    }
+  });
+
   test('forced colors and increased contrast outline the on button and leave the off button bare', async ({
     page,
     api,
