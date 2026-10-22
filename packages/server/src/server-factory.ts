@@ -4752,7 +4752,8 @@ export function createServer(options: ServerOptions): ServerInstance {
     inflightDestroy = (async () => {
       const t0 = Date.now();
       const phaseErrors: Array<{ phase: string; error: string }> = [];
-      const preludeDeadline = Date.now() + Math.min(destroyTimeoutMs, DEFAULT_SIGTERM_GRACE_MS / 5);
+      const graceShareMs = Math.min(destroyTimeoutMs, DEFAULT_SIGTERM_GRACE_MS / 5);
+      const preludeDeadline = Date.now() + graceShareMs;
       const preludeRemaining = () => Math.max(1, preludeDeadline - Date.now());
       const joinPrelude = async <T>(operation: Promise<T>, phase: string): Promise<T> => {
         let timer: ReturnType<typeof setTimeout> | undefined;
@@ -4994,7 +4995,29 @@ export function createServer(options: ServerOptions): ServerInstance {
             log.error({ err }, '[server] shutdown phase-3 flush failed');
           }
 
-          void derivedDocumentIndex.close();
+          let derivedIndexCloseTimeoutId: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await Promise.race([
+              derivedDocumentIndex.close(),
+              new Promise<never>((_, reject) => {
+                derivedIndexCloseTimeoutId = setTimeout(
+                  () =>
+                    reject(
+                      new Error(`derived index close did not settle within ${graceShareMs}ms`),
+                    ),
+                  graceShareMs,
+                );
+              }),
+            ]);
+          } catch (err) {
+            phaseErrors.push({
+              phase: 'derived-index-close',
+              error: err instanceof Error ? err.message : String(err),
+            });
+            log.error({ err }, '[server] shutdown derived-index close failed');
+          } finally {
+            if (derivedIndexCloseTimeoutId !== undefined) clearTimeout(derivedIndexCloseTimeoutId);
+          }
 
           let l2TimeoutId: ReturnType<typeof setTimeout> | undefined;
           try {

@@ -31,7 +31,7 @@ import {
 } from '@inkeep/open-knowledge-core/server';
 import { parseCheckpoint } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stringify as stringifyYaml } from 'yaml';
 import * as Y from 'yjs';
 import { runningAsRoot } from '../../../test-support/capabilities.test-helper.ts';
@@ -1485,35 +1485,46 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     expect(shutdownLogs[0].payload.documentCount).toBe(5);
   });
 
-  test('destroy does not await the derived-index cache drain', async () => {
+  test('destroy bounds a derived-index close that never settles and records the phase error', async () => {
     const beginStartup = vi.spyOn(DerivedDocumentIndex.prototype, 'beginStartup');
     const server = createServer({
       contentDir: tmpDir,
       projectDir: tmpDir,
       quiet: true,
-      destroyTimeoutMs: 500,
+      destroyTimeoutMs: 200,
     });
     await server.ready;
     const coordinator = beginStartup.mock.instances[0] as DerivedDocumentIndex;
     beginStartup.mockRestore();
-    const close = vi
-      .spyOn(DerivedDocumentIndex.prototype, 'close')
-      .mockImplementation(() => new Promise<void>(() => {}));
-    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let releaseTagClose!: () => void;
+    const tagCloseReleased = new Promise<void>((resolve) => {
+      releaseTagClose = resolve;
+    });
+    let tagCloseEntered = false;
+    const tagCloseImplementation = TagIndex.prototype.close;
+    const tagClose = vi.spyOn(TagIndex.prototype, 'close').mockImplementation(async function (
+      this: TagIndex,
+    ) {
+      tagCloseEntered = true;
+      await tagCloseImplementation.call(this);
+      await tagCloseReleased;
+    });
 
     try {
-      const result = await Promise.race([
-        server.destroy().then(() => 'destroyed' as const),
-        new Promise<'timed-out'>((resolveTimeout) => {
-          timeout = setTimeout(() => resolveTimeout('timed-out'), 2_000);
-        }),
-      ]);
+      await server.destroy();
 
-      expect(result).toBe('destroyed');
-      expect(close).toHaveBeenCalledTimes(1);
+      expect(tagCloseEntered).toBe(true);
+      const closePhaseErrors = logCapture
+        .getCalls('warn', 'shutdown flushed')
+        .flatMap(
+          (entry) => (entry.payload.phaseErrors as Array<{ phase: string; error: string }>) ?? [],
+        )
+        .filter((e) => e.phase === 'derived-index-close');
+      expect(closePhaseErrors).toHaveLength(1);
+      expect(logCapture.getCalls('info', 'shutdown flushed')).toHaveLength(0);
     } finally {
-      if (timeout) clearTimeout(timeout);
-      close.mockRestore();
+      releaseTagClose();
+      tagClose.mockRestore();
       await coordinator.close();
     }
   });
@@ -4194,12 +4205,6 @@ describe('createServer() — generated index wiring', () => {
   let server: ServerInstance | null;
   let shadowHandle: Awaited<ReturnType<typeof initShadowRepo>>;
   let localHttp: import('node:http').Server | null = null;
-  let indexDrains: Promise<void>[];
-  let holdIndexClose: Promise<void> | undefined;
-  let releaseIndexClose: (() => void) | undefined;
-  let restoreIndexClose: () => void;
-  let onDestroyComplete: (() => void) | undefined;
-  let onBeforeRemove: (() => void) | undefined;
 
   const indexPath = () => join(contentDir, 'index.md');
   const readIndex = () => readFileSync(indexPath(), 'utf-8');
@@ -4340,28 +4345,8 @@ describe('createServer() — generated index wiring', () => {
     expect(res.status, body).toBe(200);
   }
 
-  beforeAll(() => {
-    const close = DerivedDocumentIndex.prototype.close;
-    const closeIndex = vi
-      .spyOn(DerivedDocumentIndex.prototype, 'close')
-      .mockImplementation(function (this: DerivedDocumentIndex) {
-        const closing = close.call(this);
-        const draining = holdIndexClose
-          ? Promise.all([closing, holdIndexClose]).then(() => undefined)
-          : closing;
-        indexDrains.push(draining);
-        return draining;
-      });
-    restoreIndexClose = () => closeIndex.mockRestore();
-  });
-
-  afterAll(() => restoreIndexClose());
-
   beforeEach(async () => {
     projectDir = await mkdtemp(join(tmpdir(), 'ok-index-wiring-'));
-    indexDrains = [];
-    holdIndexClose = undefined;
-    releaseIndexClose = undefined;
     contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
@@ -4382,10 +4367,6 @@ describe('createServer() — generated index wiring', () => {
     }
     try {
       await server?.destroy();
-      onDestroyComplete?.();
-      if (releaseIndexClose) setImmediate(releaseIndexClose);
-      await Promise.all(indexDrains);
-      onBeforeRemove?.();
     } finally {
       loggerFactory.reset();
       await rm(projectDir, { recursive: true, force: true });
@@ -4393,33 +4374,6 @@ describe('createServer() — generated index wiring', () => {
   }
 
   afterEach(cleanupFixture);
-
-  test('fixture cleanup waits for the derived-index close promise', async () => {
-    holdIndexClose = new Promise<void>((resolve) => {
-      releaseIndexClose = resolve;
-    });
-    try {
-      await bootServer();
-      let drainsSettled = false;
-      let drainsRecordedAtRemoval = 0;
-      let drainsSettledAtRemoval = false;
-      onDestroyComplete = () => {
-        void Promise.all(indexDrains).then(() => {
-          drainsSettled = true;
-        });
-      };
-      onBeforeRemove = () => {
-        drainsRecordedAtRemoval = indexDrains.length;
-        drainsSettledAtRemoval = drainsSettled;
-      };
-      await cleanupFixture();
-      expect(drainsRecordedAtRemoval).toBeGreaterThan(0);
-      expect(drainsSettledAtRemoval).toBe(true);
-    } finally {
-      onDestroyComplete = undefined;
-      onBeforeRemove = undefined;
-    }
-  });
 
   test('the setting reaches the server through the real config file', async () => {
     await bootServer();
