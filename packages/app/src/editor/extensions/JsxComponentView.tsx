@@ -1084,6 +1084,13 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
               } else {
                 nextProps[propName] = value;
               }
+              if (
+                propName === 'src' &&
+                elementAttrs.componentName === 'CommonMarkImage' &&
+                value !== currentNodeProps.src
+              ) {
+                delete nextProps.sourceUrl;
+              }
               editor.view.dispatch(
                 editor.state.tr.setNodeMarkup(p, null, {
                   ...elementAttrs,
