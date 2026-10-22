@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import childProcess, { execFileSync, spawnSync } from 'node:child_process';
 import {
   lstatSync,
   mkdirSync,
@@ -11,9 +11,10 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
 import {
   loadScopeConfig,
@@ -299,6 +300,143 @@ describe('gitignored output is outside discovery', () => {
     ]);
     expect(() => discoverInScopeFiles(root, unreadable)).toThrow(
       /packages\/desktop\/src\/tracked\.ts \(EACCES\)/,
+    );
+  });
+
+  test('retains an unreadable ignored directory when it contains tracked source', () => {
+    const root = createScratchRoot({
+      config: configWith({}),
+      files: {
+        '.gitignore': 'packages/app/src/blocked/\n',
+        'packages/app/src/blocked/tracked.ts': 'export const tracked = true;\n',
+      },
+    });
+    for (const args of [
+      ['init', '-q'],
+      ['add', '-f', 'packages/app/src/blocked/tracked.ts'],
+    ]) {
+      expect(
+        spawnSync('git', args, { cwd: root, env: { ...gitCleanEnv(), LC_ALL: 'C' } }).status,
+      ).toBe(0);
+    }
+    expect(() =>
+      discoverInScopeFiles(root, {
+        lstatSync,
+        statSync,
+        readdirSync: (path) => {
+          if (path === join(root, 'packages/app/src/blocked')) {
+            throw Object.assign(new Error('unreadable directory'), { code: 'EACCES' });
+          }
+          return readdirSync(path);
+        },
+      }),
+    ).toThrow(/packages\/app\/src\/blocked \(EACCES\)/);
+  });
+
+  test('keeps tracked source without repeating its index lookup for each ignore query', ({
+    onTestFinished,
+  }) => {
+    const root = createScratchRoot({
+      config: configWith({}),
+      files: {
+        '.gitignore': 'packages/app/src/tracked.ts\npackages/app/src/ignored.ts\n',
+        'packages/app/src/tracked.ts': 'export const tracked = true;\n',
+        'packages/app/src/authoring.ts': 'export const authoring = true;\n',
+        'packages/app/src/ignored.ts': 'export const ignored = true;\n',
+      },
+    });
+    for (const args of [
+      ['init', '-q'],
+      ['add', '-f', 'packages/app/src/tracked.ts'],
+    ]) {
+      const run = spawnSync('git', args, {
+        cwd: root,
+        env: { ...gitCleanEnv(), LC_ALL: 'C' },
+        encoding: 'utf8',
+      });
+      expect({ status: run.status, error: run.error, stderr: run.stderr }).toEqual({
+        status: 0,
+        error: undefined,
+        stderr: '',
+      });
+    }
+    const calls = vi.spyOn(childProcess, 'spawnSync');
+    syncBuiltinESMExports();
+    onTestFinished(() => {
+      calls.mockRestore();
+      syncBuiltinESMExports();
+    });
+    const files = discoverInScopeFiles(root, { readdirSync, statSync, lstatSync });
+    expect(files).toEqual(['packages/app/src/authoring.ts', 'packages/app/src/tracked.ts']);
+    const queried = calls.mock.calls
+      .filter(
+        ([command, args, options]) =>
+          command === 'git' && args[0] === 'check-ignore' && options.cwd === root,
+      )
+      .flatMap(([, , options]) => options.input.split('\0').filter(Boolean));
+    expect(queried).toContain('packages/app/src/ignored.ts');
+    expect(queried).not.toContain('packages/app/src/tracked.ts');
+  });
+
+  test('retains the index snapshot when membership changes before ignore matching', ({
+    onTestFinished,
+  }) => {
+    const root = createScratchRoot({
+      config: configWith({}),
+      files: {
+        '.gitignore': '*.ts\n',
+        'packages/app/src/before.ts': 'export const before = true;\n',
+        'packages/app/src/after.ts': 'export const after = true;\n',
+      },
+    });
+    const options = { cwd: root, env: { ...gitCleanEnv(), LC_ALL: 'C' }, encoding: 'utf8' };
+    for (const args of [
+      ['init', '-q'],
+      ['add', '-f', 'packages/app/src/before.ts'],
+    ]) {
+      expect(spawnSync('git', args, options).status).toBe(0);
+    }
+    const original = childProcess.spawnSync;
+    let changed = false;
+    const calls = vi.spyOn(childProcess, 'spawnSync').mockImplementation((command, args, opts) => {
+      const result = original(command, args, opts);
+      if (command === 'git' && args[0] === 'ls-files' && opts.cwd === root) {
+        expect(
+          original('git', ['rm', '--cached', 'packages/app/src/before.ts'], options).status,
+        ).toBe(0);
+        expect(original('git', ['add', '-f', 'packages/app/src/after.ts'], options).status).toBe(0);
+        changed = true;
+      }
+      return result;
+    });
+    syncBuiltinESMExports();
+    onTestFinished(() => {
+      calls.mockRestore();
+      syncBuiltinESMExports();
+    });
+    const files = discoverInScopeFiles(root, { readdirSync, statSync, lstatSync });
+    expect(changed).toBe(true);
+    expect(files).toEqual(['packages/app/src/before.ts']);
+  });
+
+  test('keeps Git refusals for paths inside an indexed submodule', () => {
+    const root = createScratchRoot({
+      config: configWith({}),
+      files: { 'packages/app/src/probe.ts': 'export const probe = true;\n' },
+    });
+    const options = { cwd: root, env: { ...gitCleanEnv(), LC_ALL: 'C' }, encoding: 'utf8' };
+    expect(spawnSync('git', ['init', '-q'], options).status).toBe(0);
+    const object = spawnSync('git', ['hash-object', '-w', 'packages/app/src/probe.ts'], options);
+    expect(object.status).toBe(0);
+    expect(
+      spawnSync(
+        'git',
+        ['update-index', '--add', '--cacheinfo', `160000,${object.stdout.trim()},packages/app`],
+        options,
+      ).status,
+    ).toBe(0);
+    expect(() => discoverInScopeFiles(root, { readdirSync, statSync, lstatSync })).toThrow(
+      /is in submodule/,
     );
   });
 
