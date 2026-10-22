@@ -6372,6 +6372,12 @@ msgstr "ٹیبل کے خانوں کے درمیان جائیں"
 msgid "Move block"
 msgstr "بلاک منتقل کریں"
 
+msgid "Move chat history to the left"
+msgstr "چیٹ کی سرگزشت بائیں جانب منتقل کریں"
+
+msgid "Move chat history to the right"
+msgstr "چیٹ کی سرگزشت دائیں جانب منتقل کریں"
+
 msgid "Move down"
 msgstr "نیچے لے جائیں"
 

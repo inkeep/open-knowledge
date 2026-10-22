@@ -23,6 +23,7 @@ import {
   setHeaderPane,
   terminalPaneCard,
   test,
+  threadRosterDelivered,
   type WorkerServer,
 } from '../stress/_helpers';
 import {
@@ -199,24 +200,6 @@ async function seriousOrCriticalViolations(page: Page) {
   return results.violations.filter(
     (violation) => violation.impact === 'serious' || violation.impact === 'critical',
   );
-}
-
-function threadRosterDelivered(page: Page): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error('thread socket never delivered its roster')),
-      HARNESS_TIMEOUT_MS,
-    );
-    page.on('websocket', (socket) => {
-      if (!socket.url().includes('/collab/thread')) return;
-      socket.on('framereceived', (frame) => {
-        if (typeof frame.payload !== 'string') return;
-        if (!frame.payload.includes('"op":"threads"')) return;
-        clearTimeout(timer);
-        resolve();
-      });
-    });
-  });
 }
 
 async function focusTheTerminal(page: Page): Promise<void> {

@@ -62,10 +62,10 @@ import { PANE_ICON } from '@/components/pane-icons';
 import { requestSkillsDockExpanded } from '@/components/skills-dock-expanded-store';
 import type { OkDesktopBridge, OkMenuAction } from '@/lib/desktop-bridge-types';
 import { requestDockPaneMove } from '@/lib/dock-move-requests';
-import { swapEditorSidebars } from '@/lib/editor-sidebar-side-store';
 import { i18n } from '@/lib/i18n';
 import type { KeyboardShortcutId } from '@/lib/keyboard-shortcuts';
 import { openDocInNoteWindow } from '@/lib/open-note-window';
+import { moveChatHistory, type PhysicalSide, swapEditorSidebars } from '@/lib/sidebar-side-store';
 import { openSettings } from '@/lib/use-settings-route';
 import type { ViewMenuState } from '@/lib/view-menu-state-store';
 
@@ -98,6 +98,7 @@ export interface PaletteCommandContext {
   activeDocName: string | null;
   contextualTargetKind: ContextualTargetKind;
   viewMenuState: ViewMenuState;
+  chatHistorySide: PhysicalSide;
   emitMenuAction(action: OkMenuAction): void;
   runAction(fn: () => Promise<void> | void, fallback?: string): void;
   openExternalUrl(url: string): void;
@@ -164,6 +165,8 @@ const PALETTE_COMMAND_LABELS = {
   docPanelShow: msg`Show document panel`,
   docPanelHide: msg`Hide document panel`,
   swapEditorSidebars: msg`Swap file sidebar and document panel`,
+  chatHistoryMoveLeft: msg`Move chat history to the left`,
+  chatHistoryMoveRight: msg`Move chat history to the right`,
   editorShow: msg`Show Editor`,
   editorHide: msg`Hide Editor`,
   terminalShow: msg`Show Terminal`,
@@ -274,6 +277,8 @@ const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'toggle-sidebar': PanelLeft,
   'toggle-doc-panel': PanelRight,
   'swap-editor-sidebars': ArrowLeftRight,
+  'move-chat-history-left': PanelLeft,
+  'move-chat-history-right': PanelRight,
   'toggle-terminal': PANE_ICON.terminal,
   'move-terminal': SquareTerminal,
   'toggle-agent-panel': PANE_ICON.agents,
@@ -307,6 +312,14 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
   'swap-editor-sidebars': (ctx) => {
     ctx.closePalette();
     swapEditorSidebars();
+  },
+  'move-chat-history-left': (ctx) => {
+    ctx.closePalette();
+    moveChatHistory('left');
+  },
+  'move-chat-history-right': (ctx) => {
+    ctx.closePalette();
+    moveChatHistory('right');
   },
   'open-blob-run': (ctx) => ctx.openBlobRun(),
   'new-file': (ctx) => {
@@ -396,6 +409,13 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
   'open-discord': (ctx) => ctx.openExternalUrl(OPEN_KNOWLEDGE_DISCORD_URL),
 };
 
+const STATE_AVAILABILITY: Readonly<
+  Partial<Record<string, (ctx: PaletteCommandContext) => boolean>>
+> = {
+  'move-chat-history-left': (ctx) => ctx.chatHistorySide === 'right',
+  'move-chat-history-right': (ctx) => ctx.chatHistorySide === 'left',
+};
+
 function paletteCoreContext(ctx: PaletteCommandContext): CommandContext {
   return {
     host: ctx.bridge !== null ? 'desktop' : 'web',
@@ -459,7 +479,9 @@ function toPaletteCommand(cmd: CommandIdentity): PaletteCommand {
     shortcutId: cmd.shortcutId as KeyboardShortcutId | undefined,
     shortcutDesktopOnly: cmd.shortcutDesktopOnly,
     checked: checkField ? (ctx) => ctx.viewMenuState[checkField] === true : undefined,
-    available: (ctx) => evaluateCommandAvailability(cmd.availability, paletteCoreContext(ctx)),
+    available: (ctx) =>
+      evaluateCommandAvailability(cmd.availability, paletteCoreContext(ctx)) &&
+      (STATE_AVAILABILITY[cmd.id]?.(ctx) ?? true),
     dispatch: COMMAND_DISPATCH[cmd.id] ?? busDispatch(cmd),
   };
 }

@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { EditorPaneState } from '@/editor/editor-panes';
-import { swapEditorSidebars } from '@/lib/editor-sidebar-side-store';
 import { OK_SIDEBAR_DRAG_MIME, serializeSidebarDragPayload } from '@/lib/sidebar-drag';
+import { swapEditorSidebars } from '@/lib/sidebar-side-store';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import {
   expectVisualClassTokens,

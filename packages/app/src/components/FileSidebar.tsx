@@ -104,7 +104,6 @@ import {
 import { useSettingsLoadingReason } from '@/lib/config-context';
 import { useConfigContext } from '@/lib/config-provider';
 import { subscribeToCreateTopLevelFile } from '@/lib/create-file-events';
-import { physicalSide, useFileSidebarSide } from '@/lib/editor-sidebar-side-store';
 import {
   buildSendToAiInputForActiveTarget,
   resolveActiveTargetAbsPath,
@@ -123,6 +122,7 @@ import { revealInFileManagerLabel } from '@/lib/platform-labels';
 import { revealEditorBeforeActing } from '@/lib/reveal-editor';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import { buildFolderShareInput, runShareAction } from '@/lib/share/run-share-action';
+import { physicalSide, useFileSidebarSide } from '@/lib/sidebar-side-store';
 import { useStickyAgent } from '@/lib/unified-agent-store';
 import { useDocumentDirection } from '@/lib/use-document-direction';
 import { useWorkspace } from '@/lib/use-workspace';

@@ -3,9 +3,9 @@ import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from '
 import { Button } from '@/components/ui/button.tsx';
 import { Kbd } from '@/components/ui/kbd';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { physicalSide } from '@/lib/editor-sidebar-side-store';
 import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import { isNoteWindow } from '@/lib/note-window-mode';
+import { physicalSide } from '@/lib/sidebar-side-store';
 import { useDocumentDirection } from '@/lib/use-document-direction';
 import { cn } from '@/lib/utils';
 

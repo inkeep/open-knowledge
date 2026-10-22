@@ -23,6 +23,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
+import { ChatHistorySideMenuItem } from '@/components/acp/ChatHistorySideMenuItem';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import {
   ThreadHistoryPanel,
@@ -89,6 +90,7 @@ import type { NewSessionChoice } from '@/lib/new-session-choice';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { paneVisibilityStore } from '@/lib/pane-visibility-store';
 import { RESTORE_SETTLE_TIMEOUT_MS } from '@/lib/restore-settle-timeout';
+import { useChatHistorySide } from '@/lib/sidebar-side-store';
 import { usePreferBareTerminal, writePreferBareTerminal } from '@/lib/terminal-new-tab-store';
 import {
   parseStickyCliId,
@@ -525,6 +527,7 @@ export function SessionsHost({
   }, [hostEl, container]);
 
   const [historyOpen, setHistoryOpen] = useState(false);
+  const chatHistorySide = useChatHistorySide();
   const { mode: historyMode, remeasure: remeasureHistoryMode } = useHistoryPresentationMode(
     container,
     hostThreads,
@@ -2083,7 +2086,7 @@ export function SessionsHost({
     />
   ) : null;
 
-  const trailingControls = hostThreads ? (
+  const historyToggle = hostThreads ? (
     <ThreadHistoryToggle
       open={historyOpen}
       panelId={historyPanelId}
@@ -2214,7 +2217,10 @@ export function SessionsHost({
         if (session != null) queueMicrotask(() => focusSession(session));
       }}
       newButton={newButton}
-      trailingControls={trailingControls}
+      leadingControls={chatHistorySide === 'start' ? historyToggle : null}
+      trailingControls={chatHistorySide === 'end' ? historyToggle : null}
+      rowMenu={hostThreads ? <ChatHistorySideMenuItem side={chatHistorySide} /> : undefined}
+      rowMenuFocusFallback={hostThreads ? historyToggleRef : undefined}
       onClose={closeSession}
       onRename={renameSession}
       onReorder={reorderSessions}
@@ -2234,6 +2240,29 @@ export function SessionsHost({
     </TerminalTabStrip>
   );
 
+  const historySurface = historyOpen ? (
+    <div
+      className={cn(
+        'z-20 h-full max-w-full bg-sidebar',
+        historyMode === 'cover'
+          ? 'absolute inset-0 w-full shadow-xl [-webkit-app-region:no-drag]'
+          : cn(
+              'w-(--history-panel-width) shrink-0',
+              chatHistorySide === 'start' ? 'border-e' : 'border-s',
+            ),
+      )}
+      style={
+        {
+          '--history-panel-width': `${HISTORY_PANEL_WIDTH_PX}px`,
+        } as CSSProperties
+      }
+      data-testid="agent-thread-history-surface"
+      data-side={chatHistorySide}
+    >
+      {historyPanel}
+    </div>
+  ) : null;
+
   const sessionViews = showStrip ? (
     hostThreads ? (
       <ThreadHistorySearchProvider scope={threadScope}>
@@ -2241,6 +2270,7 @@ export function SessionsHost({
           className="relative flex h-full min-h-0 min-w-0 overflow-hidden"
           data-testid="agent-panel-layout"
         >
+          {chatHistorySide === 'start' ? historySurface : null}
           <div
             className="flex min-h-0 min-w-0 flex-1 flex-col"
             data-testid="agent-panel-session-surface"
@@ -2248,24 +2278,7 @@ export function SessionsHost({
           >
             {sessionStrip}
           </div>
-          {historyOpen ? (
-            <div
-              className={cn(
-                'z-20 h-full max-w-full bg-sidebar',
-                historyMode === 'cover'
-                  ? 'absolute inset-0 w-full shadow-xl [-webkit-app-region:no-drag]'
-                  : 'w-(--history-panel-width) shrink-0 border-s',
-              )}
-              style={
-                {
-                  '--history-panel-width': `${HISTORY_PANEL_WIDTH_PX}px`,
-                } as CSSProperties
-              }
-              data-testid="agent-thread-history-surface"
-            >
-              {historyPanel}
-            </div>
-          ) : null}
+          {chatHistorySide === 'end' ? historySurface : null}
         </div>
       </ThreadHistorySearchProvider>
     ) : (

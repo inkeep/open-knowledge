@@ -3,8 +3,8 @@ import { Kbd } from '@/components/ui/kbd';
 import { Separator } from '@/components/ui/separator';
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { physicalSide } from '@/lib/editor-sidebar-side-store';
 import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
+import { physicalSide } from '@/lib/sidebar-side-store';
 import { useDocumentDirection } from '@/lib/use-document-direction';
 import { cn } from '@/lib/utils';
 

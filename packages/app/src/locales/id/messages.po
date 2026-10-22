@@ -6368,6 +6368,12 @@ msgstr "Berpindah antarsel tabel"
 msgid "Move block"
 msgstr "Pindahkan blok"
 
+msgid "Move chat history to the left"
+msgstr "Pindahkan riwayat chat ke kiri"
+
+msgid "Move chat history to the right"
+msgstr "Pindahkan riwayat chat ke kanan"
+
 msgid "Move down"
 msgstr "Turunkan"
 

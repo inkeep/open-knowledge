@@ -6372,6 +6372,12 @@ msgstr "在表格儲存格之間移動"
 msgid "Move block"
 msgstr "移動區塊"
 
+msgid "Move chat history to the left"
+msgstr "將聊天記錄移到左側"
+
+msgid "Move chat history to the right"
+msgstr "將聊天記錄移到右側"
+
 msgid "Move down"
 msgstr "下移"
 

@@ -85,7 +85,6 @@ import { type DockLayout, dockPaneMinExtent, EMPTY_DOCK_LAYOUT } from '@/lib/doc
 import type { DockNode } from '@/lib/dock-tree';
 import { focusAwayFromHiddenEditor, focusWaitsForEditor } from '@/lib/editor-hidden-focus';
 import { type EditorSidebar, resolveEditorSidebarFit } from '@/lib/editor-sidebar-fit';
-import { documentPanelSide, useFileSidebarSide } from '@/lib/editor-sidebar-side-store';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { isNoteWindow } from '@/lib/note-window-mode';
@@ -105,6 +104,7 @@ import {
   readPins,
   resolveEffectiveState,
 } from '@/lib/sidebar-pin-store';
+import { documentPanelSide, useFileSidebarSide } from '@/lib/sidebar-side-store';
 import { closeTimelineDiff, useTimelineDiffView } from '@/lib/timeline-diff-store';
 import { EditorContentOnScreenContext } from '@/lib/use-editor-pane-on-screen';
 import { useSettingsRoute } from '@/lib/use-settings-route';

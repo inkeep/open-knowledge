@@ -6368,6 +6368,12 @@ msgstr "Mover entre as células da tabela"
 msgid "Move block"
 msgstr "Mover o bloco"
 
+msgid "Move chat history to the left"
+msgstr "Mover o histórico de chats para a esquerda"
+
+msgid "Move chat history to the right"
+msgstr "Mover o histórico de chats para a direita"
+
 msgid "Move down"
 msgstr "Mover para baixo"
 

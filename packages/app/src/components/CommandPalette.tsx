@@ -103,7 +103,9 @@ import {
 import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { revealEditor } from '@/lib/reveal-editor';
+import { physicalSide, useChatHistorySide } from '@/lib/sidebar-side-store';
 import { useSingleFileMode } from '@/lib/single-file-mode';
+import { useDocumentDirection } from '@/lib/use-document-direction';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils.ts';
 import { useViewMenuState } from '@/lib/view-menu-state-store';
@@ -686,6 +688,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     paletteMode.kind === 'tag-docs' && tagDocsStatus === 'success' && tagDocs.length === 0;
 
   const viewMenuState = useViewMenuState();
+  const chatHistorySide = physicalSide(useChatHistorySide(), useDocumentDirection());
   const runMenuAction = (action: OkMenuAction) => {
     onOpenChange(false);
     emitLocalMenuAction(action, { launcherBorne: true });
@@ -703,6 +706,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     activeDocName,
     contextualTargetKind: projectContextualTargetKind(activeTarget),
     viewMenuState,
+    chatHistorySide,
     emitMenuAction: runMenuAction,
     runAction,
     openExternalUrl,

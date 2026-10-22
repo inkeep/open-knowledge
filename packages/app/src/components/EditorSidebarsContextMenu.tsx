@@ -7,7 +7,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { swapEditorSidebars } from '@/lib/editor-sidebar-side-store';
+import { swapEditorSidebars } from '@/lib/sidebar-side-store';
 
 export function EditorSidebarsContextMenu({ children }: { readonly children: ReactNode }) {
   const { t } = useLingui();

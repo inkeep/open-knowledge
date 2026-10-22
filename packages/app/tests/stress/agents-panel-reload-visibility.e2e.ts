@@ -19,6 +19,7 @@ import {
   stubAgentCatalog,
   switchColorThemeAndSettleFade,
   test,
+  threadRosterDelivered,
 } from './_helpers';
 
 const AGENTS_PANEL_MOUNT = '[data-agents-panel-mount]';
@@ -270,25 +271,6 @@ async function seedLiveThread(port: number, contentDir: string): Promise<void> {
   });
 }
 
-function nextRosterDelivery(page: Page, marks?: RouteMark[]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error('thread socket never delivered its roster')),
-      ROSTER_TIMEOUT_MS,
-    );
-    page.on('websocket', (socket) => {
-      if (!socket.url().includes('/collab/thread')) return;
-      socket.on('framereceived', (frame) => {
-        if (typeof frame.payload !== 'string') return;
-        if (!frame.payload.includes('"op":"threads"')) return;
-        marks?.push({ route: 'roster-frame', at: Date.now() });
-        clearTimeout(timer);
-        resolve();
-      });
-    });
-  });
-}
-
 function settleAfterRoster(page: Page): Promise<void> {
   return page.evaluate(
     () =>
@@ -301,7 +283,7 @@ function settleAfterRoster(page: Page): Promise<void> {
 }
 
 async function openAppWithRoster(page: Page, path = '/'): Promise<void> {
-  const roster = nextRosterDelivery(page);
+  const roster = threadRosterDelivered(page);
   await page.goto(path);
   await page.waitForFunction(() => Boolean(window.__acpThreadHarness), null, {
     timeout: BOOT_TIMEOUT_MS,
@@ -480,7 +462,9 @@ async function expectPersistedPanelLevel(page: Page, level: boolean): Promise<vo
 }
 
 async function reloadAndSettle(page: Page, marks?: RouteMark[]): Promise<void> {
-  const roster = nextRosterDelivery(page, marks);
+  const roster = threadRosterDelivered(page, () =>
+    marks?.push({ route: 'roster-frame', at: Date.now() }),
+  );
   await page.reload();
   await roster;
   await settleAfterRoster(page);
@@ -982,7 +966,7 @@ test.describe('chat history navigation', () => {
     await page.addInitScript(() => window.localStorage.setItem('ok-theme-v1', 'dark'));
     await stubAgentCatalog(page);
 
-    const roster = nextRosterDelivery(page);
+    const roster = threadRosterDelivered(page);
     await page.goto('/?lang=pseudo');
     await page.waitForFunction(() => Boolean(window.__acpThreadHarness), null, {
       timeout: BOOT_TIMEOUT_MS,

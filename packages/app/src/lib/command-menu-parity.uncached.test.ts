@@ -536,6 +536,8 @@ describe('command identity registry (Phase 2b)', () => {
       'open-docs',
       'open-discord',
       'swap-editor-sidebars',
+      'move-chat-history-left',
+      'move-chat-history-right',
       ...DOCK_MOVE_COMMANDS.map((command) => command.id),
     ]);
     const missing = COMMAND_IDENTITIES.flatMap((cmd) =>

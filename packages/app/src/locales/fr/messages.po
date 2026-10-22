@@ -6372,6 +6372,12 @@ msgstr "Se déplacer entre les cellules du tableau"
 msgid "Move block"
 msgstr "Déplacer le bloc"
 
+msgid "Move chat history to the left"
+msgstr "Déplacer l'historique des discussions à gauche"
+
+msgid "Move chat history to the right"
+msgstr "Déplacer l'historique des discussions à droite"
+
 msgid "Move down"
 msgstr "Descendre"
 

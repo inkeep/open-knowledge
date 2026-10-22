@@ -6368,6 +6368,12 @@ msgstr "तालिका की कोशिकाओं के बीच ज�
 msgid "Move block"
 msgstr "ब्लॉक हिलाएँ"
 
+msgid "Move chat history to the left"
+msgstr "चैट का इतिहास बाईं ओर ले जाएँ"
+
+msgid "Move chat history to the right"
+msgstr "चैट का इतिहास दाईं ओर ले जाएँ"
+
 msgid "Move down"
 msgstr "नीचे ले जाएँ"
 

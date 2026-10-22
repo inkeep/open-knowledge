@@ -6372,6 +6372,12 @@ msgstr "التنقل بين خلايا الجدول"
 msgid "Move block"
 msgstr "نقل الكتلة"
 
+msgid "Move chat history to the left"
+msgstr "نقل سجل الدردشة إلى اليسار"
+
+msgid "Move chat history to the right"
+msgstr "نقل سجل الدردشة إلى اليمين"
+
 msgid "Move down"
 msgstr "تحريك لأسفل"
 

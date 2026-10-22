@@ -6368,6 +6368,12 @@ msgstr "টেবিলের ঘরগুলোর মধ্যে সরুন
 msgid "Move block"
 msgstr "ব্লক সরান"
 
+msgid "Move chat history to the left"
+msgstr "চ্যাটের ইতিহাস বাঁ দিকে সরান"
+
+msgid "Move chat history to the right"
+msgstr "চ্যাটের ইতিহাস ডান দিকে সরান"
+
 msgid "Move down"
 msgstr "নিচে সরান"
 

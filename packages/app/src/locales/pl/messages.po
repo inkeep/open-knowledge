@@ -6372,6 +6372,12 @@ msgstr "Przenoszenie między komórkami tabeli"
 msgid "Move block"
 msgstr "Przenieś blok"
 
+msgid "Move chat history to the left"
+msgstr "Przenieś historię czatu na lewo"
+
+msgid "Move chat history to the right"
+msgstr "Przenieś historię czatu na prawo"
+
 msgid "Move down"
 msgstr "Przenieś w dół"
 

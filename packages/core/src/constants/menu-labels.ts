@@ -50,6 +50,8 @@ export const MENU_LABELS = {
   docPanelShow: 'Show document panel',
   docPanelHide: 'Hide document panel',
   swapEditorSidebars: 'Swap file sidebar and document panel',
+  chatHistoryMoveLeft: 'Move chat history to the left',
+  chatHistoryMoveRight: 'Move chat history to the right',
   back: 'Back',
   forward: 'Forward',
   terminalShow: 'Show Terminal',

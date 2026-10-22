@@ -10,7 +10,6 @@ import {
 } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { DEFAULT_DOCK_TREE, type DockNode, moveDockPane } from '@/lib/dock-tree';
-import { swapEditorSidebars } from '@/lib/editor-sidebar-side-store';
 import {
   __resetPaneVisibilityStoreForTests,
   type PaneId,
@@ -18,6 +17,7 @@ import {
   paneVisibilityStore,
 } from '@/lib/pane-visibility-store';
 import { SIDEBAR_PINS_KEY } from '@/lib/sidebar-pin-store';
+import { swapEditorSidebars } from '@/lib/sidebar-side-store';
 import type { PanelTab } from './DocPanel';
 import type { SessionPlacements } from './EditorArea';
 import { FileListHostProvider } from './FileListHost';

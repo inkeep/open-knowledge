@@ -194,6 +194,7 @@ export {
   type ThemeFadeProbeWindow,
   type ThemeFadeReport,
 } from './theme-fade.ts';
+export { threadRosterDelivered } from './thread-roster.ts';
 export {
   createMp3Buffer,
   createMp4Buffer,

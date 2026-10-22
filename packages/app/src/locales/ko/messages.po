@@ -6372,6 +6372,12 @@ msgstr "표 셀 사이를 이동합니다."
 msgid "Move block"
 msgstr "블록 이동"
 
+msgid "Move chat history to the left"
+msgstr "채팅 기록을 왼쪽으로 이동"
+
+msgid "Move chat history to the right"
+msgstr "채팅 기록을 오른쪽으로 이동"
+
 msgid "Move down"
 msgstr "아래로 이동"
 

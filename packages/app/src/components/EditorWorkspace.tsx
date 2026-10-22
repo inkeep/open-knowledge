@@ -35,7 +35,6 @@ import {
 import { useDocumentContext } from '@/editor/DocumentContext';
 import type { EditorPaneState, PaneSide } from '@/editor/editor-panes';
 import { openSidebarDropPayload } from '@/editor/sidebar-drop';
-import { useFileSidebarSide } from '@/lib/editor-sidebar-side-store';
 import {
   getNoteWindowDeletedDoc,
   subscribeNoteWindowDeleted,
@@ -43,6 +42,7 @@ import {
 import { isNoteWindow } from '@/lib/note-window-mode';
 import { paneVisibilityStore } from '@/lib/pane-visibility-store';
 import { hasSidebarDragType, parseSidebarDragPayload } from '@/lib/sidebar-drag';
+import { useFileSidebarSide } from '@/lib/sidebar-side-store';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 import { cn } from '@/lib/utils';
 import { EditorTabs } from './EditorTabs';

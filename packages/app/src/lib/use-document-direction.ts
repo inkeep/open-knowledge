@@ -7,7 +7,7 @@ function subscribeDocumentDirection(listener: () => void): () => void {
   return () => observer.disconnect();
 }
 
-function currentDocumentDirection(): TextDirection {
+export function currentDocumentDirection(): TextDirection {
   return document.documentElement.dir === 'rtl' ? 'rtl' : 'ltr';
 }
 

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import AxeBuilder from '@axe-core/playwright';
 import type { Locator, Page } from '@playwright/test';
-import { expect, test } from '../stress/_helpers';
+import { expect, test, threadRosterDelivered } from '../stress/_helpers';
 
 interface EnvelopeFixture {
   agents: Record<string, { source: string; id: string; name: string }>;
@@ -77,24 +77,6 @@ function readAnnouncements(page: Page): Promise<string[]> {
   return page.evaluate(
     () => (globalThis as unknown as { acpAnnouncementLog?: string[] }).acpAnnouncementLog ?? [],
   );
-}
-
-function threadRosterDelivered(page: Page): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error('thread socket never delivered its roster')),
-      30_000,
-    );
-    page.on('websocket', (socket) => {
-      if (!socket.url().includes('/collab/thread')) return;
-      socket.on('framereceived', (frame) => {
-        if (typeof frame.payload !== 'string') return;
-        if (!frame.payload.includes('"op":"threads"')) return;
-        clearTimeout(timer);
-        resolve();
-      });
-    });
-  });
 }
 
 async function openAgentsPanel(page: Page): Promise<void> {
