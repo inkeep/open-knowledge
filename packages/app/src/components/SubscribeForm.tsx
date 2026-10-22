@@ -81,7 +81,6 @@ export function SubscribeForm({
     <div className={cn('flex flex-col gap-3', className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
-          {}
           <p
             ref={successHeadingRef}
             tabIndex={subscribed ? -1 : undefined}
@@ -96,7 +95,6 @@ export function SubscribeForm({
               (title ?? <Trans>Stay in the loop</Trans>)
             )}
           </p>
-          {}
           <p className="text-1sm text-muted-foreground" role="status">
             {subscribed ? (
               <Trans>Thanks for subscribing. Watch your inbox for product updates.</Trans>

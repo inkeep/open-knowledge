@@ -1,5 +1,3 @@
-// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
-
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { parseExternalSkillDocName } from '@inkeep/open-knowledge-core/constants/cc1';
 import { detectEmbeddedHostFromBrowser } from '@inkeep/open-knowledge-core/constants/embedded-host';
@@ -475,7 +473,6 @@ function renderTabsWithoutHeader(tabs: ReactNode, chrome: WorkspaceHeaderChrome)
 export function EditorArea(props: EditorAreaProps) {
   return (
     <ProfilerBoundary name="editor-area">
-      {}
       <PropertyProvider>
         <EditorAreaInner {...props} />
         <SettingsDialogPortal />
@@ -1442,10 +1439,8 @@ function EditorAreaInner({
     });
     viewContent = (
       <div className="relative flex h-full min-h-0 flex-col">
-        {}
         <div className="relative flex min-h-0 flex-1 flex-col">
           <FolderOverview folderPath={activeTarget.folderPath} />
-          {}
           {showFolderComposer ? (
             <div
               aria-hidden
@@ -1564,7 +1559,6 @@ function EditorAreaInner({
     const externalSkillEdit = activeDocName ? parseExternalSkillDocName(activeDocName) : null;
     const renderEditorContent = (activityMount: ReactNode) => (
       <div className="relative flex h-full flex-col">
-        {}
         {externalSkillEdit ? (
           <Suspense fallback={null}>
             <SkillEditBanner name={externalSkillEdit.name} />
@@ -1572,11 +1566,9 @@ function EditorAreaInner({
         ) : null}
         <DocChangeNotice docName={activeDocName} timelineAvailable={!noteWindow} />
         <div className="relative min-h-0 flex-1">
-          {}
           <div className="relative h-full">
             {activityMount}
             <FindReplaceController activeDocName={activeDocName} isSourceMode={isSourceMode} />
-            {}
             {shouldPaintOverlay({
               activeDocName,
               deferredActiveDocName,
@@ -1585,11 +1577,9 @@ function EditorAreaInner({
             }) ? (
               <div className="absolute inset-0 z-10 bg-background">
                 <EditorSkeleton />
-                {}
                 {activeDocName !== null ? <MountStalledAffordance docName={activeDocName} /> : null}
               </div>
             ) : null}
-            {}
             {timelineDiff && timelineDiff.docName === activeDocName ? (
               <Suspense fallback={null}>
                 <LazyTimelineDiffPane
@@ -1601,7 +1591,6 @@ function EditorAreaInner({
                 />
               </Suspense>
             ) : null}
-            {}
             {agentDiff && agentDiffDoc === activeDocName ? (
               <Suspense fallback={null}>
                 <LazyAgentDiffPane
@@ -1614,7 +1603,6 @@ function EditorAreaInner({
               </Suspense>
             ) : null}
           </div>
-          {}
           {showBottomComposer ? (
             <BottomComposer
               docName={activeDocName}

@@ -56,7 +56,6 @@ export function OkCliPathRow() {
 
   return (
     <div className="flex flex-col gap-1.5" data-testid="ok-cli-path-row">
-      {}
       <div className="flex items-start overflow-hidden rounded-md border border-border bg-card/50 hover:bg-accent">
         <Label
           htmlFor="ok-cli-path"
@@ -99,7 +98,6 @@ export function OkCliPathRow() {
               <Info className="size-3.5" />
             </Button>
           </TooltipTrigger>
-          {}
           <TooltipContent side="left" className="max-w-sm text-left">
             <div className="flex min-w-0 flex-col gap-1">
               <p className="opacity-70">

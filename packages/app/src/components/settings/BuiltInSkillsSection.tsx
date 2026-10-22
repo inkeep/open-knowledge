@@ -105,7 +105,6 @@ export function BuiltInSkillsSection() {
         data-testid="settings-builtin-skills"
       >
         {heading}
-        {}
         <div
           role="status"
           aria-live="polite"

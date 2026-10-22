@@ -184,7 +184,6 @@ function DiagnosticRowBody({
         ) : null}
       </span>
       <span className="flex items-center gap-1.5 ps-5 font-mono text-xs text-muted-foreground">
-        {}
         <Badge
           variant="gray"
           data-testid="problems-source-tag"
@@ -197,7 +196,6 @@ function DiagnosticRowBody({
           {KindIcon !== null ? <KindIcon aria-hidden="true" className="size-2.5" /> : null}
           {diagnostic.source}
         </Badge>
-        {}
         <span className="min-w-0 truncate">
           {grouped ? diagnostic.code : `${diagnostic.code} · ${t`line ${displayLine}`}`}
         </span>
@@ -241,7 +239,6 @@ function DiagnosticGroupItem({
     const actions = renderActions(first);
     return (
       <li className="group relative rounded transition-colors hover:bg-muted">
-        {}
         <button
           type="button"
           onClick={() => onNavigate(first)}
@@ -262,7 +259,6 @@ function DiagnosticGroupItem({
   return (
     <li className="rounded" data-testid="problems-duplicate-group">
       <Collapsible>
-        {}
         <CollapsibleTrigger className="group flex w-full cursor-pointer flex-col gap-0.5 rounded px-2 py-1.5 text-left transition-colors hover:bg-muted">
           <DiagnosticRowBody diagnostic={first} instanceCount={group.instances.length} />
         </CollapsibleTrigger>
@@ -353,7 +349,6 @@ function ActionTooltip({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        {}
         <span className="inline-flex shrink-0">{children}</span>
       </TooltipTrigger>
       <TooltipContent data-testid={testId}>{tip}</TooltipContent>
@@ -702,7 +697,6 @@ export function ProblemsPanel({
           {scope === 'doc' && sorted.length > 0 && <PanelCount>{sorted.length}</PanelCount>}
           {showActivePluginsPill && (
             <Tooltip>
-              {}
               <TooltipTrigger
                 className="shrink-0 cursor-default rounded-md bg-muted-foreground/5 px-2 py-1 font-mono text-xs text-muted-foreground"
                 data-testid="problems-active-plugins"
@@ -880,7 +874,6 @@ function ProjectAuditBody({
   }
   return (
     <PanelBody className="px-2 py-2" data-testid="problems-project-scope">
-      {}
       <div className="flex flex-col gap-1 px-2 pb-1">
         <div className="flex items-center justify-between gap-2">
           <p
@@ -896,7 +889,6 @@ function ProjectAuditBody({
             )}
           </p>
           <div className="flex shrink-0 items-center gap-1">
-            {}
             {loadedFiles.length > 0 ? (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -926,7 +918,6 @@ function ProjectAuditBody({
                 </TooltipContent>
               </Tooltip>
             ) : null}
-            {}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -948,13 +939,11 @@ function ProjectAuditBody({
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1">
-          {}
           {fixing !== null ? (
             <span className="sr-only" role="status">
               {t`Fixing ${fixing.done} of ${fixing.total} files`}
             </span>
           ) : null}
-          {}
           {fixing !== null ? (
             <Tooltip>
               <TooltipTrigger asChild>

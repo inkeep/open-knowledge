@@ -150,16 +150,13 @@ createRoot(root).render(
           storageKey="ok-theme-v1"
         >
           <RegisteredAgentHydrator />
-          {}
           <TooltipProvider>
             <AppErrorBoundary>{selectDesktopRootApp(desktopBridge)}</AppErrorBoundary>
-            {}
             {desktopBridge !== undefined && (
               <CrashReportingBoundary>
                 <ReportBugCrashInviteTrigger bridge={desktopBridge} />
               </CrashReportingBoundary>
             )}
-            {}
             <Toaster richColors closeButton />
           </TooltipProvider>
         </ThemeProvider>

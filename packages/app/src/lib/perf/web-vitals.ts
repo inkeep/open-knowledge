@@ -45,7 +45,6 @@ export async function initWebVitals(): Promise<void> {
     onFCP(handleMetric);
   } catch (err) {
     if (!import.meta.env?.PROD) {
-      // eslint-disable-next-line no-console
       console.warn('[perf] web-vitals init failed', err);
     }
   }

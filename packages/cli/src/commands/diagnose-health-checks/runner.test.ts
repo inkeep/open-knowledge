@@ -42,7 +42,6 @@ describe('runCheck', () => {
     const def: CheckDefinition = {
       name: 'bun',
       run: async () => {
-        // eslint-disable-next-line @typescript-eslint/no-throw-literal
         throw 'string error';
       },
     };

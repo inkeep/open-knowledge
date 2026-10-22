@@ -1,5 +1,3 @@
-// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
-
 import { i18n } from '@lingui/core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useTheme } from 'next-themes';
@@ -237,7 +235,6 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
 
   return (
     <Surface.Root open onOpenChange={onOpenChange}>
-      {}
       <Surface.Content
         className={cn(
           'sm:max-w-2xl md:max-w-3xl',
@@ -249,9 +246,7 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
       >
         <Surface.Header>
           <Surface.Title className="flex flex-col gap-8 text-2xl tracking-tighter">
-            {}
             <OkIcon className="size-10 shrink-0" aria-hidden />
-            {}
             {firstRun ? (
               <span className="flex flex-col gap-1.5">
                 <span className="uppercase font-mono font-normal text-2xs text-muted-foreground tracking-widest">
@@ -273,7 +268,6 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
         </Surface.Header>
 
         <Surface.Body className="flex flex-col gap-6 min-h-0">
-          {}
           {pathInstall.shellDetected && (
             <div className="flex flex-col gap-1.5">
               <h3 className="text-sm font-medium text-foreground">
@@ -281,7 +275,6 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                   Terminal
                 </Trans>
               </h3>
-              {}
               <div
                 className={cn(
                   'relative overflow-hidden rounded-lg border border-border bg-card/50 px-4 py-3',
@@ -296,7 +289,6 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                       : 'flex min-w-0 flex-col items-start gap-1 font-normal'
                   }
                 >
-                  {}
                   <span className="flex w-full items-center gap-2.5">
                     <Checkbox
                       id={`${idPrefix}-path`}
@@ -363,17 +355,14 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
             </div>
           )}
 
-          {}
           {(hasEditors || skillsOffered) && (
             <>
-              {}
               <div className="flex flex-col gap-1.5">
                 <h3 className="text-sm font-medium text-foreground">
                   <Trans comment="Section label above the AI-tools checkboxes in the first-launch dialog">
                     Connect your AI tools
                   </Trans>
                 </h3>
-                {}
                 {hasEditors ? (
                   <p className={cn(SECTION_SUBTEXT, 'mb-1')}>
                     <Trans comment="Description under the AI-tools section label in the first-launch dialog">
@@ -406,16 +395,13 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                             </Trans>
                           </span>
                         </span>
-                        {}
                         <span className={ROW_SUBTEXT}>
-                          {}
                           <Trans comment="Subtext under the AI-tools MCP checkbox">
                             Adds an OpenKnowledge MCP entry to{' '}
                             <span className="font-medium text-foreground">{connectToolList}</span>,
                             so your agents can read and edit your files.
                           </Trans>
                         </span>
-                        {}
                         {showExistingStatus && (
                           <span className={ROW_SUBTEXT} data-testid="mcp-consent-connect-existing">
                             {t({
@@ -430,7 +416,6 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                             className={ROW_WARNING}
                             data-testid="mcp-consent-connect-replace-warning"
                           >
-                            {}
                             {replacingAll
                               ? t`Replaces the OpenKnowledge entry each of them already has.`
                               : t`Replaces the existing OpenKnowledge entry in ${formatToolList(
@@ -463,7 +448,6 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                     </div>
                   ) : null}
 
-                  {}
                   {skillsOffered && (
                     <div className="relative overflow-hidden rounded-lg border border-border bg-card/50 px-4 py-3 hover:bg-accent">
                       <Label
@@ -516,7 +500,6 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                     </div>
                   )}
 
-                  {}
                   {!hasEditors && (
                     <p className={SECTION_SUBTEXT} data-testid="mcp-consent-no-tools">
                       <Trans comment="Shown in place of the AI-tools checkbox when no AI tool was detected; agentConnectionsLabel is the Settings sidebar pane name">
@@ -529,7 +512,6 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
               </div>
             </>
           )}
-          {}
           <div className="flex flex-col gap-1.5">
             <h3 className="text-sm font-medium text-foreground">
               <Trans comment="Section label above the light/dark/system cards in the first-launch dialog">
@@ -551,8 +533,6 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
           </div>
         </Surface.Body>
         <Surface.Footer className="sm:justify-between">
-          {}
-          {}
           {firstRun ? (
             <AlertDialogCancel
               variant="link-muted"
@@ -572,11 +552,9 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
               data-testid="mcp-consent-skip"
               onClick={onDismiss}
             >
-              {}
               <Trans>Cancel</Trans>
             </Button>
           )}
-          {}
           <Button onClick={() => void onContinue()} disabled={busy} data-testid="mcp-consent-add">
             {busy ? (
               <Trans>Working</Trans>

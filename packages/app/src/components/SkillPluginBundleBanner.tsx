@@ -40,9 +40,7 @@ export function SkillPluginBundleBanner({
 
   return (
     <div className="editor-content-aligned">
-      {}
       <Alert role="note" className="my-3 bg-muted/40 px-4 py-3">
-        {}
         <PackageIcon className="size-4" aria-hidden />
         <AlertTitle>
           {plugin ? (
@@ -53,7 +51,6 @@ export function SkillPluginBundleBanner({
             <Trans>{siblings.length} other skills by this publisher</Trans>
           )}
         </AlertTitle>
-        {}
         <AlertDescription className="min-w-0">
           {caps.length > 0 ? (
             <Trans>
@@ -61,7 +58,6 @@ export function SkillPluginBundleBanner({
             </Trans>
           ) : null}
         </AlertDescription>
-        {}
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 group-has-[>svg]/alert:col-start-2">
           {shownSiblings.map((n) => (
             <code

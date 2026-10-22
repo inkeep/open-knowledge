@@ -379,7 +379,6 @@ export function CustomThemeEditor({
         </div>
       </div>
 
-      {}
       <ThemePreviewCanvas scheme={scheme} highlightSlot={hoveredSlot} className="w-full" />
 
       <ColorWorkbench

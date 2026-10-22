@@ -12,8 +12,6 @@ const fullStars = new Intl.NumberFormat('en-US');
 export function DocsSidebarCta({ stars }: { stars: number | null }) {
   return (
     <div className="flex gap-2">
-      {}
-      {}
       <DownloadSplitButton cta="docs-sidebar" variant="compact" className="min-w-0 flex-1" />
       <MarketingButton
         href={GITHUB_URL}

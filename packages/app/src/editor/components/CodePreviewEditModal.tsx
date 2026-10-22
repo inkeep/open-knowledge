@@ -216,7 +216,6 @@ export function CodePreviewEditModal({
           className={`flex min-h-0 flex-1 gap-3 overflow-y-auto overscroll-contain ${previewEnabled ? 'flex-col md:flex-row-reverse' : 'flex-col'}`}
           data-testid="ok-code-preview-edit-modal-body"
         >
-          {}
           <div
             ref={setHostRef}
             className="ok-codepreview-cm min-h-[260px] flex-1 overflow-hidden rounded-md border border-border md:min-h-0"

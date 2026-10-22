@@ -28,7 +28,6 @@ function renderNarrowSidebar(onOpenChange: (open: boolean) => void) {
   return render(
     <SidebarProvider open onOpenChange={onOpenChange}>
       <textarea data-testid="field" aria-label="a text field" />
-      {}
       <div data-testid="editor" contentEditable suppressContentEditableWarning />
       <div data-testid="plain">not a text surface</div>
     </SidebarProvider>,

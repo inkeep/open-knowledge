@@ -5,7 +5,7 @@ import katex from 'katex';
 
 export function MathPreview({ formula, display = true }: { formula: string; display?: boolean }) {
   const html = renderFormula(formula, display);
-  // biome-ignore lint/security/noDangerouslySetInnerHtml: katex output is trusted
+  // oxlint-disable-next-line react/no-danger -- katex output is trusted
   return <div className="text-fd-foreground" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 

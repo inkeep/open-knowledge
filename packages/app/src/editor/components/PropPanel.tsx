@@ -333,7 +333,6 @@ function PropControl({
           <label htmlFor={stringId} className="text-xs text-muted-foreground">
             {humanizePropName(propDef.name)}
           </label>
-          {}
           <div className="flex flex-col gap-1.5">
             {accept !== undefined ? (
               <SrcAutocomplete
@@ -422,7 +421,6 @@ function PropControl({
             <SelectTrigger id={enumId} size="sm">
               <SelectValue />
             </SelectTrigger>
-            {}
             <SelectContent className="z-70">
               {propDef.enumValues.map((v) => (
                 <SelectItem key={v} value={v}>

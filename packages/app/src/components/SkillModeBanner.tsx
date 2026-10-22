@@ -15,7 +15,6 @@ export function SkillModeBanner({
     <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-muted/35 px-3 py-2">
       <div className="flex min-w-0 items-start gap-1.5 text-muted-foreground text-sm">
         <span className="mt-0.5 shrink-0">{icon}</span>
-        {}
         <p className={clampLines ? 'line-clamp-2' : 'min-w-0 break-words'}>{children}</p>
       </div>
       {actions ? (

@@ -13,7 +13,6 @@ declare global {
   interface Window {
     __ok_perf?: PerfCollector;
   }
-  // eslint-disable-next-line no-var -- required for `globalThis` augmentation
   var __ok_perf: PerfCollector | undefined;
 }
 

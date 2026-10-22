@@ -173,7 +173,6 @@ export function SkillsSidebarDock({ filesOpen = true }: { filesOpen?: boolean } 
           />
         </div>
       </div>
-      {}
       <CollapsibleContent
         ref={contentRef}
         className={cn(

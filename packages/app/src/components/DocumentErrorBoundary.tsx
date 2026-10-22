@@ -126,7 +126,6 @@ function DocumentErrorFallback({
       data-slot="document-error-boundary"
       className="flex h-full flex-col items-center justify-center gap-8 p-8 text-center"
     >
-      {}
       <OkBlobRunnerEasterEgg keyboard={isServerReachError(error)} />
       <div className="flex flex-col items-center gap-1">
         <h2 id="document-error-title" className="text-2xl font-light tracking-tighter text-balance">

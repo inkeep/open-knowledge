@@ -268,7 +268,6 @@ export function TimelineDiffPane({
       className="absolute inset-0 z-20 flex flex-col bg-background"
       data-testid="timeline-diff-pane"
     >
-      {}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-border px-3 py-2">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -420,7 +419,6 @@ export function TimelineDiffPane({
         </div>
       </div>
 
-      {}
       <div ref={diffBodyRef} className="min-h-0 flex-1 overflow-auto subtle-scrollbar">
         {result.status === 'loading' && (
           <div className="flex items-center gap-2 px-4 py-3 text-xs text-muted-foreground">

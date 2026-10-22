@@ -255,7 +255,6 @@ export function SkillPreviewTab({ flavor, source, name, subtitle, level, path }:
           <Trans>Open file</Trans>
         </Button>
       ) : null}
-      {}
       <SkillEditorActions scope={targetScope} name={name} showNewFile={false} />
     </div>
   ) : builtin ? (
@@ -321,7 +320,6 @@ export function SkillPreviewTab({ flavor, source, name, subtitle, level, path }:
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className={SKILL_INSTALL_MENU_WIDTH}>
-            {}
             {pluginInfo || foreign ? (
               <>
                 <DropdownMenuLabel className="font-normal text-muted-foreground text-xs leading-snug whitespace-normal">

@@ -456,11 +456,11 @@ export function GraphPanel({
           isExpanded && isElectronHost && '[-webkit-app-region:drag]',
         )}
       >
-        {/**
-         * The fullscreen chrome row reserves the macOS traffic-light footprint via
-         * `--ok-titlebar-reserve-left` (precedent #49).
-         */}
         <div
+          /**
+           * The fullscreen chrome row reserves the macOS traffic-light footprint via
+           * `--ok-titlebar-reserve-left` (precedent #49).
+           */
           data-slot="graph-title-cluster"
           className={cn('flex min-w-0 items-center gap-1.5', isExpanded && 'ml-4')}
         >

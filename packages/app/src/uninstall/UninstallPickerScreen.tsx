@@ -144,7 +144,6 @@ export function UninstallPickerScreen({
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border">
-            {}
             <div className="flex shrink-0 items-center gap-2.5 border-border border-b px-3 py-2.5 bg-muted/30">
               <Checkbox
                 id={selectAllId}
@@ -154,7 +153,6 @@ export function UninstallPickerScreen({
               <Label htmlFor={selectAllId} className="flex-1 font-medium text-sm">
                 <Trans>Select all</Trans>
               </Label>
-              {}
               <span
                 role="status"
                 aria-label={t`${selected.size} of ${projects.length} projects selected`}
@@ -163,7 +161,6 @@ export function UninstallPickerScreen({
                 {selected.size} / {projects.length}
               </span>
             </div>
-            {}
             <div className="subtle-scrollbar min-h-0 flex-1 overflow-y-scroll [scrollbar-gutter:stable]">
               {projects.map((project, index) => (
                 <ProjectRow
@@ -186,7 +183,6 @@ export function UninstallPickerScreen({
       </section>
 
       <footer className="flex items-center justify-end gap-2.5 border-border border-t bg-muted/50 px-6 pt-3.5 pb-4">
-        {}
         <Button type="button" variant="outline-mono" autoFocus onClick={onCancel}>
           <Trans>Cancel</Trans>
         </Button>

@@ -27,7 +27,6 @@ export function SkillDirectoryCard({
       onMouseEnter={onHover}
       onFocus={onHover}
     >
-      {}
       <Button
         variant="ghost"
         aria-label={t`View ${name}`}

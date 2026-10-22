@@ -27,7 +27,6 @@ export function OkBlobRunnerPage({ autoStart = false }: OkBlobRunnerPageProps = 
           <Trans>Space to jump, down arrow to duck. That is the whole game.</Trans>
         </p>
       </div>
-      {}
       <div className="w-full">
         <OkBlobRunner autoStart={autoStart} />
       </div>

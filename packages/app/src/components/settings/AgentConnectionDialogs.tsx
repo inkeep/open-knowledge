@@ -335,7 +335,6 @@ function PartCheckbox({
       className="items-start gap-3"
       data-disabled={disabled || undefined}
     >
-      {}
       <div className="flex h-7 items-center">
         <Checkbox
           id={id}
@@ -350,12 +349,10 @@ function PartCheckbox({
           <Label htmlFor={id} className="cursor-pointer">
             <FieldTitle>{title}</FieldTitle>
           </Label>
-          {}
           {warning !== null ? (
             <PartExceptionChip message={warning} path={path} info={disabled ? null : info} />
           ) : (
             <PartInfo>
-              {}
               <span className="flex flex-col gap-1.5">
                 {info}
                 {path === null ? null : (
@@ -380,7 +377,6 @@ function PartCheckbox({
             ))}
           </div>
         )}
-        {}
         {alsoAffects === null ? null : (
           <p id={sharedId} className="text-sm leading-relaxed text-warning">
             {t`This folder is also ${alsoAffects}'s.`}

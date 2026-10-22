@@ -12,7 +12,6 @@ export function CommentBubbleButton() {
   return (
     <>
       <Separator orientation="vertical" className="mx-0.5 h-5 data-vertical:self-center" />
-      {}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button

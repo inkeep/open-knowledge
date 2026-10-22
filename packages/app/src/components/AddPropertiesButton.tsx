@@ -58,14 +58,12 @@ export function AddPropertiesButton({
             <span className="font-medium">
               <Trans>This document is missing required properties</Trans>
             </span>
-            {}
             {problemMessages?.map((message, index) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: static within a render
               <span key={index} className="opacity-90">
                 {message}
               </span>
             ))}
-            {}
             <span className="pt-0.5 opacity-70">
               <Trans>Click to add and fill them in</Trans>
             </span>

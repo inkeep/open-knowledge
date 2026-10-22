@@ -535,11 +535,9 @@ function EntryRow({
             }
           }}
         >
-          {}
           <span className="mt-0.5 shrink-0">{leadingIcon}</span>
 
           <div className="min-w-0 flex-1 space-y-0.5">
-            {}
             <div className="flex items-center gap-1.5">
               <span className="truncate text-xs text-foreground">{authorName}</span>
               <time
@@ -549,7 +547,6 @@ function EntryRow({
               >
                 {relative}
               </time>
-              {}
               <span aria-hidden="true" className="h-3 w-px shrink-0 bg-border" />
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -577,7 +574,6 @@ function EntryRow({
               </Tooltip>
             </div>
 
-            {}
             {allSummaries.length > 0 && <SummaryBullets summaries={allSummaries} />}
             <EntryDetail
               descriptor={descriptor}
@@ -697,15 +693,12 @@ export function TimelineContent({ docName }: TimelineContentProps) {
 
   return (
     <div className="flex h-full flex-col">
-      {}
       <PanelHeader>
         <PanelTitle>
           <Trans>Timeline</Trans>
         </PanelTitle>
       </PanelHeader>
-      {}
       <div className="flex-1 overflow-y-auto subtle-scrollbar scroll-fade-mask">
-        {}
         {loading && (
           <div
             className="flex flex-col gap-1 p-2"
@@ -725,14 +718,12 @@ export function TimelineContent({ docName }: TimelineContentProps) {
           </div>
         )}
 
-        {}
         {!loading && error && (
           <div className="px-4 py-3">
             <p className="text-xs text-destructive">{error}</p>
           </div>
         )}
 
-        {}
         {!loading && !error && entries.length === 0 && (
           <div className="px-4 py-8 text-center">
             <p className="text-xs text-muted-foreground">
@@ -741,7 +732,6 @@ export function TimelineContent({ docName }: TimelineContentProps) {
           </div>
         )}
 
-        {}
         {!loading && !error && entries.length > 0 && (
           <div className="flex flex-col gap-1 p-2">
             {entries.map((entry, index) => (

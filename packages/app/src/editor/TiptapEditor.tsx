@@ -1264,11 +1264,9 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       data-agent-flash-position="append"
       data-agent-flash-agent-id=""
     >
-      {}
       {!isSourceMode && editorPaneOnScreen && (
         <BubbleMenuBar editor={editor} shortcutEnabled={docName === activeDocName} />
       )}
-      {}
       {!isSourceMode && (
         <CommentsBoundary>
           <CommentSelectionAffordance
@@ -1281,8 +1279,6 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
         </CommentsBoundary>
       )}
       {!isSourceMode && <TableCellHandles editor={editor} />}
-      {}
-      {}
       <div ref={portalSlotRef} style={{ display: 'contents' }} />
       {createPortal(
         // oxlint-disable-next-line ok/no-unportaled-editor-content -- canonical portaled site — H6 fix per PRECEDENTS.md #44
@@ -1293,13 +1289,14 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
         />,
         portalTarget,
       )}
-      {}
       <SelectionAnnouncer editor={editor} />
-      {/**
-       * RawMdxFallback renders inline via `RawMdxFallbackCMView` (precedent #30) and never
-       * registers with InteractionLayer.
-       */}
-      <InteractionLayerView store={getInteractionLayer(editor).store} />
+      <InteractionLayerView
+        /**
+         * RawMdxFallback renders inline via `RawMdxFallbackCMView` (precedent #30) and never
+         * registers with InteractionLayer.
+         */
+        store={getInteractionLayer(editor).store}
+      />
     </div>
   );
 };

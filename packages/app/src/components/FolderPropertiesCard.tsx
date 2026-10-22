@@ -185,9 +185,7 @@ export function FolderPropertiesCard({ folderPath, state, onChange }: Props) {
             />
             <Trans>Folder properties</Trans>
           </span>
-          {}
-          {/* biome-ignore lint/a11y/useKeyWithClickEvents: <code> is non-focusable; keyboard activation lives on the wrapping <button>. */}
-          <code
+          <code // oxlint-disable-line jsx-a11y/click-events-have-key-events -- <code> is non-focusable; keyboard activation lives on the wrapping <button>.
             className="text-xs text-muted-foreground font-mono cursor-text select-text break-all"
             onClick={(e) => e.stopPropagation()}
           >

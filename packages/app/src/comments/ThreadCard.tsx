@@ -1,5 +1,3 @@
-// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
-
 import { Trans, useLingui } from '@lingui/react/macro';
 import { CheckCheck, MapPin, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -184,7 +182,7 @@ export function ThreadCard({
   const cardSelects = !editing && !isResolved;
 
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: pointer-only affordance — clicking the card's whitespace solos its tick; keyboard/AT users compose the same state from the real controls (the card's checkbox + the footer's master tick). See focus-composer-on-card-pointer.ts for the sibling pattern.
+    // oxlint-disable-next-line jsx-a11y/click-events-have-key-events -- pointer-only affordance — clicking the card's whitespace solos its tick; keyboard/AT users compose the same state from the real controls (the card's checkbox + the footer's master tick). See focus-composer-on-card-pointer.ts for the sibling pattern.
     <article
       ref={cardRef}
       onPointerEnter={() => setActiveThread(thread.id)}
@@ -223,10 +221,8 @@ export function ThreadCard({
             : 'ring-2 ring-primary'),
       )}
     >
-      {}
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          {}
           {!isResolved && (
             <Checkbox
               checked={sending}
@@ -237,7 +233,6 @@ export function ThreadCard({
           {isResolved && (
             <CheckCheck aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
           )}
-          {}
           <span
             className="shrink-0 text-xs text-muted-foreground"
             title={new Date(thread.updatedAt).toLocaleString()}
@@ -291,7 +286,6 @@ export function ThreadCard({
                 </TooltipContent>
               </Tooltip>
             )}
-            {}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -312,7 +306,6 @@ export function ThreadCard({
         </div>
       </div>
 
-      {}
       {isOrphaned ? (
         <div className="flex flex-col gap-2">
           {thread.anchor !== null && (
@@ -320,13 +313,12 @@ export function ThreadCard({
               className="truncate text-sm text-muted-foreground line-through border-l-2 border-l-muted-foreground/40 px-2 py-0.5"
               title={thread.anchor.quote}
             >
-              {}“{thread.anchor.quote}”
+              “{thread.anchor.quote}”
             </p>
           )}
         </div>
       ) : (
         <Tooltip>
-          {}
           <TooltipTrigger asChild>
             <span className="w-full">
               <Button
@@ -361,7 +353,6 @@ export function ThreadCard({
         </Tooltip>
       )}
 
-      {}
       {editing ? (
         <div className="flex flex-col gap-1.5">
           <ComposerMentionInput
@@ -378,7 +369,6 @@ export function ThreadCard({
             onEscape={cancelEdit}
             className="max-h-40 overflow-y-auto rounded-md border px-2 py-1 text-sm subtle-scrollbar bg-background"
           />
-          {}
           <div className="flex items-center justify-end gap-1.5">
             <Button size="sm" variant="ghost-mono" onClick={cancelEdit}>
               <Trans>Cancel</Trans>
@@ -402,7 +392,6 @@ export function ThreadCard({
         </p>
       )}
 
-      {}
       {isOrphaned && (
         <div className="flex flex-col items-start gap-0.5">
           <p className="text-xs text-muted-foreground">

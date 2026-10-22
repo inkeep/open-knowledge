@@ -275,8 +275,7 @@ export function ImageAttachmentTextarea({
   const problemMessage = useImageAttachmentProblemMessage();
   return (
     <div className="flex min-w-0 flex-col gap-2">
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: file drop target only; keyboard users paste or use the attach button. */}
-      <div
+      <div // oxlint-disable-line jsx-a11y/no-static-element-interactions -- file drop target only; keyboard users paste or use the attach button.
         className="relative"
         onDragOver={intake.onDragOver}
         onDragLeave={intake.onDragLeave}

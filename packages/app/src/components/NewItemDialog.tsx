@@ -258,7 +258,6 @@ export function NewItemDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {}
       <DialogContent className="sm:max-w-md" data-ok-layer-spawned="">
         <DialogHeader>
           <DialogTitle>
@@ -276,7 +275,6 @@ export function NewItemDialog({
         <DialogBody className="space-y-6 pb-1">
           {showTemplatePicker && (
             <div className="flex flex-col gap-2">
-              {}
               <span id={templatePickerLabelId} className="text-sm font-medium">
                 <Trans>Start from</Trans>
               </span>
@@ -511,7 +509,6 @@ function TemplatePickerCombobox({
                 </CommandItem>
               );
             })}
-            {}
             <CommandItem
               value="Blank note empty"
               onSelect={() => {

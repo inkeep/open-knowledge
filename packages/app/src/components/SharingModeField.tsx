@@ -41,8 +41,7 @@ export function SharingModeField({
           <Trans>Share this setup with your team?</Trans>
         </span>
         <ConfigSharingInfoTooltip />
-        {/* biome-ignore lint/a11y/noAmbiguousAnchorText: the accessible name comes from aria-label, which this rule only recognises as a string literal; the i18n directive requires the t macro. */}
-        <a
+        <a // oxlint-disable-line jsx-a11y/anchor-ambiguous-text -- the accessible name comes from aria-label, which this rule only recognises as a string literal; the i18n directive requires the t macro.
           href={CONFIG_SHARING_DOCS_URL}
           target="_blank"
           rel="noopener noreferrer"
@@ -55,7 +54,6 @@ export function SharingModeField({
           <Trans>Learn more</Trans>
         </a>
       </div>
-      {}
       <RadioGroup
         value={value}
         onValueChange={(v) => onValueChange(v as SharingMode)}

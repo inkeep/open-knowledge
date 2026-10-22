@@ -299,7 +299,6 @@ export function ExcalidrawEmbed({
             <div className="font-medium">
               <Trans>Excalidraw board failed to load.</Trans>
             </div>
-            {}
             <div className="mt-1">{errorDetail}</div>
             <div className="mt-1 break-words font-mono text-[11px] opacity-90">
               {boardDocName ?? src}
@@ -359,7 +358,6 @@ export function ExcalidrawEmbed({
           title={t`Open board`}
           data-testid="excalidraw-embed-open"
         >
-          {}
           <a href={hashFromDocName(boardDocName)} aria-label={t`Open board`}>
             <ExternalLink className="size-4" aria-hidden="true" />
           </a>

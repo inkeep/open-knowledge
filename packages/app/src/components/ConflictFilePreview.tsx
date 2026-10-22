@@ -30,7 +30,7 @@ export function ConflictFilePreview({ filename, content }: ConflictFilePreviewPr
   return (
     <section
       ref={containerRef}
-      // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard-focusable scroll container — this render has no focusable descendants at all, so without the stop the body cannot be scrolled by keyboard. Same pattern as SyncStatusBadge's scroll container.
+      // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- keyboard-focusable scroll container — this render has no focusable descendants at all, so without the stop the body cannot be scrolled by keyboard. Same pattern as SyncStatusBadge's scroll container.
       tabIndex={0}
       aria-label={t`Preview of ${filename}`}
       className="conflict-view h-full overflow-y-auto subtle-scrollbar"

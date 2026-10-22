@@ -86,7 +86,6 @@ export function TagDialog() {
         <DialogHeader>
           <DialogTitle>
             <Trans>
-              {}
               Documents tagged <span className="font-mono break-all">#{tagName}</span>
             </Trans>
           </DialogTitle>

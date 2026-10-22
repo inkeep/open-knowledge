@@ -35,11 +35,9 @@ export function DownloadTextLink({ cta, className }: DownloadTextLinkProps) {
 
   return (
     <>
-      {}
       <a href={href} className={className}>
         Download it{suffix ? ` ${suffix}` : ''}
       </a>
-      {}
       {href === pickerHref ? null : (
         <>
           <span className="text-slide-muted"> · </span>

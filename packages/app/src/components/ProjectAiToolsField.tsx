@@ -68,9 +68,7 @@ export function ProjectAiToolsField({
 
   return (
     <>
-      {}
       {statusRegion}
-      {}
       <div className="relative overflow-hidden rounded-lg border border-border bg-card/50 px-4 py-3 hover:bg-accent">
         <Label
           htmlFor={checkboxId}
@@ -84,7 +82,6 @@ export function ProjectAiToolsField({
               disabled={disabled}
               data-testid={`${testIdPrefix}-checkbox`}
             />
-            {}
             <span
               className="flex min-w-0 flex-1 items-center gap-1.5 pe-28 text-sm font-medium text-foreground"
               data-testid={`${testIdPrefix}-title`}
@@ -94,12 +91,10 @@ export function ProjectAiToolsField({
               </Trans>
             </span>
           </span>
-          {}
           <span
             className="text-1sm leading-normal ps-6.5 text-muted-foreground"
             data-testid={`${testIdPrefix}-summary`}
           >
-            {}
             <Trans comment="Subtext under the project AI-tools checkbox">
               Adds an OpenKnowledge MCP entry and the project skill to{' '}
               <span className="font-medium text-foreground">{toolList}</span>, so your agents can
@@ -108,7 +103,6 @@ export function ProjectAiToolsField({
           </span>
         </Label>
         <RowDisclosure title={t`Adds these files`} testId={`${testIdPrefix}-details-toggle`}>
-          {}
           <ul className="flex flex-col gap-2" data-testid={`${testIdPrefix}-details`}>
             {status.editors.map((id) => {
               const configPath = STABLE_EDITOR_PROJECT_CONFIG_PATH[id];

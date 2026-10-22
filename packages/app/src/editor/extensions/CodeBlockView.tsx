@@ -254,7 +254,7 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
       onMouseLeave={() => setHovered(false)}
     >
       {previewActive ? (
-        // biome-ignore lint/a11y/noStaticElementInteractions: stopPropagation required so resize-handle drags don't bubble into PM
+        // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- stopPropagation required so resize-handle drags don't bubble into PM
         <div
           ref={previewWrapperRef}
           className={cn(
@@ -308,7 +308,6 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
         />
       ) : null}
 
-      {}
       {title ? (
         <div
           className="ok-codeblock-title"
@@ -320,7 +319,6 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
         </div>
       ) : null}
 
-      {}
       <pre
         className={cn(
           'ok-codeblock-pre m-0 overflow-x-auto px-5 py-4 font-mono text-sm leading-relaxed',
@@ -338,8 +336,7 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
         />
       </pre>
 
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: stopPropagation required inside PM NodeView */}
-      <div
+      <div // oxlint-disable-line jsx-a11y/no-static-element-interactions -- stopPropagation required inside PM NodeView
         className="ok-codeblock-chrome"
         contentEditable={false}
         onMouseDown={(e) => e.stopPropagation()}

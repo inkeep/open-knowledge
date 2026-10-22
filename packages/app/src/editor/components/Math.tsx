@@ -21,7 +21,7 @@ const KatexRender = lazy(async () => {
         className="math math-display"
         data-component-type="math"
         id={props.id}
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX renderToString returns a strict HTML-allowlist string with no script execution; this is the documented integration path.
+        // oxlint-disable-next-line react/no-danger -- KaTeX renderToString returns a strict HTML-allowlist string with no script execution; this is the documented integration path.
         dangerouslySetInnerHTML={{ __html: html }}
       />
     );

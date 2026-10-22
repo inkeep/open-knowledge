@@ -77,7 +77,6 @@ export function SplashDownloadSplitButton({
         )}
       >
         <ArrowDown aria-hidden="true" className="size-4 shrink-0" />
-        {}
         {detectedOs === 'unknown' ? 'Download the app' : downloadLabelForOs(detectedOs)}
       </a>
 

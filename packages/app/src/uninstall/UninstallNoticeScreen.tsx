@@ -123,7 +123,7 @@ export function UninstallNoticeScreen({
         {notice.log !== undefined && (
           <section
             aria-label={t`Cleanup log`}
-            // biome-ignore lint/a11y/noNoninteractiveTabindex: focusable scroll region per WCAG 2.1.1 — the log is the only in-product account of what cleanup failed to remove, so reading it must not require a pointer.
+            // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- focusable scroll region per WCAG 2.1.1 — the log is the only in-product account of what cleanup failed to remove, so reading it must not require a pointer.
             tabIndex={0}
             className="subtle-scrollbar mt-0.5 mb-2.5 min-h-20 flex-1 overflow-auto rounded-lg border border-border border-dotted bg-muted/40 px-3 py-2.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >

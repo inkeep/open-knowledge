@@ -105,7 +105,6 @@ export function TagSuggestionMenu({
       className="w-64 overflow-y-auto subtle-scrollbar rounded-lg border bg-popover p-1 shadow-md"
       style={{ maxHeight: 'var(--suggestion-menu-max-height, 40vh)' }}
     >
-      {}
       <span className="sr-only" aria-live="polite" aria-atomic="true">
         {selectedItem ? announcementText(selectedItem) : ''}
       </span>

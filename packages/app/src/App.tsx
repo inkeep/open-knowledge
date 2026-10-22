@@ -626,33 +626,24 @@ function AppBody() {
       <BranchRecycleBanner />
       <PageListProvider>
         <NoteWindowMainActionReceiver />
-        {}
         {!noteWindow && <SystemDocSubscriber />}
         <ValidationFreshness />
-        {}
         <SkillTrackInGitDialog />
         <NavigationHandler />
         <ActiveTargetBridgePush />
         <NewItemShortcutHandler />
-        {}
         {!singleFile && !noteWindow && <SettingsShortcutHandler />}
         {SHOW_INSTALL_SKILL && <InstallInClaudeDesktopTrigger />}
-        {}
         {desktopBridge ? <CreateProjectMenuTrigger bridge={desktopBridge} /> : null}
-        {}
         {desktopBridge ? <ReportBugMenuTrigger /> : null}
-        {}
         {desktopBridge ? <FeedbackMenuTrigger /> : null}
-        {}
         <McpConsentDialog />
-        {}
         {desktopBridge ? (
           <Suspense fallback={null}>
             <ShareBranchSwitchDialog bridge={desktopBridge} />
             <ShareReceiveMissDialog />
           </Suspense>
         ) : null}
-        {}
         {!noteWindow && (
           <CommandPalette
             bridge={desktopBridge}
@@ -660,7 +651,6 @@ function AppBody() {
             onOpenChange={setCommandPaletteOpen}
           />
         )}
-        {}
         {isElectronHost && !showAppHeader && (
           <div
             aria-hidden="true"
@@ -669,9 +659,7 @@ function AppBody() {
             className="pointer-events-none fixed inset-x-0 top-0 z-50 h-2 [-webkit-app-region:drag]"
           />
         )}
-        {}
         <TerminalLaunchProvider value={terminalLaunch}>
-          {}
           <CommentQueueShortcut />
           {showAppHeader && <AppHeader onOpenSearch={() => setCommandPaletteOpen(true)} />}
           <SidebarProvider className="h-[calc(100vh-var(--ok-app-header-height,0px))] min-h-[calc(100svh-var(--ok-app-header-height,0px))]">

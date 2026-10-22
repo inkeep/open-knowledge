@@ -238,7 +238,6 @@ export function OkBlobRunner({ autoStart = false }: OkBlobRunnerProps = {}) {
         ))}
       </div>
 
-      {}
       <div className="relative mt-1.5 h-5">
         <div
           data-slot="ok-blob-runner-score"

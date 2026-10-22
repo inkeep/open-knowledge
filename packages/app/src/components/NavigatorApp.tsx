@@ -252,7 +252,6 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
 
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-primary-foreground dark:bg-background text-foreground">
-      {}
       <div
         className={`pointer-events-none absolute inset-x-0 top-0 z-10 h-9 ${
           isElectronHost ? '[-webkit-app-region:drag]' : ''
@@ -260,7 +259,6 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
         data-electron-drag={isElectronHost ? '' : undefined}
         data-testid="nav-chrome-row"
       >
-        {}
         {shouldShowAppMenubar() && (
           <div className="pointer-events-auto flex h-full items-center px-2">
             <Suspense fallback={null}>
@@ -293,7 +291,6 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
             </div>
           </header>
 
-          {}
           <div className="shrink-0 space-y-6">
             <section className="grid sm:grid-cols-2 gap-3">
               <NavigatorCard
@@ -326,7 +323,6 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
               />
             </section>
 
-            {}
             {!loading && !recentsLoadFailed && recents.length === 0 ? (
               <StarterPackRow onPackSelect={onPackSelect} />
             ) : null}
@@ -384,10 +380,8 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
         <NavigatorSettings />
       </ConfigContext>
 
-      {}
       <McpConsentDialog />
 
-      {}
       <ConsentDialog />
 
       <CreateProjectDialog
@@ -453,7 +447,6 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
         }}
       />
 
-      {}
       <Suspense fallback={null}>
         <ShareReceiveDialog
           bridge={bridge}
@@ -612,7 +605,6 @@ function RecentRow({
           className="h-auto min-w-0 flex-1 justify-between gap-3 py-3.5 pl-4 pr-2 text-left hover:bg-transparent"
         >
           <div className="flex min-w-0 items-center gap-3">
-            {}
             <Folder aria-hidden="true" className="size-[18px] shrink-0 text-muted-foreground" />
             <div className="flex min-w-0 flex-col gap-1 truncate">
               <div className="flex min-w-0 items-center gap-2">

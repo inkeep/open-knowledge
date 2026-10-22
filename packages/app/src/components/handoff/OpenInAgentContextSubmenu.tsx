@@ -93,7 +93,6 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
         <Trans>Open with AI</Trans>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="max-h-80">
-        {}
         {showThreadSection ? (
           <DropdownMenuGroup aria-label={t`In app`}>
             <DropdownMenuLabel>
@@ -139,7 +138,6 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
             <DropdownMenuLabel>
               <Trans>Terminal</Trans>
             </DropdownMenuLabel>
-            {}
             {terminalClis.map((cli) => {
               const { displayName } = TERMINAL_CLIS[cli];
               return (
@@ -168,7 +166,6 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
         ) : null}
         {showDesktopSection ? (
           <>
-            {}
             {showTerminalSection ? <DropdownMenuSeparator /> : null}
             <DropdownMenuGroup aria-label={t`External apps`}>
               <DropdownMenuLabel className="flex items-center gap-1.5">
@@ -215,7 +212,6 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
             </DropdownMenuGroup>
           </>
         ) : null}
-        {}
         {showThreadSection || showTerminalSection || showDesktopSection ? (
           <DropdownMenuSeparator />
         ) : null}

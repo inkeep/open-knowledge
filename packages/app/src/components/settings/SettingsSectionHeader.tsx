@@ -42,7 +42,7 @@ export function SettingsSectionHeader({
       </div>
       {children ? <p className="text-sm text-muted-foreground">{children}</p> : null}
       {docUrl !== undefined ? (
-        // biome-ignore lint/a11y/noAmbiguousAnchorText: the accessible name comes from aria-label, which this rule only recognises as a string literal; the i18n directive requires the t macro.
+        // oxlint-disable-next-line jsx-a11y/anchor-ambiguous-text -- the accessible name comes from aria-label, which this rule only recognises as a string literal; the i18n directive requires the t macro.
         <a
           href={docUrl}
           target="_blank"

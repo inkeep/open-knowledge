@@ -55,7 +55,6 @@ export function SkillOriginInline({ scope, name }: { scope: SkillScope; name: st
 
   return (
     <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground text-xs">
-      {}
       {github ? (
         <a
           href={github}
@@ -164,7 +163,6 @@ export function SkillOriginInline({ scope, name }: { scope: SkillScope; name: st
               ) : (
                 <RefreshCw className="size-3" aria-hidden />
               )}
-              {}
               <span className="hidden @xl/toolbar:inline">
                 {reimporting ? <Trans>Updating</Trans> : <Trans>Update</Trans>}
               </span>

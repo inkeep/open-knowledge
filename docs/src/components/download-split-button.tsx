@@ -58,7 +58,6 @@ export function DownloadSplitButton({
         data-testid="download-split-primary"
         className={cn(chrome.base, chrome.primary)}
       >
-        {}
         {variant === 'compact' ? null : <Download className="size-4 shrink-0" aria-hidden="true" />}
         <span className="truncate">{variant === 'compact' ? 'Download' : osLabel}</span>
       </a>

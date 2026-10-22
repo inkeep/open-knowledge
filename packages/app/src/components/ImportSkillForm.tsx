@@ -180,7 +180,6 @@ export function ImportSkillForm({
           <Label id={sourceGroupId}>
             <Trans>Source</Trans>
           </Label>
-          {}
           <RadioGroup
             value={source}
             onValueChange={(v) => {
@@ -256,7 +255,6 @@ export function ImportSkillForm({
           </RadioGroup>
           {isUpload ? (
             <>
-              {}
               <Input
                 key={source}
                 ref={inputRef}
@@ -311,7 +309,6 @@ export function ImportSkillForm({
                 placeholder={t`owner/repo, a git URL, or a local path`}
                 className="font-mono"
               />
-              {}
               {discovering || discoverMiss || (discovered && discovered.length === 1) ? (
                 <p className="text-1sm text-muted-foreground">
                   {discovering ? (
@@ -355,7 +352,6 @@ export function ImportSkillForm({
             </p>
           </div>
         ) : null}
-        {}
         <div role="note" className="space-y-3" data-testid="skill-import-disclosure">
           <p className="font-medium text-xs font-mono text-muted-foreground/80 uppercase tracking-wider">
             <Trans>What happens next</Trans>

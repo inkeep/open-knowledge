@@ -178,17 +178,14 @@ function ReportRow({
     <li className="flex items-start gap-2.5 rounded-md border px-3 py-2.5">
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex items-center gap-2">
-          {}
           <p dir="auto" className="min-w-0 flex-1 truncate text-1sm" title={title}>
             {title}
           </p>
           <StateBadge state={row.state} />
         </div>
-        {}
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
           {row.bundleLevel !== 'unknown' ? <Badge variant="gray">{row.bundleLevel}</Badge> : null}
           <span className="whitespace-nowrap">{when}</span>
-          {}
           {row.zipBytes > 0 ? (
             <>
               <span aria-hidden>·</span>
@@ -334,7 +331,6 @@ export function BugReportPreviousReports() {
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger asChild>
-        {}
         <Button
           variant="ghost"
           size="sm"

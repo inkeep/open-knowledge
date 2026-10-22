@@ -71,7 +71,6 @@ export function ProductUpdatesForm() {
                 <label htmlFor={field.name} className="sr-only">
                   Email
                 </label>
-                {}
                 <div
                   data-invalid={fieldState.invalid}
                   className="flex h-11 items-center rounded-xl border border-input bg-fd-background pr-1 transition-colors focus-within:border-slide-accent focus-within:ring-2 focus-within:ring-slide-accent/40 data-[invalid=true]:border-red-500"

@@ -454,8 +454,7 @@ export function RawMdxFallbackView({ node, editor, getPos }: NodeViewProps) {
       data-severity={severity}
       {...wildcardChromeProps}
     >
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: stopPropagation required inside PM NodeView */}
-      <div
+      <div // oxlint-disable-line jsx-a11y/no-static-element-interactions -- stopPropagation required inside PM NodeView
         className="absolute top-1 right-1 z-10 flex items-center gap-1.5"
         contentEditable={false}
         onMouseDown={(e) => e.stopPropagation()}

@@ -54,7 +54,6 @@ export function ThemePreviewCanvas({ scheme, highlightSlot, className }: ThemePr
       )}
       style={{ backgroundColor: p.base00, color: p.base05, borderColor: p.base02 }}
     >
-      {}
       <div
         className="flex items-center gap-1.5 px-2 py-1.5"
         style={{ backgroundColor: p.base01, borderBottom: `1px solid ${p.base02}` }}
@@ -73,7 +72,6 @@ export function ThemePreviewCanvas({ scheme, highlightSlot, className }: ThemePr
       </div>
 
       <div className="flex">
-        {}
         <div
           className="w-[26%] shrink-0 space-y-[3px] p-1.5"
           style={{ backgroundColor: p.base01, borderRight: `1px solid ${p.base02}` }}
@@ -94,7 +92,6 @@ export function ThemePreviewCanvas({ scheme, highlightSlot, className }: ThemePr
           </Lit>
         </div>
 
-        {}
         <div className="min-w-0 flex-1 space-y-1.5 p-2">
           <Lit slot="base0D" active={hl} className="block font-semibold">
             <span style={{ color: tok['syntax-func'] }}>{t`Release plan`}</span>
@@ -110,7 +107,6 @@ export function ThemePreviewCanvas({ scheme, highlightSlot, className }: ThemePr
             <span style={{ color: p.base05 }}>.</span>
           </div>
 
-          {}
           <Lit
             slot="base0A"
             active={hl}
@@ -125,7 +121,6 @@ export function ThemePreviewCanvas({ scheme, highlightSlot, className }: ThemePr
             </span>
           </Lit>
 
-          {}
           <div
             className="rounded px-1.5 py-1 font-mono"
             style={{ backgroundColor: tok['syntax-bg'] }}
@@ -154,7 +149,6 @@ export function ThemePreviewCanvas({ scheme, highlightSlot, className }: ThemePr
             </div>
           </div>
 
-          {}
           <div
             className="flex items-center gap-1 rounded px-1.5 py-1 font-mono"
             style={{ backgroundColor: p.base00, border: `1px solid ${p.base02}` }}

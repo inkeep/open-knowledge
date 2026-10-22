@@ -116,7 +116,6 @@ function SplashChrome() {
       <header className="relative z-10 px-6">
         <div className="container mx-auto flex pt-8 md:pt-10">
           <Link href="/" aria-label="OpenKnowledge home" className="inline-flex items-center">
-            {}
             <OkWordmark aria-hidden="true" className="h-8 w-auto text-slide-text" />
           </Link>
         </div>
@@ -138,7 +137,6 @@ export function SplashFallback({ heading, description }: { heading: string; desc
 
           <p className="mt-4 max-w-xl text-slide-muted">{description}</p>
 
-          {}
           <div className="mt-10 flex flex-wrap items-center gap-4">
             <SplashFallbackCta />
           </div>

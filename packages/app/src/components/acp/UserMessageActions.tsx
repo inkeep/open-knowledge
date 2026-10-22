@@ -75,7 +75,6 @@ export function UserMessageActions({
           {formatSentAt(sentAt, now, i18n.locale || undefined)}
         </time>
       ) : null}
-      {}
       <CopyButton
         copyContent={text}
         clipboardWrite={scheduleClipboardWrite}
@@ -83,7 +82,6 @@ export function UserMessageActions({
         ariaLabel={t`Copy message`}
         testId="agent-thread-user-message-copy"
       />
-      {}
       <Tooltip disableHoverableContent>
         <TooltipTrigger asChild>
           <Button
@@ -246,7 +244,6 @@ export function UserMessageEditor({
             </DropdownMenuContent>
           </DropdownMenu>
         </ButtonGroup>
-        {}
         <span role="status" aria-live="polite" className="sr-only">
           {sending ? t`Sending…` : null}
         </span>

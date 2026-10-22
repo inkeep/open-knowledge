@@ -22,7 +22,6 @@ function FileChip({ path, onRemove }: { path: string; onRemove: () => void }) {
       title={path}
       className="group/chip inline-flex max-w-[14rem] items-center gap-1 rounded-md border bg-muted/40 py-0.5 pr-1.5 pl-1 text-muted-foreground text-xs"
     >
-      {}
       <Button
         type="button"
         variant="ghost"

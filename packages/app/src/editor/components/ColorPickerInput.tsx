@@ -50,7 +50,6 @@ export function ColorPickerInput({ id, value, onChange, autoFocus }: ColorPicker
         )}
       </div>
       <div className="relative">
-        {}
         <Button
           type="button"
           variant="outline"

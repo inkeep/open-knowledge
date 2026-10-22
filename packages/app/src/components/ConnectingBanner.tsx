@@ -93,7 +93,6 @@ export function ConnectingBanner() {
         >
           <Trans>Try again</Trans>
         </button>
-        {}
         {openBlobRunner ? (
           <button
             type="button"

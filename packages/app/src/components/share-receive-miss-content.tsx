@@ -158,7 +158,6 @@ function SyncNowButton({
           <Trans>Sync now</Trans>
         </Button>
       )}
-      {}
       <span
         role="status"
         aria-live="polite"
@@ -276,7 +275,6 @@ function PullNowButton({ pending, onPull }: { pending: boolean; onPull: () => vo
           <Trans>Pull latest changes</Trans>
         </Button>
       )}
-      {}
       <span
         role="status"
         aria-live="polite"
@@ -555,7 +553,6 @@ export function ShareReceiveMissContent({
       </div>
       <p className="max-w-md text-balance text-base leading-6 text-foreground/90">{message}</p>
       {failureLine}
-      {}
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-center">
         {actions}
       </div>

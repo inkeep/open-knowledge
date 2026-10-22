@@ -61,7 +61,6 @@ export function TemplateRow({ template, onEdit, onDelete, onCreate, badge }: Tem
           <Trans>Create</Trans>
         </Button>
       ) : null}
-      {}
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <Button

@@ -152,7 +152,6 @@ export function AddPropertyNameField({
         }}
         className="w-64 max-h-64 overflow-y-auto p-1"
       >
-        {}
         <div
           aria-hidden
           className="px-2 py-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wide"

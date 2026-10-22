@@ -72,7 +72,6 @@ export function TerminalSection() {
       data-field="section:terminal"
       data-testid="settings-terminal"
     >
-      {}
       <SettingsSectionHeader
         titleId="settings-terminal-title"
         title={t`Terminal`}

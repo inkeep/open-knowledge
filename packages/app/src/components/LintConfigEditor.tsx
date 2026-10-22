@@ -29,7 +29,6 @@ export function LintConfigEditor({ assetPath }: LintConfigEditorProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background" data-lint-config-editor="">
-      {}
       <NotInSidebarIndicator
         entry={{ kind: 'asset', path: assetPath }}
         className="shrink-0 border-b bg-background px-3 py-1.5"
@@ -57,7 +56,6 @@ export function LintConfigEditor({ assetPath }: LintConfigEditorProps) {
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           <div className="mx-auto w-full max-w-3xl">
-            {}
             <MarkdownlintRuleBrowser hideConfigSourceNote />
           </div>
         </div>

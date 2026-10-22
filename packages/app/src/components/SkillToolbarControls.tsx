@@ -35,7 +35,6 @@ export function SkillToolbarControls({
 
   return (
     <>
-      {}
       <div className="flex items-center gap-2">
         <SkillLevelSelect
           value={scope}
@@ -77,7 +76,6 @@ export function SkillToolbarControls({
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
-      {}
       {move.dialog}
     </>
   );

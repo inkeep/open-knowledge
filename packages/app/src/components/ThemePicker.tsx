@@ -89,7 +89,6 @@ function ThemePickerOption({
     >
       <span className="relative block overflow-hidden rounded-md border border-border/60">
         <ThemePreview tone={preview} />
-        {}
         <span
           className="absolute end-1.5 top-1.5 hidden size-4 items-center justify-center rounded-full bg-primary text-primary-foreground group-data-[state=checked]:flex"
           aria-hidden
@@ -98,7 +97,6 @@ function ThemePickerOption({
         </span>
       </span>
       <span className="flex items-center gap-1.5 px-0.5 pb-0.5 font-medium text-1sm text-foreground">
-        {}
         <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
         {label}
       </span>
@@ -111,7 +109,6 @@ function ThemePreview({ tone }: { tone: PreviewTone }) {
     return (
       <span className="relative block" aria-hidden>
         <MockWindow tone="light" />
-        {}
         <span className="absolute inset-y-0 start-0 w-1/2 overflow-hidden">
           <span className="block w-[200%]">
             <MockWindow tone="dark" />

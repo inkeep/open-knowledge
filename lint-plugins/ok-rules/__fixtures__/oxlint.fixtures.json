@@ -1,6 +1,11 @@
 {
+  "plugins": ["unicorn", "typescript", "oxc", "react"],
   "jsPlugins": ["../index.mjs"],
   "rules": {
+    "react/jsx-curly-brace-presence": [
+      "error",
+      { "children": "never", "props": "never", "propElementValues": "ignore" }
+    ],
     "ok/class-proof-registration-discipline": "error",
     "ok/cst-pm-handler-todo-stub": "error",
     "ok/microcopy-ellipsis": "error",
@@ -9,6 +14,7 @@
     "ok/no-blocking-error-box": "error",
     "ok/no-custom-toast": "error",
     "ok/no-demoted-dialog-confirm": "error",
+    "ok/no-empty-jsx-expression": "error",
     "ok/no-fixed-palette-color": "error",
     "ok/no-hand-rolled-branch-validation": "error",
     "ok/no-hand-rolled-test-file-suffix": "error",
@@ -20,6 +26,7 @@
     "ok/no-raw-error-toast": "error",
     "ok/no-raw-html-interactive-element": "error",
     "ok/no-raw-route-hash-construction": "error",
+    "ok/no-redundant-jsx-element-braces": "error",
     "ok/no-resolved-value-theme-source": "error",
     "ok/no-roundtrip-identity-oracle": "error",
     "ok/no-sentinel-signal-target": "error",

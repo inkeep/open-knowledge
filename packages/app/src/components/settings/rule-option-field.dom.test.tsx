@@ -258,7 +258,7 @@ describe('RuleOptionField — string', () => {
       <RuleOptionField
         ruleId="MD001"
         spec={catalogSpec('MD001', 'front_matter_title')}
-        value={'^title:'}
+        value="^title:"
         onChange={onChange}
       />,
     );
@@ -293,7 +293,7 @@ describe('RuleOptionField — enum', () => {
       <RuleOptionField
         ruleId="MD003"
         spec={catalogSpec('MD003', 'style')}
-        value={'atx'}
+        value="atx"
         onChange={() => {}}
       />,
     );

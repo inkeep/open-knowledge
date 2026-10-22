@@ -243,7 +243,6 @@ export function CreatedItemsList({
                 const Icon = row.icon;
                 return (
                   <li key={row.key} className="flex items-center gap-3">
-                    {}
                     <div
                       aria-hidden="true"
                       className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60"
@@ -251,7 +250,6 @@ export function CreatedItemsList({
                       <Icon className="size-4 text-muted-foreground" />
                     </div>
                     <div className="min-w-0 flex-1 py-0.5">
-                      {}
                       <div className="flex items-center gap-2">
                         <code
                           className="min-w-0 flex-1 truncate font-mono text-1sm text-foreground/90"
@@ -262,7 +260,6 @@ export function CreatedItemsList({
                         {row.pill ? (
                           row.pillTooltip && row.pillTooltip.length > 0 ? (
                             <Tooltip>
-                              {}
                               <TooltipTrigger className="shrink-0 cursor-help rounded bg-transparent p-0 font-mono text-2xs uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground/70 focus-visible:text-foreground/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
                                 {row.pill}
                               </TooltipTrigger>

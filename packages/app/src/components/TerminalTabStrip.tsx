@@ -330,7 +330,6 @@ export function TerminalTabStrip({
               items={sessions.map((session) => session.id)}
               strategy={horizontalListSortingStrategy}
             >
-              {}
               <div
                 onWheel={scrollTabStripOnWheel}
                 className={cn(
@@ -488,15 +487,12 @@ export function TerminalTabStrip({
               </div>
             </SortableContext>
           </DndContext>
-          {}
           {newButton != null ? (
             <div className={cn('shrink-0', windowDragRegion && '[-webkit-app-region:no-drag]')}>
               {newButton}
             </div>
           ) : null}
-          {}
           <div className="flex-1" />
-          {}
           {trailingControls != null ? (
             <div className={cn('shrink-0', windowDragRegion && '[-webkit-app-region:no-drag]')}>
               {trailingControls}

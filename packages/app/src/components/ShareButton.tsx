@@ -99,7 +99,6 @@ export function ShareButton({ input, onClickWhenNoRemote, triggerRef }: ShareBut
         if (!open) setSharePopover(null);
       }}
     >
-      {}
       <PopoverAnchor asChild>
         <Button
           ref={triggerRef}
@@ -121,7 +120,6 @@ export function ShareButton({ input, onClickWhenNoRemote, triggerRef }: ShareBut
         className={cn('flex flex-col gap-2', showFreshnessRow ? 'w-96' : 'w-80')}
         data-testid="share-button-popover"
       >
-        {}
         <p
           id={headingId}
           className="font-mono tracking-wide uppercase text-muted-foreground text-xs"
@@ -148,7 +146,6 @@ export function ShareButton({ input, onClickWhenNoRemote, triggerRef }: ShareBut
             data-testid="share-button-url"
             aria-label={t`Share URL`}
           />
-          {}
           <div className="absolute inset-y-0 right-1 flex items-center">
             <div className="rounded-md bg-background/50 backdrop-blur-sm">
               <CopyButton

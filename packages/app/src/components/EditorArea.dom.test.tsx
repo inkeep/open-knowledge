@@ -436,6 +436,7 @@ vi.doMock('@/components/ui/resizable', () => ({
       data-doc-panel-handle={props['data-doc-panel-handle']}
       data-terminal-panel-handle={props['data-terminal-panel-handle']}
       onPointerDown={onPointerDown}
+      // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- mirrors react-resizable-panels' Separator, which renders tabIndex 0; a focusable separator is a widget.
       tabIndex={0}
     />
   ),

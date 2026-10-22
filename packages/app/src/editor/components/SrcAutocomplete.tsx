@@ -218,7 +218,6 @@ export function SrcAutocomplete({
           }
         }}
       >
-        {}
         <div
           id={listboxId}
           role="listbox"

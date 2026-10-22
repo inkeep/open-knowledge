@@ -103,7 +103,6 @@ function ThemeSwatch({
       className="aspect-[4/3] w-full overflow-hidden rounded-md border"
       style={{ backgroundColor: c.surface, borderColor: c.line }}
     >
-      {}
       <div
         className="flex h-1/3 items-center gap-1 px-1.5"
         style={{ backgroundColor: c.chrome, borderBottom: `1px solid ${c.line}` }}
@@ -114,7 +113,6 @@ function ThemeSwatch({
           style={{ backgroundColor: c.line }}
         />
       </div>
-      {}
       <div className="flex h-2/3">
         <div
           className="flex w-1/4 flex-col items-center justify-center gap-1"

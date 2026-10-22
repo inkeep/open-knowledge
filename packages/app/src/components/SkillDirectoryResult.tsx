@@ -76,7 +76,6 @@ export function SkillDirectoryResult({
       meta={
         <div className="mt-0.5 flex items-center gap-1.5 text-muted-foreground text-xs">
           <span className="truncate">{result.publisher ?? result.source}</span>
-          {}
           {result.publisher === 'openknowledge' || result.publisher === 'inkeep' ? (
             <Badge variant="secondary" className="h-4 px-1 text-[10px] uppercase tracking-wide">
               <Trans>By OpenKnowledge</Trans>
@@ -85,7 +84,6 @@ export function SkillDirectoryResult({
           {result.installs != null ? (
             <>
               <span aria-hidden>·</span>
-              {}
               <span className="shrink-0">
                 <span aria-hidden="true">↓ </span>
                 <span className="sr-only">
@@ -95,7 +93,6 @@ export function SkillDirectoryResult({
               </span>
             </>
           ) : null}
-          {}
           {cost ? (
             <>
               <span aria-hidden>·</span>

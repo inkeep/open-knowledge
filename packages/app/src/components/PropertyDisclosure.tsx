@@ -47,7 +47,6 @@ export function PropertyDisclosure({
       data-testid={testId}
     >
       <Collapsible open={open} onOpenChange={setOpen}>
-        {}
         <div className={cn('flex w-fit items-center gap-1.5', open && 'mb-1.5')}>
           <CollapsibleTrigger asChild>
             <Button
@@ -69,7 +68,6 @@ export function PropertyDisclosure({
           </CollapsibleTrigger>
           {typeof problemCount === 'number' && problemCount > 0 ? (
             <Tooltip>
-              {}
               <TooltipTrigger
                 data-testid="property-problem-badge-trigger"
                 aria-label={t`${plural(problemCount, {
@@ -91,7 +89,6 @@ export function PropertyDisclosure({
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 <span className="flex flex-col gap-0.5">
-                  {}
                   {problemMessages?.map((message, index) => (
                     // biome-ignore lint/suspicious/noArrayIndexKey: static within a render
                     <span key={index}>{message}</span>

@@ -9,7 +9,6 @@ export function ScopeBadge({ scope }: { scope: SettingsScope }) {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          {}
           <Badge
             variant="gray"
             tabIndex={0}

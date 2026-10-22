@@ -140,7 +140,6 @@ export function AgentSplitButton({
           data-testid={testIds.menu}
           {...menuAttributes}
         >
-          {}
           {menuLeading ? (
             <>
               {menuLeading}
@@ -184,7 +183,6 @@ export function AgentSplitButton({
                   <DropdownMenuLabel>
                     <Trans>Terminal</Trans>
                   </DropdownMenuLabel>
-                  {}
                   {cliRows?.map((row) => (
                     <DropdownMenuItem
                       key={row.cli}
@@ -192,7 +190,6 @@ export function AgentSplitButton({
                       data-testid={terminalTestId(row.cli)}
                       aria-label={row.ariaLabel}
                     >
-                      {}
                       <TargetIcon
                         id={cliIconTargetId(row.cli)}
                         className="size-4"
@@ -253,9 +250,7 @@ export function AgentSplitButton({
               ) : null}
             </>
           ) : null}
-          {}
           {!showThreadAgents && !hasOptions ? menuEmptyState : null}
-          {}
           {showThreadAgents || hasOptions ? <DropdownMenuSeparator /> : null}
           <DropdownMenuItem onSelect={onOpenSettings} data-testid={testIds.settings}>
             <SlidersHorizontal aria-hidden="true" className="size-4 text-muted-foreground" />

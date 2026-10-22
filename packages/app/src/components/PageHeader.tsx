@@ -159,7 +159,6 @@ function CoverBanner({ cover, focalY, onCommitFocalY }: CoverBannerProps) {
 
   return (
     <div className="page-header-cover" data-testid="page-header-cover">
-      {}
       <div
         ref={wrapperRef}
         role="slider"
@@ -179,7 +178,6 @@ function CoverBanner({ cover, focalY, onCommitFocalY }: CoverBannerProps) {
         data-testid="page-header-cover-slider"
         data-dragging={dragY !== null || undefined}
       >
-        {}
         <img
           src={cover.value}
           alt=""

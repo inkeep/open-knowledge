@@ -64,7 +64,7 @@ export default async function ReleasePage(props: PageProps<'/docs/changelog/[tag
       {date ? <DocsDescription>{`Released ${date}.`}</DocsDescription> : null}
       <DocsBody>
         {release.bodyHtml ? (
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted maintainer-authored release notes, rendered at build time
+          // oxlint-disable-next-line react/no-danger -- trusted maintainer-authored release notes, rendered at build time
           <div dangerouslySetInnerHTML={{ __html: release.bodyHtml }} />
         ) : (
           <p>No notes for this release.</p>

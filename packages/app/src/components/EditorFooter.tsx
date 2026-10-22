@@ -49,7 +49,6 @@ export function EditorFooter({
         aria-hidden
         className="pointer-events-none absolute inset-x-0 bottom-full h-2 bg-linear-to-t from-background to-transparent"
       />
-      {}
       {composerBadge ? (
         <Button
           type="button"
@@ -108,8 +107,12 @@ function CheckoutDetail({ detail, projectPath }: { detail: string; projectPath: 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        {/* biome-ignore lint/a11y/noNoninteractiveTabindex: tooltip-on-static-text pattern — focusable span lets keyboard users surface the full project path that mouse users see on hover. */}
-        <span tabIndex={0} className="flex min-w-0" data-testid="editor-footer-checkout">
+        <span
+          // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip-on-static-text pattern — focusable span lets keyboard users surface the full project path that mouse users see on hover.
+          tabIndex={0}
+          className="flex min-w-0"
+          data-testid="editor-footer-checkout"
+        >
           {row}
         </span>
       </TooltipTrigger>

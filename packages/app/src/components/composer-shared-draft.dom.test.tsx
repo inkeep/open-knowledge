@@ -155,7 +155,6 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
             }
           }}
         />
-        {}
         {mentionNodes.map((node, i) => (
           <span
             // biome-ignore lint/suspicious/noArrayIndexKey: stable list of seeded chips in a test double
@@ -166,7 +165,6 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
             @{String(node.attrs?.label ?? node.attrs?.path ?? '')}
           </span>
         ))}
-        {}
         <button
           type="button"
           data-testid={`insert-mention-${ariaLabel}`}

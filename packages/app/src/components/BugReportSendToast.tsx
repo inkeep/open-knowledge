@@ -103,12 +103,10 @@ function SendingLayout({
         <p id={titleId} className="font-medium text-sm">
           <Trans>Sending report</Trans>
         </p>
-        {}
         <span className="ms-auto shrink-0 text-muted-foreground text-xs">
           <Trans>{formatBundleSize(operation.zipSizeBytes)} total</Trans>
         </span>
       </div>
-      {}
       <Progress
         value={null}
         indeterminateFillPercent={operation.fillPercent}
@@ -138,7 +136,6 @@ function SentLayout({
         <Trans>We've filed it with the team and attached your logs.</Trans>
       </p>
       <div className="mt-0.5 flex items-center gap-1.5">
-        {}
         <span className="shrink-0 text-muted-foreground text-xs">
           <Trans>Reference</Trans>
         </span>
@@ -147,7 +144,6 @@ function SentLayout({
         </span>
         <CopyReferenceButton reference={operation.reference} write={actions.writeToClipboard} />
       </div>
-      {}
     </ToastCard>
   );
 }
@@ -169,7 +165,6 @@ function EmailDraftLayout({
       <p className="font-medium text-sm">
         <Trans>Send your report by email</Trans>
       </p>
-      {}
       <p className="text-muted-foreground text-sm">
         <Trans>
           Nothing was uploaded. The report stays on this computer until you email it to us.
@@ -216,7 +211,6 @@ function FailedLayout({
         <Button size="sm" onClick={actions.retry}>
           <Trans>Try again</Trans>
         </Button>
-        {}
         {mailtoUrl !== undefined && (
           <Button size="sm" variant="outline" onClick={() => actions.openExternal(mailtoUrl)}>
             <Trans>Open email draft</Trans>
@@ -241,7 +235,6 @@ function AlreadySendingLayout({ actions }: { actions: BugReportSendToastActions 
       <p className="font-medium text-sm">
         <Trans>Already sending this report</Trans>
       </p>
-      {}
       <p className="text-muted-foreground text-sm">
         <Trans>
           This report is already on its way. Its result will appear in your bug report history.

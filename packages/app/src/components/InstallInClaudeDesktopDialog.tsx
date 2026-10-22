@@ -208,7 +208,6 @@ export function InstallInClaudeDesktopDialog({
 
         <DialogBody>
           <div className="flex flex-col gap-6 py-2">
-            {}
             {phase.kind === 'idle' && isElectron && (
               <>
                 <div className="flex flex-col gap-2">
@@ -228,7 +227,6 @@ export function InstallInClaudeDesktopDialog({
               </>
             )}
 
-            {}
             {phase.kind === 'idle' && !isElectron && (
               <>
                 <div className="flex flex-col gap-2">
@@ -268,7 +266,6 @@ export function InstallInClaudeDesktopDialog({
               </>
             )}
 
-            {}
             {phase.kind === 'downloading' && (
               <div className="flex items-center gap-2 text-sm">
                 <Spinner aria-hidden="true" className="h-4 w-4" />
@@ -279,7 +276,6 @@ export function InstallInClaudeDesktopDialog({
               </div>
             )}
 
-            {}
             {phase.kind === 'handed-off' && isElectron && (
               <>
                 <div className="flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
@@ -297,7 +293,6 @@ export function InstallInClaudeDesktopDialog({
               </>
             )}
 
-            {}
             {phase.kind === 'handed-off' && !isElectron && (
               <>
                 <div className="flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
@@ -317,7 +312,6 @@ export function InstallInClaudeDesktopDialog({
               </>
             )}
 
-            {}
             {phase.kind === 'error' && (
               <div className="flex flex-col gap-2 text-sm">
                 <span className="text-destructive">{phase.message}</span>

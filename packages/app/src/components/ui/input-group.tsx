@@ -43,7 +43,7 @@ function InputGroupAddon({
   ...props
 }: React.ComponentProps<'div'> & VariantProps<typeof inputGroupAddonVariants>) {
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: pointer clicks only delegate focus to the sibling input; keyboard users can focus that input directly.
+    // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- pointer clicks only delegate focus to the sibling input; keyboard users can focus that input directly.
     <div
       data-slot="input-group-addon"
       data-align={align}

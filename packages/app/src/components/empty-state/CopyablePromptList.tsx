@@ -48,7 +48,6 @@ export function CopyablePromptList({ scenario, className }: CopyablePromptListPr
             className="group flex items-start gap-3 p-3.5"
             data-testid={`copy-prompt-${suggestion.id}`}
           >
-            {}
             <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               <span className="text-sm font-medium leading-tight text-foreground">

@@ -117,7 +117,6 @@ const PREVIEW_CONFIG: Record<string, PreviewConfig> = {
     render: () => (
       <div className="flex h-full w-full flex-col overflow-hidden rounded-md border border-border bg-background">
         <div className="flex items-center gap-1 border-b border-border bg-muted/40 px-1.5 py-1">
-          {}
           <svg viewBox="0 0 12 12" className="size-3 text-muted-foreground" aria-hidden="true">
             <title>Thumbnails</title>
             <rect x="1" y="1" width="4" height="4" fill="currentColor" rx="0.5" />
@@ -136,13 +135,11 @@ const PREVIEW_CONFIG: Record<string, PreviewConfig> = {
           </span>
         </div>
         <div className="flex flex-1 gap-1 p-1.5">
-          {}
           <div className="flex w-6 flex-col gap-0.5">
             <span className="h-3 rounded-sm bg-muted-foreground/20" />
             <span className="h-3 rounded-sm border border-foreground/60 bg-background" />
             <span className="h-3 rounded-sm bg-muted-foreground/20" />
           </div>
-          {}
           <div className="flex flex-1 flex-col gap-1 rounded-sm bg-background p-1.5">
             <span className="h-1.5 w-1/2 rounded-sm bg-foreground/50" />
             <span className="h-1 w-full rounded-sm bg-muted-foreground/30" />
@@ -177,7 +174,6 @@ const PREVIEW_CONFIG: Record<string, PreviewConfig> = {
             <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
           </marker>
         </defs>
-        {}
         <rect
           x="14"
           y="20"
@@ -192,7 +188,6 @@ const PREVIEW_CONFIG: Record<string, PreviewConfig> = {
         <text x="42" y="38" textAnchor="middle" fontSize="10" fill="currentColor">
           Start
         </text>
-        {}
         <polygon
           points="100,18 140,50 100,82 60,50"
           fill="currentColor"
@@ -203,7 +198,6 @@ const PREVIEW_CONFIG: Record<string, PreviewConfig> = {
         <text x="100" y="54" textAnchor="middle" fontSize="10" fill="currentColor">
           Ready?
         </text>
-        {}
         <rect
           x="130"
           y="84"
@@ -218,7 +212,6 @@ const PREVIEW_CONFIG: Record<string, PreviewConfig> = {
         <text x="158" y="102" textAnchor="middle" fontSize="10" fill="currentColor">
           End
         </text>
-        {}
         <line
           x1="70"
           y1="34"
@@ -573,8 +566,12 @@ export function getInlineComponentItems(): SlashCommandItem[] {
           <p className="text-sm leading-7">
             <Trans>
               See{' '}
-              {/* biome-ignore lint/a11y/useValidAnchor: preview mockup of an <a className="tag"> — no real navigation target needed inside the slash menu's pointer-events-none preview frame */}
-              <a className="tag pointer-events-none">#design-docs</a> for the latest specs.
+              <a // oxlint-disable-line jsx-a11y/anchor-is-valid -- preview mockup of an <a className="tag"> — no real navigation target needed inside the slash menu's pointer-events-none preview frame
+                className="tag pointer-events-none"
+              >
+                #design-docs
+              </a>{' '}
+              for the latest specs.
             </Trans>
           </p>
         ),

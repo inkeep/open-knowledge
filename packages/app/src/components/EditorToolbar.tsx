@@ -81,12 +81,9 @@ export function EditorToolbar({
       data-testid="editor-toolbar"
       className="pointer-events-none absolute inset-x-0 top-0 z-10 @container/toolbar"
     >
-      {}
       <div className="editor-content-aligned bg-background py-2">
         <div className="grid grid-cols-3 items-center">
-          {}
           <div className="pointer-events-auto flex min-w-0 items-center gap-2">
-            {}
             {activeSkill ? (
               <Suspense fallback={null}>
                 <SkillOriginInline scope={activeSkill.scope} name={activeSkill.name} />
@@ -94,7 +91,6 @@ export function EditorToolbar({
             ) : externalSkill ? null : (
               <EditorBreadcrumb docName={activeDocName} />
             )}
-            {}
             {activeDocName === null ? null : (
               <NotInSidebarIndicator
                 entry={{ kind: 'document', docName: activeDocName }}
@@ -103,7 +99,6 @@ export function EditorToolbar({
             )}
           </div>
           <div className="pointer-events-auto flex justify-center">
-            {}
             {activeDocName !== null &&
             (isEditableTextDocFile(activeDocName) || isExcalidrawDocFile(activeDocName)) ? null : (
               <EditorModeToggle
@@ -113,10 +108,8 @@ export function EditorToolbar({
               />
             )}
           </div>
-          {}
         </div>
       </div>
-      {}
       <div className="pointer-events-auto absolute top-0 right-0 flex min-w-0 max-w-[calc(50%_-_3rem)] items-center justify-end gap-1 py-2 pr-2">
         {activeSkill && activeDocName ? (
           <Suspense fallback={null}>

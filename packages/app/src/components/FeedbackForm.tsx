@@ -179,7 +179,6 @@ export const FeedbackForm = ({
           ) : null}
         </div>
       )}
-      {}
       <FormField
         control={form.control}
         name="rating"
@@ -241,7 +240,6 @@ export const FeedbackForm = ({
         {showBeyondRating && (
           <>
             <div className={compact ? 'space-y-5' : 'space-y-3'}>
-              {}
               {rating === 'negative' && (
                 <FormField
                   control={form.control}
@@ -276,7 +274,6 @@ export const FeedbackForm = ({
                 />
               )}
 
-              {}
               <FormField
                 control={form.control}
                 name="message"
@@ -294,7 +291,6 @@ export const FeedbackForm = ({
               />
             </div>
             <div className="space-y-2">
-              {}
               <FormField
                 control={form.control}
                 name="shareEmail"

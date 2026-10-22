@@ -84,7 +84,6 @@ export function SplashCtaCluster({
           <SplashButtonLabel>{attempting ? 'Opening…' : 'Open in desktop app'}</SplashButtonLabel>
         </a>
 
-        {}
         <SplashDownloadSplitButton
           downloadUrl={downloadUrl}
           platformBaseUrl={platformBaseUrl}

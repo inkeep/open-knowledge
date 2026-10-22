@@ -93,7 +93,6 @@ export function IconPickerInput({ id, value, onChange, autoFocus }: IconPickerIn
                 </CommandGroup>
               )}
               <CommandGroup heading="Lucide">
-                {}
                 <CommandPrimitive.Group className="[&_[cmdk-group-items]]:grid [&_[cmdk-group-items]]:grid-cols-6 [&_[cmdk-group-items]]:gap-1 [&_[cmdk-group-items]]:p-1">
                   {LUCIDE_ICON_ENTRIES.map(([name, Icon]) => {
                     const isSelected = name === selectedName;

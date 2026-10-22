@@ -18,7 +18,7 @@ function WarmContentFallbackReplica({ html }: { html: string }) {
     <div className="tiptap-editor h-full pointer-events-none" aria-hidden="true">
       <div
         className="tiptap ProseMirror tiptap-editor-portal-content"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: test replica mirrors editor.getHTML() serialization
+        // oxlint-disable-next-line react/no-danger -- test replica mirrors editor.getHTML() serialization
         dangerouslySetInnerHTML={{ __html: html }}
       />
     </div>

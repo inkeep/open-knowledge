@@ -186,8 +186,6 @@ export function CommentSelectionAffordance({
       style={{ position: 'fixed', top: 0, left: 0 }}
       data-testid="comment-composer"
     >
-      {}
-      {}
       <ComposerMentionInput
         ref={inputRef}
         ariaLabel={t`Add a comment`}
@@ -199,15 +197,12 @@ export function CommentSelectionAffordance({
         onEscape={reset}
         className="max-h-40 min-h-16 overflow-y-auto rounded-md border px-2 py-1 text-sm subtle-scrollbar"
       />
-      {}
-      {}
       <div
         className={cn(
           'flex items-center gap-1.5',
           commentsOnScreen ? 'justify-end' : 'justify-between',
         )}
       >
-        {}
         {commentsOnScreen ? null : (
           <Button
             size="sm"

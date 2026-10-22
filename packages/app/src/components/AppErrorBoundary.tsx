@@ -27,7 +27,6 @@ function AppErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
       data-slot="app-error-boundary"
       className="flex h-screen flex-col items-center justify-center gap-8 p-8 text-center"
     >
-      {}
       <OkBlobRunnerEasterEgg keyboard={false} />
       <div className="flex flex-col items-center gap-1">
         <h1 id="app-error-title" className="text-2xl font-light tracking-tighter text-balance">

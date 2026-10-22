@@ -415,7 +415,7 @@ export function CloneDialog({
                           </div>
                         ) : (
                           suggestions.map((repo, i) => (
-                            // biome-ignore lint/a11y/useKeyWithClickEvents: WAI-ARIA combobox pattern — keyboard is handled on the input (Arrow/Enter via handleComboKeyDown) and routed to the highlighted option through aria-activedescendant; per-option key handlers would double-fire.
+                            // oxlint-disable-next-line jsx-a11y/click-events-have-key-events -- WAI-ARIA combobox pattern — keyboard is handled on the input (Arrow/Enter via handleComboKeyDown) and routed to the highlighted option through aria-activedescendant; per-option key handlers would double-fire.
                             <div
                               key={repo.full_name}
                               id={`${listboxId}-opt-${i}`}

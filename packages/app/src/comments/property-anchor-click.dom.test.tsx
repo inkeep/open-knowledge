@@ -37,7 +37,6 @@ function Panel() {
   usePropertyAnchorClick(ref, 'recipes/chicken-alfredo-pasta');
   return (
     <div ref={ref}>
-      {}
       <div data-testid="property-row" data-key="cuisine">
         <Textarea aria-label="cuisine" defaultValue="Italian-American" />
       </div>

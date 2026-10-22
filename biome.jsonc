@@ -22,6 +22,16 @@
     "enabled": true,
     "rules": {
       "preset": "recommended",
+      "a11y": {
+        "noAmbiguousAnchorText": "off",
+        "noNoninteractiveTabindex": "off",
+        "noStaticElementInteractions": "off",
+        "useKeyWithClickEvents": "off",
+        "useValidAnchor": "off"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "off"
+      },
       "suspicious": {
         "noReactForwardRef": "error"
       },

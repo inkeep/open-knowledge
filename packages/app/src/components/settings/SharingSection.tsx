@@ -120,7 +120,6 @@ function SharingSectionBody() {
           scope="project"
           level="block"
         />
-        {}
         <div role="status" aria-live="polite" aria-busy="true">
           <span className="sr-only">
             <Trans>Loading config sharing</Trans>
@@ -174,7 +173,6 @@ function SharingSectionBody() {
           aria-labelledby={TITLE_ID}
           data-testid="settings-sharing-radiogroup"
         >
-          {}
           <label htmlFor="settings-sharing-local-only" className="flex items-start gap-2 text-sm">
             <RadioGroupItem
               id="settings-sharing-local-only"

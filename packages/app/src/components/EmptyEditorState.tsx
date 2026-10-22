@@ -218,16 +218,13 @@ function OnboardingView({
         celebrateSignal={celebrateSignal}
         onRageStreak={onRageStreak}
       />
-      {}
       {isEmbedded ? (
         <CopyablePromptList scenario="new-project" />
       ) : (
         <CreatePromptComposer scenario="new-project" />
       )}
-      {}
       <div className="flex w-full flex-col gap-3">
         <TemplateDivider label={isEmbedded ? t`Use a starter pack` : t`Or use a starter pack`} />
-        {}
         <PackCardGrid
           onPackSelect={onPackSelect}
           onCreateBlankFile={() => emitCreateTopLevelFile()}

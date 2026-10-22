@@ -95,7 +95,6 @@ export function TerminalPanel({
       style={{ backgroundColor: xtermTheme.background }}
       className={cn('relative flex h-full w-full flex-col overflow-hidden', className)}
     >
-      {}
       <div className="relative min-h-0 flex-1">
         <TerminalSession
           key={restartKey}
@@ -1024,7 +1023,6 @@ function TerminalSession({
           </TerminalNoticeBanner>
         ) : null
       ) : null}
-      {}
       <div className="relative min-h-0 flex-1">
         <div
           ref={containerRef}

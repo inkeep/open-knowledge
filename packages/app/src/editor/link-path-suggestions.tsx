@@ -340,7 +340,6 @@ export function LinkPathSuggestionInput({
         autoComplete="off"
         className={className}
       />
-      {}
       {suggestionPanel && createPortal(suggestionPanel, document.body)}
     </div>
   );

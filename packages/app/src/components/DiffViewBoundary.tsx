@@ -221,7 +221,6 @@ export function DiffViewBoundary({ docName, conflict }: DiffViewBoundaryProps) {
               disabled={isResolving}
               onClick={() => void handleResolveStrategy(resolveConflictDelete)}
             >
-              {}
               <Trans>Keep file deleted</Trans>
             </Button>
             {offersTheirs && (

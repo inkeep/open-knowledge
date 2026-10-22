@@ -117,7 +117,6 @@ export function FrontmatterRow({
     >
       {(dragHandle) => (
         <>
-          {}
           <div className="flex items-start gap-1 @max-[26rem]/prow:flex-wrap">
             {dragHandle}
             <div className="flex items-center gap-1" data-testid="property-row-identity">
@@ -539,7 +538,6 @@ export function AddPropertyRow({
           ref={valueCellRef}
           className="min-w-0 flex-1 @max-[26rem]/prow:order-last @max-[26rem]/prow:mt-0.5 @max-[26rem]/prow:basis-full @max-[26rem]/prow:pl-[2rem]"
         >
-          {}
           {enumConstraint && !enumConstraint.multi ? (
             <EnumSelectWidget
               keyName="__add__"

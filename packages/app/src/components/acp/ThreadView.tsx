@@ -1195,8 +1195,7 @@ export function ThreadView({
           preview={imagePreview}
           onOpenChange={(open) => !open && setImagePreview(null)}
         />
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: drop-target — keyboard/AT users have the + picker button in the composer; drop is a pointer-only affordance. */}
-        <div
+        <div // oxlint-disable-line jsx-a11y/no-static-element-interactions -- drop-target — keyboard/AT users have the + picker button in the composer; drop is a pointer-only affordance.
           className="relative flex min-h-0 flex-1 flex-col text-gray-800 dark:text-gray-200"
           data-agent-thread-root=""
           onDragEnter={(event) => {
@@ -1236,7 +1235,6 @@ export function ThreadView({
           <DocPathResolverReadyContext value={resolverReady}>
             <ReferenceRulesContext value={referenceRules}>
               <ThreadHeader info={info} followFile={followFile} onToggleFollow={toggleFollow} />
-              {}
               <AgentNoticeAnnouncer
                 notices={agentNotices}
                 agentName={agentName}
@@ -1593,8 +1591,13 @@ function PermissionPostureBadge({ info }: { info: ThreadInfo }): ReactNode {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        {/* biome-ignore lint/a11y/noNoninteractiveTabindex: a status indicator whose detail lives in its tooltip must be focusable or keyboard users can never surface it — same rationale as the tooltip-on-disabled-button span wrapper. */}
-        <span tabIndex={0} role="img" aria-label={label} className={focusRing}>
+        <span
+          // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a status indicator whose detail lives in its tooltip must be focusable or keyboard users can never surface it — same rationale as the tooltip-on-disabled-button span wrapper.
+          tabIndex={0}
+          role="img"
+          aria-label={label}
+          className={focusRing}
+        >
           <span className="inline-flex shrink-0 text-warning" data-testid="agent-thread-posture">
             <ShieldAlert className="size-3.5" aria-hidden="true" />
           </span>
@@ -1907,14 +1910,12 @@ function AgentSettingsPopover({
           ) : null}
         </AgentSettingsTrigger>
       </DropdownMenuTrigger>
-      {}
       <DropdownMenuContent
         align="end"
         className="w-60"
         data-bug-report-launcher=""
         data-testid="agent-thread-settings-popover"
       >
-        {}
         {info.archived === true ? (
           <DropdownMenuLabel
             className="font-normal text-muted-foreground"
@@ -2161,9 +2162,7 @@ function ConfigSelectSub({
           {selectOptionSummary(agentId, option)}
         </span>
       </DropdownMenuSubTrigger>
-      {}
       <DropdownMenuSubContent className="max-h-[min(22rem,var(--radix-dropdown-menu-content-available-height))] max-w-72 overscroll-contain">
-        {}
         <DropdownMenuLabel>{option.name}</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={option.currentValue} onValueChange={onSelect}>
           {flat.map((entry) => (
@@ -2198,7 +2197,6 @@ function ConfigRadioItem({
       className="items-start"
       data-testid={`agent-thread-config-option-${entry.value}`}
     >
-      {}
       <div className="flex min-w-0 flex-col">
         <span className="truncate">{entry.name}</span>
         {entry.description ? (
@@ -2709,7 +2707,6 @@ function ThreadAuthPrompt({
       data-testid="agent-thread-notice"
     >
       <RegisteredAgentIcon agentId={agent.id} iconUrl={agent.iconUrl} className="size-12" />
-      {}
       <div className="sr-only" role="status" aria-live="polite">
         {signingIn ? t`Signing in to ${agentName}` : ''}
       </div>
@@ -2745,7 +2742,6 @@ function ThreadAuthPrompt({
               {authPending === method.id ? (
                 <Spinner className="size-3.5" aria-hidden="true" />
               ) : null}
-              {}
               {signInMethods.length === 1 ? t`Sign in with ${method.name}` : method.name}
             </Button>
           ))}
@@ -3072,7 +3068,6 @@ function MessageBubble({
         className="w-full wrap-break-word text-sm text-foreground"
         data-testid="agent-thread-agent-message"
       >
-        {}
         <AgentMarkdown text={item.text} />
       </div>
     );
@@ -3107,7 +3102,6 @@ function MessageBubble({
           />
         ) : (
           <>
-            {}
             <AgentMarkdown text={item.text} />
             {attachments !== undefined && attachments.length > 0 ? (
               <UserMessageAttachments attachments={attachments} />
@@ -3504,7 +3498,6 @@ function ToolCallCard({
           {display.preview}
         </span>
       )}
-      {}
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
         <PermissionRefusalMark permission={permission} status={call.status} />
         <ToolStatusIndicator
@@ -3829,7 +3822,7 @@ function ShellCommandBlock({ id, command }: { id: string; command: string }): Re
         id={id}
         dir="ltr"
         translate="no"
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard-focusable scroll container — a long command scrolls inside this bounded box, and Safari leaves overflow:auto elements out of the tab order.
+        // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- keyboard-focusable scroll container — a long command scrolls inside this bounded box, and Safari leaves overflow:auto elements out of the tab order.
         tabIndex={0}
         className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/50 px-2 py-1 text-start font-mono text-[11px] leading-relaxed"
       >
@@ -4121,7 +4114,6 @@ function RuntimeConsentPrompt({
           <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
           <span id={downloadLabelId}>{t`Downloading ${item.displayName} ${item.version}…`}</span>
         </div>
-        {}
         <Progress
           value={pct}
           indeterminateFillPercent={40}
@@ -4387,7 +4379,6 @@ function ContextUsageRing({
         </svg>
       </TooltipTrigger>
       <TooltipContent side="top">
-        {}
         <div className="flex flex-col items-center gap-0.5 text-center">
           <span className="text-background/60">{t`Context window:`}</span>
           <span>{t`${percent}% used (${left}% left)`}</span>
@@ -4526,9 +4517,7 @@ function ThreadComposer({
         {queue.length > 0 && !archived ? (
           <QueuedMessageList threadId={info.threadId} queue={queue} turnActive={turnActive} />
         ) : null}
-        {}
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only affordance — pressing the card's whitespace focuses the composer input; keyboard/AT users reach it via Tab. See focus-composer-on-card-pointer.ts. */}
-        <div
+        <div // oxlint-disable-line jsx-a11y/no-static-element-interactions -- pointer-only affordance — pressing the card's whitespace focuses the composer input; keyboard/AT users reach it via Tab. See focus-composer-on-card-pointer.ts.
           onMouseDown={(event) => focusComposerInputOnCardPointer(event, composerRef)}
           onPaste={(event) => {
             const files = collectImageFiles(event.clipboardData);
@@ -4542,8 +4531,6 @@ function ThreadComposer({
           }}
           className="relative cursor-text rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30"
         >
-          {}
-          {}
           {hasQueuedComments ? (
             <ComposerContextChips className="px-3 pt-2 pb-1">
               <QueuedCommentsChip
@@ -4596,7 +4583,6 @@ function ThreadComposer({
               />
             ) : null}
           </div>
-          {}
           <div className="flex items-center gap-0.5 px-1.5 pt-1 pb-1.5">
             <ComposerAddMenu
               composerRef={composerRef}
@@ -4647,7 +4633,6 @@ function ThreadComposer({
               {usagePercent !== null && usage?.used !== undefined && usage?.size !== undefined ? (
                 <ContextUsageRing used={usage.used} size={usage.size} percent={usagePercent} />
               ) : null}
-              {}
               {turnActive && (cancelPending || !hasSendableContent) ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -4667,12 +4652,10 @@ function ThreadComposer({
                       )}
                     </Button>
                   </TooltipTrigger>
-                  {}
                   <TooltipContent side="top">{t`Stop (Esc)`}</TooltipContent>
                 </Tooltip>
               ) : canQueue ? (
                 <>
-                  {}
                   {!isEmpty ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -4694,7 +4677,6 @@ function ThreadComposer({
                   ) : null}
                   <Tooltip>
                     <TooltipTrigger asChild>{sendButton}</TooltipTrigger>
-                    {}
                     <TooltipContent side="top">{t`Queues behind the running turn`}</TooltipContent>
                   </Tooltip>
                 </>
@@ -4851,7 +4833,6 @@ function QueuedMessageRow({
       </span>
       {held ? (
         <>
-          {}
           <span className="shrink-0 font-medium text-[10px] text-muted-foreground/70 uppercase tracking-wide">
             {t`Held`}
           </span>
@@ -4915,8 +4896,7 @@ function QueuedMessageRow({
 function ChatPanelDropOverlay({ onDismiss }: { onDismiss: () => void }): ReactNode {
   const { t } = useLingui();
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: transient drop overlay — keyboard/AT users never see it (drag-only surface), and click-to-dismiss is a safety escape for a stuck overlay.
-    // biome-ignore lint/a11y/useKeyWithClickEvents: same reason — the overlay is drag-only, never keyboard-reachable, so a keyboard handler would be dead code.
+    // oxlint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- transient drop overlay — keyboard/AT users never see it (drag-only surface), and click-to-dismiss is a safety escape for a stuck overlay.
     <div
       className="pointer-events-auto absolute inset-0 z-20 flex items-center justify-center bg-background/85 backdrop-blur-sm"
       onClick={onDismiss}

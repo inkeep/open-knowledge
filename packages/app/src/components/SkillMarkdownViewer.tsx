@@ -90,7 +90,6 @@ export function SkillMarkdownViewer({
           data-skill-markdown-viewer-state="loaded"
         >
           <div className="editor-doc-scroll min-h-0 flex-1 overflow-auto subtle-scrollbar scroll-fade-mask">
-            {}
             <ReadonlyPropertyPanel text={text} />
             {grid}
           </div>

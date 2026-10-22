@@ -91,7 +91,6 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
         <Trans>Open with AI</Trans>
       </ContextMenuSubTrigger>
       <ContextMenuSubContent className="max-h-80">
-        {}
         {showThreadSection ? (
           <ContextMenuGroup aria-label={t`In app`}>
             <ContextMenuLabel>
@@ -136,7 +135,6 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
             <ContextMenuLabel>
               <Trans>Terminal</Trans>
             </ContextMenuLabel>
-            {}
             {terminalClis.map((cli) => {
               const { displayName } = TERMINAL_CLIS[cli];
               return (
@@ -164,7 +162,6 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
         ) : null}
         {showDesktopSection ? (
           <>
-            {}
             {showTerminalSection ? <ContextMenuSeparator /> : null}
             <ContextMenuGroup aria-label={t`External apps`}>
               <ContextMenuLabel className="flex items-center gap-1.5">
@@ -209,7 +206,6 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
             </ContextMenuGroup>
           </>
         ) : null}
-        {}
         {showThreadSection || showTerminalSection || showDesktopSection ? (
           <ContextMenuSeparator />
         ) : null}

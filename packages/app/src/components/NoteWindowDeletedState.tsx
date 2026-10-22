@@ -17,7 +17,6 @@ export function NoteWindowDeletedState({ docName }: { docName: string }) {
       <h2 className="font-medium text-base text-foreground">
         <Trans>This document was deleted</Trans>
       </h2>
-      {}
       <p className="max-w-md break-all text-muted-foreground text-sm">
         <UserText>{docName}</UserText>
       </p>

@@ -104,7 +104,6 @@ vi.doMock('./CreateProjectDialog', () => ({
         data-pack-id={props.initialPackId ?? ''}
         data-pack-count={props.packs === undefined ? '' : String(props.packs.length)}
       >
-        {}
         <button
           type="button"
           data-testid="create-dialog-close"

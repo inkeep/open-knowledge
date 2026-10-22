@@ -19,7 +19,6 @@ function ChangelogEntry({ release }: { release: ReleaseNote }) {
       id={release.tag}
       className="group relative scroll-mt-24 pb-10 md:grid md:grid-cols-[10rem_1fr] md:gap-8"
     >
-      {}
       <div className="relative md:sticky md:top-24 md:self-start md:pb-10">
         <div
           aria-hidden="true"
@@ -29,7 +28,6 @@ function ChangelogEntry({ release }: { release: ReleaseNote }) {
           aria-hidden="true"
           className="absolute top-1.5 -right-[1.1875rem] hidden size-2.5 rounded-full border-2 border-fd-background bg-fd-primary md:block"
         />
-        {}
         <a
           href={`${CHANGELOG_ROUTE}/${release.tag}`}
           className="font-mono text-sm font-medium text-fd-foreground no-underline transition-colors hover:text-fd-primary"
@@ -50,7 +48,7 @@ function ChangelogEntry({ release }: { release: ReleaseNote }) {
         {release.bodyHtml ? (
           <div
             className="prose max-w-none prose-headings:mt-6 prose-headings:mb-2 first:prose-headings:mt-0"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted maintainer-authored release notes, rendered at build time
+            // oxlint-disable-next-line react/no-danger -- trusted maintainer-authored release notes, rendered at build time
             dangerouslySetInnerHTML={{ __html: release.bodyHtml }}
           />
         ) : (

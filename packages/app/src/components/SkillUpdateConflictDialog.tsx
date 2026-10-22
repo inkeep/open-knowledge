@@ -31,7 +31,6 @@ export function SkillUpdateConflictDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {}
       <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>
@@ -45,7 +44,6 @@ export function SkillUpdateConflictDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="min-h-0 flex-1 overflow-auto">
-          {}
           <MultiFileDiff
             className="pierre-diff"
             oldFile={{ name: skillName, contents: localBody }}

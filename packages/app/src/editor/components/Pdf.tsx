@@ -475,7 +475,6 @@ export function Pdf(props: PdfProps) {
               <Trans>Failed to load PDF: {error}</Trans>
             </div>
           )}
-          {}
           {Array.from({ length: totalPages }, (_, i) => {
             const pageNumber = i + 1;
             return (

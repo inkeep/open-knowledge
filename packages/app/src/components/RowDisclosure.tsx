@@ -32,7 +32,6 @@ export function RowDisclosure({
         aria-label={title}
         className="max-h-(--radix-popover-content-available-height) w-96 max-w-(--radix-popover-content-available-width) overflow-y-auto p-3 subtle-scrollbar"
       >
-        {}
         <div className="flex flex-col gap-2 text-xs leading-normal">
           <span className="font-mono text-2xs text-muted-foreground uppercase tracking-wide">
             {title}

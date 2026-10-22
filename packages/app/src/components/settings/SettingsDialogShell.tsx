@@ -507,7 +507,7 @@ function SettingsDialogFrame({
           ref={contentRef}
           aria-label={t`Settings content`}
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain subtle-scrollbar p-6"
-          // biome-ignore lint/a11y/noNoninteractiveTabindex: this scrollable content section must be focusable so keyboard users can scroll long settings pages.
+          // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- this scrollable content section must be focusable so keyboard users can scroll long settings pages.
           tabIndex={0}
         >
           <SettingsConfigNotices onDismissFocus={() => contentRef.current?.focus()} />
@@ -563,7 +563,6 @@ function SettingsSidebar({
       aria-label={t`Settings sections`}
       className="flex shrink-0 gap-x-3 overflow-x-auto overscroll-contain subtle-scrollbar scroll-fade-mask-x-max-sm border-b bg-muted/30 px-3 py-2 max-sm:pt-10 sm:h-full sm:min-h-0 sm:flex-col sm:gap-0 sm:overflow-x-visible sm:border-r sm:border-b-0 sm:py-4"
     >
-      {}
       <Command
         shouldFilter={false}
         className="h-auto w-full shrink-0 bg-transparent sm:mb-3 [&_[data-slot=command-input-wrapper]]:h-9 [&_[data-slot=command-input-wrapper]]:rounded-lg [&_[data-slot=command-input-wrapper]]:border [&_[data-slot=command-input-wrapper]]:border-input"
@@ -576,7 +575,6 @@ function SettingsSidebar({
           className="py-0"
           data-testid="settings-search-input"
         />
-        {}
         <span aria-live="polite" className="sr-only" data-testid="settings-search-result-count">
           {query !== '' ? <Plural value={results.length} one="# result" other="# results" /> : null}
         </span>
@@ -625,9 +623,7 @@ function SettingsSidebar({
         ) : null}
       </Command>
 
-      {}
       <div className="contents subtle-scrollbar sm:flex sm:min-h-0 sm:flex-1 sm:flex-col sm:overflow-y-auto sm:overscroll-contain">
-        {}
         {query === ''
           ? groups.map((group) => (
               <SettingsSidebarGroup
@@ -659,7 +655,6 @@ function SettingsSearchResultItem({
       onSelect={() => onNavigate(entry)}
       data-testid={`settings-search-result-${entry.id}`}
     >
-      {}
       <span className="min-w-0 truncate">
         {splitTextByQueryMatches(entry.label, query).map((segment) =>
           segment.match ? (
@@ -671,7 +666,6 @@ function SettingsSearchResultItem({
           ),
         )}
       </span>
-      {}
       {entry.context !== undefined ? (
         <span className="ms-auto shrink-0 truncate ps-3 text-1sm text-muted-foreground">
           {entry.context}

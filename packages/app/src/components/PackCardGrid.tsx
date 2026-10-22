@@ -133,7 +133,6 @@ export function PackCardGrid({
 
   return (
     <div className={cn('@container/packgrid w-full max-w-5xl', className)}>
-      {}
       <Collapsible open={expanded} onOpenChange={setExpanded}>
         <div className={gridClassName}>
           {visiblePacks.map((pack) => (
@@ -209,12 +208,10 @@ function PackCard({ pack, onSelect }: PackCardProps) {
         </p>
       </div>
 
-      {}
       <span
         data-slot="pack-card-reveal"
         className="pointer-events-none absolute inset-0 flex items-center justify-center gap-1.5 rounded-[inherit] bg-card/85 text-sm font-medium text-muted-foreground opacity-0 transition-opacity duration-200 ease-out-strong group-hover:opacity-100 group-focus-visible:opacity-100 supports-backdrop-filter:bg-card/35 supports-backdrop-filter:backdrop-blur-md reduced-transparency:bg-card"
       >
-        {}
         <span className="inline-flex items-center gap-1.5 motion-safe:translate-y-1 motion-safe:transition-[translate] motion-safe:duration-200 motion-safe:ease-out-strong motion-safe:group-hover:translate-y-0 motion-safe:group-focus-visible:translate-y-0">
           <Trans>See what's added</Trans>
           <ArrowRight aria-hidden="true" className="size-3.5" />
@@ -228,7 +225,6 @@ function PackCard({ pack, onSelect }: PackCardProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>{card}</TooltipTrigger>
-      {}
       <TooltipContent className="flex-col items-start gap-1.5">
         <ul className="flex flex-col gap-1.5 text-left">
           {pack.folders.map((folder) => (

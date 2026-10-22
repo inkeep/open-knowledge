@@ -1,5 +1,4 @@
 // oxlint-disable ok/no-raw-error-toast -- pre-rule backlog: toasts here show raw error text; delete this line once the file maps each failure to written copy. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-raw-error-toast
-// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import type { OkignoreBinding } from '@inkeep/open-knowledge-core/config/bind-okignore-doc';
 import { isDocumentOverOpenByteLimit } from '@inkeep/open-knowledge-core/constants/document-open';
@@ -3158,7 +3157,6 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
                   error && (
                     <>
                       <FileTreeHeaderNotice kind="error">{error}</FileTreeHeaderNotice>
-                      {}
                       {serverUnreachable ? <RestartServerButton className="mx-2 mb-1" /> : null}
                     </>
                   )

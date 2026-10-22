@@ -266,7 +266,7 @@ vi.doMock('@pierre/trees/react', () => ({
       <div data-testid="fake-pierre-tree" role="tree" onClickCapture={onClickCapture}>
         {header}
         {[...model.items.values()].map((item) => (
-          // biome-ignore lint/a11y/useKeyWithClickEvents: stub row standing in for Pierre's own row button; the keyboard path lives in the real library.
+          // oxlint-disable-next-line jsx-a11y/click-events-have-key-events -- stub row standing in for Pierre's own row button; the keyboard path lives in the real library.
           <div
             key={item.path}
             role="treeitem"

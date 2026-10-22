@@ -149,7 +149,6 @@ function TagPillInput({
               highlighted && 'ring-2 ring-ring/70',
             )}
           >
-            {}
             <button
               type="button"
               tabIndex={-1}

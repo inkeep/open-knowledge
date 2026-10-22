@@ -592,7 +592,6 @@ function ShareReceiveDialogInner({
                   }}
                   data-testid="share-receive-clone-retry"
                 >
-                  {}
                   <Trans>Try again</Trans>
                 </Button>
                 <Button

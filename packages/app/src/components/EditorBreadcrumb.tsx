@@ -78,7 +78,6 @@ export function EditorBreadcrumb({
           const isCurrentPage = node.kind === 'segment' && node.key === currentPageKey;
           return (
             <Fragment key={key}>
-              {}
               {index > 0 && (
                 <BreadcrumbSeparator className="shrink-0 text-muted-foreground/70 [&>svg]:size-3" />
               )}
@@ -91,7 +90,6 @@ export function EditorBreadcrumb({
                   >
                     <MoreHorizontalIcon className="size-3.5" />
                   </span>
-                  {}
                   <span className="sr-only">
                     <UserText>{node.hidden.join(' / ')}</UserText>
                   </span>

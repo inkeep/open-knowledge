@@ -342,7 +342,6 @@ function WorkspacePane({
       onPointerDownCapture={() => focusPane(pane.id)}
       onFocusCapture={() => focusPane(pane.id)}
     >
-      {}
       <div className="relative flex min-h-0 flex-1 flex-col">
         {renderPane({
           pane,

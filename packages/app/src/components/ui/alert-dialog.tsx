@@ -45,7 +45,6 @@ function AlertDialogContent({
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay {...overlayProps} />
-      {}
       <ElectronDragStrip testId="alert-dialog-drag-strip" />
       <AlertDialogPrimitive.Content
         data-slot="alert-dialog-content"

@@ -364,13 +364,11 @@ export function ConflictView({
           </Alert>
         </div>
       )}
-      {}
       {absentStageBanner && (
         <p role="status" className="shrink-0 border-b px-3 py-2 text-xs text-muted-foreground">
           {absentStageBanner}
         </p>
       )}
-      {}
       <div aria-live="polite" aria-atomic="true" className="sr-only">
         {liveRemaining === null
           ? ''
@@ -426,12 +424,11 @@ export function ConflictView({
       )}
       <section
         ref={containerRef}
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard-focusable scroll container — Chromium doesn't make overflow:auto elements focusable without tabIndex, and axe's scrollable-region-focusable requires the stop. Same pattern as SyncStatusBadge's scroll container.
+        // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- keyboard-focusable scroll container — Chromium doesn't make overflow:auto elements focusable without tabIndex, and axe's scrollable-region-focusable requires the stop. Same pattern as SyncStatusBadge's scroll container.
         tabIndex={0}
         aria-label={t`Conflict diff for ${fileName}`}
         className="conflict-view min-h-0 flex-1 overflow-y-auto subtle-scrollbar"
       />
-      {}
       <div
         ref={conflictFooterRef}
         className="flex shrink-0 items-center justify-end gap-2 border-t px-3 py-2"
@@ -455,7 +452,6 @@ export function ConflictView({
           </Button>
         )}
       </div>
-      {}
       {!parseMismatch &&
         controls.map((control) =>
           createPortal(

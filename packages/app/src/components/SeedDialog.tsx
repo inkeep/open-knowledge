@@ -302,7 +302,6 @@ function SeedDialogBody({
             <Trans>The folders and templates are already here, so there's nothing to add.</Trans>
           </p>
         </div>
-        {}
         <PackSkillConflicts plan={phase.plan} />
       </div>
     );

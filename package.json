@@ -53,6 +53,7 @@
     "changeset": "changeset",
     "version": "changeset version",
     "release": "changeset publish",
+    "typecheck:lint-plugins": "tsc --noEmit -p lint-plugins/ok-rules/tsconfig.json",
     "typecheck:no-net-connect": "tsc --noEmit -p test-support/tsconfig.no-net-connect.json"
   },
   "lint-staged": {

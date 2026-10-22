@@ -42,7 +42,7 @@ const KatexInlineRender = lazy(async () => {
     return (
       <span
         className="math math-inline"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX renderToString returns a strict HTML-allowlist string with no script execution; this is the documented integration path.
+        // oxlint-disable-next-line react/no-danger -- KaTeX renderToString returns a strict HTML-allowlist string with no script execution; this is the documented integration path.
         dangerouslySetInnerHTML={{ __html: html }}
       />
     );
@@ -92,7 +92,6 @@ export function MathInlineView({ node, selected, getPos, editor }: NodeViewProps
   return (
     <NodeViewWrapper as="span" className={selected ? 'math-inline-selected' : undefined}>
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-        {}
         <PopoverTrigger asChild>
           <span
             className="math-inline-trigger"
@@ -174,7 +173,6 @@ export function MathInlineView({ node, selected, getPos, editor }: NodeViewProps
             }}
             onDismiss={() => setPopoverOpen(false)}
           />
-          {}
           <div className="mt-3 flex justify-end border-t border-border pt-2">
             <Button
               type="button"

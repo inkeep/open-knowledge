@@ -463,7 +463,6 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
 
   return (
     <FrontmatterBindingProvider binding={binding}>
-      {}
       <CommentedDocProvider docName={docName === '' ? null : docName}>
         <PropertyDisclosure
           ref={panelRef}
@@ -493,7 +492,6 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
               </div>
             </div>
           ) : null}
-          {}
           {identitySlot}
           <DndContext
             sensors={sensors}
@@ -538,7 +536,6 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
               })}
             </SortableContext>
           </DndContext>
-          {}
           {!reserved.has('tags') && !Object.hasOwn(map, 'tags') ? (
             <FrontmatterRow
               key="virtual-tags"

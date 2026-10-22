@@ -606,17 +606,12 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
         onClick={handleBodyClick}
         onKeyDown={handleKeyDown}
       >
-        {}
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: stopPropagation required inside PM NodeView */}
-        <div
+        <div // oxlint-disable-line jsx-a11y/no-static-element-interactions -- stopPropagation required inside PM NodeView
           className="jsx-component-chrome"
           contentEditable={false}
           onMouseDown={(e) => e.stopPropagation()}
           {...{ [OPT_OUT_ATTR]: 'true' }}
         >
-          {}
-
-          {}
           {descriptor.name === 'Embed' &&
             typeof primitiveProps.src === 'string' &&
             /^https?:\/\//i.test(primitiveProps.src) && (
@@ -632,7 +627,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
               </a>
             )}
 
-          {}
           {descriptor.name === 'Mirror' &&
             typeof primitiveProps.src === 'string' &&
             primitiveProps.src.length > 0 &&
@@ -656,7 +650,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
               );
             })()}
 
-          {}
           {canMoveUp && (
             <button
               type="button"
@@ -739,7 +732,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
             </button>
           )}
 
-          {}
           {editableSource && typeof pos === 'number' ? (
             <button
               type="button"
@@ -752,7 +744,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
             </button>
           ) : null}
 
-          {}
           {expandableChart !== null ? (
             <button
               type="button"
@@ -765,7 +756,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
             </button>
           ) : null}
 
-          {}
           {boardExpandable ? (
             <button
               type="button"
@@ -778,7 +768,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
             </button>
           ) : null}
 
-          {}
           {!isEmbedded && commentLeafText(node).length > 0 && typeof pos === 'number' ? (
             <button
               type="button"
@@ -821,7 +810,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
             </button>
           ) : null}
 
-          {}
           <button
             type="button"
             className="jsx-chrome-btn jsx-chrome-btn--delete"
@@ -864,7 +852,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
             <Trash2 size={12} aria-hidden="true" />
           </button>
 
-          {}
           {hasEditableProps && (
             <PopoverTrigger asChild>
               <button
@@ -879,8 +866,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
           )}
         </div>
 
-        {}
-        {}
         {showPlaceholder && resolvedPlaceholder ? (
           <PopoverAnchor asChild>
             <DescriptorPlaceholder
@@ -945,7 +930,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
           </ComponentErrorBoundary>
         )}
 
-        {}
         {descriptor.emptyChildName &&
           !(descriptor.name === 'Tabs' && node.childCount > 0) &&
           (() => {
@@ -1032,7 +1016,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
           }}
         />
       ) : null}
-      {}
       {hasEditableProps && (
         <PopoverContent
           side={showPlaceholder ? 'bottom' : 'right'}
@@ -1102,7 +1085,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
               markUserTyping();
             }}
           />
-          {}
           <div className="mt-3 flex justify-end border-t border-border pt-2">
             <Button
               type="button"

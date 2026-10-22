@@ -65,7 +65,6 @@ export function ComposerMentionMenu({
           tabIndex={-1}
           className="max-h-64 overflow-y-auto overscroll-contain subtle-scrollbar"
         >
-          {}
           <span className="sr-only" aria-live="polite" aria-atomic="true">
             {selectedItem ? selectedItem.title : ''}
           </span>
@@ -105,7 +104,6 @@ export function ComposerMentionMenu({
                       </span>
                     ) : null}
                   </span>
-                  {}
                   <span className="line-clamp-2 break-all text-xs text-muted-foreground">
                     {displayPath}
                   </span>

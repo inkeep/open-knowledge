@@ -52,7 +52,6 @@ export function SkillEditorActions({
 
   return (
     <div className="flex min-w-0 items-center gap-1.5">
-      {}
       {showNewFile ? (
         <Button
           variant="outline"
@@ -66,10 +65,8 @@ export function SkillEditorActions({
           <FilePlus className="size-4" aria-hidden />
         </Button>
       ) : null}
-      {}
       <DropdownMenu modal={false} open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
-          {}
           <Button
             variant="outline"
             size="sm"
@@ -90,7 +87,6 @@ export function SkillEditorActions({
             ) : (
               <>
                 <Trans>Installed</Trans>
-                {}
                 <AgentIconCluster hosts={installedEditors} className="text-muted-foreground" />
               </>
             )}

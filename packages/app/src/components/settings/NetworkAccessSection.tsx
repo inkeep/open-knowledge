@@ -392,7 +392,6 @@ export function NetworkAccessSection() {
             {portError}
           </p>
         ) : null}
-        {}
         {portUnavailable && !probeUnavailableRedundant ? (
           <p
             id="settings-network-port-unavailable"
@@ -415,7 +414,6 @@ export function NetworkAccessSection() {
             {t`Port ${portDraft.trim()} is available.`}
           </p>
         ) : null}
-        {}
         {portInUse && !applying ? (
           <p
             id="settings-network-port-inuse"

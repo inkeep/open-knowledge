@@ -1108,7 +1108,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
             isSemanticMode ? t`Search by meaning` : t`Search files, folders, or commands`
           }
         />
-        {}
         <div className="flex flex-wrap gap-1.5 border-b px-3 py-2">
           <button
             type="button"
@@ -1135,7 +1134,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
               <Trans>By tag</Trans>
             </span>
           </button>
-          {}
           {semanticSearchOffered ? (
             <button
               type="button"
@@ -1160,7 +1158,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
         <CommandList ref={listRef} className="subtle-scrollbar">
           {isSemanticMode && semanticView ? (
             <>
-              {}
               {semanticCoverageIncomplete ? (
                 <div
                   className="px-3 py-2 text-muted-foreground text-xs"
@@ -1177,7 +1174,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                 </div>
               ) : null}
 
-              {}
               {semanticView.submit ? (
                 <CommandGroup>
                   <CommandItem
@@ -1273,7 +1269,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
 
           {isSemanticMode && semanticView ? (
             <>
-              {}
               {semanticView.results.show ? (
                 <CommandGroup
                   heading={
@@ -1450,7 +1445,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
           ) : null}
         </CommandList>
 
-        {}
         <SearchHint
           mode={classifyOmnibarSearchHint(trimmedDeferredQuery, visibleSearchResults, {
             truncated: searchTruncated,
@@ -1482,7 +1476,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
         onOpenChange={setSeedDialogOpen}
         onSeedApplied={revealEditor}
       />
-      {}
       {bridge ? (
         <CreateProjectDialog
           open={createProjectOpen}
@@ -1490,9 +1483,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
           bridge={bridge}
         />
       ) : null}
-      {}
       {bridge ? <ReportBugDialog capture={bugReport.capture} onClose={bugReport.close} /> : null}
-      {}
       {bridge && historyEverOpened ? (
         <Suspense fallback={null}>
           <BugReportHistoryDialog
@@ -1504,7 +1495,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
           />
         </Suspense>
       ) : null}
-      {}
       <FeedbackFormDialog
         open={feedbackOpen}
         onOpenChange={setFeedbackOpen}

@@ -145,7 +145,6 @@ export function PageCoverWidget({ keyName, value, onCommit }: CommonWidgetProps<
   return (
     <div className="flex w-full flex-col gap-1">
       <div className="flex w-full items-center gap-2">
-        {}
         <input
           type="text"
           data-testid="page-cover-widget"
@@ -194,7 +193,6 @@ export function PageCoverWidget({ keyName, value, onCommit }: CommonWidgetProps<
             <ImagePlus className="size-4" />
           )}
         </Button>
-        {}
         <button
           type="button"
           aria-label={t`Replace ${keyName}`}
@@ -220,7 +218,6 @@ export function PageCoverWidget({ keyName, value, onCommit }: CommonWidgetProps<
             <X className="size-4" />
           </Button>
         ) : null}
-        {}
         <input
           ref={fileInputRef}
           type="file"

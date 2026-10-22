@@ -8,6 +8,7 @@ import { noBlindAgentHostFanout } from './rules/no-blind-agent-host-fanout.mjs';
 import { noBlockingErrorBox } from './rules/no-blocking-error-box.mjs';
 import { noCustomToast } from './rules/no-custom-toast.mjs';
 import { noDemotedDialogConfirm } from './rules/no-demoted-dialog-confirm.mjs';
+import { noEmptyJsxExpression } from './rules/no-empty-jsx-expression.ts';
 import { noFixedPaletteColor } from './rules/no-fixed-palette-color.mjs';
 import { noHandRolledBranchValidation } from './rules/no-hand-rolled-branch-validation.mjs';
 import { noHandRolledSpinner } from './rules/no-hand-rolled-spinner.mjs';
@@ -19,6 +20,7 @@ import { noPhysicalDirectionUtility } from './rules/no-physical-direction-utilit
 import { noRawErrorToast } from './rules/no-raw-error-toast.mjs';
 import { noRawHtmlInteractiveElement } from './rules/no-raw-html-interactive-element.mjs';
 import { noRawRouteHashConstruction } from './rules/no-raw-route-hash-construction.mjs';
+import { noRedundantJsxElementBraces } from './rules/no-redundant-jsx-element-braces.ts';
 import { noResolvedValueThemeSource } from './rules/no-resolved-value-theme-source.mjs';
 import { noRoundtripIdentityOracle } from './rules/no-roundtrip-identity-oracle.mjs';
 import { noSentinelSignalTarget } from './rules/no-sentinel-signal-target.mjs';
@@ -47,6 +49,7 @@ const declared = {
   'no-blocking-error-box': noBlockingErrorBox,
   'no-custom-toast': noCustomToast,
   'no-demoted-dialog-confirm': noDemotedDialogConfirm,
+  'no-empty-jsx-expression': noEmptyJsxExpression,
   'no-fixed-palette-color': noFixedPaletteColor,
   'no-hand-rolled-branch-validation': noHandRolledBranchValidation,
   'no-hand-rolled-test-file-suffix': noHandRolledTestFileSuffix,
@@ -58,6 +61,7 @@ const declared = {
   'no-raw-error-toast': noRawErrorToast,
   'no-raw-html-interactive-element': noRawHtmlInteractiveElement,
   'no-raw-route-hash-construction': noRawRouteHashConstruction,
+  'no-redundant-jsx-element-braces': noRedundantJsxElementBraces,
   'no-resolved-value-theme-source': noResolvedValueThemeSource,
   'no-roundtrip-identity-oracle': noRoundtripIdentityOracle,
   'no-sentinel-signal-target': noSentinelSignalTarget,

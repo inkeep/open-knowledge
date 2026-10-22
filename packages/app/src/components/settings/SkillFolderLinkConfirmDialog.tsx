@@ -88,7 +88,6 @@ export function SkillFolderLinkConfirmDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogBody className="flex flex-col gap-4 py-1">
-          {}
           <div className="flex items-center gap-2" data-testid="skill-folder-link-direction">
             <div className="min-w-0 flex-1 rounded border border-border/60 px-2 py-1.5">
               <code className="block break-all font-mono text-[11px]">{pick}</code>

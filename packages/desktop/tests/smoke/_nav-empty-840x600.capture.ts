@@ -106,7 +106,6 @@ test.describe('Navigator empty-state screenshot (dev-only)', () => {
       await nav.waitForTimeout(1000);
       const outPath = join(SHOT_DIR, 'nav-shot-empty-840x600.png');
       await nav.screenshot({ path: outPath });
-      // eslint-disable-next-line no-console
       console.log(`captured empty 840x600 -> ${outPath}`);
     } finally {
       rmSafe(tmpHome);

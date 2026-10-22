@@ -43,8 +43,6 @@ export function SyncBlockingChanges({ paths }: { paths: readonly string[] }) {
         </span>
       </div>
 
-      {}
-      {}
       <ul
         aria-labelledby="sync-blocking-heading"
         className="flex max-h-28 flex-col gap-1 overflow-y-auto overscroll-contain"
@@ -61,7 +59,6 @@ export function SyncBlockingChanges({ paths }: { paths: readonly string[] }) {
         ))}
       </ul>
 
-      {}
       {failed && (
         <p role="alert" className="text-xs text-destructive" data-testid="sync-blocking-error">
           <Trans>That did not go through. Check the server logs and try again.</Trans>

@@ -77,11 +77,9 @@ export function WorkingAvatar({ status, className, testId }: WorkingAvatarProps)
 
   return (
     <div className={cn('ok-working-enter flex items-center gap-2', className)} data-testid={testId}>
-      {}
       <span aria-live="polite" className="sr-only" role="status">
         {announced}
       </span>
-      {}
       <span className="grid shrink-0 place-items-center text-muted-foreground/80">
         <svg
           width={MARK_SIZE}
@@ -122,7 +120,6 @@ export function WorkingAvatar({ status, className, testId }: WorkingAvatarProps)
           </g>
         </svg>
       </span>
-      {}
       <span key={status} className="ok-working-status text-sm">
         <span className="shimmer">{status}</span>
       </span>

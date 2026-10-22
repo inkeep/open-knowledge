@@ -10,7 +10,7 @@ describe('AgentMarkdown', () => {
   afterEach(cleanup);
 
   test('renders emphasis and inline code as elements, not raw delimiters', () => {
-    const { container } = render(<AgentMarkdown text={'**bold** and `inline`'} />);
+    const { container } = render(<AgentMarkdown text="**bold** and `inline`" />);
     expect(container.querySelector('[data-streamdown="strong"]')?.textContent).toBe('bold');
     expect(container.querySelector('code')?.textContent).toBe('inline');
     expect(container.textContent).not.toContain('**');
@@ -18,7 +18,7 @@ describe('AgentMarkdown', () => {
 
   test('untrusted text renders no raw HTML element and loads no image', () => {
     const { container } = render(
-      <AgentMarkdown text={'<b>bold</b> then ![a chart](https://example.com/x.png)'} untrusted />,
+      <AgentMarkdown text="<b>bold</b> then ![a chart](https://example.com/x.png)" untrusted />,
     );
     expect(container.querySelector('b')).toBeNull();
     expect(container.querySelector('img')).toBeNull();
@@ -60,14 +60,14 @@ describe('AgentMarkdown', () => {
   });
 
   test('an unterminated construct mid-stream shows text without delimiter noise', () => {
-    const { container } = render(<AgentMarkdown text={'streaming **partial'} />);
+    const { container } = render(<AgentMarkdown text="streaming **partial" />);
     expect(container.textContent).toContain('partial');
     expect(container.textContent).not.toContain('**');
   });
 
   test('sanitizes raw HTML from the agent', () => {
     const { container } = render(
-      <AgentMarkdown text={'before <img src="x" onerror="window.__pwned = true"> after'} />,
+      <AgentMarkdown text='before <img src="x" onerror="window.__pwned = true"> after' />,
     );
     for (const img of container.querySelectorAll('img')) {
       expect(img.getAttribute('onerror')).toBeNull();
@@ -83,9 +83,7 @@ describe('AgentMarkdown', () => {
           autolinks: [{ prefix: 'PRD-', url: 'https://linear.app/inkeep/issue/PRD-<num>' }],
         }}
       >
-        <AgentMarkdown
-          text={'Fixes PRD-8223 and inkeep/agents-private#4971, not `PRD-1` or #12.'}
-        />
+        <AgentMarkdown text="Fixes PRD-8223 and inkeep/agents-private#4971, not `PRD-1` or #12." />
       </ReferenceRulesContext>,
     );
     const anchors = [...container.querySelectorAll('a')].map((a) => [
@@ -147,7 +145,7 @@ describe('AgentMarkdown', () => {
   });
 
   test('hardens links to open in a new context', () => {
-    const { container } = render(<AgentMarkdown text={'[docs](https://example.com/)'} />);
+    const { container } = render(<AgentMarkdown text="[docs](https://example.com/)" />);
     const anchor = container.querySelector('a');
     expect(anchor?.getAttribute('href')).toBe('https://example.com/');
     expect(anchor?.getAttribute('target')).toBe('_blank');
@@ -170,7 +168,7 @@ describe('single newlines', () => {
     const table = render(<AgentMarkdown text={'| a | b |\n| - | - |\n| 1 | 2 |'} />);
     expect(table.container.querySelector('table')).not.toBeNull();
 
-    const strike = render(<AgentMarkdown text={'~~gone~~'} />);
+    const strike = render(<AgentMarkdown text="~~gone~~" />);
     expect(strike.container.querySelector('del')).not.toBeNull();
   });
 });
@@ -316,7 +314,7 @@ describe('AgentMarkdown doc-path links', () => {
     setDocPathResolver(resolver);
     const { container } = render(
       <DocPathResolverReadyContext value={resolver !== null}>
-        <AgentMarkdown text={'open docs/intro.mdx for the setup steps'} />
+        <AgentMarkdown text="open docs/intro.mdx for the setup steps" />
       </DocPathResolverReadyContext>,
     );
     const link = container.querySelector('a[data-testid="agent-thread-doc-link"]');

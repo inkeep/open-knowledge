@@ -32,7 +32,6 @@ export function SeedRootPicker({
   const groupLabelId = `${idPrefix}-group-label`;
   return (
     <div className="space-y-2 py-1">
-      {}
       <p id={groupLabelId} className="text-sm font-medium">
         <Trans>Where should it live?</Trans>
       </p>

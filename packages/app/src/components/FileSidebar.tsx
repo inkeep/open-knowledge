@@ -596,256 +596,236 @@ function FileSidebarInner() {
           {pendingSettingsReason}
         </span>
       ) : null}
-      {}
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: ContextMenuTrigger
-           * delegation surface — display:contents wrapper for the asChild Slot's
-           * single-child requirement. Keyboard equivalents live on the individual
-           * interactive controls inside (toolbar buttons, Pierre tree rows,
-           * sidebar rail); this wrapper
-           * has no perceivable interactive surface of its own. The onContextMenu
-           * handler delegates the button-target opt-out for the sidebar-wide
-           * context menu — same a11y semantics as a Radix Slot. */}
-          <div className="contents" onContextMenu={handleSidebarSurfaceContextMenu}>
+          <div // oxlint-disable-line jsx-a11y/no-static-element-interactions -- ContextMenuTrigger delegation surface — display:contents wrapper for the asChild Slot's single-child requirement. Keyboard equivalents live on the individual interactive controls inside (toolbar buttons, Pierre tree rows, sidebar rail); this wrapper has no perceivable interactive surface of its own. The onContextMenu handler delegates the button-target opt-out for the sidebar-wide context menu — same a11y semantics as a Radix Slot.
+            className="contents"
+            onContextMenu={handleSidebarSurfaceContextMenu}
+          >
             <SidebarContent>
               {cover ? null : <ConflictsSection />}
-              {}
-              {
-                <Collapsible
-                  open={filesOpen}
-                  onOpenChange={setFilesOpen}
-                  className="group/files flex min-h-0 flex-col data-[state=open]:min-h-48 data-[state=open]:flex-1"
-                >
-                  <SidebarGroup className="min-h-0 flex-1 px-0 pt-0">
-                    {}
-                    <SidebarGroupLabel
-                      data-sidebar-project-row=""
+              <Collapsible
+                open={filesOpen}
+                onOpenChange={setFilesOpen}
+                className="group/files flex min-h-0 flex-col data-[state=open]:min-h-48 data-[state=open]:flex-1"
+              >
+                <SidebarGroup className="min-h-0 flex-1 px-0 pt-0">
+                  <SidebarGroupLabel
+                    data-sidebar-project-row=""
+                    className={cn(
+                      'h-11 shrink-0 gap-1 rounded-none',
+                      cover && 'sticky top-0 z-10 bg-sidebar',
+                    )}
+                  >
+                    {cover ? (
+                      <Button
+                        data-files-back=""
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t`Back to editor`}
+                        title={t`Back to editor`}
+                        onClick={() => dismissCover()}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Escape' || isOverlayLayerOpen()) return;
+                          event.preventDefault();
+                          dismissCover();
+                        }}
+                      >
+                        <ChevronLeft aria-hidden="true" />
+                      </Button>
+                    ) : null}
+                    <CollapsibleTrigger
+                      data-sidebar-root-context
+                      className="flex min-w-0 flex-1 items-center gap-1.5"
+                    >
+                      <ChevronRight className="size-4 shrink-0 text-tree-muted transition-transform group-data-[state=open]/files:rotate-90" />
+                      <span className="truncate text-sm font-normal text-muted-foreground">
+                        {projectName}
+                      </span>
+                    </CollapsibleTrigger>
+                    {/* biome-ignore lint/a11y/useSemanticElements: same call as ui/button-group — a toolbar cluster is not a form-control set, so the semantic alternative would impose form-field semantics and chrome. */}
+                    <div
+                      role="group"
+                      aria-label={t`Files toolbar`}
+                      data-testid="sidebar-toolbar"
                       className={cn(
-                        'h-11 shrink-0 gap-1 rounded-none',
-                        cover && 'sticky top-0 z-10 bg-sidebar',
+                        'flex items-center gap-0.5',
+                        isElectronHost && '[&>*]:[-webkit-app-region:no-drag]',
                       )}
                     >
-                      {cover ? (
-                        <Button
-                          data-files-back=""
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t`Back to editor`}
-                          title={t`Back to editor`}
-                          onClick={() => dismissCover()}
-                          onKeyDown={(event) => {
-                            if (event.key !== 'Escape' || isOverlayLayerOpen()) return;
-                            event.preventDefault();
-                            dismissCover();
-                          }}
-                        >
-                          <ChevronLeft aria-hidden="true" />
-                        </Button>
-                      ) : null}
-                      <CollapsibleTrigger
-                        data-sidebar-root-context
-                        className="flex min-w-0 flex-1 items-center gap-1.5"
-                      >
-                        <ChevronRight className="size-4 shrink-0 text-tree-muted transition-transform group-data-[state=open]/files:rotate-90" />
-                        <span className="truncate text-sm font-normal text-muted-foreground">
-                          {projectName}
-                        </span>
-                      </CollapsibleTrigger>
-                      {/* biome-ignore lint/a11y/useSemanticElements: same call as ui/button-group — a toolbar cluster is not a form-control set, so the semantic alternative would impose form-field semantics and chrome. */}
-                      <div
-                        role="group"
-                        aria-label={t`Files toolbar`}
-                        data-testid="sidebar-toolbar"
-                        className={cn(
-                          'flex items-center gap-0.5',
-                          isElectronHost && '[&>*]:[-webkit-app-region:no-drag]',
-                        )}
-                      >
-                        {}
-                        <DropdownMenu>
-                          <ToolbarDropdownTrigger
-                            icon={ListCollapse}
-                            label={t`Tree view options`}
-                          />
-                          {sidebarState === 'expanded' ? (
-                            <DropdownMenuContent
-                              align="end"
-                              className="min-w-52"
-                              data-testid="tree-options-menu"
-                              onCloseAutoFocus={(event) => {
-                                if (!suppressTreeMenuFocusRestoreRef.current) return;
-                                suppressTreeMenuFocusRestoreRef.current = false;
-                                event.preventDefault();
-                              }}
-                            >
-                              {showExpandAll ? (
-                                <DropdownMenuItem onSelect={() => tree?.expandAll()}>
-                                  <UnfoldVertical aria-hidden="true" />
-                                  <Trans>Expand all</Trans>
-                                </DropdownMenuItem>
-                              ) : null}
-                              {showCollapseAll ? (
-                                <DropdownMenuItem onSelect={() => tree?.collapseAll()}>
-                                  <FoldVertical aria-hidden="true" />
-                                  <Trans>Collapse all</Trans>
-                                </DropdownMenuItem>
-                              ) : null}
-                              {showTreeStateSection ? <DropdownMenuSeparator /> : null}
-                              {}
-                              <SettingsLoadingMenuGroupTooltip reason={pendingSettingsReason}>
-                                <DropdownMenuGroup aria-label={t`Show`}>
-                                  <DropdownMenuLabel>
-                                    <Trans>Show</Trans>
-                                  </DropdownMenuLabel>
-                                  <DropdownMenuCheckboxItem
-                                    checked={showHiddenFiles}
-                                    onCheckedChange={(checked) =>
-                                      patchSidebarVisibility({ showHiddenFiles: checked })
-                                    }
-                                    aria-disabled={pendingSettingsReason ? true : undefined}
-                                    onSelect={preventPendingSettingsSelection}
-                                    aria-describedby={
-                                      pendingSettingsReason ? settingsLoadingReasonId : undefined
-                                    }
-                                    data-testid="tree-options-show-hidden-files"
-                                  >
-                                    <Trans>Hidden files</Trans>
-                                  </DropdownMenuCheckboxItem>
-                                  <DropdownMenuCheckboxItem
-                                    checked={showOkFolders}
-                                    onCheckedChange={(checked) =>
-                                      patchSidebarVisibility({ showOkFolders: checked })
-                                    }
-                                    aria-disabled={pendingSettingsReason ? true : undefined}
-                                    onSelect={preventPendingSettingsSelection}
-                                    aria-describedby={
-                                      pendingSettingsReason ? settingsLoadingReasonId : undefined
-                                    }
-                                    data-testid="tree-options-show-ok-folders"
-                                  >
-                                    <Trans>.ok folders</Trans>
-                                  </DropdownMenuCheckboxItem>
-                                  <DropdownMenuCheckboxItem
-                                    checked={showOnlyMarkdownFiles}
-                                    onCheckedChange={(checked) =>
-                                      patchSidebarVisibility({ showOnlyMarkdownFiles: checked })
-                                    }
-                                    aria-disabled={pendingSettingsReason ? true : undefined}
-                                    onSelect={preventPendingSettingsSelection}
-                                    aria-describedby={
-                                      pendingSettingsReason ? settingsLoadingReasonId : undefined
-                                    }
-                                    data-testid="tree-options-show-only-markdown-files"
-                                  >
-                                    <Trans>Only markdown files</Trans>
-                                  </DropdownMenuCheckboxItem>
-                                  <DropdownMenuCheckboxItem
-                                    checked={showSkillsSection}
-                                    onCheckedChange={(checked) =>
-                                      patchSidebarVisibility({ showSkillsSection: checked })
-                                    }
-                                    aria-disabled={pendingSettingsReason ? true : undefined}
-                                    onSelect={preventPendingSettingsSelection}
-                                    aria-describedby={
-                                      pendingSettingsReason ? settingsLoadingReasonId : undefined
-                                    }
-                                    data-testid="tree-options-show-skills"
-                                  >
-                                    <Trans>Skills Studio</Trans>
-                                  </DropdownMenuCheckboxItem>
-                                </DropdownMenuGroup>
-                              </SettingsLoadingMenuGroupTooltip>
-                              {}
-                              {showSkillsSection ? (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <SettingsLoadingMenuGroupTooltip reason={pendingSettingsReason}>
-                                    <DropdownMenuGroup>
-                                      <DropdownMenuCheckboxItem
-                                        checked={showSkillGroups}
-                                        onCheckedChange={(checked) =>
-                                          patchSidebarVisibility({ showSkillGroups: checked })
-                                        }
-                                        aria-disabled={pendingSettingsReason ? true : undefined}
-                                        onSelect={preventPendingSettingsSelection}
-                                        aria-describedby={
-                                          pendingSettingsReason
-                                            ? settingsLoadingReasonId
-                                            : undefined
-                                        }
-                                        data-testid="tree-options-group-skills"
-                                      >
-                                        <Trans>Group skills by source</Trans>
-                                      </DropdownMenuCheckboxItem>
-                                    </DropdownMenuGroup>
-                                  </SettingsLoadingMenuGroupTooltip>
-                                </>
-                              ) : null}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuGroup>
-                                <DropdownMenuItem
-                                  data-files-hide=""
-                                  onSelect={() => {
-                                    suppressTreeMenuFocusRestoreRef.current = true;
-                                    setOpen(false);
-                                    dismissCover();
-                                  }}
+                      <DropdownMenu>
+                        <ToolbarDropdownTrigger icon={ListCollapse} label={t`Tree view options`} />
+                        {sidebarState === 'expanded' ? (
+                          <DropdownMenuContent
+                            align="end"
+                            className="min-w-52"
+                            data-testid="tree-options-menu"
+                            onCloseAutoFocus={(event) => {
+                              if (!suppressTreeMenuFocusRestoreRef.current) return;
+                              suppressTreeMenuFocusRestoreRef.current = false;
+                              event.preventDefault();
+                            }}
+                          >
+                            {showExpandAll ? (
+                              <DropdownMenuItem onSelect={() => tree?.expandAll()}>
+                                <UnfoldVertical aria-hidden="true" />
+                                <Trans>Expand all</Trans>
+                              </DropdownMenuItem>
+                            ) : null}
+                            {showCollapseAll ? (
+                              <DropdownMenuItem onSelect={() => tree?.collapseAll()}>
+                                <FoldVertical aria-hidden="true" />
+                                <Trans>Collapse all</Trans>
+                              </DropdownMenuItem>
+                            ) : null}
+                            {showTreeStateSection ? <DropdownMenuSeparator /> : null}
+                            <SettingsLoadingMenuGroupTooltip reason={pendingSettingsReason}>
+                              <DropdownMenuGroup aria-label={t`Show`}>
+                                <DropdownMenuLabel>
+                                  <Trans>Show</Trans>
+                                </DropdownMenuLabel>
+                                <DropdownMenuCheckboxItem
+                                  checked={showHiddenFiles}
+                                  onCheckedChange={(checked) =>
+                                    patchSidebarVisibility({ showHiddenFiles: checked })
+                                  }
+                                  aria-disabled={pendingSettingsReason ? true : undefined}
+                                  onSelect={preventPendingSettingsSelection}
+                                  aria-describedby={
+                                    pendingSettingsReason ? settingsLoadingReasonId : undefined
+                                  }
+                                  data-testid="tree-options-show-hidden-files"
                                 >
-                                  <PanelLeftClose aria-hidden="true" />
-                                  <Trans>Hide Files</Trans>
-                                </DropdownMenuItem>
+                                  <Trans>Hidden files</Trans>
+                                </DropdownMenuCheckboxItem>
+                                <DropdownMenuCheckboxItem
+                                  checked={showOkFolders}
+                                  onCheckedChange={(checked) =>
+                                    patchSidebarVisibility({ showOkFolders: checked })
+                                  }
+                                  aria-disabled={pendingSettingsReason ? true : undefined}
+                                  onSelect={preventPendingSettingsSelection}
+                                  aria-describedby={
+                                    pendingSettingsReason ? settingsLoadingReasonId : undefined
+                                  }
+                                  data-testid="tree-options-show-ok-folders"
+                                >
+                                  <Trans>.ok folders</Trans>
+                                </DropdownMenuCheckboxItem>
+                                <DropdownMenuCheckboxItem
+                                  checked={showOnlyMarkdownFiles}
+                                  onCheckedChange={(checked) =>
+                                    patchSidebarVisibility({ showOnlyMarkdownFiles: checked })
+                                  }
+                                  aria-disabled={pendingSettingsReason ? true : undefined}
+                                  onSelect={preventPendingSettingsSelection}
+                                  aria-describedby={
+                                    pendingSettingsReason ? settingsLoadingReasonId : undefined
+                                  }
+                                  data-testid="tree-options-show-only-markdown-files"
+                                >
+                                  <Trans>Only markdown files</Trans>
+                                </DropdownMenuCheckboxItem>
+                                <DropdownMenuCheckboxItem
+                                  checked={showSkillsSection}
+                                  onCheckedChange={(checked) =>
+                                    patchSidebarVisibility({ showSkillsSection: checked })
+                                  }
+                                  aria-disabled={pendingSettingsReason ? true : undefined}
+                                  onSelect={preventPendingSettingsSelection}
+                                  aria-describedby={
+                                    pendingSettingsReason ? settingsLoadingReasonId : undefined
+                                  }
+                                  data-testid="tree-options-show-skills"
+                                >
+                                  <Trans>Skills Studio</Trans>
+                                </DropdownMenuCheckboxItem>
                               </DropdownMenuGroup>
-                            </DropdownMenuContent>
-                          ) : null}
-                        </DropdownMenu>
-                        <ToolbarButton
-                          icon={SquarePen}
-                          label={t`New file`}
-                          onClick={() => tree?.startCreating('file', initialCreateDir)}
-                          shortcutId="new-item"
-                        />
-                        {activeFolderHasTemplates ? (
-                          <DropdownMenu>
-                            <ToolbarDropdownTrigger icon={FilePlus} label={t`New from template`} />
-                            <DropdownMenuContent
-                              align="end"
-                              className="min-w-52"
-                              onCloseAutoFocus={handleCreateMenuCloseAutoFocus}
-                            >
-                              <TemplateMenuRows
-                                parentDir={initialCreateDir}
-                                onSelectTemplate={(templateName) => {
-                                  suppressCreateMenuFocusRestoreRef.current = true;
-                                  tree?.createFromTemplate(initialCreateDir, templateName);
+                            </SettingsLoadingMenuGroupTooltip>
+                            {showSkillsSection ? (
+                              <>
+                                <DropdownMenuSeparator />
+                                <SettingsLoadingMenuGroupTooltip reason={pendingSettingsReason}>
+                                  <DropdownMenuGroup>
+                                    <DropdownMenuCheckboxItem
+                                      checked={showSkillGroups}
+                                      onCheckedChange={(checked) =>
+                                        patchSidebarVisibility({ showSkillGroups: checked })
+                                      }
+                                      aria-disabled={pendingSettingsReason ? true : undefined}
+                                      onSelect={preventPendingSettingsSelection}
+                                      aria-describedby={
+                                        pendingSettingsReason ? settingsLoadingReasonId : undefined
+                                      }
+                                      data-testid="tree-options-group-skills"
+                                    >
+                                      <Trans>Group skills by source</Trans>
+                                    </DropdownMenuCheckboxItem>
+                                  </DropdownMenuGroup>
+                                </SettingsLoadingMenuGroupTooltip>
+                              </>
+                            ) : null}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuGroup>
+                              <DropdownMenuItem
+                                data-files-hide=""
+                                onSelect={() => {
+                                  suppressTreeMenuFocusRestoreRef.current = true;
+                                  setOpen(false);
+                                  dismissCover();
                                 }}
-                                ItemComponent={DropdownMenuItem}
-                              />
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                              >
+                                <PanelLeftClose aria-hidden="true" />
+                                <Trans>Hide Files</Trans>
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                          </DropdownMenuContent>
                         ) : null}
-                        <ToolbarButton
-                          icon={FolderPlus}
-                          label={t`New folder`}
-                          onClick={() => tree?.startCreating('folder', initialCreateDir)}
-                          shortcutId={isElectronHost ? 'new-folder' : undefined}
-                        />
-                      </div>
-                    </SidebarGroupLabel>
-                    <CollapsibleContent className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                      <FileTree ref={setTree} />
-                    </CollapsibleContent>
-                  </SidebarGroup>
-                </Collapsible>
-              }
-              {}
+                      </DropdownMenu>
+                      <ToolbarButton
+                        icon={SquarePen}
+                        label={t`New file`}
+                        onClick={() => tree?.startCreating('file', initialCreateDir)}
+                        shortcutId="new-item"
+                      />
+                      {activeFolderHasTemplates ? (
+                        <DropdownMenu>
+                          <ToolbarDropdownTrigger icon={FilePlus} label={t`New from template`} />
+                          <DropdownMenuContent
+                            align="end"
+                            className="min-w-52"
+                            onCloseAutoFocus={handleCreateMenuCloseAutoFocus}
+                          >
+                            <TemplateMenuRows
+                              parentDir={initialCreateDir}
+                              onSelectTemplate={(templateName) => {
+                                suppressCreateMenuFocusRestoreRef.current = true;
+                                tree?.createFromTemplate(initialCreateDir, templateName);
+                              }}
+                              ItemComponent={DropdownMenuItem}
+                            />
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : null}
+                      <ToolbarButton
+                        icon={FolderPlus}
+                        label={t`New folder`}
+                        onClick={() => tree?.startCreating('folder', initialCreateDir)}
+                        shortcutId={isElectronHost ? 'new-folder' : undefined}
+                      />
+                    </div>
+                  </SidebarGroupLabel>
+                  <CollapsibleContent className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                    <FileTree ref={setTree} />
+                  </CollapsibleContent>
+                </SidebarGroup>
+              </Collapsible>
               {cover ? <ConflictsSection /> : null}
               {showSkillsSection ? <SkillsSidebarDock filesOpen={filesOpen} /> : null}
             </SidebarContent>
             <SidebarFooter className="px-0 empty:hidden">
               <OnboardingCardMount />
             </SidebarFooter>
-            {}
             <SidebarRail
               enableToggle={false}
               enableDrag={!(isEmbedded && sidebarState === 'collapsed')}
@@ -854,7 +834,6 @@ function FileSidebarInner() {
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="min-w-52" onCloseAutoFocus={handleCreateMenuCloseAutoFocus}>
-          {}
           <ContextMenuItem
             disabled={!workspace}
             onSelect={handleEmptySpaceCreateFile}

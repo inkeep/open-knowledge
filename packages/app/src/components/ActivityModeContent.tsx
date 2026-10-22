@@ -271,7 +271,6 @@ function ActivityModeBody({
           <EmptyState />
         ) : (
           <>
-            {}
             {!data.sessionAlive && lastTs !== null ? <SessionEndedBanner lastTs={lastTs} /> : null}
             {data.files.length === 0 ? (
               <EmptyState />

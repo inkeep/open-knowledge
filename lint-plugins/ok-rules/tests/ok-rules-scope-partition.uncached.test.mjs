@@ -16,7 +16,7 @@ const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const TESTS_DIR = join(REPO_ROOT, OK_RULES_TESTS_DIR);
 const FIXTURES_DIR = join(REPO_ROOT, OK_RULES_FIXTURES_DIR);
 const FIXTURE_CONFIG = join(FIXTURES_DIR, 'oxlint.fixtures.json');
-const TIER_TEST = /\.uncached\.test\.mjs$/;
+const TIER_TEST = /\.uncached\.test\.(?:mjs|ts)$/;
 const CODE_FILE = /\.[cm]?[jt]sx?$/;
 const META_TESTS = ['ok-rules-scope-partition', 'ok-rules-vocabulary'];
 
@@ -39,8 +39,10 @@ describe('ok-rules scope table', () => {
   test('UNSCOPED_RULES holds exactly the rules that are deliberately global', () => {
     expect([...UNSCOPED_RULES].sort()).toEqual([
       'microcopy-ellipsis',
+      'no-empty-jsx-expression',
       'no-hand-rolled-spinner',
       'no-loosely-typed-webcontents-ipc',
+      'no-redundant-jsx-element-braces',
       'no-resolved-value-theme-source',
       'no-sentinel-signal-target',
       'no-split-suggestion-dispatch',
@@ -163,7 +165,7 @@ describe('ok-rules fixture tests', () => {
     );
     expect(
       misplaced,
-      'a fixture test here is named <rule>.uncached.test.mjs, so the uncached tier runs it',
+      'a fixture test here is named <rule>.uncached.test.mjs or <rule>.uncached.test.ts, so the uncached tier runs it',
     ).toEqual([]);
   });
 
@@ -171,7 +173,7 @@ describe('ok-rules fixture tests', () => {
     const stems = new Set(publicTestStems());
     expect(
       registered.filter((rule) => !stems.has(rule)),
-      'a rule ships with lint-plugins/ok-rules/tests/<rule>.uncached.test.mjs (precedent #42)',
+      'a rule ships with lint-plugins/ok-rules/tests/<rule>.uncached.test.mjs or .uncached.test.ts (precedent #42)',
     ).toEqual([]);
   });
 

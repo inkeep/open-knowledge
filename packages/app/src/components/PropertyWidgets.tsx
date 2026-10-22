@@ -345,7 +345,6 @@ export function DateWidget({ keyName, value, onCommit, onSubmit }: CommonWidgetP
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto overflow-hidden p-0" align="end">
-          {}
           <Suspense fallback={<div className="h-[19rem] w-[17rem]" />}>
             <Calendar
               mode="single"
@@ -585,8 +584,11 @@ export function TypeIconButton({
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          {/* biome-ignore lint/a11y/noNoninteractiveTabindex: shadcn's tooltip-on-disabled-button pattern requires a focusable <span> wrapper so keyboard users can reach the tooltip — the inner <button disabled> is removed from tab order. https://ui.shadcn.com/docs/components/radix/tooltip#disabled-button */}
-          <span tabIndex={0} className="inline-flex">
+          <span
+            // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- shadcn's tooltip-on-disabled-button pattern requires a focusable <span> wrapper so keyboard users can reach the tooltip — the inner <button disabled> is removed from tab order. https://ui.shadcn.com/docs/components/radix/tooltip#disabled-button
+            tabIndex={0}
+            className="inline-flex"
+          >
             <button
               type="button"
               disabled

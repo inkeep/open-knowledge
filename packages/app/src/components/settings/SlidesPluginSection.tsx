@@ -108,7 +108,6 @@ function StatusRow({ availability }: { availability: Availability }) {
 
   return (
     <div className="space-y-3" data-testid="slides-status-missing">
-      {}
       <p className="text-sm text-warning">
         <Trans>
           Slidev isn't installed, so the Slidev action stays hidden. Install it, then return to this
@@ -187,7 +186,6 @@ export function SlidesPluginSection() {
           Slidev CLI, which OpenKnowledge does not bundle.
         </Trans>
       </SettingsSectionHeader>
-      {}
       <div aria-live="polite">
         <StatusRow availability={availability} />
       </div>

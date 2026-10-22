@@ -313,8 +313,10 @@ function ReportBugDialog({
       <DialogContent className="gap-2 sm:max-w-[46.25rem]" onPaste={attachmentIntake.onPaste}>
         {phase.step === 'compose' && (
           <>
-            {/* oxlint-disable-next-line ok/no-physical-direction-utility -- Matches the shared dialog close button's physical right-2 position, including RTL. */}
-            <DialogHeader className="gap-2 pr-6">
+            <DialogHeader
+              // oxlint-disable-next-line ok/no-physical-direction-utility -- Matches the shared dialog close button's physical right-2 position, including RTL.
+              className="gap-2 pr-6"
+            >
               <DialogTitle>
                 <Trans>Report a bug</Trans>
               </DialogTitle>
@@ -338,7 +340,6 @@ function ReportBugDialog({
                     <p className="font-medium">
                       <Trans>OpenKnowledge quit unexpectedly last time.</Trans>
                     </p>
-                    {}
                     <DialogDescription className="mt-0.5 text-xs">
                       <Trans>
                         A report helps us find the cause. Nothing is sent until you review it.
@@ -436,8 +437,10 @@ function ReportBugDialog({
                       </Button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-5xl">
-                      {/* oxlint-disable-next-line ok/no-physical-direction-utility -- Matches the shared dialog close button's physical right-2 position, including RTL. */}
-                      <DialogHeader className="pr-6">
+                      <DialogHeader
+                        // oxlint-disable-next-line ok/no-physical-direction-utility -- Matches the shared dialog close button's physical right-2 position, including RTL.
+                        className="pr-6"
+                      >
                         <DialogTitle>
                           <Trans>Screenshot preview</Trans>
                         </DialogTitle>
@@ -649,7 +652,6 @@ function ReportBugDialog({
                   ZIP before sending.
                 </Trans>
               </p>
-              {}
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2.5">
                   <Checkbox
@@ -689,7 +691,6 @@ function ReportBugDialog({
                   </div>
                 )}
               </div>
-              {}
               {crashInvite === undefined && crashContext === undefined ? (
                 <BugReportPreviousReports />
               ) : null}

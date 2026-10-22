@@ -77,13 +77,11 @@ export function SplashCliBlock({ installCommand, cloneCommand, showHeading }: Sp
 
   return (
     <div>
-      {}
       {showHeading ? (
         <p className="mb-2 inline-flex w-fit items-center gap-1.5 font-mono text-sm uppercase tracking-wide text-slide-muted">
           {cloneCommand ? 'Open with CLI' : 'Install the CLI'}
         </p>
       ) : null}
-      {}
       <div className="not-prose relative" data-testid="splash-cli-body">
         <div className="rounded-lg border bg-slide-bg dark:bg-white/5">
           <pre
@@ -118,7 +116,6 @@ export function SplashCliBlock({ installCommand, cloneCommand, showHeading }: Sp
           ) : (
             <Copy className="size-4" aria-hidden="true" />
           )}
-          {}
           <span className="sr-only" aria-live="polite">
             {statusLabel}
           </span>

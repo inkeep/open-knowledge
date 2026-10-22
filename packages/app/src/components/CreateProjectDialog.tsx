@@ -611,7 +611,6 @@ export function CreateProjectDialog({
         className={cn('sm:max-w-lg', step === 'pick' && 'sm:max-w-3xl')}
         data-testid="create-project-dialog"
       >
-        {}
         <span aria-live="polite" className="sr-only" data-testid="create-step-announcer">
           {stepAnnouncement}
         </span>
@@ -719,7 +718,6 @@ export function CreateProjectDialog({
               </div>
 
               <div className="flex flex-col gap-2">
-                {}
                 <Label>
                   <Trans>Location</Trans>
                 </Label>
@@ -785,7 +783,6 @@ export function CreateProjectDialog({
                     onChoiceChange={setRootChoice}
                     onSubfolderChange={setSubfolder}
                   />
-                  {}
                   {cascade.kind === 'confirm-git' ? (
                     <p
                       className="text-1sm text-muted-foreground"
@@ -798,7 +795,6 @@ export function CreateProjectDialog({
                       </Trans>
                     </p>
                   ) : null}
-                  {}
                   {packPreview.kind === 'error' && packPreview.blocking ? (
                     <div
                       role="alert"
@@ -811,7 +807,6 @@ export function CreateProjectDialog({
                 </div>
               ) : null}
 
-              {}
               <ProjectAiToolsField
                 detectedEditors={detectedEditors}
                 checked={connectEditors}
@@ -821,7 +816,6 @@ export function CreateProjectDialog({
                 itemTestIdPrefix="create-editor"
               />
 
-              {}
               {packSkillCount > 0 ? (
                 <p className="text-1sm text-muted-foreground" data-testid="create-pack-skills-note">
                   {skillsInstallable ? (
@@ -861,7 +855,6 @@ export function CreateProjectDialog({
         )}
 
         <DialogFooter>
-          {}
           {(step === 'configure' || step === 'review') && canChangePack ? (
             <Button
               type="button"
@@ -875,7 +868,6 @@ export function CreateProjectDialog({
               <Trans>Change pack</Trans>
             </Button>
           ) : null}
-          {}
           {step !== 'review' ? (
             <Button
               type="button"

@@ -37,7 +37,6 @@ export function openHashHrefInNewTab(href: string): void {
   if (href.startsWith('#') || isSafeNavigationUrl(href)) {
     window.open(href, '_blank', 'noopener,noreferrer');
   } else {
-    // eslint-disable-next-line no-console
     console.warn('[safe-nav] blocked non-safe scheme:', href);
   }
 }

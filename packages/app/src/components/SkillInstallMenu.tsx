@@ -441,8 +441,6 @@ export function SkillInstallMenuItems({
   };
   return (
     <>
-      {}
-      {}
       <SkillMenuLabel menuKind={menuKind} className="flex items-center justify-between gap-2">
         <Trans>Install on</Trans>
         <Hint hint={t`Install on all agents`}>
@@ -458,7 +456,6 @@ export function SkillInstallMenuItems({
           </Button>
         </Hint>
       </SkillMenuLabel>
-      {}
       {sourceRow !== null ? (
         <Hint hint={t`The skill's own folder — the source other locations copy or link from`}>
           <SkillMenuCheckboxItem
@@ -468,7 +465,6 @@ export function SkillInstallMenuItems({
             onSelect={(e) => e.preventDefault()}
             data-testid="skill-source-row"
           >
-            {}
             <Folder aria-hidden className="size-4 text-muted-foreground" />
             <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
               <span className="min-w-0 truncate font-mono text-xs">{sourceRow}</span>
@@ -535,10 +531,8 @@ export function SkillInstallMenuItems({
               data-testid={`skill-install-editor-${editor}`}
             >
               <AgentBrandIcon host={editor} aria-hidden className="size-4" />
-              {}
               <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
                 <span className="min-w-0 truncate font-mono text-xs">{path ?? label}</span>
-                {}
                 {audience.length > 0 ? (
                   <span
                     className="flex shrink-0 items-center gap-0.5"
@@ -576,11 +570,9 @@ export function SkillInstallMenuItems({
                   </span>
                 ) : hostSet.has(editor) && skill?.hosts ? (
                   <>
-                    {}
                     {!busy && (linked.has(editor) ? 'link' : 'copy') !== expectedMode
                       ? convertRow(editor, path ?? label, linked.has(editor) ? 'link' : 'copy')
                       : null}
-                    {}
                     <Hint hint={t`Make this the source — the skill's real folder moves here`}>
                       <Button
                         variant="ghost"
@@ -610,7 +602,6 @@ export function SkillInstallMenuItems({
           </Hint>
         );
       })}
-      {}
       {customRootRows.map((r) => {
         const path = r.display;
         return (
@@ -690,7 +681,6 @@ export function SkillInstallMenuItems({
         );
       })}
 
-      {}
       {rows.length === 0 && customRootRows.length === 0 && sourceRow === null ? (
         <div
           className="px-2 py-1.5 text-[11px] text-muted-foreground leading-snug"
@@ -700,7 +690,6 @@ export function SkillInstallMenuItems({
         </div>
       ) : null}
 
-      {}
       {convertible.length > 0 && toggles.convertLocations ? (
         <div className="flex items-center gap-1 px-2 pt-1 pb-1.5">
           <Button
@@ -741,7 +730,6 @@ export function SkillInstallMenuItems({
               <Trans>Convert locations to symlinks</Trans>
             )}
           </Button>
-          {}
           <Hint
             hint={t`A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill. A symlink is a pointer to the source instead, so nothing can drift, but a location stops working if the source is deleted.`}
           >
@@ -759,7 +747,6 @@ export function SkillInstallMenuItems({
         </div>
       ) : null}
       <SkillMenuSeparator menuKind={menuKind} />
-      {}
       <Hint
         hint={t`Opens Settings → Skills Studio, where you link a whole folder into another so both agents read the same skills, and add custom skill roots.`}
       >

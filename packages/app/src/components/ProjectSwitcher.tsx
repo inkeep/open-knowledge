@@ -155,7 +155,6 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
 
   return (
     <>
-      {}
       <DropdownMenu open={open} onOpenChange={handleOpenChange} modal={false}>
         <DropdownMenuTrigger asChild>
           <Button
@@ -201,14 +200,12 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
           className="min-w-[260px]"
           data-testid="project-switcher-menu"
         >
-          {}
           {recents === null ? null : recents.length === 0 ? (
             <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
               <Trans>No recent projects.</Trans>
             </DropdownMenuLabel>
           ) : (
             <>
-              {}
               <InputGroup className="mb-1 h-8 border-0 shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0">
                 <InputGroupInput
                   aria-label={t`Search projects`}
@@ -226,7 +223,6 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
                 </InputGroupAddon>
               </InputGroup>
               <DropdownMenuSeparator />
-              {}
               <div
                 className="max-h-64 overflow-x-hidden overflow-y-auto overscroll-contain subtle-scrollbar scroll-fade-mask"
                 data-testid="project-switcher-scroll"
@@ -291,7 +287,6 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
             <FileText aria-hidden="true" className="text-muted-foreground" />
             <Trans>Open file</Trans>
           </DropdownMenuItem>
-          {}
           {branch !== null ? (
             <>
               <DropdownMenuSeparator />

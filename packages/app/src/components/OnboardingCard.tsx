@@ -88,7 +88,6 @@ export function OnboardingCard({
 
   return (
     <>
-      {}
       <div className="sr-only" role="status" aria-live="polite">
         {allComplete ? t`You're all set up!` : ''}
       </div>
@@ -104,7 +103,6 @@ export function OnboardingCard({
               : 'animate-in fade-in-0 zoom-in-95 duration-300',
           )}
         >
-          {}
           <OkBlob size={36} celebrateSignal={celebrateSignal} />
           <span className="font-medium text-sm">
             <Trans>You're all set up!</Trans>

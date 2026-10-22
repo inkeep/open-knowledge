@@ -21,7 +21,6 @@ export function ProjectSkillSection() {
   const heading = (
     <div>
       <h4 className="text-sm font-medium">
-        {}
         <Trans comment="Heading above the project's own skill row, in Settings → This project → Skills Studio">
           Skills from OpenKnowledge
         </Trans>
@@ -56,7 +55,6 @@ export function ProjectSkillSection() {
         data-testid="settings-project-skill"
       >
         {heading}
-        {}
         <div
           role="status"
           aria-live="polite"

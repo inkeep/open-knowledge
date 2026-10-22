@@ -261,7 +261,6 @@ vi.doMock('@pierre/trees/react', () => ({
       onClickCapture={onClickCapture}
       onDoubleClickCapture={onDoubleClickCapture}
     >
-      {}
       <div
         role="treeitem"
         aria-label="note.md"
@@ -271,7 +270,6 @@ vi.doMock('@pierre/trees/react', () => ({
         tabIndex={-1}
       >
         note.md
-        {}
         <input data-testid="rename-input" defaultValue="note.md" />
       </div>
       <div
@@ -283,7 +281,6 @@ vi.doMock('@pierre/trees/react', () => ({
       >
         docs/
       </div>
-      {}
       <div
         data-testid="sticky-docs"
         data-item-path="docs/"

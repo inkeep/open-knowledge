@@ -687,7 +687,7 @@ export function BottomComposer({
   }
 
   const cardContent = (
-    // biome-ignore lint/a11y/noStaticElementInteractions: pointer clicks only delegate focus to the composer's editable; keyboard users focus it directly (Tab / ⇧⌘L).
+    // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- pointer clicks only delegate focus to the composer's editable; keyboard users focus it directly (Tab / ⇧⌘L).
     <div
       ref={cardRef}
       onMouseDown={(event) => focusComposerInputOnCardPointer(event, inputRef)}
@@ -752,7 +752,6 @@ export function BottomComposer({
           'bg-destructive/5 outline-2 outline-dashed outline-offset-2 outline-destructive/60',
       )}
     >
-      {}
       {!folderMode ? (
         <Button
           type="button"
@@ -765,7 +764,6 @@ export function BottomComposer({
           <ChevronDown className="size-3.5" aria-hidden />
         </Button>
       ) : null}
-      {}
       <ComposerContextChips
         files={fileChips}
         onRemoveFile={(path) =>
@@ -778,13 +776,11 @@ export function BottomComposer({
       >
         {pinnedSelection ? (
           <>
-            {}
             <span
               data-testid="composer-selection-pill"
               title={pinnedLabel}
               className="group/chip inline-flex max-w-[16rem] items-center gap-1 rounded-md border bg-muted/40 py-0.5 pr-1.5 pl-1 text-muted-foreground text-xs"
             >
-              {}
               <Button
                 type="button"
                 variant="ghost"
@@ -805,7 +801,6 @@ export function BottomComposer({
                   aria-hidden
                 />
               </Button>
-              {}
               <Button
                 type="button"
                 variant="ghost"
@@ -830,7 +825,6 @@ export function BottomComposer({
             ) : null}
           </>
         ) : null}
-        {}
         {hasQueuedComments && (
           <QueuedCommentsChip
             count={selectedCommentCount}
@@ -901,7 +895,6 @@ export function BottomComposer({
             initialDoc={savedDraftDoc ?? undefined}
             className="max-h-[200px] overflow-y-auto overscroll-contain text-base md:text-sm"
           />
-          {}
           {isEmpty ? (
             <RotatingComposerPlaceholder
               phrases={suggestions}
@@ -942,7 +935,6 @@ export function BottomComposer({
                   <Trans>Ask</Trans>
                 )}
               </span>
-              {}
               {resolvedTarget ? <ArrowUpRight aria-hidden className="size-3.5" /> : null}
               {pending ? <Spinner className="size-3.5" aria-hidden /> : null}
             </>

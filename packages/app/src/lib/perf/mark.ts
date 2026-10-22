@@ -55,7 +55,6 @@ export interface MarkFn {
 
 function markImpl(name: string, props?: Record<string, unknown>, opts?: MarkOptions): void {
   if (!import.meta.env?.PROD && !validatePerfMarkName(name)) {
-    // eslint-disable-next-line no-console -- dev-only lint
     console.warn(`[perf] mark name "${name}" does not match ok/<subsystem>/<event>`);
   }
 
@@ -96,7 +95,6 @@ function markImpl(name: string, props?: Record<string, unknown>, opts?: MarkOpti
 
 function countImpl(name: string, props?: Record<string, string | number | boolean>): void {
   if (!import.meta.env?.PROD && !validatePerfMarkName(name)) {
-    // eslint-disable-next-line no-console -- dev-only lint
     console.warn(`[perf] mark.count name "${name}" does not match ok/<subsystem>/<event>`);
   }
   recordCounter(name, props);
@@ -108,7 +106,6 @@ function histogramImpl(
   durationMs: number,
 ): void {
   if (!import.meta.env?.PROD && !validatePerfMarkName(name)) {
-    // eslint-disable-next-line no-console -- dev-only lint
     console.warn(`[perf] mark.histogram name "${name}" does not match ok/<subsystem>/<event>`);
   }
   markImpl(name, { ...props, durationMs }, { duration: durationMs });

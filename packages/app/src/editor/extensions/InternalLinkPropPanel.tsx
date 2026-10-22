@@ -235,7 +235,6 @@ function EditMarkdownLinkDialog({
                 placeholder={t`heading-slug`}
                 onKeyDown={handleKeyDown}
               />
-              {}
               {showHeadings ? (
                 <div
                   id={headingListId}

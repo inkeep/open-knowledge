@@ -93,7 +93,6 @@ export function PageMarkdownActions({
           </DropdownMenuItem>
           <DropdownMenuItem asChild className={menuItemClass}>
             <a href={claudeUrl} target="_blank" rel="noreferrer">
-              {}
               <ClaudeIcon aria-hidden="true" className="size-4 text-[#d97757]" />
               Open in Claude
             </a>

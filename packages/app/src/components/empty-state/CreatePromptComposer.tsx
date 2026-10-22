@@ -377,8 +377,7 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
 
   return (
     <div className={cn('flex w-full flex-col gap-3', className)}>
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer clicks only delegate focus to the composer's editable; keyboard users focus it directly (Tab / ⌥⌘L). */}
-      <div
+      <div // oxlint-disable-line jsx-a11y/no-static-element-interactions -- pointer clicks only delegate focus to the composer's editable; keyboard users focus it directly (Tab / ⌥⌘L).
         onMouseDown={(event) => focusComposerInputOnCardPointer(event, inputRef)}
         onPaste={(event) => {
           const files = collectImageFiles(event.clipboardData);
@@ -441,7 +440,6 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
             'bg-destructive/5 outline-2 outline-dashed outline-offset-2 outline-destructive/60',
         )}
       >
-        {}
         <ComposerMentionInput
           ref={inputRef}
           ariaLabel={
@@ -496,7 +494,6 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
             />
           ) : null}
         </div>
-        {}
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 pb-3">
           <div className="flex min-w-0 items-center gap-2">
             {threadSelected ? (
@@ -583,7 +580,6 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="max-h-80 min-w-[200px]">
-                  {}
                   {showThreadSection ? (
                     <DropdownMenuGroup aria-label={t`In app`}>
                       <DropdownMenuLabel>
@@ -619,7 +615,6 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
                       <DropdownMenuLabel>
                         <Trans>Terminal</Trans>
                       </DropdownMenuLabel>
-                      {}
                       {terminalClis.map((cli) => {
                         const { displayName } = TERMINAL_CLIS[cli];
                         return (
@@ -669,7 +664,6 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
                       </DropdownMenuGroup>
                     </>
                   ) : null}
-                  {}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onSelect={openAgentSettings}
@@ -689,7 +683,6 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
           )}
         </div>
       </div>
-      {}
       {scenario === 'new-project' && suggestions.length > 0 ? (
         <div className="flex flex-wrap items-center justify-center gap-2">
           <span className="text-1sm text-muted-foreground">

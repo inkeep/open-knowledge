@@ -51,7 +51,6 @@ function DialogContent({
   return (
     <DialogPortal>
       <DialogOverlay />
-      {}
       <ElectronDragStrip testId="dialog-drag-strip" />
       <DialogPrimitive.Content
         data-slot="dialog-content"

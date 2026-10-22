@@ -39,9 +39,7 @@ function Harness({ theme }: { theme?: 'system' | 'light' | 'dark' }) {
   });
   return (
     <>
-      {}
       <span data-testid="dirty-fields">{JSON.stringify(form.formState.dirtyFields)}</span>
-      {}
       <TooltipProvider>
         <FormProvider {...form}>
           <SettingsField

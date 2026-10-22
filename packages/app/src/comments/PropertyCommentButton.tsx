@@ -66,7 +66,6 @@ export function PropertyCommentButton({
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-80 flex-col gap-2 p-3">
-        {}
         {quote === null ? (
           <p className="truncate text-[11px] text-muted-foreground">
             <Trans>

@@ -124,7 +124,6 @@ function AgentRow({
   return (
     <div className="flex items-center justify-between gap-3 px-3 py-2.5" data-testid={rowTestId}>
       <div className="flex min-w-0 items-start gap-2.5">
-        {}
         <span className="flex h-5 shrink-0 items-center">{icon}</span>
         <div className="flex min-w-0 flex-col">
           <span className="truncate text-sm leading-5">{name}</span>

@@ -71,7 +71,15 @@
       "dependsOn": ["^types", "build"]
     },
     "typecheck": {
-      "dependsOn": ["^types", "//#typecheck:no-net-connect"]
+      "dependsOn": ["^types", "//#typecheck:no-net-connect", "//#typecheck:lint-plugins"]
+    },
+    "//#typecheck:lint-plugins": {
+      "inputs": [
+        "lint-plugins/ok-rules/**/*.ts",
+        "lint-plugins/ok-rules/tsconfig.json",
+        "test-support/*.ts",
+        "tsconfig.json"
+      ]
     },
     "//#typecheck:no-net-connect": {
       "inputs": [

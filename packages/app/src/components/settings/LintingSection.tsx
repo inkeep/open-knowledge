@@ -625,7 +625,6 @@ export function OkfPluginSection() {
             <Label htmlFor="settings-okf-generate-index" className="text-sm font-medium">
               <Trans>Maintain index.md</Trans>
             </Label>
-            {}
             <p className="text-sm text-muted-foreground">
               <Trans>
                 Open Knowledge maintains a navigation file named index.md in every folder that

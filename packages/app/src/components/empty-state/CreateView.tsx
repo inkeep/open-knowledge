@@ -43,7 +43,6 @@ export function CreateView({
         onRageStreak={onRageStreak}
       />
 
-      {}
       {isEmbedded ? (
         <CopyablePromptList scenario="existing-repo" />
       ) : (
@@ -88,7 +87,6 @@ export function FileCreationActions({
         />
       ) : null}
 
-      {}
       <div
         data-testid="file-creation-action-row"
         className={cn(
@@ -107,7 +105,6 @@ export function FileCreationActions({
             <Trans>Add a starter pack</Trans>
           </Button>
         ) : null}
-        {}
         <Button
           variant="link-muted"
           size="sm"
@@ -165,13 +162,12 @@ function TemplatesSection({
           </Badge>
         ) : null}
       </header>
-      {}
       {listVisible ? (
         <div className="w-full overflow-hidden rounded-xl border border-border/60 bg-card">
           <section
             aria-busy={loading}
             aria-label={t`Template list`}
-            // biome-ignore lint/a11y/noNoninteractiveTabindex: focusable scroll region per WCAG 2.1.1 (keyboard-operable)
+            // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- focusable scroll region per WCAG 2.1.1 (keyboard-operable)
             tabIndex={0}
             className={cn(
               'subtle-scrollbar scroll-fade-mask flex max-h-[260px] w-full flex-col overflow-y-auto focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',

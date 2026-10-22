@@ -183,12 +183,10 @@ function logResult(targetViews: number, outDir: string, result: ConvergeResult):
   const minOk = Math.floor(targetViews * (1 - TOLERANCE_RATIO));
   const maxOk = Math.ceil(targetViews * (1 + TOLERANCE_RATIO));
   const ok = result.measuredViews >= minOk && result.measuredViews <= maxOk;
-  // eslint-disable-next-line no-console
   console.log(
     `[gen-fixtures] target=${targetViews} measured=${result.measuredViews} chips=${result.chips} iters=${result.iterations} ok=${ok} → ${outDir}/FIXTURE.md`,
   );
   if (!ok) {
-    // eslint-disable-next-line no-console
     console.warn(
       `[gen-fixtures] WARN: ${result.measuredViews} not within ±${TOLERANCE_RATIO * 100}% of ${targetViews} (range ${minOk}..${maxOk})`,
     );
@@ -207,11 +205,9 @@ if (import.meta.main) {
     const targetViews = args.targetViews;
     const outDir = args.outDir ?? (targetViews ? defaultOutDir(targetViews) : null);
     if (typeof targetViews !== 'number' || !outDir) {
-      // eslint-disable-next-line no-console
       console.error(
         'Usage: bun run generate-view-count-fixtures.ts --target-views <N> [--out-dir <path>]',
       );
-      // eslint-disable-next-line no-console
       console.error('   or: bun run generate-view-count-fixtures.ts --all');
       process.exit(2);
     }

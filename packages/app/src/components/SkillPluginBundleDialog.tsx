@@ -265,7 +265,6 @@ function OpenSkillPluginBundleDialog({
               {allSelected ? <Trans>Clear</Trans> : <Trans>Select all</Trans>}
             </Button>
           </div>
-          {}
           <div className="max-h-72 overflow-y-auto rounded-md border border-border divide-y divide-border">
             {names.map((name) => {
               const description = described.get(name);
@@ -300,7 +299,6 @@ function OpenSkillPluginBundleDialog({
               );
             })}
           </div>
-          {}
           <div
             className="flex flex-wrap items-center gap-1.5 text-1sm text-muted-foreground"
             data-testid="plugin-bundle-destination"
@@ -378,7 +376,6 @@ function OpenSkillPluginBundleDialog({
                             {EDITOR_LABELS[editor] ?? editor}
                           </Label>
                         ))}
-                        {}
                         {offeredCustomRoots.map((root) => (
                           <Label
                             key={root}

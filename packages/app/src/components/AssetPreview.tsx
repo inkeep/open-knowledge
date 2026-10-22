@@ -26,7 +26,6 @@ function assetTextUrl(assetPath: string): string {
 export function AssetPreview({ assetPath, mediaKind }: AssetPreviewProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {}
       <NotInSidebarIndicator
         entry={{ kind: 'asset', path: assetPath }}
         className="shrink-0 border-b bg-background px-3 py-1.5"

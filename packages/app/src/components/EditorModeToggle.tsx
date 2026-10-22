@@ -45,7 +45,6 @@ export function EditorModeToggle({
     >
       <Tooltip>
         <TooltipTrigger asChild>
-          {}
           <div>
             <ToggleGroupItem
               value="wysiwyg"
@@ -75,7 +74,6 @@ export function EditorModeToggle({
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
-          {}
           <div>
             <ToggleGroupItem
               value="source"

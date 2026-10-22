@@ -210,7 +210,6 @@ export function TerminalNewChatButton({
           </DropdownMenuTrigger>
         ) : null}
         <DropdownMenuContent align="start" className="max-h-80 min-w-[200px]">
-          {}
           {showAgents && registeredAgents.length > 0 ? (
             <DropdownMenuGroup aria-label={t`In app`}>
               <DropdownMenuLabel>
@@ -276,7 +275,6 @@ export function TerminalNewChatButton({
                   </DropdownMenuItem>
                 );
               })}
-              {}
               <DropdownMenuItem
                 onSelect={onPickTerminal}
                 data-testid="terminal-new-chat-terminal"
@@ -292,10 +290,8 @@ export function TerminalNewChatButton({
               </DropdownMenuItem>
             </DropdownMenuGroup>
           ) : null}
-          {}
           {showAgents ? (
             <>
-              {}
               {registeredAgents.length > 0 || showClis ? <DropdownMenuSeparator /> : null}
               <DropdownMenuItem onSelect={onOpenSettings} data-testid="terminal-new-chat-settings">
                 <SlidersHorizontal aria-hidden="true" className="size-4 text-muted-foreground" />

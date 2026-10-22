@@ -47,7 +47,6 @@ function CommandDialog({
         onEscapeKeyDown={onEscapeKeyDown}
         {...contentAttributes}
       >
-        {}
         <DialogTitle className="sr-only">{title}</DialogTitle>
         <DialogDescription className="sr-only">{description}</DialogDescription>
         <Command

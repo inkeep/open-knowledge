@@ -20,7 +20,6 @@ export function wrapMethod<T extends Record<string, unknown>>(
 ): void {
   const original = target[key] as unknown as (...args: unknown[]) => unknown;
   if (typeof original !== 'function') {
-    // eslint-disable-next-line no-console -- diagnostic
     console.warn(`[cold-mount-instrumentation] target missing method "${key}"`);
     return;
   }

@@ -364,7 +364,6 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
               data-testid="settings-search-base-url"
               className="h-8 font-mono text-sm"
             />
-            {}
             <p
               id="settings-search-base-url-message"
               aria-live="polite"

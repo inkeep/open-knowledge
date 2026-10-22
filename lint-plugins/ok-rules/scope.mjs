@@ -15,8 +15,10 @@ function matches(glob, path) {
 
 export const UNSCOPED_RULES = new Set([
   'microcopy-ellipsis',
+  'no-empty-jsx-expression',
   'no-hand-rolled-spinner',
   'no-loosely-typed-webcontents-ipc',
+  'no-redundant-jsx-element-braces',
   'no-resolved-value-theme-source',
   'no-sentinel-signal-target',
   'no-split-suggestion-dispatch',

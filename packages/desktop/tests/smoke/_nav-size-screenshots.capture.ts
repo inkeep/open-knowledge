@@ -152,7 +152,6 @@ test.describe('Navigator size screenshots (dev-only)', () => {
         await nav.waitForTimeout(900);
         const outPath = join(SHOT_DIR, `nav-shot-${label}.png`);
         await nav.screenshot({ path: outPath });
-        // eslint-disable-next-line no-console
         console.log(`captured ${w}x${h} -> ${outPath}`);
       }
     } finally {

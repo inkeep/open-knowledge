@@ -58,7 +58,6 @@ export function DeleteConfirmationDialog({
         <AlertDialogCancel disabled={isSubmitting}>
           <Trans>Cancel</Trans>
         </AlertDialogCancel>
-        {}
         <Button variant="destructive" onClick={onDelete} disabled={isSubmitting}>
           {isSubmitting ? (
             <>

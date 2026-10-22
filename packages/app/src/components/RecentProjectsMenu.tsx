@@ -390,9 +390,7 @@ function FlyoutGroup({
         data-flyout-open={flyoutOpen ? 'true' : undefined}
         data-current={containsCurrent ? 'true' : undefined}
       >
-        {}
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          {}
           <span
             className="truncate font-medium text-sm"
             data-project-open={primaryIsOpenable ? '' : undefined}
@@ -413,7 +411,6 @@ function FlyoutGroup({
         {group.primaryProject?.missing === true ? (
           <MissingCheckoutStatus className="mt-0.5" />
         ) : null}
-        {}
         {openedWorktreeCount === null ? null : (
           <span
             className="mt-0.5 shrink-0 text-muted-foreground text-xs"
@@ -518,7 +515,6 @@ function WorktreeFlyout({
         data-testid={`project-switcher-flyout-${group.project.path}`}
       >
         <InputGroup className="mb-1 h-8 shrink-0">
-          {}
           <InputGroupAddon align="inline-start">
             <Search aria-hidden="true" />
           </InputGroupAddon>
@@ -571,7 +567,6 @@ function WorktreeFlyout({
               >
                 {q === '' ? t`No worktrees found.` : t`No matching worktrees or branches.`}
               </DropdownMenuLabel>
-              {}
               {canCreate ? (
                 <DropdownMenuItem
                   onSelect={(e) => {

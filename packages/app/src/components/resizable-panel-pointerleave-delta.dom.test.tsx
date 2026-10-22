@@ -35,7 +35,6 @@ function CollapsibleRightGroup() {
         editor
       </Panel>
       <Separator />
-      {}
       <Panel
         id="right"
         collapsible

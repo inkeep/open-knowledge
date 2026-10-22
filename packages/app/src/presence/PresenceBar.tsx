@@ -218,7 +218,6 @@ function AgentAvatar({
       style={{ backgroundColor: presence.color }}
       onClick={() => onClickAgent(agentId, realCurrentDoc)}
     >
-      {}
       <AgentIcon icon={presence.icon} width={16} height={16} className="text-white" aria-hidden />
     </button>
   ) : (

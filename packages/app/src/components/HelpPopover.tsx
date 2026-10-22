@@ -224,10 +224,8 @@ export const HelpPopover: FC = () => {
                       }
                     />
                   ))}
-                  {}
                   {section.key === 'resources' && (
                     <>
-                      {}
                       {hasDesktopBridge && (
                         <ActionRow
                           icon={Bug}
@@ -287,7 +285,6 @@ export const HelpPopover: FC = () => {
                         <Trans>Subscribe</Trans>
                       </Button>
                     </PopoverTrigger>
-                    {}
                     <PopoverContent side="left" align="center" sideOffset={20} className="w-80">
                       <SubscribeForm
                         source="resources_menu"
@@ -325,7 +322,6 @@ export const HelpPopover: FC = () => {
           ) : null}
         </PopoverContent>
       </Popover>
-      {}
       {hasDesktopBridge && (
         <ReportBugDialog capture={bugReport.capture} onClose={bugReport.close} />
       )}

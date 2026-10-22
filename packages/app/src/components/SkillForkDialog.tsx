@@ -112,7 +112,6 @@ export function SkillForkDialog({
         if (!open && !busy) onOpenChange(false);
       }}
     >
-      {}
       <DialogContent className="flex max-h-[85vh] w-full flex-col sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>

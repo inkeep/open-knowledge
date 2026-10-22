@@ -16,7 +16,6 @@ export function TerminalWindowApp({ bridge }: TerminalWindowAppProps) {
   return (
     <ConfigProvider collabUrl={collabUrl} collabTerminal={collabUrl === null}>
       <TerminalWindowBody bridge={bridge} />
-      {}
       <ReportBugMenuTrigger systemWide={collabUrl === null} />
     </ConfigProvider>
   );
@@ -30,7 +29,6 @@ function TerminalWindowBody({ bridge }: TerminalWindowAppProps) {
 
   return (
     <>
-      {}
       <div
         ref={setContainer}
         className="flex h-screen min-h-0 flex-col"

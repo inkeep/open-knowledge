@@ -111,7 +111,6 @@ export function ExploreSkills({
             aria-label={t`Search skills`}
           />
         </InputGroup>
-        {}
         {q.length >= 2 && state === 'idle' && results.length > 0 ? (
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as 'relevance' | 'installs')}>
             <SelectTrigger className="h-9! w-40 shrink-0" aria-label={t`Sort skills`}>
@@ -127,7 +126,6 @@ export function ExploreSkills({
           </Select>
         ) : null}
       </div>
-      {}
       {/* biome-ignore lint/a11y/useSemanticElements: a filter-chip row is a
           button cluster, not a form-control set; <fieldset>/<legend> would impose
           form chrome. role="group" on a div is the shape the rest of the app uses. */}
@@ -219,7 +217,6 @@ export function ExploreSkills({
           })
         )}
       </div>
-      {}
       <p className="-mb-3.5 shrink-0 text-center text-[11px] text-muted-foreground/80">
         <Trans>
           Skill discovery powered by{' '}

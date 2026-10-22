@@ -416,11 +416,9 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
               </pre>
             </div>
           </div>
-          {}
           <pre className="mermaid-error-source">{chart}</pre>
         </>
       )}
-      {}
       <div
         contentEditable={false}
         className={cn(
@@ -460,7 +458,6 @@ export function MermaidLightbox({
         style={{ '--tw-enter-scale': '0.92', '--tw-exit-scale': '0.92' } as React.CSSProperties}
       >
         <DialogTitle className="sr-only">{t`Mermaid diagram`}</DialogTitle>
-        {}
         <span className="absolute top-2 left-3 flex h-7 items-center text-xs text-muted-foreground">
           {t`View only`}
         </span>

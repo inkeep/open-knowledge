@@ -240,7 +240,6 @@ export function NewWorktreeDialog({
                 ) : (
                   <Plus aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-success" />
                 )}
-                {}
                 <span className="min-w-0 flex-1">
                   {isExistingWorktree ? (
                     <Trans>
@@ -306,7 +305,6 @@ export function NewWorktreeDialog({
                 ))}
               </div>
             ) : null}
-            {}
             {!isCheckout ? (
               <div className="mt-1 flex flex-col gap-2">
                 <Label id={baseLabelId} htmlFor={baseTriggerId}>
@@ -430,7 +428,6 @@ export function NewWorktreeDialog({
                               className="size-3.5 shrink-0 text-muted-foreground"
                             />
                             <span className="min-w-0 flex-1 truncate text-left">{name}</span>
-                            {}
                             {behind !== undefined && behind > 0 ? (
                               <span
                                 className="shrink-0 text-xs text-warning"

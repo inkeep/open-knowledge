@@ -72,7 +72,6 @@ export function UninstallSurveyScreen({ onSend, onSkip }: UninstallSurveyScreenP
         </p>
       </header>
 
-      {}
       <form
         className="flex min-h-0 flex-1 flex-col"
         onSubmit={(event) => {
@@ -87,7 +86,6 @@ export function UninstallSurveyScreen({ onSend, onSkip }: UninstallSurveyScreenP
         }}
       >
         <div className="subtle-scrollbar min-h-0 flex-1 overflow-y-auto px-6 pt-1 pb-4">
-          {}
           <div className="mb-6">
             <p id={legendId} className="mb-2 font-medium text-sm">
               <Trans>Before you go, mind sharing why?</Trans>

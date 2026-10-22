@@ -22,7 +22,8 @@
     { "id": "github-scripts", "family": "esm-script", "roots": [".github/scripts"] },
     { "id": "docs", "family": "typescript-multi-suffix", "roots": ["docs"] },
     { "id": "root-configs", "family": "typescript-config", "roots": ["."] },
-    { "id": "lint-plugins", "family": "esm-script", "roots": ["lint-plugins"] },
+    { "id": "lint-plugins", "family": "typescript", "roots": ["lint-plugins"] },
+    { "id": "lint-plugins-esm", "family": "esm-script", "roots": ["lint-plugins"] },
     { "id": "plugins", "family": "esm-script", "roots": ["plugins"] },
     {
       "id": "app-catalog-compiler",

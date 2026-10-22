@@ -38,7 +38,6 @@ export default async function ChangelogPage() {
     <DocsPage toc={toc} tableOfContent={{ style: 'clerk' }} article={{ className: 'pb-12' }}>
       <DocsTitle>{PAGE_TITLE}</DocsTitle>
       <DocsDescription>{PAGE_DESCRIPTION}</DocsDescription>
-      {}
       <ChangelogTimeline releases={releases} />
     </DocsPage>
   );

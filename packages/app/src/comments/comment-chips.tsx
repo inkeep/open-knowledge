@@ -53,7 +53,6 @@ export function QueuedCommentsChip({
         'text-xs text-muted-foreground',
       )}
     >
-      {}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -66,7 +65,6 @@ export function QueuedCommentsChip({
             className="h-auto min-h-0 gap-1 px-0.5 py-0 text-xs font-normal text-muted-foreground hover:text-foreground"
           >
             <MessageSquare className="size-3" />
-            {}
             {docs.length > 1 ? (
               <Trans>
                 <Plural value={count} one="# comment" other="# comments" /> across{' '}
@@ -77,7 +75,6 @@ export function QueuedCommentsChip({
             )}
           </Button>
         </TooltipTrigger>
-        {}
         <TooltipContent className="max-w-64">
           {docs.length > 1 ? (
             <ul className="flex flex-col gap-0.5">

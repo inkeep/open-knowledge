@@ -273,8 +273,7 @@ describe('every ComposerMentionInput surface either refuses the drop with a reas
     const hostDrops: string[] = [];
     render(
       <TooltipProvider>
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: test-harness drop-target probe standing in for the host panel — drop is a pointer-only affordance, mirroring ThreadView's real drop host. */}
-        <div
+        <div // oxlint-disable-line jsx-a11y/no-static-element-interactions -- test-harness drop-target probe standing in for the host panel — drop is a pointer-only affordance, mirroring ThreadView's real drop host.
           onDrop={(event) => {
             hostDrops.push(...Array.from(event.dataTransfer.files).map((file) => file.name));
           }}

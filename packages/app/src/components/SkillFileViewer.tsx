@@ -46,7 +46,6 @@ export function SkillFileViewer({
       {isMarkdown && findOpen ? (
         <ProseFindBar containerRef={proseRef} onClose={() => setFindOpen(false)} />
       ) : null}
-      {}
       <div className="flex shrink-0 items-center gap-1.5 border-border border-b bg-muted/35 px-3 py-2 text-muted-foreground text-sm">
         <Eye className="size-4 shrink-0" aria-hidden />
         <span className="truncate">{t`Read-only file in the ${name} skill`}</span>

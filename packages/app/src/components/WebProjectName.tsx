@@ -16,8 +16,12 @@ export function WebProjectName() {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        {/* biome-ignore lint/a11y/noNoninteractiveTabindex: tooltip-on-static-text pattern — focusable span lets keyboard users surface the full project path that mouse users see on hover. */}
-        <span tabIndex={0} data-testid="web-project-name" className={CENTRE_LABEL_CLASS}>
+        <span
+          // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip-on-static-text pattern — focusable span lets keyboard users surface the full project path that mouse users see on hover.
+          tabIndex={0}
+          data-testid="web-project-name"
+          className={CENTRE_LABEL_CLASS}
+        >
           <Folder aria-hidden="true" className="size-4 shrink-0" />
           <span className="sr-only">{t`Project`}</span>
           <span

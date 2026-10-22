@@ -82,7 +82,6 @@ function RegisteredInlineView({
     >
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverTrigger asChild>
-          {}
           <span data-jsx-inline-widget="">
             <ErrorBoundary
               resetKeys={[resetKey]}

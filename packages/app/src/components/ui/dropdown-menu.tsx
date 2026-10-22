@@ -131,7 +131,6 @@ function DropdownMenuRadioItem({
         data-slot="dropdown-menu-radio-item-indicator"
       >
         <DropdownMenuPrimitive.ItemIndicator>
-          {}
           <CircleIcon className="size-2 fill-primary stroke-primary" />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>

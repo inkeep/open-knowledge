@@ -1137,7 +1137,6 @@ export function SkillsTree({
 
   return (
     <>
-      {}
       <div
         ref={iconPoolRef}
         aria-hidden
@@ -1151,20 +1150,16 @@ export function SkillsTree({
         <span {...{ [HOST_POOL_KEY_ATTR]: 'generic' }}>
           <Sparkles />
         </span>
-        {}
         <span {...{ [PROVENANCE_POOL_KEY_ATTR]: PROVENANCE_PLUGIN_POOL_KEY }}>
           <Package />
         </span>
-        {}
         <span {...{ [PROVENANCE_POOL_KEY_ATTR]: PROVENANCE_PIN_POOL_KEY }}>
           <Pin />
         </span>
-        {}
         <span {...{ [PROVENANCE_POOL_KEY_ATTR]: PROVENANCE_LIBRARY_POOL_KEY }}>
           <LibraryBig />
         </span>
       </div>
-      {}
       {installMenu ? (
         <DropdownMenu
           open

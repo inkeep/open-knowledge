@@ -118,7 +118,6 @@ export function TrashFailureModal({
         >
           <Trans>Cancel</Trans>
         </AlertDialogCancel>
-        {}
         <Button
           variant="outline"
           onClick={onRetry}

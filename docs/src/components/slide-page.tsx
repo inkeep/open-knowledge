@@ -20,7 +20,6 @@ export function SlidePageShell({ children }: { children: ReactNode }) {
       <header className="relative z-10 px-6">
         <div className="container mx-auto flex pt-8 md:pt-10">
           <Link href="/" aria-label="OpenKnowledge home" className="inline-flex items-center">
-            {}
             <OkWordmark aria-hidden="true" className="h-8 w-auto text-slide-text" />
           </Link>
         </div>

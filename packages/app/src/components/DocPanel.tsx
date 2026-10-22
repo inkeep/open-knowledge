@@ -163,7 +163,6 @@ export function DocPanel({
   }, [isCollapsed, mode, effectiveTab]);
   return (
     <>
-      {}
       {showTabStrip ? (
         <div
           data-doc-panel-header=""

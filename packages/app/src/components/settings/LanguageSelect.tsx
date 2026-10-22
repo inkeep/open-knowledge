@@ -56,7 +56,6 @@ export function LanguageSelect({
   const choice = toLanguageChoice(value);
   return (
     <Select value={choice} onValueChange={(next) => onValueChange(toLanguageChoice(next))}>
-      {}
       <SelectTrigger {...slotForwarded} ref={ref} onBlur={onBlur} size="sm" className="w-48">
         <SelectValue>
           <ChoiceLabel choice={choice} />

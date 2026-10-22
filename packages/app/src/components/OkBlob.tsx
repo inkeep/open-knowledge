@@ -263,16 +263,13 @@ export function OkBlob({
         onClick={handleClick}
         onMouseDown={(e) => e.preventDefault()}
       >
-        {}
         <g
           key={`body-${clickSeq}`}
           className={cn('ok-blob-group', isSleeping && 'ok-blob-sleeping', bounceClass)}
         >
           <path d={MASCOT_OUTLINE_PATH} className="ok-blob-body" />
 
-          {}
           <g ref={eyesGroupRef}>
-            {}
             <ellipse
               cx={LEFT_EYE_CX}
               cy={EYE_CY}
@@ -291,7 +288,6 @@ export function OkBlob({
               )}
             />
 
-            {}
             <path
               d={happyEyeArc(LEFT_EYE_CX, activeLevel)}
               strokeWidth="1.2"
@@ -313,7 +309,6 @@ export function OkBlob({
               )}
             />
 
-            {}
             {isSleeping ? (
               <>
                 <path
@@ -335,7 +330,6 @@ export function OkBlob({
           </g>
         </g>
 
-        {}
         {isSleeping ? (
           <g>
             <text x={21} y={7} className="ok-blob-z ok-blob-z-1">
@@ -347,7 +341,6 @@ export function OkBlob({
           </g>
         ) : null}
 
-        {}
         {particles.length > 0 && (
           <g key={`firework-${burstSeq}`} data-slot="ok-blob-burst">
             {particles.map((p) => (

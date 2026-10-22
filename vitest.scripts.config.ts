@@ -15,6 +15,7 @@ export default defineConfig({
       'scripts/**/*.test.mjs',
       '.github/scripts/**/*.test.mjs',
       'lint-plugins/**/*.test.mjs',
+      'lint-plugins/**/*.test.ts',
       'plugins/**/*.test.mjs',
       'test-support/**/*.test.ts',
       'test-support/**/*.test.mjs',

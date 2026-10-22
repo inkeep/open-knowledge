@@ -118,7 +118,6 @@ export function SkillBundlePreview({
       {findOpen ? (
         <ProseFindBar containerRef={scrollRef} onClose={() => setFindOpen(false)} />
       ) : null}
-      {}
       <SkillModeBanner icon={<Eye className="size-4" aria-hidden />} actions={headerActions}>
         {headerLine}
       </SkillModeBanner>
@@ -128,9 +127,7 @@ export function SkillBundlePreview({
           ref={scrollRef}
           className="editor-doc-scroll min-h-0 flex-1 overflow-auto subtle-scrollbar scroll-fade-mask"
         >
-          {}
           {selectedPath === SKILL_MD ? banner : null}
-          {}
           {selectedPath === SKILL_MD ? (
             <div className="editor-content-aligned pt-6">
               <div className="space-y-0.5">

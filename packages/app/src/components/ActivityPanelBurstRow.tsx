@@ -92,7 +92,6 @@ export function ActivityPanelBurstRow({
             <span className="text-destructive">−{burst.deletions}</span>
           </span>
         </button>
-        {}
         <span aria-hidden="true" className="mx-1.5 h-3 w-px shrink-0 bg-border" />
         <Tooltip>
           <TooltipTrigger asChild>

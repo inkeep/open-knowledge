@@ -94,7 +94,6 @@ export function Mirror(props: MirrorProps) {
       data-mirror-src={src}
       data-mirror-anchor={anchor}
     >
-      {}
       <div
         className='ok-mirror-badge pointer-events-none absolute -top-2.5 left-2 flex items-center gap-1 rounded-md bg-background px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity [.jsx-component-wrapper:hover_&]:opacity-100 [.jsx-component-wrapper[data-selected="true"]_&]:opacity-100'
         aria-hidden="true"
@@ -106,8 +105,10 @@ export function Mirror(props: MirrorProps) {
           </Trans>
         </span>
       </div>
-      {/* biome-ignore lint/security/noDangerouslySetInnerHtml: shared sanitization pipeline gates URL schemes + element-level passthrough — see `mdast-to-html.ts`. */}
-      <div dangerouslySetInnerHTML={{ __html: status.html }} />
+      <div
+        // oxlint-disable-next-line react/no-danger -- shared sanitization pipeline gates URL schemes + element-level passthrough — see `mdast-to-html.ts`.
+        dangerouslySetInnerHTML={{ __html: status.html }}
+      />
     </div>
   );
 }

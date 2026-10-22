@@ -236,7 +236,7 @@ function SortableTab({
     sortableKeyDown?.(event);
   }
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: dnd-kit attributes inject role and tabIndex; this composes the sortable key listener.
+    // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- dnd-kit attributes inject role and tabIndex; this composes the sortable key listener.
     <div
       ref={composedRef}
       data-editor-tab-sortable=""
