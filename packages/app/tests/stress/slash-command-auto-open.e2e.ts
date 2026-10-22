@@ -1,6 +1,7 @@
 import {
   expect,
   focusEditor,
+  settleFrames,
   test,
   waitForActiveProviderSynced,
   waitForSlashMenuFirstOption,
@@ -443,4 +444,66 @@ test('PLACEHOLDER-CLOSE-RETURNS-DOM-FOCUS: typing after Escape lands keystrokes 
       }, SENTINEL),
     )
     .toEqual({ focusInEditor: true, sentinelInDoc: true, imgFound: true });
+});
+
+test('CONTAINER-CLOSE-RETURNS-DOM-FOCUS: Escape after inserting a Callout leaves it selected in the focused editor', async ({
+  page,
+  api,
+}) => {
+  const docName = `container-close-focus-${Math.random().toString(36).slice(2, 10)}`;
+  await api.createPage(`${docName}.md`);
+  await page.goto(`/#/${docName}`);
+  await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
+  await waitForActiveProviderSynced(page);
+  await page.click('.ProseMirror:not(.composer-prosemirror)');
+
+  await page.keyboard.type('/callout');
+  await waitForSlashMenuFirstOption(page, 'callout');
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('[data-prop-panel]')).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-prop-panel]')).toBeHidden();
+
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const ed = window.__activeEditor;
+          if (!ed) return null;
+          const selection = ed.state.selection as {
+            node?: { attrs: { componentName?: string } };
+          };
+          return {
+            editorFocused: document.activeElement === ed.view.dom,
+            selectedComponent: selection.node?.attrs.componentName ?? null,
+          };
+        }),
+      { message: 'Escape left focus outside the editor, or the new Callout lost its selection' },
+    )
+    .toEqual({ editorFocused: true, selectedComponent: 'Callout' });
+
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          let callouts = 0;
+          window.__activeEditor?.state.doc.descendants((n) => {
+            if (n.type.name === 'jsxComponent' && n.attrs.componentName === 'Callout') callouts++;
+            return true;
+          });
+          return callouts;
+        }),
+      { message: 'Cmd+Z after Escape did not undo the Callout insert' },
+    )
+    .toBe(0);
+  await settleFrames(page);
+
+  const SENTINEL = 'after-undo-canary';
+  await page.keyboard.type(SENTINEL);
+  await expect
+    .poll(() => page.evaluate(() => window.__activeEditor?.state.doc.textContent ?? ''))
+    .toContain(SENTINEL);
 });
