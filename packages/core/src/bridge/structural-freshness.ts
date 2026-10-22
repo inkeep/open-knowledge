@@ -1,3 +1,4 @@
+import { authoredImageUrl } from '../markdown/resolve-image-url.ts';
 import { type PmStructuralNode, structuralDivergence } from './pm-structural-equivalence.ts';
 
 const RESOLVER_DERIVED_ATTRS = new Set(['src', 'href', 'size']);
@@ -23,19 +24,31 @@ function deepDropResolverKeys<T>(value: T): T {
   return value;
 }
 
+function withAuthoredImageUrl(attrs: Record<string, unknown>): Record<string, unknown> {
+  const { sourceUrl, ...rest } = attrs;
+  return { ...rest, src: authoredImageUrl(attrs.src, sourceUrl) };
+}
+
 function stripResolverDerivedAttrs(node: PmStructuralNode): PmStructuralNode {
-  if (
-    node.type === 'jsxComponent' &&
-    typeof node.attrs?.componentName === 'string' &&
-    WIKI_EMBED_COMPONENTS.has(node.attrs.componentName)
-  ) {
+  const componentName = node.type === 'jsxComponent' ? node.attrs?.componentName : undefined;
+  if (typeof componentName === 'string' && WIKI_EMBED_COMPONENTS.has(componentName)) {
     return deepDropResolverKeys(node);
+  }
+  if (node.type === 'image' && node.attrs) {
+    return { ...node, attrs: withAuthoredImageUrl(node.attrs) };
+  }
+  const props = node.attrs?.props;
+  if (componentName === 'CommonMarkImage' && props && typeof props === 'object') {
+    return {
+      ...node,
+      attrs: { ...node.attrs, props: withAuthoredImageUrl(props as Record<string, unknown>) },
+    };
   }
   if (!node.content) return node;
   return { ...node, content: node.content.map(stripResolverDerivedAttrs) };
 }
 
-function stripMdastPositions<T>(value: T): T {
+export function stripMdastPositions<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((entry) => stripMdastPositions(entry)) as unknown as T;
   }

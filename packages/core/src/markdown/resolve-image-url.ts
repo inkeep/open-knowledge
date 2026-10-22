@@ -30,6 +30,10 @@ function posixNormalizeJoin(dir: string, rel: string): string {
   return isAbsolute ? `/${joined}` : joined;
 }
 
+export function authoredImageUrl<Url>(src: Url, sourceUrl: Url | null | undefined): Url {
+  return sourceUrl ?? src;
+}
+
 export function normalizeDocRelativeAssetUrl(rawUrl: string, sourcePath?: string): string {
   if (typeof rawUrl !== 'string' || rawUrl === '') return rawUrl;
   if (!sourcePath) return rawUrl;

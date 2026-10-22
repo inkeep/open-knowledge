@@ -172,7 +172,7 @@ function deepDropKeys(value: unknown, ignoreAttrs: (key: string) => boolean): un
   return value;
 }
 
-function stableStringify(value: unknown): string {
+export function stableStringify(value: unknown): string {
   return JSON.stringify(value, (_k, v) => {
     if (v && typeof v === 'object' && !Array.isArray(v)) {
       const sorted: Record<string, unknown> = {};

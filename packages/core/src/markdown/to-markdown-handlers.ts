@@ -638,6 +638,11 @@ export const toMarkdownHandlers = {
     const name = mdxNode.name ?? '';
     const attrs = serializeMdxJsxAttrs(mdxNode.attributes ?? []);
 
+    const authoredBody = mdxNode.data?.sourceBody;
+    if (authoredBody && name && !attrs.includes('\n')) {
+      return `${authoredBody.leading}<${name}${attrs ? ` ${attrs}` : ''}>${authoredBody.afterOpenTag}`;
+    }
+
     if (!mdxNode.children || mdxNode.children.length === 0) {
       if (!name) return '';
       return attrs ? `<${name} ${attrs} />` : `<${name} />`;

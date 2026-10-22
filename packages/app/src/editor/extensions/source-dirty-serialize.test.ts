@@ -26,6 +26,12 @@ function findAllNodes(node: JSONContent, type: string): JSONContent[] {
   return results;
 }
 
+function markForRebuild(node: JSONContent | undefined): void {
+  if (!node?.attrs) return;
+  node.attrs.sourceDirty = true;
+  node.attrs.sourceRaw = '';
+}
+
 function normalize(s: string): string {
   return s
     .split('\n')
@@ -51,7 +57,7 @@ describe('DT — Dirty-tracking serialization behavior', () => {
     const json = mdManager.parse(input);
     const component = findNode(json, 'jsxComponent');
 
-    if (component?.attrs) component.attrs.sourceDirty = true;
+    markForRebuild(component);
 
     const output = mdManager.serialize(json);
     expect(output).toContain('Callout');
@@ -101,7 +107,7 @@ describe('DT — Dirty-tracking serialization behavior', () => {
     const json = mdManager.parse(input);
 
     const stepsComponents = findAllNodes(json, 'jsxComponent');
-    if (stepsComponents[0]?.attrs) stepsComponents[0].attrs.sourceDirty = true;
+    markForRebuild(stepsComponents[0]);
 
     const output = mdManager.serialize(json);
     expect(output).toContain('Steps');
@@ -114,9 +120,7 @@ describe('DT — Dirty-tracking serialization behavior', () => {
     const json = mdManager.parse(input);
 
     const stepsComponents = findAllNodes(json, 'jsxComponent');
-    for (const c of stepsComponents) {
-      if (c.attrs) c.attrs.sourceDirty = true;
-    }
+    for (const c of stepsComponents) markForRebuild(c);
 
     const output = mdManager.serialize(json);
     expect(output).toContain('Steps');
@@ -182,7 +186,7 @@ describe('DT — Unknown attr preservation via reconstructAttrs merge (M10/FR-21
     const json = mdManager.parse(input);
     const component = findNode(json, 'jsxComponent');
 
-    if (component?.attrs) component.attrs.sourceDirty = true;
+    markForRebuild(component);
 
     const output = mdManager.serialize(json);
     expect(output).toContain('color="#F05032"');

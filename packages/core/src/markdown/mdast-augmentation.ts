@@ -1,5 +1,10 @@
 import type { Position } from 'unist';
 
+export interface AuthoredJsxBody {
+  leading: string;
+  afterOpenTag: string;
+}
+
 export interface EscapeProvenanceEntry {
   offset: number;
   char: string;
@@ -266,6 +271,7 @@ declare module 'mdast-util-mdx-jsx' {
   interface MdxJsxFlowElementData {
     sourceRaw?: string;
     htmlBoundary?: { opener: string; closer: string };
+    sourceBody?: AuthoredJsxBody;
   }
   interface MdxJsxTextElementData {
     sourceRaw?: string;

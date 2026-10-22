@@ -5,6 +5,7 @@ import {
   ALLOWED_PDF_MIME_TYPES,
   ALLOWED_VIDEO_MIME_TYPES,
 } from '../constants/upload.ts';
+import { authoredImageUrl } from '../markdown/resolve-image-url.ts';
 import { emitMdxJsx } from '../markdown/serialize-helpers.ts';
 import { isLoomUrl } from '../utils/loom-embed.ts';
 import { isVimeoUrl } from '../utils/vimeo-embed.ts';
@@ -1067,7 +1068,7 @@ export const builtInComponents: JsxComponentMeta[] = [
         | undefined;
       const image = {
         type: 'image' as const,
-        url: p?.sourceUrl ?? p?.src ?? '',
+        url: authoredImageUrl(p?.src ?? '', p?.sourceUrl),
         alt: p?.alt ?? '',
         title: p?.title ?? null,
       };
