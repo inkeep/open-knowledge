@@ -200,6 +200,7 @@ function readTypography(card: Locator) {
       };
     };
     return {
+      width: el.getBoundingClientRect().width,
       devicePixelRatio: window.devicePixelRatio,
       label: measure(el.querySelector('p')),
       body: measure(el.lastElementChild as HTMLElement | null),
@@ -239,9 +240,11 @@ test.describe('narrow window', () => {
     await expect(card).toBeVisible({ timeout: 15_000 });
 
     await page.setViewportSize({ width: 320, height: 640 });
-    await page.waitForFunction(() => document.documentElement.clientWidth === 320, null, {
-      timeout: 10_000,
-    });
+    await expect(async () => {
+      const { width } = await readCardMetrics(card);
+      expect(width).toBeGreaterThan(0);
+      expect(width).toBeLessThanOrEqual(320);
+    }).toPass({ timeout: 10_000 });
 
     const metrics = await readCardMetrics(card);
     expect(metrics.width).toBeGreaterThan(0);
@@ -285,11 +288,14 @@ test.describe('400% browser zoom', () => {
     const unzoomed = await readCardMetrics(card);
 
     await page.setViewportSize({ width: 320, height: 256 });
-    await page.waitForFunction(() => document.documentElement.clientWidth === 320, null, {
-      timeout: 10_000,
-    });
+    await expect(async () => {
+      const { width } = await readCardMetrics(card);
+      expect(width).toBeGreaterThan(0);
+      expect(width).toBeLessThanOrEqual(320);
+    }).toPass({ timeout: 10_000 });
 
     const zoomed = await readTypography(card);
+    expect(zoomed.width).toBeLessThanOrEqual(320);
     expect(zoomed.devicePixelRatio).toBe(4);
 
     expect(zoomed.label.fontSize).toBeGreaterThanOrEqual(unzoomed.fontSize);
