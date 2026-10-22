@@ -9,6 +9,7 @@ import { bootCompositionRig } from './composition-rig.test-helper.ts';
 import { getWatcherDecisionRingSnapshot } from './file-watcher.ts';
 import { getMetrics } from './metrics.ts';
 import {
+  failNextNativeRelease,
   forgetNativeSubscriptions,
   nativeSubscriptionDirs,
   nativeSubscriptionOn,
@@ -101,3 +102,23 @@ test('once the server is destroyed, a native delivery neither dispatches a disk 
     batchesBegun: getMetrics().batchCount - batchesAtDestroy,
   }).toEqual({ dispatched: [], batchesBegun: 0 });
 }, 60_000);
+
+test.skipIf(process.platform === 'win32')(
+  'a HEAD watcher whose native release fails still lets the content watcher release',
+  async () => {
+    server = await bootCompositionRig(root);
+    await server.ready;
+    const content = nativeSubscriptionOn(root);
+    const head = nativeSubscriptionOn(join(root, '.git'));
+    failNextNativeRelease(join(root, '.git'));
+
+    await server.destroy();
+    server = undefined;
+
+    expect({ content: content.nativeReleases(), head: head.nativeReleases() }).toEqual({
+      content: 1,
+      head: 1,
+    });
+  },
+  60_000,
+);

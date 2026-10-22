@@ -4899,45 +4899,48 @@ export function createServer(options: ServerOptions): ServerInstance {
       }
 
       const documentCount = hocuspocus.documents.size;
+      const releaseWatcher = async (
+        release: { unsubscribe(): Promise<void> } | null,
+        watched: 'head' | 'content',
+      ): Promise<void> => {
+        if (release === null) return;
+        try {
+          await release.unsubscribe();
+        } catch (err) {
+          phaseErrors.push({
+            phase: 'watcher-unsubscribe',
+            error: err instanceof Error ? err.message : String(err),
+          });
+          log.error({ err, watched }, '[server] shutdown phase-1 watcher unsubscribe failed');
+        }
+      };
 
       try {
         try {
-          try {
-            if (inPlaceRescanTimer) {
-              clearTimeout(inPlaceRescanTimer);
-              inPlaceRescanTimer = null;
-            }
-            if (shadowWarmupTimer) {
-              clearTimeout(shadowWarmupTimer);
-              shadowWarmupTimer = null;
-            }
-            if (headWatcher) {
-              await headWatcher.unsubscribe();
-              headWatcher = null;
-            }
-            if (watcher) {
-              await watcher.unsubscribe();
-              watcher = null;
-            }
-            for (const { docName, cleanup } of configFileWatcherCleanups) {
-              try {
-                await cleanup();
-              } catch (cfgErr) {
-                log.warn(
-                  { err: cfgErr, docName },
-                  `[server] failed to stop config-file-watcher for ${docName}`,
-                );
-              }
-            }
-            configFileWatcherCleanups.length = 0;
-            configFileWatcherResyncs.clear();
-          } catch (err) {
-            phaseErrors.push({
-              phase: 'watcher-unsubscribe',
-              error: err instanceof Error ? err.message : String(err),
-            });
-            log.error({ err }, '[server] shutdown phase-1 watcher unsubscribe failed');
+          if (inPlaceRescanTimer) {
+            clearTimeout(inPlaceRescanTimer);
+            inPlaceRescanTimer = null;
           }
+          if (shadowWarmupTimer) {
+            clearTimeout(shadowWarmupTimer);
+            shadowWarmupTimer = null;
+          }
+          await releaseWatcher(headWatcher, 'head');
+          headWatcher = null;
+          await releaseWatcher(watcher, 'content');
+          watcher = null;
+          for (const { docName, cleanup } of configFileWatcherCleanups) {
+            try {
+              await cleanup();
+            } catch (cfgErr) {
+              log.warn(
+                { err: cfgErr, docName },
+                `[server] failed to stop config-file-watcher for ${docName}`,
+              );
+            }
+          }
+          configFileWatcherCleanups.length = 0;
+          configFileWatcherResyncs.clear();
 
           try {
             cc1Broadcaster?.destroy();

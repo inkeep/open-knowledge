@@ -12,6 +12,7 @@ import { breakServerLockHeldBy } from '../../src/main/server-lock-break.ts';
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
 import type { WindowChromeKind } from '../../src/main/window-chrome.ts';
 import {
+  APP_QUITTING_OPEN_KIND,
   type BrowserWindowLike,
   isOtherChannelHolderError,
   otherChannelStopOffer,
@@ -43,20 +44,24 @@ interface MockUtility extends UtilityProcessLike {
 }
 
 function makeUtility(pid: number): MockUtility {
-  let messageHandler: ((m: unknown) => void) | null = null;
-  let exitHandler: ((c: number | null) => void) | null = null;
+  const messageHandlers: Array<(m: unknown) => void> = [];
+  const exitHandlers: Array<(c: number | null) => void> = [];
   return {
     pid,
     postMessage: vi.fn(() => {}),
     on: vi.fn((event: 'message' | 'exit', cb: (msg: unknown) => void) => {
-      if (event === 'message') messageHandler = cb;
-      else if (event === 'exit') exitHandler = cb as (c: number | null) => void;
+      if (event === 'message') messageHandlers.push(cb);
+      else if (event === 'exit') exitHandlers.push(cb as (c: number | null) => void);
     }) as UtilityProcessLike['on'],
     once: vi.fn(() => {}),
     removeListener: vi.fn(() => {}),
     kill: vi.fn(() => true),
-    fire: (msg) => messageHandler?.(msg),
-    fireExit: (code) => exitHandler?.(code),
+    fire: (msg) => {
+      for (const handler of messageHandlers.slice()) handler(msg);
+    },
+    fireExit: (code) => {
+      for (const handler of exitHandlers.slice()) handler(code);
+    },
   };
 }
 
@@ -656,6 +661,173 @@ describe('WindowManager', () => {
   test('closeProjectWindow on unknown project returns false', () => {
     const wm = new WindowManager(env.deps);
     expect(wm.closeProjectWindow('/tmp/never-opened')).toBe(false);
+  });
+
+  describe('drainOwnedUtilities at app quit', () => {
+    async function settles(promise: Promise<void>): Promise<boolean> {
+      let settled = false;
+      void promise.then(() => {
+        settled = true;
+      });
+      await new Promise<void>((resolveTurn) => setImmediate(resolveTurn));
+      return settled;
+    }
+
+    function shutdownPosts(utility: MockUtility): number {
+      return vi
+        .mocked(utility.postMessage)
+        .mock.calls.filter(([msg]) => (msg as { type?: unknown }).type === 'shutdown').length;
+    }
+
+    async function openReadyProject(wm: WindowManager, projectPath: string): Promise<MockUtility> {
+      const opened = wm.createProjectWindow({ projectPath });
+      const utility = env.utilities.at(-1);
+      if (utility === undefined) throw new Error('createProjectWindow forked no utility');
+      utility.fire({ type: 'ready', port: 51020, apiOrigin: 'http://localhost:51020' });
+      await opened;
+      return utility;
+    }
+
+    test('stays pending until a server told to shut down at window close has exited', async () => {
+      const wm = new WindowManager(env.deps);
+      const utility = await openReadyProject(wm, '/tmp/quit-drain-close');
+      env.windows[0]?.fireClose();
+
+      const drained = wm.drainOwnedUtilities();
+
+      expect(shutdownPosts(utility)).toBeGreaterThan(0);
+      expect(await settles(drained)).toBe(false);
+      utility.fireExit(0);
+      expect(await settles(drained)).toBe(true);
+    });
+
+    test('tells a server still starting to shut down and waits for its exit', async () => {
+      const wm = new WindowManager(env.deps);
+      const opening = wm.createProjectWindow({ projectPath: '/tmp/quit-drain-booting' });
+      const utility = env.utilities[0];
+      if (utility === undefined) throw new Error('createProjectWindow forked no utility');
+
+      const drained = wm.drainOwnedUtilities();
+
+      expect(shutdownPosts(utility)).toBe(1);
+      expect(await settles(drained)).toBe(false);
+      utility.fireExit(0);
+      await expect(opening).rejects.toMatchObject({ kind: APP_QUITTING_OPEN_KIND });
+      expect(await settles(drained)).toBe(true);
+    });
+
+    test('an open that fails during the drain keeps that failure as the cause of its quit cancellation', async () => {
+      const wm = new WindowManager(env.deps);
+      const opening = wm.createProjectWindow({ projectPath: '/tmp/quit-drain-collision' }).then(
+        () => null,
+        (err: unknown) => err,
+      );
+      const utility = env.utilities[0];
+      if (utility === undefined) throw new Error('createProjectWindow forked no utility');
+
+      const drained = wm.drainOwnedUtilities();
+      utility.fire({
+        type: 'error',
+        kind: 'lock-collision',
+        message: 'lock held by another server',
+      });
+      const failure = await opening;
+
+      expect(failure).toMatchObject({ kind: APP_QUITTING_OPEN_KIND });
+      expect(failure instanceof Error ? failure.cause : undefined).toMatchObject({
+        kind: 'lock-collision',
+        message: 'lock held by another server',
+      });
+      utility.fireExit(0);
+      expect(await settles(drained)).toBe(true);
+    });
+
+    test('starts no project server for an open still in progress when the drain begins', async () => {
+      let finishClean: (() => void) | undefined;
+      env.deps.runClean = () =>
+        new Promise<void>((resolveClean) => {
+          finishClean = resolveClean;
+        });
+      const wm = new WindowManager(env.deps);
+      const openFailure = wm
+        .createProjectWindow({ projectPath: '/tmp/quit-drain-pending-open' })
+        .then(
+          () => null,
+          (err: unknown) => err,
+        );
+      expect(finishClean).toBeDefined();
+
+      expect(await settles(wm.drainOwnedUtilities())).toBe(true);
+      finishClean?.();
+      await new Promise<void>((resolveTurn) => setImmediate(resolveTurn));
+
+      expect(env.utilities).toHaveLength(0);
+      expect(await openFailure).toMatchObject({ kind: APP_QUITTING_OPEN_KIND });
+    });
+
+    test('joins a server whose window closeProjectWindow closed', async () => {
+      const wm = new WindowManager(env.deps);
+      const utility = await openReadyProject(wm, '/tmp/quit-drain-close-api');
+      expect(wm.closeProjectWindow('/tmp/quit-drain-close-api')).toBe(true);
+
+      const drained = wm.drainOwnedUtilities();
+
+      expect(await settles(drained)).toBe(false);
+      utility.fireExit(0);
+      expect(await settles(drained)).toBe(true);
+    });
+
+    test('terminates a server still running at the end of its grace and ends when it exits', async () => {
+      const graceMs = 7_321;
+      env.deps.sigtermGraceMs = graceMs;
+      const wm = new WindowManager(env.deps);
+      const utility = await openReadyProject(wm, '/tmp/quit-drain-stuck');
+      const timersBefore = env.timers.length;
+
+      const drained = wm.drainOwnedUtilities();
+      const graceTimer = env.timers.slice(timersBefore).find((timer) => timer.ms === graceMs);
+      expect(graceTimer).toBeDefined();
+      expect(utility.kill).not.toHaveBeenCalled();
+      graceTimer?.cb();
+
+      expect(utility.kill).toHaveBeenCalledTimes(1);
+      expect(await settles(drained)).toBe(false);
+      utility.fireExit(null);
+      expect(await settles(drained)).toBe(true);
+    });
+
+    test('leaves a server that exited within its grace alone', async () => {
+      const graceMs = 7_322;
+      env.deps.sigtermGraceMs = graceMs;
+      const wm = new WindowManager(env.deps);
+      const utility = await openReadyProject(wm, '/tmp/quit-drain-prompt');
+      const timersBefore = env.timers.length;
+
+      const drained = wm.drainOwnedUtilities();
+      utility.fireExit(0);
+      expect(await settles(drained)).toBe(true);
+      env.timers
+        .slice(timersBefore)
+        .find((timer) => timer.ms === graceMs)
+        ?.cb();
+
+      expect(utility.kill).not.toHaveBeenCalled();
+    });
+
+    test('does not ask a server that already exited to shut down again', async () => {
+      const wm = new WindowManager(env.deps);
+      const utility = await openReadyProject(wm, '/tmp/quit-drain-exited');
+      utility.fireExit(0);
+      const postsAtExit = shutdownPosts(utility);
+
+      expect(await settles(wm.drainOwnedUtilities())).toBe(true);
+      expect(shutdownPosts(utility)).toBe(postsAtExit);
+    });
+
+    test('ends at once when no project server is running', async () => {
+      const wm = new WindowManager(env.deps);
+      expect(await settles(wm.drainOwnedUtilities())).toBe(true);
+    });
   });
 
   test('closeProjectWindow swallows postMessage errors', async () => {

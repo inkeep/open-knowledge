@@ -229,6 +229,21 @@ function otherChannelHolderError(
   );
 }
 
+export const APP_QUITTING_OPEN_KIND = 'app-quitting';
+
+interface TrackedUtility {
+  readonly exited: Promise<void>;
+  readonly serviceName: string;
+  spawnedPid(): number | undefined;
+}
+
+function openCancelledByQuitError(projectPath: string, cause: unknown): Error {
+  return Object.assign(
+    new Error(`opening ${projectPath} was cancelled because the app is quitting`, { cause }),
+    { name: 'OpenCancelledByQuitError', kind: APP_QUITTING_OPEN_KIND },
+  );
+}
+
 export function isOtherChannelHolderError(err: unknown): err is OtherChannelHolderError {
   if (!(err instanceof Error)) return false;
   const fields = err as Partial<OtherChannelHolderError>;
@@ -575,6 +590,9 @@ export class WindowManager {
 
   private readonly keepalives = new Map<string, KeepaliveHandle>();
 
+  private readonly liveUtilities = new Map<UtilityProcessLike, TrackedUtility>();
+  private quitDrainStarted = false;
+
   private projectServerSequence = 0;
 
   private readonly deps: WindowManagerDeps;
@@ -712,6 +730,75 @@ export class WindowManager {
       ...entries.map(([key, server]) => stopOne(key, server)),
       ...ephemeralSessions.map((session) => this.teardownEphemeralSession(session)),
     ]);
+  }
+
+  async drainOwnedUtilities(): Promise<void> {
+    this.quitDrainStarted = true;
+    const live = [...this.liveUtilities];
+    if (live.length === 0) return;
+    const graceMs = this.deps.sigtermGraceMs ?? DEFAULT_SIGTERM_GRACE_MS;
+    this.deps.log?.info(
+      { event: 'desktop-project-server-quit-drain', count: live.length, graceMs },
+      '[window-manager] waiting for project servers to exit before quit',
+    );
+    await Promise.all(
+      live.map(([utility, tracked]) => this.drainUtility(utility, tracked, graceMs)),
+    );
+  }
+
+  private drainUtility(
+    utility: UtilityProcessLike,
+    tracked: TrackedUtility,
+    graceMs: number,
+  ): Promise<void> {
+    const identity = () => ({ name: tracked.serviceName, pid: tracked.spawnedPid() });
+    let hasExited = false;
+    let graceExpired = false;
+    void tracked.exited.then(() => {
+      hasExited = true;
+      this.deps.log?.info(
+        { event: 'desktop-project-server-quit-drain-exited', ...identity(), graceExpired },
+        '[window-manager] project server exited during the quit drain',
+      );
+    });
+    try {
+      utility.postMessage({ type: 'shutdown' });
+    } catch (err) {
+      this.deps.log?.warn(
+        { err, ...identity() },
+        'utility shutdown IPC failed at quit (likely already exited)',
+      );
+    }
+    this.deps.setTimeout(() => {
+      if (hasExited) return;
+      graceExpired = true;
+      const termination = utility.kill() ? 'killed' : 'kill-refused';
+      this.deps.log?.warn(
+        {
+          event: 'desktop-project-server-quit-drain-grace-expired',
+          ...identity(),
+          graceMs,
+          termination,
+        },
+        '[window-manager] project server did not exit within its grace at quit, terminating it',
+      );
+      this.deps.flushLog?.();
+    }, graceMs);
+    return tracked.exited;
+  }
+
+  private trackUtilityUntilExit(utility: UtilityProcessLike, serviceName: string): void {
+    let pid = utility.pid;
+    utility.once('spawn', () => {
+      pid = utility.pid;
+    });
+    const exited = new Promise<void>((resolveExit) => {
+      utility.on('exit', () => {
+        this.liveUtilities.delete(utility);
+        resolveExit();
+      });
+    });
+    this.liveUtilities.set(utility, { exited, serviceName, spawnedPid: () => pid });
   }
 
   signalStopAllOwnedServers(): void {
@@ -1359,6 +1446,8 @@ export class WindowManager {
     const work = (async (): Promise<ProjectContext> => {
       try {
         return await this.spawnProjectWindow(opts);
+      } catch (err) {
+        throw this.quitDrainStarted ? openCancelledByQuitError(opts.projectPath, err) : err;
       } finally {
         this.projectPendingByPath.delete(canonicalKey);
       }
@@ -1624,6 +1713,9 @@ export class WindowManager {
       ? resolveLocalOpCliArgsForUtilityFork(opts.localOpCliInvocation)
       : null;
 
+    if (this.quitDrainStarted) {
+      throw new Error('no project server is started once the app has begun quitting');
+    }
     const serviceName = `OpenKnowledge Project Server ${++this.projectServerSequence}`;
     const utility = this.deps.forkUtility(
       this.deps.utilityEntryPath,
@@ -1633,6 +1725,7 @@ export class WindowManager {
         serviceName,
       },
     );
+    this.trackUtilityUntilExit(utility, serviceName);
     const forkedAt = Date.now();
     this.deps.log?.info(
       {

@@ -155,7 +155,8 @@ export interface UtilityHandle {
 export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
   let booted: UtilityBootedServer | null = null;
   let parentPollHandle: { unref?: () => void; clear: () => void } | null = null;
-  let shuttingDown = false;
+  let initInFlight: Promise<void> | null = null;
+  let shutdownInFlight: Promise<void> | null = null;
   let resolveReady!: (msg: UtilityReadyMessage) => void;
   let rejectReady!: (err: Error) => void;
   const readyPromise = new Promise<UtilityReadyMessage>((resolve, reject) => {
@@ -188,10 +189,14 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
     parentPollHandle = null;
   }
 
-  async function shutdown(reason: UtilityShutdownReason): Promise<void> {
-    if (shuttingDown) return;
-    shuttingDown = true;
+  function shutdown(reason: UtilityShutdownReason): Promise<void> {
+    shutdownInFlight ??= drainAndExit(reason);
+    return shutdownInFlight;
+  }
+
+  async function drainAndExit(reason: UtilityShutdownReason): Promise<void> {
     stopParentPoll();
+    await initInFlight;
     let drainOk = true;
     if (booted) {
       try {
@@ -205,6 +210,11 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
         });
       }
     }
+    console.warn('[utility] shutdown finished, exiting', {
+      reason,
+      destroyResolved: booted !== null && drainOk,
+      exitCode: drainOk ? 0 : 1,
+    });
     deps.exit(drainOk ? 0 : 1);
   }
 
@@ -237,7 +247,7 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
       const projectDir = msg.opts.projectDir ?? msg.opts.contentDir;
       const prepare = deps.prepareBootEnvironment ?? defaultPrepareBootEnvironment;
       const prepared = await prepare(msg.opts, markInitPhase);
-      if (shuttingDown) return;
+      if (shutdownInFlight !== null) return;
 
       if (env.OK_DEBUG_DESKTOP_BOOT_TRACE === '1') {
         console.warn(
@@ -289,6 +299,7 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
           throw err;
         }
       }
+      if (shutdownInFlight !== null) return;
       const readyMsg: UtilityReadyMessage = {
         type: 'ready',
         port: booted.port,
@@ -337,6 +348,7 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
         errName === 'GitProbeTimeoutError' ||
         errName === 'GitTooOldError';
       deps.parentPort?.postMessage(errMsg);
+      if (shutdownInFlight !== null) return;
       rejectReady(err as Error);
       deps.exit(isGitPreflightFailure ? 78 : 1);
     }
@@ -359,7 +371,7 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
     deps.parentPort?.on('message', (event) => {
       const msg = event.data as UtilityIncomingMessage;
       if (msg?.type === 'init') {
-        void handleInit(msg);
+        initInFlight = handleInit(msg);
       } else if (msg?.type === 'shutdown') {
         void shutdown('shutdown-ipc');
       } else if (msg?.type === 'debug-keyring-smoke') {

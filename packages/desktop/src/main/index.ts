@@ -177,6 +177,7 @@ import {
   type ProjectWriterSurface,
 } from './agent-registry-apply.ts';
 import { collectDesktopHostSnapshot, withoutProjectScope } from './agent-registry-probes.ts';
+import { drainAppOwnedWork } from './app-quit-drain.ts';
 import { appendOkIgnoreSync } from './append-okignore.ts';
 import { registerAppImageDeepLinks } from './appimage-integration.ts';
 import { openAssetOrReveal, openAssetSafely, revealAssetSafely } from './asset-allowlist.ts';
@@ -588,6 +589,7 @@ import {
   windowChromeOptsForKind,
 } from './window-chrome.ts';
 import {
+  APP_QUITTING_OPEN_KIND,
   type BrowserWindowLike,
   bringWindowToFront,
   collabUrlFromApiOrigin,
@@ -2203,6 +2205,31 @@ async function openProjectOrFallbackToNavigator(
   } catch (err) {
     const errorMessage = (err as Error).message;
     const kind = (err as Error & { kind?: string }).kind;
+    if (kind === APP_QUITTING_OPEN_KIND) {
+      const cause = (err as Error).cause;
+      const underlying:
+        | (Error & {
+            kind?: string;
+            holderPid?: number;
+            exitCode?: number | null;
+            exitSignal?: string | null;
+          })
+        | undefined = cause instanceof Error ? cause : undefined;
+      getLogger('project').info(
+        {
+          event: 'desktop-open-project-cancelled-by-quit',
+          projectPath,
+          entryPoint,
+          causeKind: underlying?.kind,
+          holderPid: underlying?.holderPid,
+          exitCode: underlying?.exitCode,
+          exitSignal: underlying?.exitSignal,
+          err,
+        },
+        '[main] project open cancelled because the app is quitting',
+      );
+      return false;
+    }
     const otherChannelHolder = failedOpenHolder(err, projectPath, wm as WindowManager | undefined);
     const holderPid =
       otherChannelHolder?.holderPid ?? (err as Error & { holderPid?: number }).holderPid;
@@ -7098,15 +7125,14 @@ function bootPrimaryInstance(): void {
 
   const runTerminalQuitDrain = createTerminalQuitDrain({
     defer: (callback) => setImmediate(callback),
-    drain: async () => {
-      const [terminalResult] = await Promise.allSettled([
-        terminalReaper?.killAll('quit') ?? Promise.resolve(),
-        slidesDeckRegistry.reapAll(),
-      ]);
-      if (terminalResult.status === 'rejected') {
-        getLogger('lifecycle').warn({ err: terminalResult.reason }, 'terminal quit drain failed');
-      }
-    },
+    drain: () =>
+      drainAppOwnedWork({
+        stopTerminals: () => terminalReaper?.killAll('quit') ?? Promise.resolve(),
+        reapSlideDecks: () => slidesDeckRegistry.reapAll(),
+        drainProjectServers: () => wm?.drainOwnedUtilities() ?? Promise.resolve(),
+        onTerminalStopFailed: (err) =>
+          getLogger('lifecycle').warn({ err }, 'terminal quit drain failed'),
+      }),
     resumeQuit: () => app.quit(),
   });
   app.on('will-quit', (event) => {

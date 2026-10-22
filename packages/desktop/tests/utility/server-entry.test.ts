@@ -1475,3 +1475,128 @@ describe('setupUtility honours a shutdown that arrives before its init reaches b
     expect(env.exit.mock.calls).toEqual([[0]]);
   });
 });
+
+function startUtilityWhoseServerStartWaits(env: MockEnv) {
+  const destroy = vi.fn(() => Promise.resolve());
+  let enterServerStart!: () => void;
+  const reachedServerStart = new Promise<void>((resolve) => {
+    enterServerStart = resolve;
+  });
+  let settleServerStart!: (failure?: Error) => void;
+  const serverStarted = new Promise<void>((resolve, reject) => {
+    settleServerStart = (failure) => (failure === undefined ? resolve() : reject(failure));
+  });
+  const bootServer = vi.fn(async () => {
+    enterServerStart();
+    await serverStarted;
+    return { port: 51290, destroy, degraded: [] as readonly string[] };
+  });
+  setupUtility({
+    parentPort: env.parentPort,
+    importServer: () =>
+      Promise.resolve({
+        bootServer,
+      } as unknown as typeof import('@inkeep/open-knowledge-server')),
+    exit: env.exit,
+    parentPid: 99999,
+    killProbe: env.killProbe,
+    onSignal: (sig, h) => env.signalHandlers.set(sig, h),
+    setInterval: (cb, ms) => {
+      env.intervals.push({ cb, ms });
+      return { unref: vi.fn(() => {}), clear: env.intervalCancel };
+    },
+    prepareBootEnvironment: fakePrepare(),
+  });
+  env.parentPort.fire({
+    type: 'init',
+    opts: { contentDir: '/tmp/x', projectDir: '/tmp/x', port: 0, host: 'localhost' },
+  });
+  return { destroy, reachedServerStart, settleServerStart };
+}
+
+async function nextTurn(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+function postedTypes(env: MockEnv): unknown[] {
+  return env.parentPort.postMessage.mock.calls.map(([msg]) => (msg as { type?: unknown }).type);
+}
+
+describe('setupUtility joins a server start still in progress when shutdown arrives', () => {
+  test('waits for the server it is starting, shuts that server down, then exits 0 without announcing it ready', async () => {
+    const env = buildEnv();
+    const utility = startUtilityWhoseServerStartWaits(env);
+    await utility.reachedServerStart;
+
+    env.parentPort.fire({ type: 'shutdown' });
+    await nextTurn();
+    expect(env.exit).not.toHaveBeenCalled();
+
+    utility.settleServerStart();
+    await nextTurn();
+
+    expect(utility.destroy).toHaveBeenCalledTimes(1);
+    expect(env.exit.mock.calls).toEqual([[0]]);
+    expect(postedTypes(env)).not.toContain('ready');
+  });
+
+  test('exits once when the server it is starting fails after shutdown arrived', async () => {
+    const env = buildEnv();
+    const utility = startUtilityWhoseServerStartWaits(env);
+    await utility.reachedServerStart;
+
+    env.parentPort.fire({ type: 'shutdown' });
+    utility.settleServerStart(new Error('server start failed'));
+    await nextTurn();
+
+    expect(utility.destroy).not.toHaveBeenCalled();
+    expect(env.exit.mock.calls).toEqual([[0]]);
+  });
+});
+
+describe('setupUtility repeated shutdown', () => {
+  test('a second shutdown resolves only after the first has finished draining the server', async () => {
+    const env = buildEnv();
+    let finishDestroy!: () => void;
+    const destroy = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishDestroy = resolve;
+        }),
+    );
+    const handle = setupUtility({
+      parentPort: env.parentPort,
+      importServer: () =>
+        Promise.resolve({
+          bootServer: () => Promise.resolve({ port: 51291, destroy, degraded: [] }),
+        } as unknown as typeof import('@inkeep/open-knowledge-server')),
+      exit: env.exit,
+      parentPid: 99999,
+      killProbe: env.killProbe,
+      onSignal: (sig, h) => env.signalHandlers.set(sig, h),
+      setInterval: (cb, ms) => {
+        env.intervals.push({ cb, ms });
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
+      },
+      prepareBootEnvironment: fakePrepare(),
+    });
+    env.parentPort.fire({
+      type: 'init',
+      opts: { contentDir: '/tmp/x', projectDir: '/tmp/x', port: 0, host: 'localhost' },
+    });
+    await handle.readyPromise;
+
+    const first = handle.shutdown('shutdown-ipc');
+    let secondSettled = false;
+    const second = handle.shutdown('SIGTERM').then(() => {
+      secondSettled = true;
+    });
+    await nextTurn();
+
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(secondSettled).toBe(false);
+    finishDestroy();
+    await Promise.all([first, second]);
+    expect(env.exit.mock.calls).toEqual([[0]]);
+  });
+});

@@ -14,6 +14,7 @@ interface Registration extends NativeSubscriptionDouble {
 }
 
 const registrations: Registration[] = [];
+const failingReleases = new Set<string>();
 
 function register(dir: string, callback: SubscribeCallback): Registration {
   let releases = 0;
@@ -33,6 +34,9 @@ function register(dir: string, callback: SubscribeCallback): Registration {
     release: async () => {
       releases += 1;
       for (const { events, error } of queuedForRelease.splice(0)) await deliver(events, error);
+      if (failingReleases.delete(dir)) {
+        throw new Error(`the watcher double failed to release ${dir}`);
+      }
     },
   };
 }
@@ -67,6 +71,11 @@ export const parcelWatcherModule = { default: parcelWatcherDouble, ...parcelWatc
 export function forgetNativeSubscriptions(): void {
   registrations.length = 0;
   refusals.clear();
+  failingReleases.clear();
+}
+
+export function failNextNativeRelease(dir: string): void {
+  failingReleases.add(resolve(dir));
 }
 
 export function refuseNativeSubscriptions(dir: string, count: number): void {
