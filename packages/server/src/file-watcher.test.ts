@@ -1064,25 +1064,27 @@ describe('startWatcher file index', () => {
     }
   });
 
-  test('folderIndex detects externally-created empty directory via live watcher', async () => {
+  test('folderIndex detects externally-created empty directory via live watcher', async ({
+    onTestFinished,
+  }) => {
+    const liveContentDir = await mkdtemp(resolve(tmpdir(), 'ok-watcher-live-empty-'));
+    onTestFinished(() => rm(liveContentDir, { recursive: true, force: true }));
     const events: DiskEvent[] = [];
-    const handle = await startWatcher(contentDir, async (e) => {
+    const folderCreated = Promise.withResolvers<void>();
+    const handle = await startWatcher(liveContentDir, async (e) => {
       events.push(e);
-    });
-    try {
-      mkdirSync(resolve(contentDir, 'live-empty'));
-      const deadline = Date.now() + 1000;
-      while (Date.now() < deadline) {
-        if (handle.getFolderIndex().has('live-empty')) break;
-        await new Promise((r) => setTimeout(r, 30));
+      if (e.kind === 'folder-create' && e.relativePath === 'live-empty') {
+        folderCreated.resolve();
       }
-      expect(handle.getFolderIndex().has('live-empty')).toBe(true);
-      expect(
-        events.some((e) => e.kind === 'folder-create' && e.relativePath === 'live-empty'),
-      ).toBe(true);
-    } finally {
-      await handle.unsubscribe();
-    }
+    });
+    onTestFinished(() => handle.unsubscribe());
+
+    mkdirSync(resolve(liveContentDir, 'live-empty'));
+    await folderCreated.promise;
+    expect(handle.getFolderIndex().has('live-empty')).toBe(true);
+    expect(events.some((e) => e.kind === 'folder-create' && e.relativePath === 'live-empty')).toBe(
+      true,
+    );
   });
 });
 
