@@ -1349,11 +1349,12 @@ describe('AcpThreadManager persistence + resume', () => {
     expect(agentChunks(replayed)).toContain(notedEcho(localDir, 'hello there'));
   }, 45_000);
 
-  test('closing a never-prompted thread discards it instead of archiving', async () => {
+  test('closing a never-prompted thread discards it and its browser folders instead of archiving', async () => {
     const contentDir = tmp();
     const localDir = tmp();
+    const globalDir = tmp();
     writeExampleAgentEntry(localDir);
-    const manager = makeManager(contentDir, localDir);
+    const manager = makeManager(contentDir, localDir, { globalDir });
     await manager.init();
 
     const info = await manager.createThread({ agent: { source: 'custom', id: 'example' } });
@@ -1362,9 +1363,16 @@ describe('AcpThreadManager persistence + resume', () => {
       15_000,
       'agent ready',
     );
+    const own = join(globalDir, 'agent-browser', info.threadId);
+    const sibling = join(globalDir, 'agent-browser', crypto.randomUUID());
+    mkdirSync(own, { recursive: true });
+    writeFileSync(join(own, 'files-page.png'), 'x');
+    mkdirSync(sibling, { recursive: true });
     await manager.closeThread(info.threadId);
 
     expect(manager.listThreads().find((t) => t.threadId === info.threadId)).toBeUndefined();
+    expect(existsSync(own)).toBe(false);
+    expect(existsSync(sibling)).toBe(true);
     const manager2 = makeManager(contentDir, localDir);
     await manager2.init();
     expect(manager2.listThreads().find((t) => t.threadId === info.threadId)).toBeUndefined();

@@ -3581,15 +3581,7 @@ export class AcpThreadManager {
       });
     const failedStart = t.info.status === 'error' || t.info.status === 'auth_required';
     if (!t.hadUserMessage && !failedStart) {
-      this.threads.delete(threadId);
-      t.subscribers.clear();
-      if (t.flushTimer !== null) {
-        clearTimeout(t.flushTimer);
-        t.flushTimer = null;
-      }
-      this.clearStall(t);
-      await this.persistence.whenIdle(threadId);
-      await this.persistence.delete(threadId);
+      await this.forgetThread(t);
       this.opts.log.info({ threadId }, '[acp-threads] empty thread discarded on close');
       return;
     }
@@ -3617,6 +3609,12 @@ export class AcpThreadManager {
     if (t.resumeInFlight) {
       throw new ThreadOpError('not-ready', 'a resume is in progress');
     }
+    await this.forgetThread(t);
+    this.opts.log.info({ threadId }, '[acp-threads] thread deleted');
+  }
+
+  private async forgetThread(t: ThreadRecord): Promise<void> {
+    const threadId = t.info.threadId;
     this.threads.delete(threadId);
     t.subscribers.clear();
     if (t.flushTimer !== null) {
@@ -3631,7 +3629,6 @@ export class AcpThreadManager {
         this.opts.log.warn({ err, threadId }, '[acp-threads] removing browser folders failed');
       });
     }
-    this.opts.log.info({ threadId }, '[acp-threads] thread deleted');
   }
 
   async destroy(): Promise<void> {
