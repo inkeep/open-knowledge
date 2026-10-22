@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
+import { KEY_REJECTED_OUTPUT } from './stamp-by-containment.mjs';
 
 const WORKFLOWS = join(dirname(fileURLToPath(import.meta.url)), '..', 'workflows');
 const workflow = readFileSync(join(WORKFLOWS, 'linear-release.yml'), 'utf8');
@@ -92,6 +93,28 @@ describe('linear release stamping workflow', () => {
     expect(alert).toContain('CHANNEL: ${{ steps.derive.outputs.channel }}');
     expect(text).toContain('${CHANNEL:+ (${CHANNEL})}');
     expect(alert).toContain('payload=$(jq -nc --arg text "$TEXT" \'{text: $text}\')');
+  });
+
+  test('a rejected Linear key pages a rotation instead of a re-run', () => {
+    const containment = parse(workflow).jobs.stamp.steps.find(
+      (step) => step.name === 'Correct the stable stamp by containment',
+    );
+    expect(containment.id).toBe('containment');
+
+    const alert = alertBlock(workflow);
+    expect(alert).toContain(
+      `LINEAR_KEY_REJECTED: \${{ steps.containment.outputs.${KEY_REJECTED_OUTPUT} }}`,
+    );
+    const rejected = alert.match(
+      /if \[\[ "\$\{LINEAR_KEY_REJECTED:-\}" == "true" \]\]; then\n\s+TEXT="([^\n]*)"\n\s+fi/,
+    );
+    if (!rejected) throw new Error('no rejected-key TEXT= branch in the alert step');
+    const text = rejected[1];
+    expect(text).toContain('gh secret set LINEAR_API_KEY -R ${GITHUB_REPOSITORY}');
+    expect(text).toContain('release_tag=${TAG}');
+    expect(text).toContain('${RUN_URL}');
+    expect(text).toContain('Read and Write permissions');
+    expect(text).not.toContain('Re-running is safe');
   });
 
   test('the alert covers every working step', () => {

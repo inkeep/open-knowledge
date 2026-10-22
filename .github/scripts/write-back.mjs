@@ -789,6 +789,12 @@ export async function linearGraphql({
         ) {
           throw new LinearRateLimitError(res.headers);
         }
+        if (res.status === 401) {
+          throw new LinearRequestError(
+            `Linear GraphQL returned HTTP 401, so LINEAR_API_KEY has expired or been revoked; rotate the LINEAR_API_KEY secret: ${body.slice(0, 400)}`,
+            { retryable: false },
+          );
+        }
         throw new LinearRequestError(
           `Linear GraphQL returned HTTP ${res.status}: ${body.slice(0, 400)}`,
           {

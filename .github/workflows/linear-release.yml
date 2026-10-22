@@ -209,6 +209,7 @@ jobs:
 
       - name: Correct the stable stamp by containment
         if: steps.derive.outputs.channel == 'stable'
+        id: containment
         env:
           GH_TOKEN: ${{ github.token }}
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
@@ -241,6 +242,7 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           CHANNEL: ${{ steps.derive.outputs.channel }}
           JOB_STATUS: ${{ job.status }}
+          LINEAR_KEY_REJECTED: ${{ steps.containment.outputs.linear_key_rejected }}
         run: |
           set -uo pipefail
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
@@ -254,6 +256,9 @@ jobs:
             OUTCOME="failed"
           fi
           TEXT="Linear release stamping ${OUTCOME} for ${TAG}${CHANNEL:+ (${CHANNEL})}. The release itself is unaffected; Linear is now out of sync with what shipped. Re-running is safe for transient failures. After a stamping-code fix reaches main, dispatch linear-release.yml fresh on main with release_tag=${TAG}; re-running the old run keeps its old code. Stable dispatches re-verify every stable release's stamps, not just this one. ${RUN_URL}"
+          if [[ "${LINEAR_KEY_REJECTED:-}" == "true" ]]; then
+            TEXT="Linear release stamping failed for ${TAG}${CHANNEL:+ (${CHANNEL})}: Linear rejected the LINEAR_API_KEY secret on ${GITHUB_REPOSITORY} with HTTP 401, so the key has expired or been revoked. Re-running will not help and no code fix is needed. Create a new key in Linear (Settings > Security & access > Personal API keys) on a shared account, with Read and Write permissions (Admin is not needed) on all teams, store it with gh secret set LINEAR_API_KEY -R ${GITHUB_REPOSITORY}, then dispatch linear-release.yml fresh on main with release_tag=${TAG}. Reporter write-back uses the same key, so it is failing too. ${RUN_URL}"
+          fi
           {
             echo "## Linear stamping ${OUTCOME}"
             echo "Tag: \`${TAG}\`"

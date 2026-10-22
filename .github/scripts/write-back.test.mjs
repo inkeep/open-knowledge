@@ -1115,6 +1115,7 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
     const h = callLinear([fail(401, '{"errors":[{"type":"AUTHENTICATION_ERROR"}]}')]);
     await expect(h.call).rejects.toThrow(/HTTP 401/);
     await expect(h.call).rejects.toThrow(/AUTHENTICATION_ERROR/);
+    await expect(h.call).rejects.toThrow(/rotate the LINEAR_API_KEY secret/);
     expect(h.attemptCount()).toBe(1);
     expect(h.slept).toEqual([]);
   });

@@ -1,7 +1,14 @@
-import { describe, expect, test } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   isBetaRelease,
+  KEY_REJECTED_OUTPUT,
+  LinearKeyRejectedError,
+  linear,
   planTicketReconciliation,
+  recordFailureOutputs,
   summarize,
 } from './stamp-by-containment.mjs';
 
@@ -155,5 +162,64 @@ describe('summarize', () => {
       { plan: { action: 'skip' } },
     ];
     expect(summarize(plans)).toEqual({ noop: 1, attach: 2, reattach: 1, skip: 1 });
+  });
+});
+
+describe('linear', () => {
+  const reply = (status, body) => async () => ({
+    ok: status < 400,
+    status,
+    text: async () => body,
+  });
+
+  test('a 401 names the rejected key so the alert can ask for rotation', async () => {
+    const call = linear(
+      'query {}',
+      {},
+      {
+        apiKey: 'k',
+        fetchImpl: reply(401, '{"errors":[{"code":"AUTHENTICATION_ERROR"}]}'),
+      },
+    );
+    await expect(call).rejects.toBeInstanceOf(LinearKeyRejectedError);
+    await expect(call).rejects.toThrow(/rotate the LINEAR_API_KEY secret/);
+    await expect(call).rejects.toThrow(/AUTHENTICATION_ERROR/);
+  });
+
+  test('other HTTP failures keep the generic error', async () => {
+    const call = linear('query {}', {}, { apiKey: 'k', fetchImpl: reply(503, 'upstream') });
+    await expect(call).rejects.toThrow('linear HTTP 503: upstream');
+    await expect(call).rejects.not.toBeInstanceOf(LinearKeyRejectedError);
+  });
+});
+
+describe('recordFailureOutputs', () => {
+  const dirs = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  const outputFile = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stamp-output-'));
+    dirs.push(dir);
+    const path = join(dir, 'output');
+    writeFileSync(path, '');
+    return path;
+  };
+
+  test('a rejected key leaves the output the alert step reads', () => {
+    const path = outputFile();
+    recordFailureOutputs(new LinearKeyRejectedError('{}'), path);
+    expect(readFileSync(path, 'utf8')).toBe(`${KEY_REJECTED_OUTPUT}=true\n`);
+  });
+
+  test('any other failure leaves the output empty', () => {
+    const path = outputFile();
+    recordFailureOutputs(new Error('linear HTTP 503: upstream'), path);
+    expect(readFileSync(path, 'utf8')).toBe('');
+  });
+
+  test('without an output file nothing is written and nothing throws', () => {
+    expect(() => recordFailureOutputs(new LinearKeyRejectedError('{}'), undefined)).not.toThrow();
   });
 });

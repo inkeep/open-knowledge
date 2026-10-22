@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /* biome-ignore-all lint/suspicious/noUndeclaredEnvVars: GitHub Actions invokes this entrypoint outside Turbo. */
 import { execFileSync } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { realPublishedReleaseTags } from './published-release-tags.mjs';
 import { realFindMirroredCommits, resolveShippedVersion } from './resolve-shipped-version.mjs';
@@ -9,6 +10,7 @@ import { createTagContainment } from './tag-containment.mjs';
 const BETA_VERSION_RE = /-beta\.\d+$/;
 const PRIVATE_PR_RE = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
 const PRIVATE_REPO = 'inkeep/agents-private';
+export const KEY_REJECTED_OUTPUT = 'linear_key_rejected';
 
 function log(...args) {
   process.stderr.write(`${args.join(' ')}\n`);
@@ -66,17 +68,37 @@ export function summarize(plans) {
   return counts;
 }
 
-async function linear(query, variables) {
-  const res = await fetch('https://api.linear.app/graphql', {
+export class LinearKeyRejectedError extends Error {
+  constructor(body) {
+    super(
+      `Linear rejected LINEAR_API_KEY with HTTP 401, so the key has expired or been revoked; rotate the LINEAR_API_KEY secret: ${body.slice(0, 300)}`,
+    );
+    this.name = 'LinearKeyRejectedError';
+  }
+}
+
+export function recordFailureOutputs(err, outputPath) {
+  if (err instanceof LinearKeyRejectedError && outputPath) {
+    appendFileSync(outputPath, `${KEY_REJECTED_OUTPUT}=true\n`);
+  }
+}
+
+export async function linear(
+  query,
+  variables,
+  { apiKey = process.env.LINEAR_API_KEY, fetchImpl = fetch } = {},
+) {
+  const res = await fetchImpl('https://api.linear.app/graphql', {
     method: 'POST',
     headers: {
-      authorization: process.env.LINEAR_API_KEY,
+      authorization: apiKey,
       'content-type': 'application/json',
     },
     body: JSON.stringify({ query, variables }),
     signal: AbortSignal.timeout(20_000),
   });
   const text = await res.text();
+  if (res.status === 401) throw new LinearKeyRejectedError(text);
   if (!res.ok) throw new Error(`linear HTTP ${res.status}: ${text.slice(0, 300)}`);
   const body = JSON.parse(text);
   if (body.errors) throw new Error(`linear graphql: ${JSON.stringify(body.errors).slice(0, 400)}`);
@@ -265,6 +287,7 @@ async function main() {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((err) => {
     console.error(`::error::stamp-by-containment: ${err.message}`);
+    recordFailureOutputs(err, process.env.GITHUB_OUTPUT);
     process.exit(1);
   });
 }
