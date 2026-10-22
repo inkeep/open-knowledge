@@ -32,6 +32,8 @@ import { SETUP_NON_RESULT_REPORTER } from './tests/stress/_helpers/setup-non-res
  */
 const isCI = !!process.env.CI;
 
+const traceSnapshotsOff = process.env.OK_E2E_TRACE_SNAPSHOTS === 'off';
+
 /**
  * Logical CPUs one worker occupies. Since the per-worker-server migration a
  * worker is not just a browser: it owns a Vite dev server, a Hocuspocus CRDT
@@ -146,9 +148,7 @@ export default defineConfig({
     // crops the sidebar in narrow-viewport tests. Retained only on failure to
     // bound storage growth.
     video: { mode: 'retain-on-failure', size: { width: 1280, height: 720 } },
-    // 'on-first-retry' captures trace on retry 1 only; subsequent retries skip
-    // to stay under the CI runtime envelope.
-    trace: 'on-first-retry',
+    trace: traceSnapshotsOff ? { mode: 'on-first-retry', snapshots: false } : 'on-first-retry',
     screenshot: 'only-on-failure',
   },
 });

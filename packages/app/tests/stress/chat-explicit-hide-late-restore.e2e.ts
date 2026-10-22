@@ -7,6 +7,9 @@ import type { WebSocketRoute } from '@playwright/test';
 import { dockUnitRect, expect, test, waitForActiveProviderSynced } from './_helpers';
 import { startHiddenChatAgent } from './hidden-chat-transport.test-helper';
 
+// WARN: tracing perturbs the focus race this file's thread-tab toBeFocused assertion depends on.
+test.use({ trace: 'off' });
+
 test('a hidden Chat stays hidden through late thread restoration until its shortcut reveals it', async ({
   page,
   context,

@@ -1,5 +1,8 @@
 import { expect, test, waitForActiveProviderSynced } from './_helpers';
 
+// WARN: trace DOM snapshots force layouts that this file's LayoutCount assertion counts.
+test.use({ trace: 'off' });
+
 const LONG_TABLE_MARKDOWN = `# Metric Tracker
 
 | Metric | Count | Revenue | Growth |
