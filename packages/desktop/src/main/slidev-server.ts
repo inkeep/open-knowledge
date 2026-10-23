@@ -250,6 +250,10 @@ function taskkillWindowsTree(pid: number, timeoutMs: number): Promise<void> {
   });
 }
 
+function hasRecordedTermination(child: ChildProcess): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
 export function signalSlidevChild(
   child: ChildProcess,
   sig: 'SIGTERM' | 'SIGKILL',
@@ -277,13 +281,17 @@ export function signalSlidevChild(
       const timer = setTimeout(() => finish(new Error('taskkill timed out')), timeoutMs);
       timer.unref();
       void Promise.resolve()
-        .then(() => killTree(pid))
+        .then(() => {
+          if (hasRecordedTermination(child)) return;
+          return killTree(pid);
+        })
         .then(
           () => finish(),
           (err: unknown) => finish(err),
         );
     });
   }
+  if (hasRecordedTermination(child)) return Promise.resolve();
   try {
     process.kill(-pid, sig);
   } catch {

@@ -46,6 +46,8 @@ import {
 function fakeChildProcess(pid: number | undefined): ChildProcess {
   return Object.assign(new EventEmitter(), {
     pid,
+    exitCode: null,
+    signalCode: null,
     kill: vi.fn(() => true),
   }) as unknown as ChildProcess;
 }
@@ -576,7 +578,7 @@ describe('signalSlidevChild', () => {
   function fakeChild() {
     const kill = vi.fn(() => true);
     return {
-      child: { pid: 4321, kill } as unknown as ChildProcess,
+      child: { pid: 4321, exitCode: null, signalCode: null, kill } as unknown as ChildProcess,
       kill,
     };
   }
