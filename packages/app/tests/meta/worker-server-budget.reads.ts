@@ -1,36 +1,10 @@
-export const FIXTURE_CLOSURE = [
-  'packages/app/src/build/e2e-coverage-contract.ts',
-  'packages/app/src/build/prebuilt-dev-contract.ts',
-  'packages/app/src/build/test-server-loaded-inputs.ts',
-  'packages/app/src/build/test-server-startup-contract.ts',
-  'packages/app/tests/foundation/test-server-inputs.ts',
-  'packages/app/tests/free-port.test-helper.ts',
-  'packages/app/tests/stress/_helpers/content-reset.ts',
-  'packages/app/tests/stress/_helpers/e2e-coverage/e2e-coverage.ts',
-  'packages/app/tests/stress/_helpers/fixtures.ts',
-  'packages/app/tests/stress/_helpers/load-progress.ts',
-  'packages/app/tests/stress/_helpers/prebuilt/prebuilt-serving.ts',
-  'packages/app/tests/stress/_helpers/production-shell-readiness.ts',
-  'packages/app/tests/stress/_helpers/production-shell-server.ts',
-  'packages/app/tests/stress/_helpers/reuse/fresh-slot.ts',
-  'packages/app/tests/stress/_helpers/reuse/lease-fixture.ts',
-  'packages/app/tests/stress/_helpers/reuse/lease-protocol.ts',
-  'packages/app/tests/stress/_helpers/reuse/reuse-run.ts',
-  'packages/app/tests/stress/_helpers/reuse/server-supervisor.ts',
-  'packages/app/tests/stress/_helpers/reuse/supervisor-socket.ts',
-  'packages/app/tests/stress/_helpers/seed-key.ts',
-  'packages/app/tests/stress/_helpers/server-process.ts',
-  'packages/app/tests/stress/_helpers/setup-non-result.ts',
-  'packages/app/tests/stress/_helpers/teardown-fs.ts',
-  'packages/app/tests/stress/_helpers/worker-server-command.ts',
-  'packages/app/tests/stress/_helpers/worker-server-lifetime.ts',
-] as const;
-
 export const ROUND_READS = {
   test: './worker-server-budget.test.ts',
-  reads: 'the static closure of the worker-server fixture loaded by its runtime checks',
+  reads:
+    'the worker-server fixture its runtime checks load, with everything it imports, the app package.json and a timeline fixture',
+  roots: ['packages/app/tests/stress/_helpers/fixtures.ts'],
   include: [
-    ...FIXTURE_CLOSURE,
+    'packages/app/package.json',
     'packages/app/tests/meta/fixtures/first-load-crossing-timeline.json',
   ],
 };

@@ -7,6 +7,13 @@
   },
   "include": [
     "no-net-connect*.ts",
+    "owner-lifeline.ts",
+    "owner-lifeline.test.ts",
+    "read-declarations.ts",
+    "read-declarations-closure.ts",
+    "read-declarations-match.ts",
+    "read-declarations-observer.ts",
+    "read-declarations*.test.ts",
     "turbo-typecheck-attachment.test.ts",
     "fixtures/no-net-connect/**/*.ts"
   ]

@@ -39,6 +39,7 @@ const KNOWN_TEST_PROJECTS = [
   'packages/server/vitest.mcp-inspector.config.ts',
   'packages/server/vitest.network.config.ts',
   'test-support/fixtures/no-net-connect/vitest.no-net-connect-fixture.config.ts',
+  'test-support/fixtures/read-declarations/vitest.read-declarations-fixture.config.ts',
   'vitest.scripts.config.ts',
   'vitest.uncached.config.ts',
 ];
@@ -54,7 +55,7 @@ const KNOWN_BUILD_CONFIGS = [
   'packages/desktop/electron.vite.config.ts',
 ];
 
-const REQUIRED_BASE_SETUP_FILES = ['bun-global-shim.ts', 'no-net-connect.ts'];
+const REQUIRED_BASE_SETUP_FILES = ['bun-global-shim.ts', 'no-net-connect.ts', 'read-declarations.ts'];
 
 const BROWSER_PROJECT_SETUP_FILES: Readonly<Record<string, readonly string[]>> = {
   'packages/app/tests/foundation/fixtures/vitest.browser-fixture.config.ts': ['browser-setup.ts'],

@@ -25,6 +25,8 @@ const bunGlobalShimPath = fileURLToPath(new URL('./bun-global-shim.ts', import.m
 
 const noNetConnectPath = fileURLToPath(new URL('./no-net-connect.ts', import.meta.url));
 
+const readDeclarationsPath = fileURLToPath(new URL('./read-declarations.ts', import.meta.url));
+
 export const okVitestBase = {
   plugins: [importMetaDirPlugin, vitestRunEvidence()],
   resolve: {
@@ -55,7 +57,7 @@ export const okVitestBase = {
           'A flaky test declared skipped with an issue, an owner and an expiry; listed by pnpm known-reds.',
       },
     ],
-    setupFiles: [bunGlobalShimPath, noNetConnectPath],
+    setupFiles: [bunGlobalShimPath, noNetConnectPath, readDeclarationsPath],
     include: ['**/*.test.ts?(x)'],
     exclude: [
       ...configDefaults.exclude,

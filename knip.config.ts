@@ -107,6 +107,8 @@ export default {
     '.': {
       entry: [
         'test-support/fixtures/no-net-connect/no-net-connect.fixture.ts',
+        'test-support/fixtures/read-declarations/vitest.read-declarations-fixture.config.ts',
+        'test-support/fixtures/read-declarations/*.cjs',
         'scripts/check-no-major-changeset.mjs',
       ],
       vitest: { entry: ['**/*.uncached.test.{ts,tsx,mjs}'] },
