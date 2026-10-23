@@ -173,7 +173,7 @@ function spawnLockWorker(lockDir: string, serverPort: number): Promise<WorkerHan
     };
     proc.stdout.on('data', onData);
 
-    proc.once('exit', (code, signal) => {
+    proc.once('close', (code, signal) => {
       if (resolved) return;
       clearTimeout(timeoutHandle);
       reject(
@@ -294,15 +294,24 @@ describe('multi-project lock isolation — cross-process (A1)', () => {
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     );
+    colliderProc.stderr?.pause();
     let colliderStderr = '';
+    let completionObserved = false;
+    let dataAfterCompletion = false;
     colliderProc.stderr?.on('data', (chunk) => {
+      if (completionObserved) dataAfterCompletion = true;
       colliderStderr += chunk.toString('utf-8');
     });
     const colliderExit = await new Promise<number>((resolveExit) => {
-      colliderProc.once('exit', (code) => resolveExit(code ?? -1));
+      colliderProc.once('exit', () => colliderProc.stderr?.resume());
+      colliderProc.once('close', (code) => {
+        completionObserved = true;
+        resolveExit(code ?? -1);
+      });
     });
 
     expect(colliderExit).not.toBe(0);
+    expect(dataAfterCompletion).toBe(false);
     expect(colliderStderr).toContain('acquire failed');
     expect(colliderStderr).toContain(`pid ${holder.pid}`);
 
