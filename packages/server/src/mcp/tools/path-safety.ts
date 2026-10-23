@@ -1,4 +1,4 @@
-import { isAbsolute, relative, resolve } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 interface ContainmentOk {
   ok: true;
@@ -40,5 +40,5 @@ export function resolveWithinRoot(root: string, candidate: string): ContainmentR
       reason: `path "${candidate}" escapes the configured root`,
     };
   }
-  return { ok: true, abs, rel };
+  return { ok: true, abs, rel: rel.split(sep).join('/') };
 }

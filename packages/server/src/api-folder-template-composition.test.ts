@@ -10,7 +10,7 @@ import {
 } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
@@ -71,6 +71,65 @@ describe('folder-template group over the composed listener — served natively',
     expect(res.status).toBe(404);
     expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:template-not-found');
   });
+
+  test.each([
+    { label: 'slash', folder: 'Setup/Results' },
+    { label: 'native', folder: join('Setup', 'Results') },
+  ])(
+    'GET /api/template inherits the nearest template for $label folder input',
+    async ({ folder }) => {
+      mkdirSync(resolve(contentDir, 'Setup', 'Results'), { recursive: true });
+      for (const [ancestor, title] of [
+        ['', 'Root categories'],
+        ['Setup', 'Setup categories'],
+      ]) {
+        const templates = resolve(contentDir, ancestor, '.ok', 'templates');
+        mkdirSync(templates, { recursive: true });
+        writeFileSync(
+          resolve(templates, 'setup-categories.md'),
+          `---\ntitle: ${title}\n---\n# ${title}\n`,
+        );
+      }
+
+      const res = await fetch(
+        `http://127.0.0.1:${server.port}/api/template?name=setup-categories&folder=${encodeURIComponent(folder)}`,
+      );
+      const body: unknown = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body).toMatchObject({
+        template: { frontmatter: { title: 'Setup categories' }, body: '# Setup categories\n' },
+      });
+    },
+  );
+
+  test.skipIf(sep !== '/')(
+    'GET /api/template keeps a literal-backslash folder distinct from a nested folder',
+    async () => {
+      for (const [folder, title] of [
+        ['Native/Target', 'Nested target'],
+        ['Native\\Target', 'Literal target'],
+      ]) {
+        const templates = resolve(contentDir, folder, '.ok', 'templates');
+        mkdirSync(templates, { recursive: true });
+        writeFileSync(resolve(templates, 'identity.md'), `---\ntitle: ${title}\n---\n# ${title}\n`);
+      }
+
+      for (const [folder, title] of [
+        ['Native/Target', 'Nested target'],
+        ['Native\\Target', 'Literal target'],
+      ]) {
+        const res = await fetch(
+          `http://127.0.0.1:${server.port}/api/template?name=identity&folder=${encodeURIComponent(folder)}`,
+        );
+        const body: unknown = await res.json();
+        expect(res.status).toBe(200);
+        expect(body).toMatchObject({
+          template: { folder, scope: 'local', frontmatter: { title }, body: `# ${title}\n` },
+        });
+      }
+    },
+  );
 
   test('template name validation survives the lift (bad name → 400)', async () => {
     const res = await fetch(

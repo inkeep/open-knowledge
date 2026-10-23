@@ -4600,7 +4600,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
       });
       return null;
     }
-    return { folderRel, resolvedContentDir };
+    return {
+      folderRel: relative(resolvedContentDir, candidateAbs).split(sep).join('/'),
+      resolvedContentDir,
+    };
   }
 
   function checkSkillDocConflictGate(
