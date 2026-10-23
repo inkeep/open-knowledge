@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 import { MANAGED_ARTIFACT_SCOPES } from '../../constants/cc1.ts';
+import { topLevelFrontmatterRecord } from '../../frontmatter/schema.ts';
 import {
   SkillTargetEditorSchema,
   SkillUserTargetEditorSchema,
@@ -77,7 +78,7 @@ export type FolderConfigGetSuccess = z.infer<typeof FolderConfigGetSuccessSchema
 export const FolderConfigPutRequestSchema = z
   .object({
     path: z.string(),
-    frontmatter: z.record(z.string(), z.unknown()).optional(),
+    frontmatter: topLevelFrontmatterRecord(z.unknown()).optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type FolderConfigPutRequest = z.infer<typeof FolderConfigPutRequestSchema>;

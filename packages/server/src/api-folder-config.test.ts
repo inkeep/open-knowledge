@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import { createApiExtension } from './api-extension.test-helper.ts';
 
 interface CapturedResponse {
@@ -24,7 +25,10 @@ interface CapturedResponse {
 }
 
 function makeReq(url: string, method: string, body?: unknown): IncomingMessage {
-  const raw = body === undefined ? '' : JSON.stringify(body);
+  return makeRawReq(url, method, body === undefined ? '' : JSON.stringify(body));
+}
+
+function makeRawReq(url: string, method: string, raw: string): IncomingMessage {
   const readable = Readable.from(Buffer.from(raw)) as unknown as IncomingMessage;
   readable.method = method;
   readable.url = url;
@@ -71,6 +75,17 @@ describe('GET/PUT /api/folder-config', () => {
   ): Promise<CapturedResponse> {
     const { res, captured } = makeRes();
     await ext.onRequest({ request: makeReq(url, method, body), response: res });
+    return captured;
+  }
+
+  async function dispatchRaw(
+    ext: ReturnType<typeof buildExt>,
+    url: string,
+    method: string,
+    rawBody: string,
+  ): Promise<CapturedResponse> {
+    const { res, captured } = makeRes();
+    await ext.onRequest({ request: makeRawReq(url, method, rawBody), response: res });
     return captured;
   }
 
@@ -572,6 +587,66 @@ describe('GET/PUT /api/folder-config', () => {
     ]);
     expect(existsSync(join(contentDir, 'docs', '.ok', 'frontmatter.yml'))).toBe(false);
   });
+
+  test.each([
+    ['only-reserved-key', '{"__proto__":{"status":null}}'],
+    ['reserved-key-with-ordinary-key', '{"__proto__":{"status":null},"owner":"nina"}'],
+  ])(
+    'PUT refuses a reserved frontmatter key and leaves the sidecar byte-identical (%s)',
+    async (_name, rawFrontmatter) => {
+      const fmPath = join(contentDir, 'docs', '.ok', 'frontmatter.yml');
+      const before = readFileSync(fmPath, 'utf-8');
+      const captured = await dispatchRaw(
+        buildExt(),
+        '/api/folder-config',
+        'PUT',
+        `{"path":"docs","frontmatter":${rawFrontmatter}}`,
+      );
+      expect.soft(captured.status).toBe(400);
+      const problem = JSON.parse(captured.body);
+      expect.soft(problem).toMatchObject({ type: 'urn:ok:error:invalid-request', status: 400 });
+      expect.soft(problem.detail).toContain('frontmatter.__proto__: Unsupported frontmatter key');
+      expect.soft(existsSync(fmPath)).toBe(true);
+      expect.soft(readFileSync(fmPath, 'utf-8')).toBe(before);
+    },
+  );
+
+  test.each([
+    [
+      'inside-a-nested-object',
+      '{"meta":{"__proto__":{"x":1},"y":2}}',
+      '{"status":"active","owner":"omar","meta":{"__proto__":{"x":1},"y":2}}',
+    ],
+    [
+      'inside-an-object-in-a-list',
+      '{"items":[{"__proto__":0,"k":"v"}]}',
+      '{"status":"active","owner":"omar","items":[{"__proto__":0,"k":"v"}]}',
+    ],
+  ])(
+    'PUT stores a nested reserved-name key and GET returns it unchanged (%s)',
+    async (_name, rawFrontmatter, expectedMergedJson) => {
+      const ext = buildExt();
+      const fmPath = join(contentDir, 'docs', '.ok', 'frontmatter.yml');
+      const expected = JSON.parse(expectedMergedJson);
+
+      const put = await dispatchRaw(
+        ext,
+        '/api/folder-config',
+        'PUT',
+        `{"path":"docs","frontmatter":${rawFrontmatter}}`,
+      );
+      expect(put.status, put.body).toBe(200);
+      expect(JSON.parse(put.body).applied).toEqual([
+        { path: 'docs/.ok/frontmatter.yml', action: 'written' },
+      ]);
+
+      expect(parseYaml(readFileSync(fmPath, 'utf-8'))).toEqual(expected);
+
+      const get = await dispatch(ext, '/api/folder-config?path=docs', 'GET');
+      expect(get.status).toBe(200);
+      expect(JSON.parse(get.body).frontmatter_local).toEqual(expected);
+    },
+  );
 
   test('PUT without a frontmatter field applies nothing', async () => {
     const ext = buildExt();

@@ -8,7 +8,7 @@ import {
   type YAMLMap,
   type YAMLSeq,
 } from 'yaml';
-import { type FrontmatterMap, FrontmatterMapSchema, FrontmatterValueSchema } from './schema.ts';
+import { type FrontmatterMap, FrontmatterMapSchema, FrontmatterPatchSchema } from './schema.ts';
 
 export const STRINGIFY_OPTIONS: ToStringOptions = {
   defaultKeyType: 'PLAIN',
@@ -67,16 +67,16 @@ export function serializeFrontmatterMap(map: FrontmatterMap): string {
 }
 
 export function applyPatchToDocument(doc: Document, patch: Record<string, unknown>): string {
-  for (const [key, value] of Object.entries(patch)) {
+  const result = FrontmatterPatchSchema.safeParse(patch);
+  if (!result.success) {
+    throw new Error(`Invalid frontmatter patch: ${result.error.message}`);
+  }
+  for (const [key, value] of Object.entries(result.data)) {
     if (value === null) {
       doc.delete(key);
       continue;
     }
-    const result = FrontmatterValueSchema.safeParse(value);
-    if (!result.success) {
-      throw new Error(`Invalid frontmatter value for "${key}": ${result.error.message}`);
-    }
-    doc.set(key, buildValueNode(doc, doc.get(key, true), result.data));
+    doc.set(key, buildValueNode(doc, doc.get(key, true), value));
   }
   return doc.toString(STRINGIFY_OPTIONS);
 }

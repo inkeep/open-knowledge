@@ -208,6 +208,20 @@ export function composeWithFrontmatter(
         error: `EMBEDDED_FRONTMATTER_MALFORMED — \`content\` opens with a \`---\` block whose YAML failed to parse (${parsed.parseError}), so it can't be merged with the \`frontmatter\` param. Fix the embedded YAML, or supply the frontmatter only via the \`frontmatter\` param (not also inline in \`content\`).`,
       };
     }
+    let unsupportedKey = false;
+    parsed.doc.toJS({
+      reviver(key: unknown, value: unknown) {
+        if (key === '__proto__') unsupportedKey = true;
+        return value;
+      },
+    });
+    if (unsupportedKey) {
+      return {
+        ok: false,
+        error:
+          'EMBEDDED_FRONTMATTER_UNSUPPORTED_KEY — `content` opens with a `---` block containing a field named `__proto__` (written literally, escaped, or reached through a YAML alias), which frontmatter cannot store, so the block cannot be merged with the `frontmatter` param. Nothing was written. Rename or remove that field in the embedded YAML.',
+      };
+    }
     base = parsed.map;
   }
 

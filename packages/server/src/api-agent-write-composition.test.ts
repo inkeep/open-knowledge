@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, test } from 'vitest';
+import { parseDocument } from 'yaml';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, rawRequest } from './composition-rig.test-helper.ts';
 import { __formatContributorsForTests } from './contributor-tracker.ts';
@@ -94,6 +95,52 @@ test('frontmatter patch preserves the existing body bytes', async () => {
   });
   expect(result.appliedKeys).toEqual(['title']);
   expect(readFileSync(join(root, `${docName}.md`), 'utf8')).toBe(`---\ntitle: After\n---\n${body}`);
+});
+
+test.each([
+  ['top-level', '{"__proto__":0,"keep":1}', 'patch.__proto__'],
+  ['nested-object', '{"key":{"__proto__":0,"keep":1}}', 'patch.key.__proto__'],
+  ['literal-list', '{"key":[{"__proto__":0}]}', 'patch.key.0.__proto__'],
+  ['nested-lists', '{"key":[[{"__proto__":0,"keep":1}]]}', 'patch.key.0.0.__proto__'],
+])(
+  'frontmatter key refusal returns a typed error without writing %s input',
+  async (name, rawPatch, field) => {
+    const docName = `refused-frontmatter-${name}`;
+    const markdown = '---\nkeep: baseline\nkey: before\n---\n\n# Body\n';
+    await request('/api/agent-write-md', { docName, markdown, position: 'replace' });
+    const session = await server.serverInstance.sessionManager.getSession(docName);
+    const response = await rawRequest(server.port, '/api/frontmatter-patch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: `{"docName":${JSON.stringify(docName)},"patch":${rawPatch}}`,
+    });
+    expect.soft(response.status).toBe(400);
+    const problem = JSON.parse(response.body);
+    expect.soft(problem).toMatchObject({
+      type: 'urn:ok:error:invalid-request',
+      status: 400,
+    });
+    expect.soft(problem.detail).toContain(`${field}: Unsupported frontmatter key`);
+    expect.soft(problem.detail).not.toContain('Invalid input');
+    expect.soft(session.dc.document.getText('source').toString()).toBe(markdown);
+    expect.soft(readFileSync(join(root, `${docName}.md`), 'utf8')).toBe(markdown);
+  },
+);
+
+test('frontmatter key refusal preserves ordinary values and body bytes', async () => {
+  const docName = 'frontmatter-ordinary-values';
+  const body = '\n# Body\n';
+  await request('/api/agent-write-md', { docName, markdown: body, position: 'replace' });
+  await request('/api/frontmatter-patch', {
+    docName,
+    patch: { key: { number: 7, flag: false, list: [0, true, { count: 3, yes: true }] } },
+  });
+  const stored = readFileSync(join(root, `${docName}.md`), 'utf8');
+  const end = stored.indexOf('\n---\n', 4);
+  expect(stored.slice(end + 5)).toBe(body);
+  expect(parseDocument(stored.slice(4, end)).toJS()).toEqual({
+    key: { number: 7, flag: false, list: ['0', 'true', { count: 3, yes: true }] },
+  });
 });
 
 test('save and rollback retain shadow history and the principal loaded after route construction', async () => {

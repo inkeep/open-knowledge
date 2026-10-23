@@ -62,6 +62,8 @@ The write verbs nest their result under the same target key you wrote, mirroring
 
 Use `edit({ document: { path, frontmatter } })` for frontmatter edits: it applies a top-level merge patch (set or create a key with a value, delete a key by passing `null`; a nested object replaces that key's whole subtree, and `null` inside a subtree is rejected). A document body find/replace (`edit({ document: { path, find, replace } })`) is body-only and refuses patterns that touch frontmatter; `write` with `position: "replace"` is the only write mode that includes the `---\n…\n---` block (other positions ignore any frontmatter in the payload). Folders and templates take frontmatter the same way: `edit({ folder: { path, frontmatter } })`.
 
+A field named `__proto__`, at the top level or nested at any depth, is refused and nothing is written: the `frontmatter` argument of `edit` and `write` rejects it. `write` also refuses with `EMBEDDED_FRONTMATTER_UNSUPPORTED_KEY` when the `---` block in `content` holds such a field and a `frontmatter` argument would be merged into it.
+
 ## Edit summaries
 
 The write tools (`write`, `edit`, `move`, `install`, `checkpoint`, `restore_version`) accept an optional `summary` describing the intent of the edit, e.g. `"Fixed token-refresh race"`. Summaries appear on the document's timeline so readers can scan recent agent activity.

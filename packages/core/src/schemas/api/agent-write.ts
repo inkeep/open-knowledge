@@ -7,7 +7,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 import { SUPPORTED_DOC_EXTENSIONS } from '../../constants/doc-extensions.ts';
 
-import { FRONTMATTER_TYPES, FrontmatterValueSchema } from '../../frontmatter/schema.ts';
+import { FRONTMATTER_TYPES, FrontmatterPatchSchema } from '../../frontmatter/schema.ts';
 import { ProblemTypeSchema } from './_envelope.ts';
 import {
   agentContentField,
@@ -364,7 +364,7 @@ export type AgentWriteBatchSuccess = z.infer<typeof AgentWriteBatchSuccessSchema
 export const FrontmatterPatchRequestSchema = z
   .object({
     docName: safeDocNameField,
-    patch: z.record(z.string(), z.union([FrontmatterValueSchema, z.null()])),
+    patch: FrontmatterPatchSchema,
     types: z.record(z.string(), z.enum(FRONTMATTER_TYPES)).optional(),
     summary: summaryField,
     ...agentIdentityFields,

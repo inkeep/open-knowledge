@@ -1,6 +1,7 @@
 import {
   type FrontmatterValue,
   FrontmatterValueSchema,
+  frontmatterRecord,
   MANAGED_ARTIFACT_SCOPES,
   SKILL_NAME_REGEX,
   skillFilePathSegments,
@@ -21,8 +22,7 @@ const FrontmatterAdvertisedValue = z.union([
   z.null(),
 ]) as unknown as z.ZodType<FrontmatterValue | null>;
 
-export const FrontmatterArg = z
-  .record(z.string(), FrontmatterAdvertisedValue)
+export const FrontmatterArg = frontmatterRecord(FrontmatterAdvertisedValue)
   .superRefine((patch, ctx) => {
     for (const [key, value] of Object.entries(patch)) {
       if (!FrontmatterPatchValue.safeParse(value).success) {

@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest';
 import {
   FRONTMATTER_TYPES,
   FrontmatterMapSchema,
+  FrontmatterPatchSchema,
+  FrontmatterValueSchema,
   frontmatterValuesEqual,
   inferType,
   isFrontmatterValueEmpty,
@@ -155,5 +157,61 @@ describe('FrontmatterMapSchema — Obsidian null coercion', () => {
     expect(result.success).toBe(true);
     if (result.success)
       expect(result.data).toEqual({ title: 'Hello', tags: ['a', 'b'], meta: { n: 1 } });
+  });
+});
+
+function countedLeafChain(depth: number, wrap: (child: unknown) => unknown) {
+  let inspections = 0;
+  const leaf = new Proxy(
+    { leaf: 'value' },
+    {
+      ownKeys(target) {
+        inspections += 1;
+        return Reflect.ownKeys(target);
+      },
+      getOwnPropertyDescriptor(target, key) {
+        inspections += 1;
+        return Reflect.getOwnPropertyDescriptor(target, key);
+      },
+      get(target, key, receiver) {
+        inspections += 1;
+        return Reflect.get(target, key, receiver);
+      },
+      has(target, key) {
+        inspections += 1;
+        return Reflect.has(target, key);
+      },
+    },
+  );
+  let root: unknown = leaf;
+  for (let level = 0; level < depth; level += 1) root = { child: wrap(root) };
+  return { root, inspections: () => inspections };
+}
+
+const nestingShapes = [
+  { name: 'nested objects', wrap: (child: unknown) => child },
+  { name: 'objects inside lists', wrap: (child: unknown) => [child] },
+];
+
+const entrySchemas = [
+  { name: 'FrontmatterPatchSchema', schema: FrontmatterPatchSchema },
+  { name: 'FrontmatterValueSchema', schema: FrontmatterValueSchema },
+];
+
+describe('frontmatter record validation cost', () => {
+  describe.each(entrySchemas)('$name', ({ schema }) => {
+    test.each(nestingShapes)(
+      'inspects the innermost record of $name as often at depth 40 as at depth 4',
+      ({ wrap }) => {
+        const leafInspectionsAt = (depth: number) => {
+          const chain = countedLeafChain(depth, wrap);
+          expect(schema.safeParse(chain.root).success).toBe(true);
+          return chain.inspections();
+        };
+        const shallow = leafInspectionsAt(4);
+        expect(shallow).toBeGreaterThan(0);
+        expect(leafInspectionsAt(40)).toBe(shallow);
+      },
+    );
   });
 });

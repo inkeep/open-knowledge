@@ -733,6 +733,7 @@ export {
   FrontmatterTypeSchema,
   type FrontmatterValue,
   FrontmatterValueSchema,
+  frontmatterRecord,
   frontmatterValuesEqual,
   inferType,
   isFrontmatterValueEmpty,

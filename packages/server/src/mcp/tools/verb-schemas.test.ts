@@ -1,11 +1,20 @@
-import { describe, expect, test } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { ConfigSchema } from '../../config/schema.ts';
 import { SUPPORTED_DOC_EXTENSIONS } from '../../doc-extensions.ts';
+import { installPrettyZodErrors } from '../pretty-zod-errors.ts';
 import {
   DocExtensionArg,
   FrontmatterArg,
   resolveSkillFilePath,
   resolveTemplatePath,
 } from './verb-schemas.ts';
+import { register as registerWrite } from './write.ts';
 
 describe('FrontmatterArg — recursive value contract (PRD-6947)', () => {
   test('flat scalar values still parse (regression guard for the pre-PRD-6947 contract)', () => {
@@ -69,6 +78,115 @@ describe('FrontmatterArg — recursive value contract (PRD-6947)', () => {
     const description = FrontmatterArg.description ?? '';
     expect(description).toContain('nested');
     expect(description).not.toContain('flat key→value');
+  });
+});
+
+describe('frontmatter key refusal at MCP admission', () => {
+  test.each([
+    ['top-level', '{"__proto__":0,"keep":1}'],
+    ['nested object', '{"key":{"__proto__":0,"keep":1}}'],
+    ['literal list', '{"key":[{"__proto__":0}]}'],
+    ['nested lists', '{"key":[[{"__proto__":0,"keep":1}]]}'],
+  ])('rejects %s records', (_name, raw) => {
+    expect(FrontmatterArg.safeParse(JSON.parse(raw)).success).toBe(false);
+  });
+
+  test('preserves ordinary values before downstream storage conversion', () => {
+    const input = { key: { number: 7, flag: false, list: [0, true, { count: 3 }] } };
+    expect(FrontmatterArg.parse(input)).toEqual(input);
+  });
+});
+
+function countedLeafChain(depth: number, wrap: (child: unknown) => unknown) {
+  let inspections = 0;
+  const leaf = new Proxy(
+    { leaf: 'value' },
+    {
+      ownKeys(target) {
+        inspections += 1;
+        return Reflect.ownKeys(target);
+      },
+      getOwnPropertyDescriptor(target, key) {
+        inspections += 1;
+        return Reflect.getOwnPropertyDescriptor(target, key);
+      },
+      get(target, key, receiver) {
+        inspections += 1;
+        return Reflect.get(target, key, receiver);
+      },
+      has(target, key) {
+        inspections += 1;
+        return Reflect.has(target, key);
+      },
+    },
+  );
+  let root: unknown = leaf;
+  for (let level = 0; level < depth; level += 1) root = { child: wrap(root) };
+  return { root, inspections: () => inspections };
+}
+
+describe('FrontmatterArg validation cost', () => {
+  test.each([
+    { name: 'nested objects', wrap: (child: unknown) => child },
+    { name: 'objects inside lists', wrap: (child: unknown) => [child] },
+  ])('inspects the innermost record of $name as often at depth 40 as at depth 4', ({ wrap }) => {
+    const leafInspectionsAt = (depth: number) => {
+      const chain = countedLeafChain(depth, wrap);
+      expect(FrontmatterArg.safeParse(chain.root).success).toBe(true);
+      return chain.inspections();
+    };
+    const shallow = leafInspectionsAt(4);
+    expect(shallow).toBeGreaterThan(0);
+    expect(leafInspectionsAt(40)).toBe(shallow);
+  });
+});
+
+describe('frontmatter key refusal in the MCP write argument error', () => {
+  let root: string;
+  let mcp: McpServer;
+  let client: Client;
+
+  beforeAll(async () => {
+    root = mkdtempSync(join(tmpdir(), 'ok-frontmatter-key-refusal-mcp-'));
+    mcp = new McpServer({ name: 'frontmatter-key-refusal', version: '1' });
+    installPrettyZodErrors(mcp);
+    registerWrite(mcp, {
+      config: ConfigSchema.parse({ content: { dir: '.' } }),
+      resolveCwd: async () => root,
+      serverUrl: 'http://127.0.0.1:9',
+    });
+    client = new Client({ name: 'frontmatter-key-refusal', version: '1' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([mcp.connect(serverTransport), client.connect(clientTransport)]);
+  });
+
+  afterAll(async () => {
+    await client?.close();
+    await mcp?.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test.each([
+    ['top-level', '{"__proto__":0,"keep":1}', 'document.frontmatter.__proto__'],
+    ['nested object', '{"key":{"__proto__":0,"keep":1}}', 'document.frontmatter.key.__proto__'],
+    ['literal list', '{"key":[{"__proto__":0}]}', 'document.frontmatter.key[0].__proto__'],
+    [
+      'nested lists',
+      '{"key":[[{"__proto__":0,"keep":1}]]}',
+      'document.frontmatter.key[0][0].__proto__',
+    ],
+  ])('names the %s field and the unsupported key', async (_name, raw, field) => {
+    const result = await client.callTool({
+      name: 'write',
+      arguments: { document: { path: 'note', content: 'Body.', frontmatter: JSON.parse(raw) } },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content).toEqual([{ type: 'text', text: expect.any(String) }]);
+    const [{ text }] = result.content as [{ type: 'text'; text: string }];
+    expect.soft(text).toContain('Unsupported frontmatter key');
+    expect.soft(text).toContain(field);
+    expect.soft(text).not.toContain('invalid frontmatter value');
+    expect.soft(text).not.toContain('Invalid input');
   });
 });
 

@@ -12,6 +12,7 @@ import { FRONTMATTER_RE, unwrapFrontmatterFences } from '../extensions/frontmatt
 import {
   type FrontmatterMap,
   FrontmatterMapSchema,
+  FrontmatterPatchSchema,
   type FrontmatterValue,
   FrontmatterValueSchema,
   RESERVED_FRONTMATTER_KEY,
@@ -200,26 +201,27 @@ export function applyPatchToFm(
     return { ok: false, error: { kind: 'parse_failed', reason: 'fm region unparseable' } };
   }
 
+  const parsed = FrontmatterPatchSchema.safeParse(patch);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: {
+        kind: 'invalid_value',
+        key: String(parsed.error.issues[0]?.path[0] ?? ''),
+        reason: parsed.error.issues[0]?.message ?? 'invalid value',
+      },
+    };
+  }
+
   try {
     ensureContents(doc);
 
-    for (const [key, value] of Object.entries(patch)) {
+    for (const [key, value] of Object.entries(parsed.data)) {
       if (value === null) {
         doc.delete(key);
         continue;
       }
-      const parsed = FrontmatterValueSchema.safeParse(value);
-      if (!parsed.success) {
-        return {
-          ok: false,
-          error: {
-            kind: 'invalid_value',
-            key,
-            reason: parsed.error.issues[0]?.message ?? 'invalid value',
-          },
-        };
-      }
-      doc.set(key, buildValueNode(doc, doc.get(key, true), parsed.data));
+      doc.set(key, buildValueNode(doc, doc.get(key, true), value));
     }
 
     return finalizeFenced(doc);

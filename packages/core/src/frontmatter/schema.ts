@@ -16,10 +16,65 @@ export type FrontmatterValue =
 
 const FrontmatterScalarLeafSchema = z.union([z.string(), z.number(), z.boolean()]);
 
+function findOwnProtoKeyPath(value: unknown): (string | number)[] | null {
+  if (Array.isArray(value)) {
+    for (const [index, element] of value.entries()) {
+      const path = findOwnProtoKeyPath(element);
+      if (path !== null) return [index, ...path];
+    }
+    return null;
+  }
+  if (value !== null && typeof value === 'object') {
+    if (Object.hasOwn(value, '__proto__')) return ['__proto__'];
+    for (const [key, child] of Object.entries(value)) {
+      const path = findOwnProtoKeyPath(child);
+      if (path !== null) return [key, ...path];
+    }
+  }
+  return null;
+}
+
+function findTopLevelProtoKeyPath(value: unknown): (string | number)[] | null {
+  if (value !== null && typeof value === 'object' && Object.hasOwn(value, '__proto__')) {
+    return ['__proto__'];
+  }
+  return null;
+}
+
+function protoKeyRefusingRecord<T extends z.ZodType>(
+  valueSchema: T,
+  findProtoKeyPath: (value: unknown) => (string | number)[] | null,
+) {
+  return z
+    .preprocess(
+      (value, ctx) => {
+        const path = findProtoKeyPath(value);
+        if (path !== null) {
+          ctx.addIssue({
+            code: 'custom',
+            path,
+            message: 'Unsupported frontmatter key: __proto__',
+          });
+        }
+        return value;
+      },
+      z.record(z.string(), valueSchema),
+    )
+    .nonoptional();
+}
+
+export function frontmatterRecord<T extends z.ZodType>(valueSchema: T) {
+  return protoKeyRefusingRecord(valueSchema, findOwnProtoKeyPath);
+}
+
+export function topLevelFrontmatterRecord<T extends z.ZodType>(valueSchema: T) {
+  return protoKeyRefusingRecord(valueSchema, findTopLevelProtoKeyPath);
+}
+
 const FrontmatterArrayElementSchema: z.ZodType<FrontmatterValue> = z.lazy(() =>
   z.union([
     FrontmatterScalarLeafSchema.transform((v) => String(v)),
-    z.record(z.string(), FrontmatterValueSchema),
+    topLevelFrontmatterRecord(FrontmatterValueSchema),
     z.array(FrontmatterArrayElementSchema),
   ]),
 );
@@ -30,7 +85,7 @@ export const FrontmatterValueSchema: z.ZodType<FrontmatterValue> = z.lazy(() =>
     z.number(),
     z.boolean(),
     z.array(FrontmatterArrayElementSchema),
-    z.record(z.string(), FrontmatterValueSchema),
+    topLevelFrontmatterRecord(FrontmatterValueSchema),
   ]),
 );
 
@@ -73,8 +128,7 @@ export const FrontmatterMapSchema = z.preprocess(
 );
 export type FrontmatterMap = Record<string, FrontmatterValue>;
 
-export const FrontmatterPatchSchema = z.record(
-  z.string(),
+export const FrontmatterPatchSchema = frontmatterRecord(
   z.union([FrontmatterValueSchema, z.null()]),
 );
 export type FrontmatterPatch = Record<string, FrontmatterValue | null>;
