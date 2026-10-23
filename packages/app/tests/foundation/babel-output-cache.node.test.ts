@@ -306,6 +306,7 @@ const note = (name) => {
 process.env = new Proxy(process.env, {
   get(target, name) { note(name); return Reflect.get(target, name); },
   has(target, name) { note(name); return Reflect.has(target, name); },
+  set(target, name, value) { return Reflect.set(target, name, value); },
 });
 const { createServer, loadConfigFromFile } = await import('vite');
 const root = process.cwd();
@@ -328,7 +329,7 @@ process.stdout.write(JSON.stringify({ passes: plugins.length, configReads: [...c
 process.exit(0);
 `;
 
-function observeEnvReads(): Promise<{
+function observeEnvReads(debug: string | undefined): Promise<{
   passes: number;
   configReads: string[];
   compileReads: string[];
@@ -339,7 +340,11 @@ function observeEnvReads(): Promise<{
     execFile(
       process.execPath,
       ['--input-type=module', '--eval', OBSERVE_ENV_READS, cacheDir, ...unseenIds()],
-      { cwd: APP_ROOT, env: { ...process.env, TMPDIR: dir }, timeout: COMPILE_TIMEOUT_MS },
+      {
+        cwd: APP_ROOT,
+        env: { ...process.env, TMPDIR: dir, DEBUG: debug },
+        timeout: COMPILE_TIMEOUT_MS,
+      },
       (error, stdout, stderr) => {
         if (error) reject(new Error(`observing the compile failed: ${stderr || error.message}`));
         else resolve(JSON.parse(stdout));
@@ -349,10 +354,10 @@ function observeEnvReads(): Promise<{
 }
 
 describe('the cache key covers every environment value the compile reads', () => {
-  test(
-    'the config’s Babel option code and a cold compile of a product and a test module read only keyed environment values',
-    async () => {
-      const observed = await observeEnvReads();
+  test.each([undefined, 'vitest:browser:gc,pw:browser'])(
+    'the config’s Babel option code and a cold compile of a product and a test module read only keyed environment values with DEBUG=%s',
+    async (debug) => {
+      const observed = await observeEnvReads(debug);
 
       expect(observed.passes).toBe(appBrowserBabelPasses().length);
       expect(observed.compileReads).toContain('NODE_ENV');

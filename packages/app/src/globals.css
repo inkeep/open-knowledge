@@ -1747,12 +1747,13 @@ section[data-editor-pane-id] {
 }
 
 /* Task lists — unified List extension emits <li data-type="taskItem"> */
-.ProseMirror ul:has(> li[data-type="taskItem"]) {
+.ProseMirror ul:has(> li[data-type="taskItem"]):not(:has(> li:not([data-type="taskItem"]))) {
   list-style: none;
   padding-left: 0;
 }
 
 .ProseMirror li[data-type="taskItem"] {
+  list-style-type: none;
   display: flex;
   align-items: flex-start;
   gap: 0.5em;
