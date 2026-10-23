@@ -1,8 +1,9 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { basename, dirname, join, relative } from 'node:path';
+import { basename, dirname, join, relative, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../test-support/test-only-source-file.mjs';
+import { toPosix } from './path-utils.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCAN_ROOT = __dirname;
@@ -41,7 +42,7 @@ interface FileLines {
   lines: string[];
 }
 
-function listScannedSourceFiles(): FileLines[] {
+function listScannedSourceFiles(relativePath: typeof relative = relative): FileLines[] {
   const out: FileLines[] = [];
   function walk(dir: string) {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -54,7 +55,7 @@ function listScannedSourceFiles(): FileLines[] {
       if (isTestOnlySourceFile(entry.name)) continue;
       if (entry.name === SELF_BASENAME) continue;
       out.push({
-        path: relative(SCAN_ROOT, abs),
+        path: toPosix(relativePath(SCAN_ROOT, abs)),
         lines: readFileSync(abs, 'utf-8').split('\n'),
       });
     }
@@ -91,6 +92,12 @@ describe('console discipline (server sources)', () => {
   test('there are source files to scan (sanity)', () => {
     expect(files.length).toBeGreaterThan(0);
     expect(files.some((f) => f.path === 'file-watcher.ts')).toBe(true);
+  });
+
+  test('win32 path semantics keep slash-separated allowlist keys', () => {
+    const win32Files = listScannedSourceFiles(win32.relative);
+    const paths = new Set(win32Files.map((file) => file.path));
+    expect([...FILE_ALLOWLIST.keys()].every((path) => paths.has(path))).toBe(true);
   });
 
   test('every FILE_ALLOWLIST entry still exists on disk', () => {

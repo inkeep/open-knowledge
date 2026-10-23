@@ -1,5 +1,5 @@
 import { type Dirent, readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, win32 } from 'node:path';
 import { ts } from 'ts-morph';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
@@ -12,7 +12,7 @@ interface ScannedFile {
   source: string;
 }
 
-function listScannedTestFiles(): ScannedFile[] {
+function listScannedTestFiles(relativePath: typeof relative = relative): ScannedFile[] {
   const out: ScannedFile[] = [];
   function walk(dir: string) {
     let entries: Dirent[];
@@ -33,7 +33,10 @@ function listScannedTestFiles(): ScannedFile[] {
         !(isTestOnlySourceFile(entry.name, 'vitest') && entry.name.endsWith('.ts'))
       )
         continue;
-      out.push({ path: relative(REPO_ROOT, abs), source: readFileSync(abs, 'utf-8') });
+      out.push({
+        path: relativePath(REPO_ROOT, abs).replaceAll('\\', '/'),
+        source: readFileSync(abs, 'utf-8'),
+      });
     }
   }
   for (const dir of SCANNED_DIRS) walk(dir);
@@ -71,6 +74,11 @@ describe('hook-timeout STOP rule — beforeAll must carry an explicit timeout', 
   test('there are scanned files (sanity)', () => {
     expect(files.length).toBeGreaterThan(0);
     expect(files.some((f) => f.path.includes('tests/conversion/'))).toBe(true);
+  });
+
+  test('win32 path semantics keep slash-separated scan keys', () => {
+    const win32Files = listScannedTestFiles(win32.relative);
+    expect(win32Files.some((file) => file.path.includes('tests/conversion/'))).toBe(true);
   });
 
   test('every beforeAll in tests/{integration,conversion} *.test.ts passes an explicit timeout', () => {

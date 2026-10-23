@@ -5,7 +5,7 @@ import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-
  */
 
 import { type Dirent, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   type CallExpression,
@@ -32,14 +32,13 @@ const APP_SRC_DIR = join(REPO_ROOT, APP_SOURCE_ROOT);
 
 interface FileLines {
   path: string;
-  absPath: string;
   source: string;
   lines: string[];
 }
 
 const unreadableScanDirs: string[] = [];
 
-function listE2eTsFiles(): FileLines[] {
+function listE2eTsFiles(relativePath: typeof relative = relative): FileLines[] {
   const out: FileLines[] = [];
   function walk(dir: string) {
     let entries: Dirent[];
@@ -60,8 +59,7 @@ function listE2eTsFiles(): FileLines[] {
       if (!entry.name.endsWith('.ts')) continue;
       const source = readFileSync(abs, 'utf-8');
       out.push({
-        path: relative(REPO_ROOT, abs),
-        absPath: abs,
+        path: relativePath(REPO_ROOT, abs).replaceAll('\\', '/'),
         source,
         lines: source.split('\n'),
       });
@@ -71,7 +69,7 @@ function listE2eTsFiles(): FileLines[] {
   return out;
 }
 
-function listAppSrcTsFiles(): FileLines[] {
+function listAppSrcTsFiles(relativePath: typeof relative = relative): FileLines[] {
   const out: FileLines[] = [];
   function walk(dir: string) {
     for (const name of readdirSync(dir, { withFileTypes: true })) {
@@ -85,8 +83,7 @@ function listAppSrcTsFiles(): FileLines[] {
       if (APP_SOURCE_EXCLUDED_SUFFIXES.some((suffix) => name.name.endsWith(suffix))) continue;
       const source = readFileSync(abs, 'utf-8');
       out.push({
-        path: relative(REPO_ROOT, abs),
-        absPath: abs,
+        path: relativePath(REPO_ROOT, abs).replaceAll('\\', '/'),
         source,
         lines: source.split('\n'),
       });
@@ -595,6 +592,20 @@ describe('E2E STOP rule — zero allowlist', () => {
   const e2eTsFiles = listE2eTsFiles();
   const e2eFiles = e2eTsFiles.filter((file) => isTestOnlySourceFile(file.path, 'playwright'));
 
+  test('win32 path semantics keep slash-separated pinned keys', () => {
+    const win32E2eFiles = listE2eTsFiles(win32.relative);
+    const win32AppFiles = listAppSrcTsFiles(win32.relative);
+    expect(
+      PINNED_SPAWN_SITES.every((path) => win32E2eFiles.some((file) => file.path === path)),
+    ).toBe(true);
+    expect(
+      win32AppFiles.some((file) => file.path === 'packages/app/src/editor/DocumentContext.tsx'),
+    ).toBe(true);
+    for (const root of E2E_SCAN_ROOTS) {
+      expect(win32E2eFiles.some((file) => file.path.startsWith(`${root}/`))).toBe(true);
+    }
+  });
+
   test('there are E2E files to check (sanity)', () => {
     expect(
       unreadableScanDirs,
@@ -602,16 +613,16 @@ describe('E2E STOP rule — zero allowlist', () => {
     ).toEqual([]);
     expect(e2eTsFiles.length).toBeGreaterThan(0);
     expect(e2eFiles.length).toBeGreaterThan(0);
-    for (const dir of E2E_DIRS) {
-      const tsFromDir = e2eTsFiles.filter((file) => file.absPath.startsWith(`${dir}/`));
+    for (const root of E2E_SCAN_ROOTS) {
+      const tsFromDir = e2eTsFiles.filter((file) => file.path.startsWith(`${root}/`));
       expect(
         tsFromDir.length,
-        `no *.ts under ${relative(REPO_ROOT, dir)} — renamed, moved, or emptied?`,
+        `no *.ts under ${root} — renamed, moved, or emptied?`,
       ).toBeGreaterThan(0);
-      const fromDir = e2eFiles.filter((file) => file.absPath.startsWith(`${dir}/`));
+      const fromDir = e2eFiles.filter((file) => file.path.startsWith(`${root}/`));
       expect(
         fromDir.length,
-        `no *.e2e.ts under ${relative(REPO_ROOT, dir)} — renamed, moved, or emptied?`,
+        `no *.e2e.ts under ${root} — renamed, moved, or emptied?`,
       ).toBeGreaterThan(0);
     }
   });
