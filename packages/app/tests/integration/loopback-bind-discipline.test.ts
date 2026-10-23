@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { basename, dirname, join, relative } from 'node:path';
+import { basename, dirname, join, relative, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
@@ -17,7 +17,7 @@ interface FileLines {
   lines: string[];
 }
 
-function listScannedFiles(): FileLines[] {
+function listScannedFiles(relativePath: typeof relative = relative): FileLines[] {
   const out: FileLines[] = [];
   function walk(dir: string) {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -29,7 +29,7 @@ function listScannedFiles(): FileLines[] {
       if (!entry.isFile() || !entry.name.endsWith('.ts')) continue;
       if (entry.name === SELF_BASENAME) continue;
       out.push({
-        path: relative(PACKAGE_ROOT, abs),
+        path: relativePath(PACKAGE_ROOT, abs).replaceAll('\\', '/'),
         lines: readFileSync(abs, 'utf-8').split('\n'),
       });
     }
@@ -139,6 +139,15 @@ describe('loopback bind discipline (app test sources)', () => {
     expect(files.some((f) => f.path.endsWith('integration/test-harness.ts'))).toBe(true);
     expect(files.some((f) => f.path.endsWith('_helpers/server-process.ts'))).toBe(true);
     expect(files.some((f) => isTestOnlySourceFile(f.path, 'playwright'))).toBe(true);
+  });
+
+  test('win32 path semantics yield the /-separated keys the sanity checks and listen exemptions match', () => {
+    const win32Files = listScannedFiles(win32.relative);
+    expect(win32Files.some((f) => f.path.endsWith('integration/test-harness.ts'))).toBe(true);
+    expect(win32Files.some((f) => f.path.endsWith('_helpers/server-process.ts'))).toBe(true);
+    expect(win32Files.map((f) => f.path)).toContain(RECORDING_OWNERSHIP_CASE);
+    expect(win32Files.flatMap((f) => findUnexemptedListenCalls(f.path, f.lines))).toEqual([]);
+    expect(findStaleListenExemptions(win32Files)).toEqual([]);
   });
 
   test('every .listen( call binds an explicit loopback host literal', () => {
