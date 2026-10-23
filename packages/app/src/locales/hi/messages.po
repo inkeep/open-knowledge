@@ -3111,8 +3111,8 @@ msgstr "{displayName} तक नहीं पहुँचा जा सका।
 msgid "Couldn't reach {displayName} — try again?"
 msgstr "{displayName} तक नहीं पहुँचा जा सका। फिर कोशिश करें?"
 
-msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-msgstr "सहयोग सर्वर तक नहीं पहुँचा जा सका — {errorDetail}. <0>{cliCommand} status</0> आज़माएँ या <1>.ok/local/last-spawn-error.log</1> देखें।"
+msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or collect logs with <1>{cliCommand} diagnose bundle</1>."
+msgstr "सहयोग सर्वर तक नहीं पहुँचा जा सका — {errorDetail}. <0>{cliCommand} status</0> आज़माएँ या <1>{cliCommand} diagnose bundle</1> से लॉग इकट्ठा करें।"
 
 msgid "Couldn't reach GitHub. Try again?"
 msgstr "GitHub तक नहीं पहुँचा जा सका। फिर कोशिश करें?"

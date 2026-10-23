@@ -8,7 +8,7 @@ import {
   okfAdvertisedSchemaMappings,
 } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { type BootedServer, bootServer } from '../boot.ts';
+import { type BootedServer, bootServer } from '../../../../test-support/boot-server.test-helper.ts';
 import { resetOkfSchemaWriteState } from './write-okf-schemas.ts';
 
 let tmpDir: string;

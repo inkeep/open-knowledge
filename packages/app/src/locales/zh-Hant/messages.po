@@ -3115,8 +3115,8 @@ msgstr "無法連線到 {displayName}。請稍後再試。"
 msgid "Couldn't reach {displayName} — try again?"
 msgstr "無法連線到 {displayName}。要再試一次嗎？"
 
-msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-msgstr "無法連上協作伺服器——{errorDetail}。可以試試 <0>{cliCommand} status</0>，或看看 <1>.ok/local/last-spawn-error.log</1>。"
+msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or collect logs with <1>{cliCommand} diagnose bundle</1>."
+msgstr "無法連上協作伺服器——{errorDetail}。可以試試 <0>{cliCommand} status</0>，或使用 <1>{cliCommand} diagnose bundle</1> 收集記錄檔。"
 
 msgid "Couldn't reach GitHub. Try again?"
 msgstr "無法連上 GitHub。要再試一次嗎？"

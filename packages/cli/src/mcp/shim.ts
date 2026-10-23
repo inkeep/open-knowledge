@@ -1,23 +1,22 @@
 import { type ChildProcess, spawn as nativeSpawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import { setTimeout as wait } from 'node:timers/promises';
 import {
   clientVersionHeaders,
   currentCliCommandName,
   DEFAULT_SERVER_HOST,
-  SPAWN_ERROR_LOG,
   sliceLastSpawnAttempt,
 } from '@inkeep/open-knowledge-core';
 import { startKeepalive as defaultStartKeepalive } from '@inkeep/open-knowledge-core/keepalive';
-import { openSpawnErrorLog } from '@inkeep/open-knowledge-core/server';
+import { openSpawnErrorLog, projectSpawnErrorLogPath } from '@inkeep/open-knowledge-core/server';
 import {
   AutoStartDisabledError,
   isProcessAlive as defaultIsProcessAlive,
   lockBaseUrl,
   MCP_CONNECTION_ID_HEADER,
+  prepareSpawnProjectLogsDir,
   RUNTIME_VERSION,
   readServerLock,
   type ServerLockMetadata,
@@ -72,6 +71,8 @@ export function parseSpawnTimeoutEnv(raw: string | undefined): number | undefine
 }
 
 interface ResolveMcpHttpUrlOptions {
+  projectDir: string;
+  authorityRegistryPath?: string;
   lockDir: string;
   contentDir: string;
   portOverride?: string;
@@ -81,7 +82,7 @@ interface ResolveMcpHttpUrlOptions {
   isAlive?: (pid: number) => boolean;
   sleep?: (ms: number) => Promise<void>;
   readErrorLog?: (path: string) => string;
-  openErrorLog?: (path: string) => number;
+  openErrorLog?: (path: string) => number | Promise<number>;
   closeFd?: (fd: number) => void;
   timeoutMs?: number;
   pollIntervalMs?: number;
@@ -195,7 +196,13 @@ export async function resolveMcpHttpUrl(opts: ResolveMcpHttpUrlOptions): Promise
   const spawnFn = opts.spawn ?? nativeSpawn;
   const readErrorLog = opts.readErrorLog ?? readErrorLogDefault;
   const openErrorLog =
-    opts.openErrorLog ?? ((path: string) => openSpawnErrorLog(path, process.pid));
+    opts.openErrorLog ??
+    (async (path: string) => {
+      await prepareSpawnProjectLogsDir(opts.projectDir, {
+        authorityRegistryPath: opts.authorityRegistryPath,
+      });
+      return openSpawnErrorLog(path, process.pid);
+    });
   const closeFd = opts.closeFd ?? closeSync;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS;
   const pollIntervalMs = opts.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -241,8 +248,16 @@ export async function resolveMcpHttpUrl(opts: ResolveMcpHttpUrlOptions): Promise
   }
 
   if (!existsSync(opts.lockDir)) mkdirSync(opts.lockDir, { recursive: true });
-  const stderrPath = join(opts.lockDir, SPAWN_ERROR_LOG);
-  const stderrFd = openErrorLog(stderrPath);
+  const stderrPath = projectSpawnErrorLogPath(opts.projectDir);
+  let stderrFd: number;
+  try {
+    stderrFd = await openErrorLog(stderrPath);
+  } catch (err) {
+    throw new Error(
+      `spawn failed: could not prepare server-start diagnostics: ${err instanceof Error ? err.message : String(err)}\n${serverStartRecovery()}`,
+      { cause: err },
+    );
+  }
   let child: ChildProcess | undefined;
   let asyncSpawnError: string | undefined;
   const self = resolveSelfSpawn();
@@ -295,7 +310,7 @@ export async function resolveMcpHttpUrl(opts: ResolveMcpHttpUrlOptions): Promise
 }
 
 export function resolveMcpKeepaliveWsUrl(
-  opts: ResolveMcpHttpUrlOptions,
+  opts: Pick<ResolveMcpHttpUrlOptions, 'lockDir' | 'portOverride' | 'readLock' | 'isAlive'>,
   endpointUrl: string,
 ): string | undefined {
   if (opts.portOverride !== undefined) return wsUrlFromMcpEndpoint(endpointUrl);

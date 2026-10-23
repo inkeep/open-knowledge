@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs';
 import type { Server as HttpServer } from 'node:http';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
@@ -18,7 +18,7 @@ import {
   type ServerRuntimeConfig,
   SKILLS_STORE_DIRNAME,
 } from '@inkeep/open-knowledge-core';
-import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
+import { okProjectLogsDir, okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { resolveGitDirDetailed } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { context, propagation } from '@opentelemetry/api';
 import sirv from 'sirv';
@@ -33,7 +33,7 @@ import { createAssetServeMiddleware } from './asset-serve-middleware.ts';
 import { bootElapsedMs, recordBootPhase, startBootTimings } from './boot-timings.ts';
 import type { Config } from './config/schema.ts';
 import { installCrashCapture } from './crash-capture.ts';
-import { normalizeFsPath } from './fs-traced.ts';
+import { normalizeFsPath, tracedUtimesSync } from './fs-traced.ts';
 import {
   assertGitAvailable,
   type GitDetected,
@@ -59,6 +59,7 @@ import { getLogger, loggerFactory, type PinoLogger } from './logger.ts';
 import { createMcpHttpHandler } from './mcp-http.ts';
 import { mountMcpAndApi, type ReadinessState } from './mcp-mount.ts';
 import { MissingOkConfigError } from './missing-ok-config-error.ts';
+import { prepareProjectLogsDir } from './project-logs-retention.ts';
 import { createProjectRuntime, type ProjectRuntime } from './project-runtime.ts';
 import {
   createServer,
@@ -204,10 +205,12 @@ export async function bootServer(opts: BootServerOptions): Promise<BootedServer>
   startBootTimings();
 
   const sinkProjectDir = opts.projectDir ?? opts.contentDir;
+  const projectLogsDir = okProjectLogsDir(sinkProjectDir);
   const localSinkConfig = resolveLocalSinkConfig({
     projectDir: sinkProjectDir,
   });
   if (localSinkConfig) {
+    prepareProjectLogsDir(sinkProjectDir, { authorityRegistryPath: opts.authorityRegistryPath });
     const denylist = localSinkConfig.telemetry.attributeDenylist;
     const redactPaths: string[] = [];
     for (const key of denylist) {
@@ -237,7 +240,9 @@ export async function bootServer(opts: BootServerOptions): Promise<BootedServer>
 
   const startupTraceparent = process.env.OK_STARTUP_TRACEPARENT;
   const bootSpan = () =>
-    withSpan('ok.boot', { attributes: spanAttributes }, async () => bootServerInner(opts));
+    withSpan('ok.boot', { attributes: spanAttributes }, async () =>
+      bootServerInner(opts, projectLogsDir),
+    );
   const runBoot = (): Promise<BootedServer> => {
     if (startupTraceparent) {
       try {
@@ -269,7 +274,10 @@ export async function bootServer(opts: BootServerOptions): Promise<BootedServer>
   return booted;
 }
 
-async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
+async function bootServerInner(
+  opts: BootServerOptions,
+  projectLogsDir: string,
+): Promise<BootedServer> {
   const skipAutoInit = opts.skipAutoInit ?? false;
   const log = opts.log ?? getLogger('boot');
 
@@ -712,6 +720,13 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   destroy = async (reason: ServerExitReason = 'unspecified'): Promise<void> => {
     if (destroyed) return;
     destroyed = true;
+    try {
+      const directory = lstatSync(projectLogsDir);
+      if (directory.isDirectory() && !directory.isSymbolicLink()) {
+        const now = new Date();
+        tracedUtimesSync(projectLogsDir, now, now);
+      }
+    } catch {}
     log.info({ reason, pid: process.pid, lockDir }, `[server] shutdown initiated (${reason})`);
     readinessState = 'draining';
     const errors: unknown[] = [];

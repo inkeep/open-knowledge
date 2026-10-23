@@ -7,10 +7,10 @@ import {
   DEFAULT_SIGTERM_POLL_MS,
   type DesktopProductName,
   desktopChannelLabel,
-  SPAWN_ERROR_LOG,
   sliceLastSpawnAttempt,
 } from '@inkeep/open-knowledge-core';
 import type { KeepaliveHandle } from '@inkeep/open-knowledge-core/keepalive';
+import { projectSpawnErrorLogPath } from '@inkeep/open-knowledge-core/server';
 import {
   assessLockHolder,
   getLocalDir,
@@ -1581,6 +1581,7 @@ export class WindowManager {
     }
 
     if (this.deps.spawnDetachedServer) {
+      const spawnErrorLogPath = projectSpawnErrorLogPath(projectPath);
       const reactShellDistDir = dirname(this.deps.rendererEntryPath);
       const handle = await this.deps.spawnDetachedServer({
         contentDir: projectPath,
@@ -1606,6 +1607,7 @@ export class WindowManager {
           pid: handle.pid,
           exit: childExit,
           lockDir,
+          spawnErrorLogPath,
           deadlineMs: waitedDeadlineMs,
           spawnLabel: 'spawn',
           childExited,
@@ -2070,6 +2072,7 @@ export class WindowManager {
 
     const tempProjectDir = createEphemeralProjectDir(opts.contentDir);
     const lockDir = getLocalDir(tempProjectDir);
+    const spawnErrorLogPath = projectSpawnErrorLogPath(tempProjectDir);
 
     const reactShellDistDir = dirname(this.deps.rendererEntryPath);
     let handle: Awaited<ReturnType<SpawnCliServer>>;
@@ -2115,6 +2118,7 @@ export class WindowManager {
         pid: handle.pid,
         exit: childExit,
         lockDir,
+        spawnErrorLogPath,
         deadlineMs: waitedDeadlineMs,
         spawnLabel: 'ephemeral spawn',
         childExited,
@@ -2324,24 +2328,29 @@ export class WindowManager {
     pid: number;
     exit: { code: number | null; signal: string | null } | null;
     lockDir: string;
+    spawnErrorLogPath: string;
     deadlineMs: number;
     spawnLabel: string;
     childExited: boolean | undefined;
   }): Error {
-    const { pid, exit, lockDir, deadlineMs, spawnLabel, childExited } = opts;
+    const { pid, exit, lockDir, spawnErrorLogPath, deadlineMs, spawnLabel, childExited } = opts;
     const STDERR_TAIL_BYTES = 8192;
     let stderrTail: string | undefined;
     try {
-      const attempt = sliceLastSpawnAttempt(
-        readFileSync(join(lockDir, SPAWN_ERROR_LOG), 'utf-8'),
-      ).trim();
+      const attempt = sliceLastSpawnAttempt(readFileSync(spawnErrorLogPath, 'utf-8')).trim();
       stderrTail =
         attempt.length > STDERR_TAIL_BYTES ? `…${attempt.slice(-STDERR_TAIL_BYTES)}` : attempt;
     } catch (readErr) {
       const code = (readErr as NodeJS.ErrnoException).code;
       if (code !== 'ENOENT' && code !== 'ENOTDIR') {
         this.deps.log?.warn(
-          { event: 'desktop-spawn-error-log-read-failed', err: readErr, code, lockDir },
+          {
+            event: 'desktop-spawn-error-log-read-failed',
+            err: readErr,
+            code,
+            lockDir,
+            spawnErrorLogPath,
+          },
           '[window-manager] could not read the spawn error log',
         );
       }

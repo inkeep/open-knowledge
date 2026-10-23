@@ -13,8 +13,8 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
+import { bootServer } from '../../../test-support/boot-server.test-helper.ts';
 import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
-import { bootServer } from './boot.ts';
 import { ConfigSchema } from './config/schema.ts';
 import * as headWatcher from './head-watcher.ts';
 import type { ServerInstance } from './server-factory.ts';

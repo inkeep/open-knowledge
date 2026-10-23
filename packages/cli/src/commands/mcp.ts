@@ -31,6 +31,7 @@ export function mcpCommand(getConfig: () => Config): Command {
         if (opts.port !== undefined) {
           const timeoutMs = parseSpawnTimeoutEnv(process.env.OK_MCP_SPAWN_TIMEOUT_MS);
           await startMcpShim({
+            projectDir: '',
             lockDir: '',
             contentDir: '',
             portOverride: opts.port,

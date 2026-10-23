@@ -4,6 +4,14 @@ export const DEFAULT_SIGTERM_POLL_MS = 200;
 
 export const SPAWN_ERROR_LOG = 'last-spawn-error.log';
 
+export const PROJECT_DIAGNOSTIC_FILES = {
+  logsCurrent: 'server-current.jsonl',
+  logsPrevious: 'server-prev.jsonl',
+  spansCurrent: 'spans-current.jsonl',
+  spansPrevious: 'spans-prev.jsonl',
+  spawnError: SPAWN_ERROR_LOG,
+} as const;
+
 export const SPAWN_ERROR_LOG_MAX_BYTES = 256 * 1024;
 
 export const SPAWN_ATTEMPT_MARKER = '=== spawn attempt ';

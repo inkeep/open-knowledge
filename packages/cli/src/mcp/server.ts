@@ -190,7 +190,7 @@ export async function startGlobalMcpServer(
       displayName: id.displayName,
       clientName: id.clientInfo?.name ?? id.displayName,
       colorSeed: id.colorSeed,
-      resolveWsUrl: async () => resolveMcpKeepaliveWsUrl({ lockDir, contentDir: projectDir }, ''),
+      resolveWsUrl: async () => resolveMcpKeepaliveWsUrl({ lockDir }, ''),
       log: (msg) => stderr.write(`[mcp] keepalive[${projectDir}]: ${msg}\n`),
     });
     keepalivesByProject.set(projectDir, handle);
@@ -241,6 +241,7 @@ export async function startGlobalMcpServer(
     const projectDir = r.projectDir;
     const config = await resolveConfigForCwd(projectDir);
     const mcpUrl = await resolveMcpHttpUrl({
+      projectDir,
       lockDir: getLocalDir(projectDir),
       contentDir: resolveContentDir(config, projectDir),
       envAutoStart,

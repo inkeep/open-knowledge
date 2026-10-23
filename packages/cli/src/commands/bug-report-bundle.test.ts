@@ -1,8 +1,18 @@
 import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   type BundleLogger,
   collectBugReportLedgerFiles,
@@ -24,6 +34,7 @@ function makeTmpDir(prefix = 'ok-bugreport-test-'): string {
 }
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const d of tmpDirs) {
     if (existsSync(d)) rmSync(d, { recursive: true, force: true });
   }
@@ -54,6 +65,95 @@ function makeProjectDir(slug = 'bundle-proj'): string {
   writeAt(projectDir, '.ok/config.yml', `name: ${slug}\n`);
   return projectDir;
 }
+
+function expectedProjectLogsDir(projectDir: string): string {
+  const key = createHash('sha256').update(realpathSync.native(projectDir)).digest('hex');
+  return join(okUserHomeDir(), 'logs', 'projects', key);
+}
+
+const relocatedDiagnostics = [
+  [
+    'server-current.jsonl',
+    '.ok/local/logs/server-current.jsonl',
+    'local-logs/server-current.jsonl',
+  ],
+  ['server-prev.jsonl', '.ok/local/logs/server-prev.jsonl', 'local-logs/server-prev.jsonl'],
+  ['last-spawn-error.log', '.ok/local/last-spawn-error.log', 'lockdir/last-spawn-error.log'],
+] as const;
+
+describe('collectStandardBundle — relocated project diagnostics', () => {
+  test.each(['current', 'legacy', 'both'] as const)(
+    'collects %s evidence without duplicate entries, spans, or foreign project data',
+    async (source) => {
+      const home = makeTmpDir();
+      vi.stubEnv('HOME', home);
+      vi.stubEnv('USERPROFILE', home);
+      const projectDir = makeProjectDir();
+      const currentDir = expectedProjectLogsDir(projectDir);
+      const foreignDir = expectedProjectLogsDir(makeProjectDir('another-project'));
+      for (const [filename, legacyPath] of relocatedDiagnostics) {
+        if (source !== 'legacy') writeAt(currentDir, filename, `current:${filename}\n`);
+        if (source !== 'current') writeAt(projectDir, legacyPath, `legacy:${filename}\n`);
+        writeAt(foreignDir, filename, 'foreign-project-decoy\n');
+      }
+      writeAt(foreignDir, 'spans-current.jsonl', 'foreign-span-decoy\n');
+      if (source !== 'legacy') writeAt(currentDir, 'spans-current.jsonl', 'excluded-span-decoy\n');
+      writeAt(projectDir, '.ok/local/telemetry/spans-current.jsonl', 'excluded-span-decoy\n');
+      const outputPath = join(makeTmpDir(), 'report.zip');
+      const { zipPath, summary } = await collectStandardBundle({
+        projectDir,
+        redact: false,
+        outputPath,
+      });
+      const entries = listZipEntries(zipPath);
+      expect(existsSync(currentDir)).toBe(source !== 'legacy');
+      expect(new Set(entries).size).toBe(entries.length);
+      expect(entries.some((entry) => entry.includes('spans-current'))).toBe(false);
+      for (const [filename, , entry] of relocatedDiagnostics) {
+        const origin = source === 'legacy' ? 'legacy' : 'current';
+        expect(readZipEntry(zipPath, entry)).toBe(`${origin}:${filename}\n`);
+        expect(entries.includes(`legacy/${entry}`)).toBe(source === 'both');
+        if (source === 'both')
+          expect(readZipEntry(zipPath, `legacy/${entry}`)).toBe(`legacy:${filename}\n`);
+      }
+      for (const entry of summary.files)
+        expect(readZipEntry(zipPath, entry)).not.toContain('foreign-project-decoy');
+      const manifest = JSON.parse(readZipEntry(zipPath, 'MANIFEST.json'));
+      expect(manifest.files).toEqual(summary.files);
+      expect(manifest.disciplineVersion).toBe('1.0.0');
+    },
+  );
+
+  test('redacts current and retained legacy incidents through the same privacy boundary', async () => {
+    const home = makeTmpDir();
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('USERPROFILE', home);
+    const projectDir = makeProjectDir();
+    const currentDir = expectedProjectLogsDir(projectDir);
+    const secret = `ghp_${'a'.repeat(40)}`;
+    const body = `${JSON.stringify({ docName: 'private-note', token: secret })}\n`;
+    for (const [filename, legacyPath] of relocatedDiagnostics) {
+      writeAt(currentDir, filename, body);
+      writeAt(projectDir, legacyPath, body);
+    }
+    const outputPath = join(makeTmpDir(), 'report.zip');
+    const { zipPath, summary } = await collectStandardBundle({
+      projectDir,
+      redact: true,
+      outputPath,
+    });
+    for (const [, , entry] of relocatedDiagnostics) {
+      for (const path of [entry, `legacy/${entry}`]) {
+        const staged = readZipEntry(zipPath, path);
+        expect(staged).not.toContain('private-note');
+        expect(staged).toContain('doc#');
+        expect(staged).not.toContain(secret);
+        expect(staged).toContain('[REDACTED-GH-PAT]');
+        expect(summary.redactions.some((audit) => audit.file === path)).toBe(true);
+      }
+    }
+  });
+});
 
 describe('collectStandardBundle — diagnostic-report staging count', () => {
   test('counts what reached the zip, not what the sweep selected', async () => {

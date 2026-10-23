@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { logsCurrentPath } from './telemetry-file-sink.ts';
 
 const PRIMITIVE = new URL('./polled-path-watcher.ts', import.meta.url).href;
@@ -213,8 +213,11 @@ let dir: string;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'ok-polled-watcher-'));
+  vi.stubEnv('HOME', join(dir, 'home'));
+  vi.stubEnv('USERPROFILE', join(dir, 'home'));
 });
 afterEach(() => {
+  vi.unstubAllEnvs();
   rmSync(dir, { recursive: true, force: true });
 });
 

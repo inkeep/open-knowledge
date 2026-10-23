@@ -61,7 +61,6 @@ import {
   projectWorktreeCreateResult,
   resolveDesktopProductName,
   ServerInfoSuccessSchema,
-  SPAWN_ERROR_LOG,
   TERMINAL_CLIS,
   type TerminalCli,
   type UninstallFeedbackAnswers,
@@ -73,7 +72,7 @@ import type {
   OkTerminalDockStateWriteResult,
   OkTerminalRestartSnapshot,
 } from '@inkeep/open-knowledge-core/desktop-bridge';
-import { openSpawnErrorLog } from '@inkeep/open-knowledge-core/server';
+import { openSpawnErrorLog, projectSpawnErrorLogPath } from '@inkeep/open-knowledge-core/server';
 import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
 import {
   assertGitAvailable,
@@ -91,6 +90,7 @@ import {
   normalizeFsPath,
   ONBOARDING_BUNDLE_IDS,
   prepareSingleFileOpen,
+  prepareSpawnProjectLogsDir,
   type ResolvedSkillHost,
   RUNTIME_VERSION,
   readBundleDecision,
@@ -1410,14 +1410,15 @@ function ensureWindowManager() {
         );
       }
     }
-    const spawnErrorLogPath = join(lockDir, SPAWN_ERROR_LOG);
+    const spawnErrorLogPath = projectSpawnErrorLogPath(projectRoot);
     let spawnErrorLogFd: number;
     try {
+      await prepareSpawnProjectLogsDir(projectRoot);
       spawnErrorLogFd = openSpawnErrorLog(spawnErrorLogPath, process.pid);
     } catch (err) {
       throw Object.assign(
         new Error(
-          `spawnCliServer: failed to open spawn-error log fd at ${spawnErrorLogPath}: ${
+          `spawnCliServer: server start failed while preparing diagnostics at ${spawnErrorLogPath}: ${
             err instanceof Error ? err.message : String(err)
           }`,
         ),

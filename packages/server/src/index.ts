@@ -497,6 +497,7 @@ export {
   ensureProjectGit,
   ProjectGitInitError,
 } from './project-git.ts';
+export { prepareProjectLogsDir, prepareSpawnProjectLogsDir } from './project-logs-retention.ts';
 export {
   CONFLICT_MARKER_RE,
   containsConflictMarkers,

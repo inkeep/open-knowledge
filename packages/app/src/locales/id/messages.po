@@ -3111,8 +3111,8 @@ msgstr "Tidak dapat menghubungi {displayName}. Silakan coba lagi nanti."
 msgid "Couldn't reach {displayName} — try again?"
 msgstr "Tidak dapat menghubungi {displayName}. Coba lagi?"
 
-msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-msgstr "Server kolaborasi tidak bisa dihubungi — {errorDetail}. Coba <0>{cliCommand} status</0> atau periksa <1>.ok/local/last-spawn-error.log</1>."
+msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or collect logs with <1>{cliCommand} diagnose bundle</1>."
+msgstr "Server kolaborasi tidak bisa dihubungi — {errorDetail}. Coba <0>{cliCommand} status</0> atau kumpulkan log dengan <1>{cliCommand} diagnose bundle</1>."
 
 msgid "Couldn't reach GitHub. Try again?"
 msgstr "GitHub tidak bisa dihubungi. Coba lagi?"

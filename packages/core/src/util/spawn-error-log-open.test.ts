@@ -9,7 +9,7 @@ import {
   writeSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { SPAWN_ATTEMPT_MARKER, SPAWN_ERROR_LOG_MAX_BYTES } from '../constants/lifecycle.ts';
 import { openSpawnErrorLog } from './spawn-error-log-open.ts';
@@ -39,6 +39,21 @@ function attempt(path: string, childOutput: string, pid = 4242): void {
 }
 
 describe('openSpawnErrorLog', () => {
+  test('creates a missing log directory before capturing the attempt', () => {
+    const path = join(
+      dirname(scratchPath()),
+      'logs',
+      'projects',
+      'project',
+      'last-spawn-error.log',
+    );
+    attempt(path, 'nested failure\n');
+
+    expect(readFileSync(path, 'utf8')).toContain('nested failure');
+    if (process.platform !== 'win32') expect(statSync(dirname(path)).mode & 0o777).toBe(0o700);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+  });
+
   test('creates the log when absent, with the header and the output', () => {
     const path = scratchPath();
     attempt(path, 'boom\n');

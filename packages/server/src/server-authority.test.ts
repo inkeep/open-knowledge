@@ -6,9 +6,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
+import { okProjectLogsDir } from '@inkeep/open-knowledge-core/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { z } from 'zod';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
+import { prepareProjectLogsDir } from './project-logs-retention.ts';
 import {
   acquireServerAuthority,
   type ContentScope,
@@ -667,4 +669,38 @@ describe('acquireServerAuthority', () => {
     }
     expect(() => claim(tree())).toThrow(ServerAuthorityCollisionError);
   });
+});
+
+test('retention preserves an old quiet independent holder until the held child actually exits', async () => {
+  const worker = await startWorker(tree());
+  expect((await worker.send('acquire')).status).toBe('acquired');
+  const registry = new DatabaseSync(registryPath, { readOnly: true });
+  let projectDir: string;
+  try {
+    const value = registry.prepare('SELECT project_dir FROM server_authority').get()?.project_dir;
+    if (typeof value !== 'string') throw new Error('Worker project directory absent');
+    projectDir = value;
+  } finally {
+    registry.close();
+  }
+  const home = join(directory, 'retention-home');
+  const active = okProjectLogsDir(projectDir, home);
+  const inactive = okProjectLogsDir(join(directory, 'inactive-project'), home);
+  const old = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+  for (const path of [active, inactive]) {
+    mkdirSync(path, { recursive: true });
+    const file = join(path, 'server-current.jsonl');
+    writeFileSync(file, 'quiet diagnostic\n');
+    fs.utimesSync(file, old, old);
+    fs.utimesSync(path, old, old);
+  }
+  const current = join(directory, 'current-project');
+  mkdirSync(current);
+  prepareProjectLogsDir(current, { home, authorityRegistryPath: registryPath });
+  expect(fs.existsSync(inactive)).toBe(false);
+  expect(fs.readFileSync(join(active, 'server-current.jsonl'), 'utf8')).toBe('quiet diagnostic\n');
+  worker.child.kill('SIGKILL');
+  await worker.exited;
+  prepareProjectLogsDir(current, { home, authorityRegistryPath: registryPath });
+  expect(fs.existsSync(active)).toBe(false);
 });

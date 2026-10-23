@@ -7,11 +7,14 @@ import {
   ACP_LAUNCH_FAILURE_LOG,
   type BundleManifest,
   type BundleRedaction,
+  okUserHomeDisplayPath,
+  PROJECT_DIAGNOSTIC_FILES,
   REPORT_SENT_MARKER_SUFFIX,
   REPORT_SIDECAR_BUNDLE_DIR,
   SERVER_CRASH_LOG,
+  SPAWN_ERROR_LOG,
 } from '@inkeep/open-knowledge-core';
-import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
+import { okProjectLogsDir, okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import type { ZipFile } from 'yazl';
 import type { DesktopMetadata } from '../diagnose/bundle.ts';
@@ -260,25 +263,28 @@ function collectLockDir(cwd: string): { files: string[] } {
   const lockDir = join(cwd, '.ok', 'local');
   if (!existsSync(lockDir)) return { files: [] };
 
-  const candidates = [
-    'server.lock',
-    'last-spawn-error.log',
-    SERVER_CRASH_LOG,
-    ACP_LAUNCH_FAILURE_LOG,
-  ];
+  const candidates = ['server.lock', SERVER_CRASH_LOG, ACP_LAUNCH_FAILURE_LOG];
   const found = candidates.map((f) => join(lockDir, f)).filter((f) => existsSync(f));
 
   return { files: found };
 }
 
-function collectLocalSinkLogs(cwd: string): { files: string[] } {
-  const logsDir = join(cwd, '.ok', 'local', 'logs');
-  if (!existsSync(logsDir)) return { files: [] };
-
-  const candidates = ['server-current.jsonl', 'server-prev.jsonl'];
-  const found = candidates.map((f) => join(logsDir, f)).filter((f) => existsSync(f));
-
-  return { files: found };
+function collectProjectDiagnostics(
+  projectDir: string,
+  filenames: readonly string[],
+  legacyDir: string,
+): { files: string[]; legacyFiles: string[] } {
+  const currentDir = okProjectLogsDir(projectDir);
+  const files: string[] = [];
+  const legacyFiles: string[] = [];
+  for (const filename of filenames) {
+    const current = join(currentDir, filename);
+    const legacy = join(legacyDir, filename);
+    const hasCurrent = existsSync(current);
+    if (hasCurrent) files.push(current);
+    if (existsSync(legacy)) (hasCurrent ? legacyFiles : files).push(legacy);
+  }
+  return { files, legacyFiles };
 }
 
 function pseudonymizeDocNames(content: string): { text: string; count: number } {
@@ -378,9 +384,20 @@ export async function collectStandardBundle(
     userLogsDir,
   );
   const { files: lockFiles } = opts.projectDir ? collectLockDir(opts.projectDir) : { files: [] };
-  const { files: localSinkFiles } = opts.projectDir
-    ? collectLocalSinkLogs(opts.projectDir)
-    : { files: [] };
+  const { files: localSinkFiles, legacyFiles: legacyLocalSinkFiles } = opts.projectDir
+    ? collectProjectDiagnostics(
+        opts.projectDir,
+        [PROJECT_DIAGNOSTIC_FILES.logsCurrent, PROJECT_DIAGNOSTIC_FILES.logsPrevious],
+        join(opts.projectDir, '.ok', 'local', 'logs'),
+      )
+    : { files: [], legacyFiles: [] };
+  const { files: spawnErrorFiles, legacyFiles: legacySpawnErrorFiles } = opts.projectDir
+    ? collectProjectDiagnostics(
+        opts.projectDir,
+        [SPAWN_ERROR_LOG],
+        join(opts.projectDir, '.ok', 'local'),
+      )
+    : { files: [], legacyFiles: [] };
   const shipItFiles = opts.shipItLogFiles ?? [];
   const diagnosticReportFiles = opts.diagnosticReports?.files ?? [];
 
@@ -388,8 +405,8 @@ export async function collectStandardBundle(
     {
       logFileCount: logFiles.length,
       logFilesExcludedByProjectSlug,
-      lockFileCount: lockFiles.length,
-      localSinkFileCount: localSinkFiles.length,
+      lockFileCount: lockFiles.length + spawnErrorFiles.length + legacySpawnErrorFiles.length,
+      localSinkFileCount: localSinkFiles.length + legacyLocalSinkFiles.length,
       shipItLogFileCount: shipItFiles.length,
       diagnosticReportCount: diagnosticReportFiles.length,
     },
@@ -414,7 +431,7 @@ export async function collectStandardBundle(
   });
   addContentFiles({
     zipfile,
-    files: lockFiles,
+    files: [...lockFiles, ...spawnErrorFiles],
     prefix: 'lockdir',
     redact,
     revealDocNames,
@@ -426,6 +443,26 @@ export async function collectStandardBundle(
     zipfile,
     files: localSinkFiles,
     prefix: 'local-logs',
+    redact,
+    revealDocNames,
+    bundleFiles,
+    redactions,
+    logger,
+  });
+  addContentFiles({
+    zipfile,
+    files: legacyLocalSinkFiles,
+    prefix: 'legacy/local-logs',
+    redact,
+    revealDocNames,
+    bundleFiles,
+    redactions,
+    logger,
+  });
+  addContentFiles({
+    zipfile,
+    files: legacySpawnErrorFiles,
+    prefix: 'legacy/lockdir',
     redact,
     revealDocNames,
     bundleFiles,
@@ -560,6 +597,11 @@ export async function collectStandardBundle(
     '',
     `Generated: ${manifest.generatedAt}`,
     `Project: ${projectSlug ?? '(unscoped)'}`,
+    ...(opts.projectDir
+      ? [
+          `Project diagnostic source: ${okUserHomeDisplayPath('logs', 'projects')} (current product only).`,
+        ]
+      : []),
     `Discipline version: ${manifest.disciplineVersion}`,
     '',
     '## Contents',

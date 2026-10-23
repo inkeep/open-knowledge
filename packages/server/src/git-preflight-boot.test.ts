@@ -10,7 +10,7 @@ import {
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { bootServer } from './boot.ts';
+import { bootServer } from '../../../test-support/boot-server.test-helper.ts';
 import { ConfigSchema } from './config/schema.ts';
 import {
   type GitDetected,

@@ -570,7 +570,7 @@ export const ConfigSchema = z.looseObject({
               reload: 'live',
               defaultScope: 'project',
               description:
-                'Write local diagnostic spans + logs under .ok/local/ for `ok diagnose bundle`. Local-only — never leaves the machine until you run bundle. Set false for sensitive workspaces. Shared across collaborators.',
+                'Write per-project diagnostic spans + logs under the user-level OpenKnowledge logs directory for `ok diagnose bundle`. Files stay local unless shared, including in a support bundle. Set false for sensitive workspaces. Shared across collaborators.',
             })
             .default(true),
           spans: z

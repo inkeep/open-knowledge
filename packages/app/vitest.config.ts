@@ -1,3 +1,5 @@
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type ViteUserConfig } from 'vitest/config';
@@ -26,6 +28,13 @@ const serverAuthorityRegistrySetup = fileURLToPath(
   new URL('../../test-support/server-authority-registry.setup.ts', import.meta.url),
 );
 
+const browserCacheRoot =
+  process.platform === 'darwin'
+    ? join(homedir(), 'Library', 'Caches')
+    : process.platform === 'win32'
+      ? process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local')
+      : process.env.XDG_CACHE_HOME || join(homedir(), '.cache');
+
 export const appVitestConfig = {
   ...okVitestBase,
   publicDir: false,
@@ -44,6 +53,11 @@ export const appVitestConfig = {
   },
   test: {
     ...okVitestBase.test,
+    env: {
+      ...okVitestBase.test.env,
+      PLAYWRIGHT_BROWSERS_PATH:
+        process.env.PLAYWRIGHT_BROWSERS_PATH || join(browserCacheRoot, 'ms-playwright'),
+    },
     exclude: [
       ...okVitestBase.test.exclude,
       'public/excalidraw-assets/**',

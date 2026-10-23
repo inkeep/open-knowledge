@@ -7,7 +7,7 @@ import { OK_DIR } from '@inkeep/open-knowledge-core';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
-import { type BootedServer, bootServer } from './boot.ts';
+import { type BootedServer, bootServer } from '../../../test-support/boot-server.test-helper.ts';
 import { ConfigSchema } from './config/schema.ts';
 import {
   __formatContributorsForTests,

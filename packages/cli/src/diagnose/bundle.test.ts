@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -13,7 +13,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
-import { afterEach, describe, expect, onTestFinished, test } from 'vitest';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest';
 import { ZipFile } from 'yazl';
 import type { LanguageMetadata } from '../report-language.ts';
 import {
@@ -32,6 +33,7 @@ function makeTmpDir(prefix = 'ok-bundle-test-'): string {
 }
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const d of tmpDirs) {
     if (existsSync(d)) rmSync(d, { recursive: true, force: true });
   }
@@ -71,6 +73,152 @@ function writeAt(contentDir: string, relPath: string, body: string): void {
   mkdirSync(dirname(full), { recursive: true });
   writeFileSync(full, body);
 }
+
+function expectedProjectLogsDir(projectDir: string): string {
+  const key = createHash('sha256').update(realpathSync.native(projectDir)).digest('hex');
+  return join(okUserHomeDir(), 'logs', 'projects', key);
+}
+
+const relocatedDiagnostics = [
+  ['server-current.jsonl', '.ok/local/logs/server-current.jsonl', 'logs/server-current.jsonl'],
+  ['server-prev.jsonl', '.ok/local/logs/server-prev.jsonl', 'logs/server-prev.jsonl'],
+  [
+    'spans-current.jsonl',
+    '.ok/local/telemetry/spans-current.jsonl',
+    'telemetry/spans-current.jsonl',
+  ],
+  ['spans-prev.jsonl', '.ok/local/telemetry/spans-prev.jsonl', 'telemetry/spans-prev.jsonl'],
+  ['last-spawn-error.log', '.ok/local/last-spawn-error.log', 'state/last-spawn-error.log'],
+] as const;
+
+describe('collectBundle — relocated project diagnostics', () => {
+  test('does not present legacy evidence as current when the current path cannot be copied', async () => {
+    const home = makeTmpDir();
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('USERPROFILE', home);
+    const projectDir = makeTmpDir();
+    mkdirSync(join(expectedProjectLogsDir(projectDir), 'server-current.jsonl'), {
+      recursive: true,
+    });
+    writeAt(projectDir, '.ok/local/logs/server-current.jsonl', 'older incident\n');
+    const collected = await collectBundle({
+      contentDir: projectDir,
+      deps: makeDeterministicDeps(),
+    });
+    onTestFinished(collected.cleanup);
+    expect(existsSync(join(collected.stagingDir, 'logs/server-current.jsonl'))).toBe(false);
+    expect(
+      readFileSync(join(collected.stagingDir, 'legacy/logs/server-current.jsonl'), 'utf8'),
+    ).toBe('older incident\n');
+  });
+
+  test.each([
+    ['stable', '~/.ok/logs/projects'],
+    ['beta', '~/.ok-beta/logs/projects'],
+  ] as const)(
+    'records the %s diagnostic root without exposing the account home',
+    async (channel, directory) => {
+      const home = makeTmpDir();
+      vi.stubEnv('HOME', home);
+      vi.stubEnv('USERPROFILE', home);
+      vi.stubEnv('OK_CHANNEL', channel);
+      const contentDir = makeTmpDir();
+      const collected = await collectBundle({ contentDir, deps: makeDeterministicDeps() });
+      onTestFinished(collected.cleanup);
+      expect(collected.manifest.telemetry.localSink.directory).toBe(directory);
+      expect(JSON.stringify(collected.manifest)).not.toContain(home);
+    },
+  );
+
+  test.each(['current', 'legacy', 'both'] as const)(
+    'collects %s evidence without overwriting incidents or reading another project',
+    async (source) => {
+      const home = makeTmpDir();
+      vi.stubEnv('HOME', home);
+      vi.stubEnv('USERPROFILE', home);
+      const projectDir = makeTmpDir();
+      const contentDir = join(projectDir, 'knowledge');
+      mkdirSync(contentDir);
+      const currentDir = expectedProjectLogsDir(projectDir);
+      const foreignDir = expectedProjectLogsDir(makeTmpDir());
+      for (const [filename, legacyPath] of relocatedDiagnostics) {
+        if (source !== 'legacy') writeAt(currentDir, filename, `current:${filename}\n`);
+        if (source !== 'current') writeAt(projectDir, legacyPath, `legacy:${filename}\n`);
+        writeAt(contentDir, legacyPath, 'content-subdir-decoy\n');
+        writeAt(foreignDir, filename, 'foreign-project-decoy\n');
+      }
+      const collected = await collectBundle({
+        contentDir,
+        projectDir,
+        deps: makeDeterministicDeps(),
+      });
+      onTestFinished(collected.cleanup);
+      for (const [filename, , entry] of relocatedDiagnostics) {
+        const origin = source === 'legacy' ? 'legacy' : 'current';
+        expect(readFileSync(join(collected.stagingDir, entry), 'utf8')).toBe(
+          `${origin}:${filename}\n`,
+        );
+        const legacyEntry = join(collected.stagingDir, 'legacy', entry);
+        expect(existsSync(legacyEntry)).toBe(source === 'both');
+        if (source === 'both')
+          expect(readFileSync(legacyEntry, 'utf8')).toBe(`legacy:${filename}\n`);
+      }
+      expect(existsSync(currentDir)).toBe(source !== 'legacy');
+      expect(collected.manifest.schemaVersion).toBe(2);
+      for (const file of collected.manifest.files) {
+        const body = readFileSync(join(collected.stagingDir, file.path), 'utf8');
+        expect(body).not.toContain('foreign-project-decoy');
+        expect(body).not.toContain('content-subdir-decoy');
+      }
+      const outputPath = join(makeTmpDir(), 'bundle.zip');
+      await writeBundle({ collected, outputPath });
+      const entries = await readZipEntries(outputPath);
+      expect(new Set(entries).size).toBe(entries.length);
+      expect(entries.sort()).toEqual(
+        ['manifest.json', ...collected.manifest.files.map((file) => file.path)].sort(),
+      );
+    },
+  );
+
+  test('redacts current and legacy diagnostics and counts both log/span histories', async () => {
+    const home = makeTmpDir();
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('USERPROFILE', home);
+    const projectDir = makeTmpDir();
+    const contentDir = join(projectDir, 'knowledge');
+    mkdirSync(contentDir);
+    const currentDir = expectedProjectLogsDir(projectDir);
+    const secret = `ghp_${'a'.repeat(40)}`;
+    const body = `${JSON.stringify({ docName: 'private-note', path: `${contentDir}/note.md`, token: secret })}\n`;
+    const diagnostics = relocatedDiagnostics.filter(
+      ([filename]) => filename !== 'server-prev.jsonl' && filename !== 'spans-prev.jsonl',
+    );
+    for (const [filename, legacyPath] of diagnostics) {
+      writeAt(currentDir, filename, body);
+      writeAt(projectDir, legacyPath, body);
+    }
+    const collected = await collectBundle({
+      contentDir,
+      projectDir,
+      redact: true,
+      scrubSecrets: true,
+      deps: makeDeterministicDeps(),
+    });
+    onTestFinished(collected.cleanup);
+    for (const [, , entry] of diagnostics) {
+      for (const path of [entry, `legacy/${entry}`]) {
+        const staged = readFileSync(join(collected.stagingDir, path), 'utf8');
+        expect(staged).not.toContain(contentDir);
+        expect(staged).toContain('<CONTENT_DIR>/note.md');
+        expect(staged).not.toContain(secret);
+        expect(
+          collected.manifest.redaction.secretScrub?.redactions.some((audit) => audit.file === path),
+        ).toBe(true);
+      }
+    }
+    expect(collected.summary.docNameCount).toBe(4);
+  });
+});
 
 describe('collectBundle — diagnostic-report staging count', () => {
   test('counts what was staged, not what the sweep selected', async () => {

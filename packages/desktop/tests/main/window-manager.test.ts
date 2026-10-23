@@ -1,9 +1,15 @@
+import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { DEFAULT_SERVER_HOST, formatSpawnAttemptHeader } from '@inkeep/open-knowledge-core';
+import {
+  DEFAULT_SERVER_HOST,
+  formatSpawnAttemptHeader,
+  SPAWN_ERROR_LOG,
+} from '@inkeep/open-knowledge-core';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { getMachineId } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { failedOpenHolder, promptHolderStop } from '../../src/main/holder-stop-prompt.ts';
@@ -3068,6 +3074,7 @@ describe('WindowManager', () => {
 
       const spawnStderrRoots: string[] = [];
       afterEach(() => {
+        vi.unstubAllEnvs();
         while (spawnStderrRoots.length > 0) {
           const root = spawnStderrRoots.pop();
           if (root) rmSync(root, { recursive: true, force: true });
@@ -3075,10 +3082,17 @@ describe('WindowManager', () => {
       });
 
       function projectWithSpawnErrorLog(contents: string): string {
-        const root = mkdtempSync(join(tmpdir(), 'ok-spawn-stderr-'));
-        spawnStderrRoots.push(root);
-        mkdirSync(join(root, '.ok', 'local'), { recursive: true });
-        writeFileSync(join(root, '.ok', 'local', 'last-spawn-error.log'), contents);
+        const fixtureRoot = mkdtempSync(join(tmpdir(), 'ok-spawn-stderr-'));
+        spawnStderrRoots.push(fixtureRoot);
+        const root = join(fixtureRoot, 'project');
+        const home = join(fixtureRoot, 'home');
+        mkdirSync(root);
+        vi.stubEnv('HOME', home);
+        vi.stubEnv('USERPROFILE', home);
+        const projectHash = createHash('sha256').update(realpathSync.native(root)).digest('hex');
+        const logsDir = join(okUserHomeDir(home), 'logs', 'projects', projectHash);
+        mkdirSync(logsDir, { recursive: true });
+        writeFileSync(join(logsDir, SPAWN_ERROR_LOG), contents);
         return root;
       }
 

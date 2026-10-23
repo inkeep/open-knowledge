@@ -3115,8 +3115,8 @@ msgstr "No se pudo conectar con {displayName}. Inténtalo de nuevo más tarde."
 msgid "Couldn't reach {displayName} — try again?"
 msgstr "No se pudo conectar con {displayName}. ¿Reintentar?"
 
-msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-msgstr "No se pudo contactar con el servidor de colaboración: {errorDetail}. Prueba <0>{cliCommand} status</0> o revisa <1>.ok/local/last-spawn-error.log</1>."
+msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or collect logs with <1>{cliCommand} diagnose bundle</1>."
+msgstr "No se pudo contactar con el servidor de colaboración: {errorDetail}. Prueba <0>{cliCommand} status</0> o recopila los registros con <1>{cliCommand} diagnose bundle</1>."
 
 msgid "Couldn't reach GitHub. Try again?"
 msgstr "No se pudo contactar con GitHub. ¿Reintentar?"

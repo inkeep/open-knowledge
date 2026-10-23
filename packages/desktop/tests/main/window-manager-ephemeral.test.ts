@@ -1,6 +1,21 @@
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { formatSpawnAttemptHeader, SPAWN_ERROR_LOG } from '@inkeep/open-knowledge-core';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { getLocalDir } from '@inkeep/open-knowledge-server';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest';
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
 import type { WindowChromeKind } from '../../src/main/window-chrome.ts';
 import {
@@ -318,6 +333,58 @@ describe('createEphemeralWindow', () => {
 
     expect(env.killCalls).toContainEqual({ pid: 42001, signal: 'SIGTERM' });
     expect(env.removedDirs).toEqual(['/tmp/ok-ephemeral-1']);
+    expect(env.windows).toHaveLength(0);
+  });
+
+  test('ephemeral cleanup preserves the user-namespace stderr tail', async () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'ok-ephemeral-stderr-'));
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    });
+    const home = join(fixtureRoot, 'home');
+    const contentDir = join(fixtureRoot, 'notes');
+    const projectTarget = join(fixtureRoot, 'project-target');
+    const projectDir = join(fixtureRoot, 'project-link');
+    mkdirSync(contentDir);
+    mkdirSync(projectTarget);
+    symlinkSync(projectTarget, projectDir, process.platform === 'win32' ? 'junction' : 'dir');
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('USERPROFILE', home);
+    const projectHash = createHash('sha256').update(realpathSync.native(projectDir)).digest('hex');
+    const logsDir = join(okUserHomeDir(home), 'logs', 'projects', projectHash);
+    mkdirSync(logsDir, { recursive: true });
+    const stderr = 'Error: ephemeral server failed before binding';
+    const spawnErrorLogPath = join(logsDir, SPAWN_ERROR_LOG);
+    writeFileSync(spawnErrorLogPath, `${formatSpawnAttemptHeader(new Date(), 42001)}${stderr}\n`);
+    env.deps.createEphemeralProjectDir = () => projectDir;
+    env.deps.spawnSingleFileServer = async () =>
+      heldChild(env.deps, 42001, () => ({ code: 1, signal: null }));
+    env.deps.readServerLock = () => null;
+    env.deps.spawnLockPollDeadlineMs = 0;
+    env.deps.removeDir = async (dir) => {
+      env.removedDirs.push(dir);
+      await rm(dir, { recursive: true, force: true });
+      await rm(projectTarget, { recursive: true, force: true });
+    };
+
+    const wm = new WindowManager(env.deps);
+    await expect(
+      wm.createEphemeralWindow({
+        canonicalFilePath: join(contentDir, 'todo.md'),
+        contentDir,
+        docName: 'todo',
+      }),
+    ).rejects.toMatchObject({
+      kind: 'spawn-lock-timeout',
+      exitCode: 1,
+      stderrTail: stderr,
+      message: expect.stringContaining('--- stderr ---'),
+    });
+    expect(env.removedDirs).toEqual([projectDir]);
+    expect(existsSync(projectDir)).toBe(false);
+    expect(existsSync(projectTarget)).toBe(false);
+    expect(existsSync(spawnErrorLogPath)).toBe(true);
     expect(env.windows).toHaveLength(0);
   });
 

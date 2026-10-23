@@ -210,7 +210,11 @@ function immutableScope(value: unknown): ContentScope {
     : Object.freeze({ ...scope, excluded: Object.freeze(scope.excluded) });
 }
 
-function authoritySpan<T>(operation: 'acquire' | 'release', registryPath: string, fn: () => T): T {
+function authoritySpan<T>(
+  operation: 'acquire' | 'release' | 'retention',
+  registryPath: string,
+  fn: () => T,
+): T {
   return withSpanSync(
     'fs.serverAuthority',
     {
@@ -225,72 +229,58 @@ function authoritySpan<T>(operation: 'acquire' | 'release', registryPath: string
   );
 }
 
-export function acquireServerAuthority(options: {
-  scope: ContentScope;
-  projectDir: string;
-  serverInstanceId: string;
-  registryPath?: string;
-}): { scope: ContentScope; release: () => void } {
-  const scope = immutableScope(options.scope);
-  const projectDir = pathSchema.parse(options.projectDir);
-  const serverInstanceId = z.string().min(1).parse(options.serverInstanceId);
+function resolveServerAuthorityRegistryPath(override?: string): string {
   let osHome: string;
   try {
     osHome = userInfo().homedir;
   } catch (error) {
-    if (options.registryPath === undefined) {
+    if (override === undefined) {
       throw new ServerAuthorityRegistryError('unavailable', undefined, error);
     }
-    osHome = dirname(options.registryPath);
+    osHome = dirname(override);
   }
-  const registryPath =
-    options.registryPath ?? resolve(osHome, OK_DIR, LOCAL_DIR, SERVER_AUTHORITY_REGISTRY_FILENAME);
-  pathSchema.parse(registryPath);
-  const ownerToken = randomUUID();
-  let releaseLease: (() => void) | undefined;
-  const db = authoritySpan('acquire', registryPath, () => {
-    let database: DatabaseSync | undefined;
-    const prunedLeases: Array<{
-      token: string;
-      projectDir: string;
-      scopeKind: ContentScope['kind'];
-      startedAt: string;
-    }> = [];
+  return pathSchema.parse(
+    override ?? resolve(osHome, OK_DIR, LOCAL_DIR, SERVER_AUTHORITY_REGISTRY_FILENAME),
+  );
+}
+
+function openServerAuthorityRegistry(registryPath: string, timeout = 5_000): DatabaseSync {
+  let database: DatabaseSync | undefined;
+  try {
+    tracedMkdirSync(dirname(registryPath), { recursive: true, mode: 0o700 });
     try {
-      tracedMkdirSync(dirname(registryPath), { recursive: true, mode: 0o700 });
-      try {
-        tracedWriteFileSync(registryPath, '', { flag: 'wx', mode: 0o600 });
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      }
-      tracedChmodSync(registryPath, 0o600);
-      database = new DatabaseSync(registryPath, { timeout: 5_000 });
-      database.exec('BEGIN IMMEDIATE');
-      const version = database.prepare('PRAGMA user_version').get()?.user_version;
-      const emptyLegacy =
-        version === 1 &&
-        database
-          .prepare('PRAGMA table_info(server_authority)')
-          .all()
-          .map((column) => column.name)
-          .join(',') ===
-          'server_instance_id,owner_token,pid,hostname,machine_id,project_dir,scope_json,started_at' &&
-        database.prepare('SELECT count(*) AS count FROM server_authority').get()?.count === 0;
-      if (version !== 0 && version !== 2 && !emptyLegacy) {
-        throw new ServerAuthorityRegistryError(
-          version === 1 ? 'retired-version' : 'unsupported-version',
-          registryPath,
-          new Error(`Registry layout version ${version} is not supported by this runtime`),
-        );
-      }
-      if (database.prepare('PRAGMA journal_mode').get()?.journal_mode !== 'delete')
-        throw new ServerAuthorityRegistryError(
-          'unsupported-version',
-          registryPath,
-          new Error('Content ownership requires SQLite DELETE-mode file locking'),
-        );
-      if (emptyLegacy) database.exec('DROP TABLE server_authority');
-      database.exec(`
+      tracedWriteFileSync(registryPath, '', { flag: 'wx', mode: 0o600 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+    tracedChmodSync(registryPath, 0o600);
+    database = new DatabaseSync(registryPath, { timeout });
+    database.exec('BEGIN IMMEDIATE');
+    const version = database.prepare('PRAGMA user_version').get()?.user_version;
+    const emptyLegacy =
+      version === 1 &&
+      database
+        .prepare('PRAGMA table_info(server_authority)')
+        .all()
+        .map((column) => column.name)
+        .join(',') ===
+        'server_instance_id,owner_token,pid,hostname,machine_id,project_dir,scope_json,started_at' &&
+      database.prepare('SELECT count(*) AS count FROM server_authority').get()?.count === 0;
+    if (version !== 0 && version !== 2 && !emptyLegacy) {
+      throw new ServerAuthorityRegistryError(
+        version === 1 ? 'retired-version' : 'unsupported-version',
+        registryPath,
+        new Error(`Registry layout version ${version} is not supported by this runtime`),
+      );
+    }
+    if (database.prepare('PRAGMA journal_mode').get()?.journal_mode !== 'delete')
+      throw new ServerAuthorityRegistryError(
+        'unsupported-version',
+        registryPath,
+        new Error('Content ownership requires SQLite DELETE-mode file locking'),
+      );
+    if (emptyLegacy) database.exec('DROP TABLE server_authority');
+    database.exec(`
         CREATE TABLE IF NOT EXISTS server_authority (
           server_instance_id TEXT PRIMARY KEY,
           owner_token TEXT NOT NULL,
@@ -302,6 +292,119 @@ export function acquireServerAuthority(options: {
         ) STRICT;
         PRAGMA user_version = 2;
       `);
+    return database;
+  } catch (error) {
+    database?.close();
+    if (error instanceof ServerAuthorityRegistryError) throw error;
+    throw new ServerAuthorityRegistryError(
+      classifyServerAuthorityRegistryError(error),
+      registryPath,
+      error,
+    );
+  }
+}
+
+export function withServerAuthorityRegistryTransaction(
+  fn: (database: DatabaseSync, registryPath: string) => void,
+  registryPathOverride?: string,
+  timeout = 5_000,
+): void {
+  const registryPath = resolveServerAuthorityRegistryPath(registryPathOverride);
+  authoritySpan('retention', registryPath, () => {
+    const database = openServerAuthorityRegistry(registryPath, timeout);
+    try {
+      fn(database, registryPath);
+      try {
+        database.exec('COMMIT');
+      } catch (error) {
+        throw new ServerAuthorityRegistryError(
+          classifyServerAuthorityRegistryError(error),
+          registryPath,
+          error,
+        );
+      }
+    } finally {
+      database.close();
+    }
+  });
+}
+
+export function withServerAuthorityProjectDirs(
+  fn: (projectDirs: ReadonlySet<string> | null) => void,
+  registryPathOverride?: string,
+  timeout = 5_000,
+): void {
+  withServerAuthorityRegistryTransaction(
+    (database, registryPath) => {
+      let holders: Array<z.infer<typeof holderRowSchema>>;
+      try {
+        holders = database
+          .prepare('SELECT * FROM server_authority')
+          .all()
+          .map((value) => {
+            const row = holderRowSchema.parse(value);
+            immutableScope(JSON.parse(row.scope_json));
+            return row;
+          });
+      } catch (error) {
+        throw new ServerAuthorityRegistryError(
+          classifyServerAuthorityRegistryError(error),
+          registryPath,
+          error,
+        );
+      }
+      const active = new Set<string>();
+      let verified = true;
+      for (const row of holders) {
+        try {
+          if (row.lease_protocol !== SERVER_AUTHORITY_LEASE_PROTOCOL) {
+            getLogger('server-authority').warn(
+              {},
+              'Diagnostic cleanup skipped: unknown ownership lease protocol',
+            );
+            verified = false;
+            break;
+          }
+          if (!isServerAuthorityLeaseReleased(registryPath, row.owner_token))
+            active.add(row.project_dir);
+        } catch (err) {
+          getLogger('server-authority').warn(
+            { err },
+            'Diagnostic cleanup skipped: ownership lease could not be verified',
+          );
+          verified = false;
+          break;
+        }
+      }
+      fn(verified ? active : null);
+    },
+    registryPathOverride,
+    timeout,
+  );
+}
+
+export function acquireServerAuthority(options: {
+  scope: ContentScope;
+  projectDir: string;
+  serverInstanceId: string;
+  registryPath?: string;
+}): { scope: ContentScope; release: () => void } {
+  const scope = immutableScope(options.scope);
+  const projectDir = pathSchema.parse(options.projectDir);
+  const serverInstanceId = z.string().min(1).parse(options.serverInstanceId);
+  const registryPath = resolveServerAuthorityRegistryPath(options.registryPath);
+  const ownerToken = randomUUID();
+  let releaseLease: (() => void) | undefined;
+  const db = authoritySpan('acquire', registryPath, () => {
+    let database: DatabaseSync | undefined;
+    const prunedLeases: Array<{
+      token: string;
+      projectDir: string;
+      scopeKind: ContentScope['kind'];
+      startedAt: string;
+    }> = [];
+    try {
+      database = openServerAuthorityRegistry(registryPath);
       const holders = database
         .prepare('SELECT * FROM server_authority')
         .all()

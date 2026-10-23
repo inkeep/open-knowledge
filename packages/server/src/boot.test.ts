@@ -14,8 +14,8 @@ import {
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { bootServer } from '../../../test-support/boot-server.test-helper.ts';
 import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
-import { bootServer } from './boot.ts';
 import { getBootTimings } from './boot-timings.ts';
 import { ConfigSchema } from './config/schema.ts';
 import { getLogger } from './logger.ts';

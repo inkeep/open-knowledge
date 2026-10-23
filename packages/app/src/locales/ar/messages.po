@@ -3115,8 +3115,8 @@ msgstr "تعذّر الوصول إلى {displayName}. يُرجى المحاول�
 msgid "Couldn't reach {displayName} — try again?"
 msgstr "تعذّر الوصول إلى {displayName}. هل تريد المحاولة مرة أخرى؟"
 
-msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-msgstr "تعذّر الوصول إلى خادم التعاون — {errorDetail}. جرّب <0>{cliCommand} status</0> أو راجع <1>.ok/local/last-spawn-error.log</1>."
+msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or collect logs with <1>{cliCommand} diagnose bundle</1>."
+msgstr "تعذّر الوصول إلى خادم التعاون — {errorDetail}. جرّب <0>{cliCommand} status</0> أو اجمع السجلات باستخدام <1>{cliCommand} diagnose bundle</1>."
 
 msgid "Couldn't reach GitHub. Try again?"
 msgstr "تعذّر الوصول إلى GitHub. هل تعيد المحاولة؟"

@@ -3115,8 +3115,8 @@ msgstr "{displayName} تک رسائی نہیں ہو سکی۔ براہِ کرم �
 msgid "Couldn't reach {displayName} — try again?"
 msgstr "{displayName} تک رسائی نہیں ہو سکی۔ دوبارہ کوشش کریں؟"
 
-msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-msgstr "اشتراکی سرور تک رسائی نہیں ہو سکی — {errorDetail}۔ <0>{cliCommand} status</0> آزمائیں یا <1>.ok/local/last-spawn-error.log</1> دیکھیں۔"
+msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or collect logs with <1>{cliCommand} diagnose bundle</1>."
+msgstr "اشتراکی سرور تک رسائی نہیں ہو سکی — {errorDetail}۔ <0>{cliCommand} status</0> آزمائیں یا <1>{cliCommand} diagnose bundle</1> کے ذریعے لاگز جمع کریں۔"
 
 msgid "Couldn't reach GitHub. Try again?"
 msgstr "GitHub تک رسائی نہیں ہو سکی۔ دوبارہ کوشش کریں؟"

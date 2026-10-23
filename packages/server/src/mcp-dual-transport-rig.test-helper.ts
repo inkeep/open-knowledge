@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { type BootedServer, bootServer } from './boot.ts';
+import { type BootedServer, bootServer } from '../../../test-support/boot-server.test-helper.ts';
 import { ConfigSchema } from './config/schema.ts';
 import { connectMcpTestClient } from './mcp/client.test-helper.ts';
 import { createMcpHttpHandler, type McpHttpHandler } from './mcp-http.ts';

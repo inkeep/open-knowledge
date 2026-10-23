@@ -1,15 +1,24 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, writeSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { setTimeout as wait } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 import {
   formatSpawnAttemptHeader,
   LOCAL_DIR,
   OK_DIR,
   SPAWN_ERROR_LOG,
 } from '@inkeep/open-knowledge-core';
-import { AutoStartDisabledError, type ServerLockMetadata } from '@inkeep/open-knowledge-server';
+import { okProjectLogsDir } from '@inkeep/open-knowledge-core/server';
+import {
+  AutoStartDisabledError,
+  prepareSpawnProjectLogsDir,
+  type ServerLockMetadata,
+} from '@inkeep/open-knowledge-server';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -83,15 +92,145 @@ const liveLock: ServerLockMetadata = {
 
 describe('MCP stdio shim server resolution', () => {
   let tmp: string;
+  let fixture: string;
   let lockDir: string;
 
   beforeEach(async () => {
-    tmp = await mkdtemp(resolve(tmpdir(), 'ok-mcp-shim-'));
+    fixture = await mkdtemp(resolve(tmpdir(), 'ok-mcp-shim-'));
+    tmp = resolve(fixture, 'project');
+    mkdirSync(tmp);
+    vi.stubEnv('HOME', resolve(fixture, 'home'));
+    vi.stubEnv('USERPROFILE', resolve(fixture, 'home'));
     lockDir = resolve(tmp, OK_DIR, LOCAL_DIR);
   });
 
   afterEach(async () => {
-    await rm(tmp, { recursive: true, force: true });
+    await rm(fixture, { recursive: true, force: true });
+  });
+
+  test.each(['foreign-lease', 'blocked-namespace'])(
+    'default spawn preparation keeps MCP stdout clean (%s)',
+    async (scenario) => {
+      const registryPath = resolve(fixture, 'authority.sqlite');
+      const namespace = await prepareSpawnProjectLogsDir(tmp, {
+        authorityRegistryPath: registryPath,
+      });
+      if (scenario === 'foreign-lease') {
+        const database = new DatabaseSync(registryPath);
+        try {
+          database
+            .prepare('INSERT INTO server_authority VALUES (?, ?, ?, ?, ?, ?, ?)')
+            .run(
+              randomUUID(),
+              randomUUID(),
+              process.pid,
+              'future-protocol:v2',
+              tmp,
+              JSON.stringify({ kind: 'tree', path: tmp, excluded: [] }),
+              new Date().toISOString(),
+            );
+        } finally {
+          database.close();
+        }
+      } else {
+        rmSync(namespace, { recursive: true });
+        writeFileSync(namespace, 'namespace obstruction');
+      }
+      const code = `
+      const { resolveMcpHttpUrl } = await import(${JSON.stringify(new URL('./shim.ts', import.meta.url).href)});
+      process.argv[1] = ${JSON.stringify(fileURLToPath(new URL('../../dist/cli.mjs', import.meta.url)))};
+      try {
+        await resolveMcpHttpUrl({
+          projectDir: ${JSON.stringify(tmp)}, contentDir: ${JSON.stringify(tmp)},
+          lockDir: ${JSON.stringify(lockDir)}, authorityRegistryPath: ${JSON.stringify(registryPath)},
+          readLock: () => null, isAlive: () => false,
+          spawn: () => { throw new Error('fixture-spawn-failure'); },
+        });
+        throw new Error('Unexpected successful spawn');
+      } catch (error) {
+        process.stderr.write('RESULT=' + JSON.stringify({ message: error.message }) + String.fromCharCode(10));
+      }
+    `;
+      const child = spawnSync(
+        process.execPath,
+        ['--import', 'tsx', '--conditions=development', '--input-type=module', '-e', code],
+        {
+          cwd: fileURLToPath(new URL('../..', import.meta.url)),
+          env: {
+            ...process.env,
+            LOG_LEVEL: 'info',
+            OK_CONSOLE_LEVEL: 'info',
+            NODE_ENV: 'production',
+          },
+          encoding: 'utf8',
+          timeout: 15_000,
+          windowsHide: true,
+        },
+      );
+      expect(child.status, child.stderr).toBe(0);
+      const line = child.stderr.split('\n').find((value) => value.startsWith('RESULT='));
+      expect(line).toBeDefined();
+      const result = JSON.parse(line?.slice('RESULT='.length) ?? '{}') as { message: string };
+      expect({ stdout: child.stdout, message: result.message }).toEqual({
+        stdout: '',
+        message: expect.stringContaining(
+          scenario === 'blocked-namespace'
+            ? 'spawn failed: could not prepare server-start diagnostics:'
+            : 'spawn failed: fixture-spawn-failure',
+        ),
+      });
+      expect(result.message).toContain('Run `ok start` in the target project');
+    },
+  );
+
+  test('async diagnostic preparation failures retain their cause and server-start guidance', async () => {
+    const cause = new Error('fixture registry unavailable');
+    const spawn = vi.fn();
+    const error: unknown = await resolveMcpHttpUrl({
+      projectDir: tmp,
+      lockDir,
+      contentDir: tmp,
+      readLock: () => null,
+      isAlive: () => false,
+      openErrorLog: async () => {
+        throw cause;
+      },
+      spawn,
+    }).catch((value: unknown) => value);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).cause).toBe(cause);
+    expect((error as Error).message).toContain('spawn failed:');
+    expect((error as Error).message).toContain('Run `ok start` in the target project');
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  test('captures startup stderr outside the project even when content lives in a subdirectory', async () => {
+    const contentDir = resolve(tmp, 'knowledge');
+    mkdirSync(contentDir);
+    const stderrPath = resolve(okProjectLogsDir(tmp), SPAWN_ERROR_LOG);
+
+    await expect(
+      resolveMcpHttpUrl({
+        projectDir: tmp,
+        authorityRegistryPath: resolve(fixture, 'authority.sqlite'),
+        lockDir,
+        contentDir,
+        readLock: () => null,
+        isAlive: () => false,
+        spawn: ((
+          _cmd: string,
+          _args: readonly string[],
+          options: { stdio: readonly [string, string, number] },
+        ) => {
+          writeSync(options.stdio[2], 'captured startup cause\n');
+          throw new Error('startup failed');
+        }) as never,
+      }),
+    ).rejects.toThrow('spawn failed: startup failed stderr:\ncaptured startup cause');
+
+    expect(readFileSync(stderrPath, 'utf8')).toContain('captured startup cause');
+    expect(existsSync(resolve(lockDir, SPAWN_ERROR_LOG))).toBe(false);
+    expect(existsSync(okProjectLogsDir(contentDir))).toBe(false);
   });
 
   test('draining lock waits for the predecessor to exit, then spawns', async () => {
@@ -100,6 +239,7 @@ describe('MCP stdio shim server resolution', () => {
     const calls: string[] = [];
     const url = await resolveMcpHttpUrl({
       lockDir,
+      projectDir: tmp,
       contentDir: tmp,
       readLock: () => {
         reads += 1;
@@ -129,6 +269,7 @@ describe('MCP stdio shim server resolution', () => {
     let reads = 0;
     const url = await resolveMcpHttpUrl({
       lockDir,
+      projectDir: tmp,
       contentDir: tmp,
       readLock: () => {
         reads += 1;
@@ -149,6 +290,7 @@ describe('MCP stdio shim server resolution', () => {
   test('live lock resolves directly to the /mcp HTTP URL', async () => {
     const url = await resolveMcpHttpUrl({
       lockDir,
+      projectDir: tmp,
       contentDir: tmp,
       readLock: () => liveLock,
       isAlive: (pid) => pid === liveLock.pid,
@@ -164,6 +306,7 @@ describe('MCP stdio shim server resolution', () => {
     const lockWithUrl: ServerLockMetadata = { ...liveLock, url: 'http://localhost:4999' };
     const url = await resolveMcpHttpUrl({
       lockDir,
+      projectDir: tmp,
       contentDir: tmp,
       readLock: () => lockWithUrl,
       isAlive: (pid) => pid === lockWithUrl.pid,
@@ -179,6 +322,7 @@ describe('MCP stdio shim server resolution', () => {
     const lockWithBadUrl: ServerLockMetadata = { ...liveLock, url: 'not a url' };
     const url = await resolveMcpHttpUrl({
       lockDir,
+      projectDir: tmp,
       contentDir: tmp,
       readLock: () => lockWithBadUrl,
       isAlive: (pid) => pid === lockWithBadUrl.pid,
@@ -201,6 +345,7 @@ describe('MCP stdio shim server resolution', () => {
 
     const url = await resolveMcpHttpUrl({
       lockDir,
+      projectDir: tmp,
       contentDir: tmp,
       readLock: () => {
         pollCount += 1;
@@ -233,6 +378,7 @@ describe('MCP stdio shim server resolution', () => {
   test('auto-start opt-out turns missing server into a short diagnostic', async () => {
     const err: unknown = await resolveMcpHttpUrl({
       lockDir,
+      projectDir: tmp,
       contentDir: tmp,
       envAutoStart: '0',
       readLock: () => null,
@@ -249,6 +395,7 @@ describe('MCP stdio shim server resolution', () => {
     vi.stubEnv('OK_CHANNEL', 'beta');
     const err: unknown = await resolveMcpHttpUrl({
       lockDir,
+      projectDir: tmp,
       contentDir: tmp,
       envAutoStart: '0',
       readLock: () => null,
@@ -264,6 +411,8 @@ describe('MCP stdio shim server resolution', () => {
     async (kind) => {
       const err: unknown = await resolveMcpHttpUrl({
         lockDir,
+        projectDir: tmp,
+        authorityRegistryPath: resolve(fixture, 'authority.sqlite'),
         contentDir: resolve(tmp, kind === 'missing' ? 'missing' : 'x'.repeat(32768)),
         timeoutMs: 1000,
         pollIntervalMs: 1,
@@ -282,6 +431,7 @@ describe('MCP stdio shim server resolution', () => {
   test('valid port override bypasses discovery and targets the default loopback host', async () => {
     const url = await resolveMcpHttpUrl({
       lockDir,
+      projectDir: tmp,
       contentDir: tmp,
       portOverride: '6789',
       readLock: () => {
@@ -300,6 +450,7 @@ describe('MCP stdio shim server resolution', () => {
     await expect(
       resolveMcpHttpUrl({
         lockDir,
+        projectDir: tmp,
         contentDir: tmp,
         portOverride: 'not-a-port',
         spawn: (() => {
@@ -313,6 +464,7 @@ describe('MCP stdio shim server resolution', () => {
     await expect(
       resolveMcpHttpUrl({
         lockDir,
+        projectDir: tmp,
         contentDir: tmp,
         readLock: () => null,
         isAlive: () => false,
@@ -330,15 +482,17 @@ describe('MCP stdio shim server resolution', () => {
   });
 
   test('the default reader quotes only the current attempt', async () => {
-    mkdirSync(lockDir, { recursive: true });
+    const stderrPath = resolve(okProjectLogsDir(tmp), SPAWN_ERROR_LOG);
+    mkdirSync(okProjectLogsDir(tmp), { recursive: true });
     writeFileSync(
-      resolve(lockDir, SPAWN_ERROR_LOG),
+      stderrPath,
       `${formatSpawnAttemptHeader(new Date('2026-08-25T10:00:00.000Z'), 11)}EADDRINUSE from before\n` +
         `${formatSpawnAttemptHeader(new Date('2026-08-25T11:00:00.000Z'), 12)}the real cause\n`,
     );
 
     const err = await resolveMcpHttpUrl({
       lockDir,
+      projectDir: tmp,
       contentDir: tmp,
       readLock: () => null,
       isAlive: () => false,
@@ -361,15 +515,17 @@ describe('MCP stdio shim server resolution', () => {
   });
 
   test('the default reader bounds one huge attempt to a tail', async () => {
-    mkdirSync(lockDir, { recursive: true });
+    const stderrPath = resolve(okProjectLogsDir(tmp), SPAWN_ERROR_LOG);
+    mkdirSync(okProjectLogsDir(tmp), { recursive: true });
     const oldest = 'FIRST-LINE-MARKER\n';
     writeFileSync(
-      resolve(lockDir, SPAWN_ERROR_LOG),
+      stderrPath,
       `${formatSpawnAttemptHeader(new Date('2026-08-25T11:00:00.000Z'), 12)}${oldest}${'x'.repeat(20_000)}`,
     );
 
     const err = await resolveMcpHttpUrl({
       lockDir,
+      projectDir: tmp,
       contentDir: tmp,
       readLock: () => null,
       isAlive: () => false,
@@ -397,6 +553,7 @@ describe('MCP stdio shim server resolution', () => {
     await expect(
       resolveMcpHttpUrl({
         lockDir,
+        projectDir: tmp,
         contentDir: tmp,
         readLock: () => null,
         isAlive: () => false,
@@ -422,6 +579,7 @@ describe('MCP stdio shim server resolution', () => {
     await expect(
       resolveMcpHttpUrl({
         lockDir,
+        projectDir: tmp,
         contentDir: tmp,
         readLock: () => null,
         isAlive: () => false,
@@ -450,7 +608,6 @@ describe('MCP stdio shim server resolution', () => {
       resolveMcpKeepaliveWsUrl(
         {
           lockDir,
-          contentDir: tmp,
           readLock: () => liveLock,
           isAlive: () => true,
         },
@@ -462,7 +619,6 @@ describe('MCP stdio shim server resolution', () => {
       resolveMcpKeepaliveWsUrl(
         {
           lockDir,
-          contentDir: tmp,
           readLock: () => ({ ...liveLock, url: 'http://localhost:4999' }),
           isAlive: () => true,
         },
@@ -474,7 +630,6 @@ describe('MCP stdio shim server resolution', () => {
       resolveMcpKeepaliveWsUrl(
         {
           lockDir,
-          contentDir: tmp,
           readLock: () => liveLock,
           isAlive: () => false,
         },
@@ -486,7 +641,6 @@ describe('MCP stdio shim server resolution', () => {
       resolveMcpKeepaliveWsUrl(
         {
           lockDir,
-          contentDir: tmp,
           portOverride: '5123',
           readLock: () => null,
           isAlive: () => false,
@@ -591,6 +745,7 @@ describe('startMcpShim lifecycle', () => {
     await expect(
       startMcpShim({
         lockDir,
+        projectDir: tmp,
         contentDir: tmp,
         readLock: () => liveLock,
         isAlive: () => true,

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { expect, test, vi } from 'vitest';
-import { bootServer } from './boot.ts';
+import { bootServer } from '../../../test-support/boot-server.test-helper.ts';
 import { ConfigSchema } from './config/schema.ts';
 import { scanGlobalInPlaceSkillsAsync } from './in-place-skills.ts';
 

@@ -3115,8 +3115,8 @@ msgstr "{displayName} 연결 실패. 잠시 후 다시 시도하세요."
 msgid "Couldn't reach {displayName} — try again?"
 msgstr "{displayName} 연결 실패. 다시 시도할까요?"
 
-msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-msgstr "협업 서버 연결 실패: {errorDetail}. <0>{cliCommand} status</0> 실행 또는 <1>.ok/local/last-spawn-error.log</1> 확인."
+msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or collect logs with <1>{cliCommand} diagnose bundle</1>."
+msgstr "협업 서버 연결 실패: {errorDetail}. <0>{cliCommand} status</0>를 시도하거나 <1>{cliCommand} diagnose bundle</1>로 로그를 수집하세요."
 
 msgid "Couldn't reach GitHub. Try again?"
 msgstr "GitHub에 연결할 수 없습니다. 다시 시도할까요?"

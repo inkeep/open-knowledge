@@ -1,9 +1,3 @@
-import {
-  logsCurrentPath as serverLogsCurrentPath,
-  logsPreviousPath as serverLogsPreviousPath,
-  spansCurrentPath as serverSpansCurrentPath,
-  spansPreviousPath as serverSpansPreviousPath,
-} from '@inkeep/open-knowledge-server';
 import { describe, expect, test } from 'vitest';
 import {
   lossCaptureCurrentPath as serverLossCaptureCurrentPath,
@@ -15,10 +9,6 @@ describe('CLI bundle path helpers — parity with the server writers', () => {
   const fixtures = ['/tmp/content', '/Users/dev/projects/foo', '/var/data/with spaces/dir'];
 
   const pairs = {
-    spansCurrentPath: serverSpansCurrentPath,
-    spansPreviousPath: serverSpansPreviousPath,
-    logsCurrentPath: serverLogsCurrentPath,
-    logsPreviousPath: serverLogsPreviousPath,
     lossCaptureCurrentPath: serverLossCaptureCurrentPath,
     lossCapturePreviousPath: serverLossCapturePreviousPath,
   } satisfies Record<keyof typeof _pathHelpersForTests, (contentDir: string) => string>;

@@ -8,7 +8,7 @@ import * as encoding from 'lib0/encoding';
 import { afterAll, describe, expect, test } from 'vitest';
 import { WebSocket as WsClient } from 'ws';
 import { messageYjsUpdate } from 'y-protocols/sync';
-import { type BootedServer, bootServer } from './boot.ts';
+import { type BootedServer, bootServer } from '../../../test-support/boot-server.test-helper.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
 
 async function bootTestServer(): Promise<{ booted: BootedServer; contentDir: string }> {
