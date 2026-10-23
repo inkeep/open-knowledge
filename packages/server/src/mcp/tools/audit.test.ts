@@ -1,11 +1,16 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import type { AuditDeps } from './audit.ts';
 import { DESCRIPTION, register } from './audit.ts';
 import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
+import { register as registerLint } from './lint.ts';
 import type { ServerInstance } from './shared.ts';
 import {
   AUDIT_FILE_CAP,
@@ -30,7 +35,7 @@ interface RegisteredTool {
   name: string;
   description: string;
   annotations?: Record<string, unknown>;
-  handler: (args: AuditHandlerArgs) => Promise<ToolResult>;
+  handler: (args: AuditHandlerArgs, signal?: AbortSignal) => Promise<ToolResult>;
 }
 
 function createFakeServer() {
@@ -39,13 +44,13 @@ function createFakeServer() {
     registerTool(
       name: string,
       cfg: { description?: string; annotations?: Record<string, unknown> },
-      handler: (args: AuditHandlerArgs) => Promise<ToolResult>,
+      handler: (args: AuditHandlerArgs, extra: { signal: AbortSignal }) => Promise<ToolResult>,
     ) {
       registered = {
         name,
         description: cfg.description ?? '',
         annotations: cfg.annotations,
-        handler,
+        handler: (args, signal = new AbortController().signal) => handler(args, { signal }),
       };
     },
   } as unknown as ServerInstance;
@@ -280,6 +285,61 @@ describe('audit — registration + DESCRIPTION', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toBe(hocuspocusNotRunningError());
   });
+});
+
+describe('audit request lifetime', () => {
+  test('honors the MCP request cancellation signal', async () => {
+    const { server, getTool } = createFakeServer();
+    register(server, makeDeps(baseUrl, tmpDir));
+    const signal = AbortSignal.abort(new DOMException('Caller deadline expired', 'TimeoutError'));
+
+    const result = await getTool().handler({}, signal);
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('Caller deadline expired');
+  });
+
+  test('real MCP project scans can finish after the old 30-second HTTP deadline', async () => {
+    const slowServer = await startFetchTestServer({
+      async fetch() {
+        await delay(31_000);
+        return Response.json({
+          ok: true,
+          files: [],
+          fileCount: 1,
+          errorCount: 0,
+          warningCount: 0,
+          warnings: [],
+        });
+      },
+    });
+    const mcp = new McpServer({ name: 'audit-deadline-test', version: '1.0.0' });
+    const client = new Client({ name: 'audit-deadline-client', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    try {
+      register(mcp, makeDeps(`http://127.0.0.1:${slowServer.port}`, tmpDir));
+      registerLint(mcp, makeDeps(`http://127.0.0.1:${slowServer.port}`, tmpDir));
+      await Promise.all([mcp.connect(serverTransport), client.connect(clientTransport)]);
+
+      const results = await Promise.all(
+        ['audit', 'lint'].map((name) =>
+          client.callTool({ name, arguments: {} }, undefined, { timeout: 45_000 }),
+        ),
+      );
+
+      for (const result of results) {
+        expect(result.isError ?? false).toBe(false);
+        expect(result.structuredContent).toMatchObject({
+          fileCount: 1,
+          errorCount: 0,
+          warningCount: 0,
+        });
+      }
+    } finally {
+      slowServer.stop();
+      await Promise.all([client.close(), mcp.close()]);
+    }
+  }, 60_000);
 });
 
 describe('audit — unified project audit', () => {

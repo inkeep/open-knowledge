@@ -378,7 +378,16 @@ export function apiTarget(url: string, local: LocalApiDispatch | undefined): Api
 }
 
 export function isTimeoutError(err: unknown): boolean {
-  return err instanceof Error && err.name === 'TimeoutError';
+  return (
+    err instanceof Error &&
+    (err.name === 'TimeoutError' ||
+      [err, err.cause].some(
+        (cause) =>
+          cause instanceof Error &&
+          'code' in cause &&
+          (cause.code === 'UND_ERR_HEADERS_TIMEOUT' || cause.code === 'UND_ERR_BODY_TIMEOUT'),
+      ))
+  );
 }
 
 export function serverRequestFailure(err: unknown, opts?: { mutating?: boolean }): string {
@@ -435,9 +444,19 @@ async function localApiCall(
   return includeHttpStatus ? { ...normalized, httpStatus: raw.status } : normalized;
 }
 
+export function httpGet(
+  base: string,
+  path: string,
+  signal: AbortSignal,
+): Promise<{ ok: boolean; [key: string]: unknown }>;
+export function httpGet(
+  base: ApiTarget,
+  path: string,
+): Promise<{ ok: boolean; [key: string]: unknown }>;
 export async function httpGet(
   base: ApiTarget,
   path: string,
+  signal?: AbortSignal,
 ): Promise<{ ok: boolean; [key: string]: unknown }> {
   if (typeof base !== 'string') {
     const local = await localApiCall(base.local, 'GET', path, undefined, true);
@@ -446,7 +465,7 @@ export async function httpGet(
   }
   let res: Response;
   try {
-    res = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(30_000) });
+    res = await fetch(`${base}${path}`, { signal: signal ?? AbortSignal.timeout(30_000) });
   } catch (err) {
     return { ok: false, error: serverRequestFailure(err, { mutating: false }) };
   }

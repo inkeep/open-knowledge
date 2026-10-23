@@ -48,8 +48,18 @@ function captureRegistration<TDeps>(
 ): Captured {
   let captured: Captured | null = null;
   const server = {
-    registerTool(_name: string, cfg: Captured['cfg'], handler: AnyHandler) {
-      captured = { cfg, handler };
+    registerTool(
+      _name: string,
+      cfg: Captured['cfg'],
+      handler: (
+        args: Record<string, unknown>,
+        extra: { signal: AbortSignal },
+      ) => Promise<ToolResult>,
+    ) {
+      captured = {
+        cfg,
+        handler: (args) => handler(args, { signal: new AbortController().signal }),
+      };
     },
     tool() {
       throw new Error('not used');

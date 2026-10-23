@@ -29,6 +29,7 @@ export const DESCRIPTION = [
   'ran names selected `markdownlint`, `frontmatter`, `okf`, `links`. A family absent from `ran` was not checked. A selected family remains in ran if degraded; warnings explain why and it may still have contributed findings. okf covers document and project-tree OKF checks here.',
   "Broken links are reported under the source doc. Default-on validation.suppressLogLinkAdvisories omits links inside lowercase log.md/log.mdx at any depth; LOG.md is ordinary. brokenLinkSuppression reports reason reserved-log-policy and count without paths/hrefs. Logs are append-only history: never rewrite old entries to clear links. links({kind:'dead'}) reads raw state.",
   'Diagnostics carry source, code, message, 0-based LSP range (link columns approximate) and severity. Broken links default to warning; validation.links can raise/hide them. Only problematic files are listed; fileCount/errorCount/warningCount reflect full scan. Output is capped at 10 files × 10 diagnostics each and project-wide at 10 warnings; omittedWarningCount reports dropped warnings. Narrow path reduces competing files; per-file caps still apply. Follow runtime hints for document lint and raw dead links; project-tree OKF findings remain capped.',
+  'Large project scans can exceed host or transport timeouts. If a scan times out, narrow `path` to a file or folder and retry.',
   'Nothing is modified. Auto-fix document lint with lint({document,fix:true}); fix broken links with edit/write.',
 ].join('\n');
 
@@ -123,7 +124,7 @@ export function register(server: ServerInstance, deps: AuditDeps): void {
         idempotentHint: true,
       },
     },
-    async (args: AuditArgs) => {
+    async (args: AuditArgs, { signal }) => {
       const context = await resolveProjectServerContext(
         deps.resolveCwd,
         deps.config,
@@ -133,14 +134,14 @@ export function register(server: ServerInstance, deps: AuditDeps): void {
       if (!context.ok) return textResult(`Error: ${context.error}`, true);
       const { cwd, url } = context;
       if (!url) return textResult(hocuspocusNotRunningError(), true);
-      return runAudit(args.path, url, cwd);
+      return runAudit(args.path, url, cwd, signal);
     },
   );
 }
 
-async function runAudit(path: string | undefined, url: string, cwd: string) {
+async function runAudit(path: string | undefined, url: string, cwd: string, signal: AbortSignal) {
   const query = path ? `?path=${encodeURIComponent(path)}` : '';
-  const result = await httpGet(url, `/api/audit${query}`);
+  const result = await httpGet(url, `/api/audit${query}`, signal);
   if (!result.ok) return textResult(`Error: ${String(result.error)}`, true);
   const { ok: _ok, ...rest } = result;
   const data = rest as AuditResponsePayload;

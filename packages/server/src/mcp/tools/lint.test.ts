@@ -26,7 +26,7 @@ interface RegisteredTool {
   name: string;
   description: string;
   annotations?: Record<string, unknown>;
-  handler: (args: LintHandlerArgs) => Promise<ToolResult>;
+  handler: (args: LintHandlerArgs, signal?: AbortSignal) => Promise<ToolResult>;
 }
 
 function createFakeServer() {
@@ -35,13 +35,13 @@ function createFakeServer() {
     registerTool(
       name: string,
       cfg: { description?: string; annotations?: Record<string, unknown> },
-      handler: (args: LintHandlerArgs) => Promise<ToolResult>,
+      handler: (args: LintHandlerArgs, extra: { signal: AbortSignal }) => Promise<ToolResult>,
     ) {
       registered = {
         name,
         description: cfg.description ?? '',
         annotations: cfg.annotations,
-        handler,
+        handler: (args, signal = new AbortController().signal) => handler(args, { signal }),
       };
     },
   } as unknown as ServerInstance;
@@ -57,6 +57,17 @@ function createFakeServer() {
 function makeDeps(serverUrl: string | undefined, cwdDir: string): LintDeps {
   return { serverUrl, config: BASE_CONFIG, resolveCwd: async () => cwdDir };
 }
+
+test('project-wide lint honors the MCP request cancellation signal', async () => {
+  const { server, getTool } = createFakeServer();
+  register(server, makeDeps(baseUrl, tmpDir));
+  const signal = AbortSignal.abort(new DOMException('Caller deadline expired', 'TimeoutError'));
+
+  const result = await getTool().handler({}, signal);
+
+  expect(result.isError).toBe(true);
+  expect(result.content[0]?.text).toContain('Caller deadline expired');
+});
 
 let testServer: FetchTestServer;
 let baseUrl: string;

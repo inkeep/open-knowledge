@@ -49,6 +49,7 @@ export const DESCRIPTION = [
   'ran lists selected `markdownlint`, `frontmatter` and document-level `okf` families. A family absent from `ran` was not checked. Project-tree OKF checks and link validation run only through audit.',
   'Findings carry source, code, message, 0-based LSP range and severity; only problematic files are listed. Counts reflect the full scan. Project output is capped at 10 files × 10 diagnostics each and project-wide at 10 warnings; omittedWarningCount reports dropped warnings. Narrow path reduces competing files; per-file caps still apply. Follow truncation recovery text.',
   'Configure lint in Settings → Plugins and native .markdownlint.* rules.',
+  'If a project-wide scan times out, narrow `path` to a file or folder and retry.',
 ].join('\n');
 
 export const LINT_WARNINGS_DESCRIPTION =
@@ -203,7 +204,7 @@ export function register(server: ServerInstance, deps: LintDeps): void {
         idempotentHint: true,
       },
     },
-    async (args: LintArgs) => {
+    async (args: LintArgs, { signal }) => {
       const context = await resolveProjectServerContext(
         deps.resolveCwd,
         deps.config,
@@ -226,7 +227,7 @@ export function register(server: ServerInstance, deps: LintDeps): void {
 
       return args.document !== undefined
         ? lintSingleDoc(args.document, url, cwd)
-        : lintAudit(args.path, url, cwd);
+        : lintAudit(args.path, url, cwd, signal);
     },
   );
 }
@@ -374,9 +375,9 @@ async function lintSingleDoc(document: string, url: string, cwd: string) {
   return textPlusStructured(textLines.join('\n'), structured);
 }
 
-async function lintAudit(path: string | undefined, url: string, cwd: string) {
+async function lintAudit(path: string | undefined, url: string, cwd: string, signal: AbortSignal) {
   const query = path ? `?path=${encodeURIComponent(path)}` : '';
-  const result = await httpGet(url, `/api/lint/audit${query}`);
+  const result = await httpGet(url, `/api/lint/audit${query}`, signal);
   if (!result.ok) return textResult(`Error: ${String(result.error)}`, true);
   const { ok: _ok, ...rest } = result;
   const data = rest as LintAuditPayload;

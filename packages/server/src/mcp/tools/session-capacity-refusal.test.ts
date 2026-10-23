@@ -121,8 +121,15 @@ describe('MCP write paths relaying an agent-session capacity refusal', () => {
       ['lint', registerLint],
     ] as const) {
       const server = {
-        registerTool(_name: string, _cfg: unknown, toolHandler: Handler) {
-          handlers.set(name, toolHandler);
+        registerTool(
+          _name: string,
+          _cfg: unknown,
+          toolHandler: (
+            args: Record<string, unknown>,
+            extra: { signal: AbortSignal },
+          ) => Promise<ToolResult>,
+        ) {
+          handlers.set(name, (args) => toolHandler(args, { signal: new AbortController().signal }));
         },
       } as unknown as ServerInstance;
       register(server, deps);

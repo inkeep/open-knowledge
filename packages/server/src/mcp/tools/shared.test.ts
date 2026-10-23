@@ -562,6 +562,20 @@ describe('httpPost', () => {
 });
 
 describe('a request that runs out of time', () => {
+  test.each(['UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'])(
+    'recognizes a fetch transport timeout: %s',
+    async (code) => {
+      const cause = Object.assign(new Error('Transport deadline expired'), { code });
+      vi.stubGlobal('fetch', () => Promise.reject(new TypeError('fetch failed', { cause })));
+      try {
+        const result = await httpGet('http://localhost:1', '/anything');
+        expect(result.error).toBe('Server timed out: fetch failed.');
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
   const timedOutWriting =
     'Server timed out: The operation was aborted due to timeout. The server may still have applied the request, so check before retrying.';
   const timedOutReading = 'Server timed out: The operation was aborted due to timeout.';
