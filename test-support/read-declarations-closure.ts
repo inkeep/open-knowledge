@@ -135,5 +135,7 @@ export function derivedReads(
     }
     files.push(...matched);
   }
-  return deriveReadClosure(okRoot, [...new Set(files)].sort()).filter((path) => listed.has(path));
+  const matchedFiles = [...new Set(files)].sort();
+  const imported = deriveReadClosure(okRoot, matchedFiles).filter((path) => listed.has(path));
+  return [...new Set([...matchedFiles, ...imported])].sort();
 }

@@ -1,7 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, test } from 'vitest';
-import { deriveReadClosure, derivedReads } from './read-declarations-closure';
+import { derivedReads, deriveReadClosure } from './read-declarations-closure';
+import { declares } from './read-declarations-match';
 import { createTempDirFactory } from './temp-dir.test-helper';
 
 const makeTempDir = createTempDirFactory(afterAll);
@@ -145,5 +146,37 @@ describe('what a declared root loads, derived from its module graph', () => {
     expect(() => derivedReads(root, ['missing.mjs'], listed, everyPath)).toThrow(
       'the root glob "missing.mjs" matches no file in this tree',
     );
+  });
+
+  test('every listed file a root glob matches is a derived read, so a shell or Python script root covers itself and nothing it runs', () => {
+    const files = {
+      'scripts/start.mjs': "import './helper.mjs';\n",
+      'scripts/helper.mjs': 'export {};\n',
+      'scripts/run.sh': '#!/bin/sh\nnode scripts/ran.mjs\n',
+      'scripts/ran.mjs': 'export {};\n',
+      'scripts/probe.py': 'print(1)\n',
+      'tools/check.sh': 'exit 0\n',
+      'tools/check.ts': 'export {};\n',
+      'tools/unlisted.sh': 'exit 0\n',
+    };
+    const root = tree(files);
+    const listed = new Set(Object.keys(files).filter((path) => path !== 'tools/unlisted.sh'));
+    const globMatches = (glob: string, path: string): boolean =>
+      declares({ include: [glob] }, path);
+    expect(
+      derivedReads(
+        root,
+        ['scripts/start.mjs', 'scripts/run.sh', 'scripts/probe.py', 'tools/*'],
+        listed,
+        globMatches,
+      ),
+    ).toEqual([
+      'scripts/helper.mjs',
+      'scripts/probe.py',
+      'scripts/run.sh',
+      'scripts/start.mjs',
+      'tools/check.sh',
+      'tools/check.ts',
+    ]);
   });
 });
