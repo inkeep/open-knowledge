@@ -2069,6 +2069,9 @@ msgstr "karakter"
 msgid "Chat history"
 msgstr "Riwayat chat"
 
+msgid "Chat history could not be loaded. Try opening the chat again from Chat history."
+msgstr "Riwayat chat tidak dapat dimuat. Coba buka kembali chat dari Riwayat chat."
+
 msgid "Chat name"
 msgstr "Nama obrolan"
 

@@ -2073,6 +2073,9 @@ msgstr "문자"
 msgid "Chat history"
 msgstr "채팅 기록"
 
+msgid "Chat history could not be loaded. Try opening the chat again from Chat history."
+msgstr "채팅 기록을 불러올 수 없습니다. 채팅 기록에서 채팅을 다시 열어 보세요."
+
 msgid "Chat name"
 msgstr "채팅 이름"
 

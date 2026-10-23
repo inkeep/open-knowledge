@@ -2073,6 +2073,9 @@ msgstr "أحرف"
 msgid "Chat history"
 msgstr "سجل الدردشة"
 
+msgid "Chat history could not be loaded. Try opening the chat again from Chat history."
+msgstr "تعذّر تحميل سجل الدردشة. حاول فتح الدردشة مجددًا من سجل الدردشة."
+
 msgid "Chat name"
 msgstr "اسم المحادثة"
 

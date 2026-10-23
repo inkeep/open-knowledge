@@ -5,12 +5,12 @@ import type {
   ThreadEvent,
   ThreadServerFrame,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
-import { afterEach, describe, expect, onTestFailed, test } from 'vitest';
+import { afterEach, describe, expect, onTestFailed, test, vi } from 'vitest';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { getLogger } from '../logger.ts';
 import { AcpPermissionStore } from './permissions.ts';
 import { AcpRegistry } from './registry.ts';
-import { AcpThreadManager } from './thread-manager.ts';
+import { AcpThreadManager, ThreadOpError } from './thread-manager.ts';
 import { attachAcpThreadSocket } from './thread-socket.ts';
 
 const log = getLogger('acp-thread-socket-test');
@@ -483,44 +483,49 @@ describe('/collab/thread socket — history ops', () => {
     socket.close();
   }, 45_000);
 
-  test('archived subscribe replays the transcript through the socket', async () => {
-    const localDir = tmp();
-    writeFixtureAgent(localDir, 'resume');
-    const manager = makeManager(tmp(), localDir);
-    await manager.init();
-    const socket = attachFakeSocket(manager);
+  test.each(['fresh', 'same'])(
+    'archived subscribe replays the transcript through the %s socket',
+    async (connection) => {
+      const localDir = tmp();
+      writeFixtureAgent(localDir, 'resume');
+      const manager = makeManager(tmp(), localDir);
+      await manager.init();
+      const socket = attachFakeSocket(manager);
 
-    socket.emit(
-      JSON.stringify({
-        op: 'create',
-        reqId: 'c1',
-        agent: { source: 'custom', id: 'fixture' },
-        prompt: 'hello world',
-      }),
-    );
-    const created = await socket.awaitFrame('created');
-    const threadId = created.info.threadId;
-    await waitStatus(manager, threadId, 'ready');
-    socket.emit(JSON.stringify({ op: 'close', threadId }));
-    await waitStatus(manager, threadId, 'exited');
+      socket.emit(
+        JSON.stringify({
+          op: 'create',
+          reqId: 'c1',
+          agent: { source: 'custom', id: 'fixture' },
+          prompt: 'hello world',
+        }),
+      );
+      const created = await socket.awaitFrame('created');
+      const threadId = created.info.threadId;
+      await waitStatus(manager, threadId, 'ready');
+      await manager.closeThread(threadId);
 
-    const viewer = attachFakeSocket(manager);
-    viewer.emit(JSON.stringify({ op: 'subscribe', threadId, sinceSeq: 0 }));
-    await viewer.awaitFrame('subscribed');
-    const events = await viewer.awaitFrame('events');
-    expect(events.fromSeq).toBe(0);
-    const deadline = Date.now() + 10_000;
-    for (;;) {
-      const all = viewer.frames
-        .filter((f): f is Extract<ThreadServerFrame, { op: 'events' }> => f.op === 'events')
-        .flatMap((f) => f.events);
-      if (all.some((e) => e.kind === 'user_message' && e.content === 'hello world')) break;
-      if (Date.now() > deadline) throw new Error('replay never delivered the user message');
-      await new Promise((r) => setTimeout(r, 25));
-    }
-    socket.close();
-    viewer.close();
-  }, 45_000);
+      const viewer = connection === 'same' ? socket : attachFakeSocket(manager);
+      const subscribed = viewer.nextFrame('subscribed');
+      const replay = viewer.nextFrame('events');
+      viewer.emit(JSON.stringify({ op: 'subscribe', threadId, sinceSeq: 0 }));
+      await subscribed;
+      const events = await replay;
+      expect(events.fromSeq).toBe(0);
+      const deadline = Date.now() + 10_000;
+      for (;;) {
+        const all = viewer.frames
+          .filter((f): f is Extract<ThreadServerFrame, { op: 'events' }> => f.op === 'events')
+          .flatMap((f) => f.events);
+        if (all.some((e) => e.kind === 'user_message' && e.content === 'hello world')) break;
+        if (Date.now() > deadline) throw new Error('replay never delivered the user message');
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      socket.close();
+      viewer.close();
+    },
+    45_000,
+  );
 });
 
 describe('/collab/thread socket — steer', () => {
@@ -802,7 +807,8 @@ describe('/collab/thread socket — crash-recovered replay bound', () => {
 
     const failing = attachFakeSocket(manager);
     failing.emit(JSON.stringify({ op: 'subscribe', threadId, sinceSeq: 0 }));
-    await failing.awaitFrame('error');
+    const failure = await failing.awaitFrame('error');
+    expect(failure).toMatchObject({ code: 'internal', threadId });
     expect(failing.frames.map((f) => f.op)).not.toContain('subscribed');
     failing.close();
 
@@ -828,4 +834,83 @@ describe('/collab/thread socket — crash-recovered replay bound', () => {
     expect(socket.frames.map((f) => f.op)).not.toContain('subscribed');
     socket.close();
   }, 45_000);
+
+  test.each(['succeeds', 'fails', 'is refused'])(
+    'a superseded in-flight subscribe that %s cannot replay or retain a second listener',
+    async (outcome) => {
+      const localDir = tmp();
+      const threadId = '0a1b2c3d-0000-4000-8000-0000000000c3';
+      writeCrashStaleThread(localDir, threadId, MULTI_CHUNK_EVENTS, 2);
+      const manager = makeManager(tmp(), localDir);
+      await manager.init();
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const finished = Promise.withResolvers<void>();
+      const replacementFinished = Promise.withResolvers<void>();
+      const obsoleteError = new Error('obsolete log read failed');
+      const realSubscribe = manager.subscribe.bind(manager);
+      const subscribe = vi
+        .spyOn(manager, 'subscribe')
+        .mockImplementation(async (...args) => {
+          try {
+            return await realSubscribe(...args);
+          } finally {
+            replacementFinished.resolve();
+          }
+        })
+        .mockImplementationOnce(async (...args) => {
+          entered.resolve();
+          await release.promise;
+          try {
+            if (outcome === 'fails') throw obsoleteError;
+            if (outcome === 'is refused') throw new ThreadOpError('unknown-thread', 'missing');
+            return await realSubscribe(...args);
+          } finally {
+            finished.resolve();
+          }
+        });
+      const unsubscribe = vi.spyOn(manager, 'unsubscribe');
+      const loggedError = vi.spyOn(log, 'error');
+      const socket = attachFakeSocket(manager);
+      try {
+        socket.emit(JSON.stringify({ op: 'subscribe', threadId, sinceSeq: 0 }));
+        await entered.promise;
+        const latest = socket.nextFrame('subscribed', (frame) => frame.fromSeq === 1);
+        socket.emit(JSON.stringify({ op: 'subscribe', threadId, sinceSeq: 1 }));
+        expect(subscribe).toHaveBeenCalledTimes(2);
+        await latest;
+        release.resolve();
+        await finished.promise;
+        await replacementFinished.promise;
+        await Promise.resolve();
+
+        expect(socket.frames.filter((frame) => frame.op === 'subscribed')).toEqual([
+          expect.objectContaining({ fromSeq: 1 }),
+        ]);
+        expect(socket.frames.filter((frame) => frame.op === 'error')).toEqual([]);
+        if (outcome === 'fails') {
+          expect(loggedError).toHaveBeenCalledWith(
+            { err: obsoleteError, threadId },
+            '[acp-thread-socket] superseded subscription failed',
+          );
+        } else {
+          expect(loggedError).not.toHaveBeenCalled();
+        }
+        const oldSink = subscribe.mock.calls[0][2];
+        expect(unsubscribe.mock.calls.filter(([, sink]) => sink === oldSink)).toHaveLength(2);
+        expect(unsubscribe).not.toHaveBeenCalledWith(threadId, subscribe.mock.calls[1][2]);
+        const update = socket.nextFrame('info');
+        await manager.renameThread(threadId, 'Renamed');
+        await update;
+        expect(socket.frames.filter((frame) => frame.op === 'info')).toHaveLength(1);
+      } finally {
+        release.resolve();
+        socket.close();
+        subscribe.mockRestore();
+        unsubscribe.mockRestore();
+        loggedError.mockRestore();
+      }
+    },
+    45_000,
+  );
 });

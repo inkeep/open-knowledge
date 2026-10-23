@@ -2069,6 +2069,9 @@ msgstr "caracteres"
 msgid "Chat history"
 msgstr "Histórico de chats"
 
+msgid "Chat history could not be loaded. Try opening the chat again from Chat history."
+msgstr "Não foi possível carregar o histórico do chat. Tente abrir o chat novamente pelo Histórico de chats."
+
 msgid "Chat name"
 msgstr "Nome do chat"
 

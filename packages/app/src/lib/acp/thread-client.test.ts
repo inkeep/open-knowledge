@@ -5,11 +5,123 @@ import {
   type ThreadInfo,
   type ThreadServerFrame,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import { toast } from 'sonner';
 import { describe, expect, test, vi } from 'vitest';
 import fixture from '../../../../../test-support/fixtures/codex-legacy-warning-envelopes.json' with {
   type: 'json',
 };
 import { AgentThreadClient, ThreadChannelUnavailableError } from './thread-client';
+
+describe('archived history subscription failures', () => {
+  const info: ThreadInfo = {
+    threadId: 'history-load',
+    agent: { id: 'a', name: 'A', source: 'custom' },
+    title: 'History',
+    status: 'exited',
+    createdAt: 1,
+    lastActivityAt: 1,
+    lastSeq: 0,
+    modes: null,
+    configOptions: null,
+    archived: true,
+  };
+
+  function openHistory() {
+    const client = new AgentThreadClient();
+    const sent: Array<Record<string, unknown>> = [];
+    const internals = client as unknown as { ws: unknown };
+    internals.ws = {
+      readyState: 1,
+      send: (raw: string) => sent.push(JSON.parse(raw) as Record<string, unknown>),
+    };
+    const frame = (value: ThreadServerFrame) => client.receiveServerFrame(JSON.stringify(value));
+    frame({ op: 'threads', threads: [info] });
+    client.openArchivedThread(info.threadId);
+    return { client, sent, frame };
+  }
+
+  test('a failed subscription closes the loading tab and can be retried from history', () => {
+    const error = vi.spyOn(toast, 'error').mockImplementation(() => 'toast');
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { client, sent, frame } = openHistory();
+      frame({ op: 'error', code: 'internal', message: 'internal error', threadId: info.threadId });
+
+      expect(client.getOpenTabs()).toEqual([]);
+      expect(client.getThread(info.threadId)?.events).toEqual([]);
+      expect(error).toHaveBeenCalledWith(
+        'Chat history could not be loaded. Try opening the chat again from Chat history.',
+      );
+      expect(warning).toHaveBeenCalledWith(
+        '[agent-threads] server error frame:',
+        'internal',
+        'internal error',
+      );
+      client.openArchivedThread(info.threadId);
+      expect(client.getOpenTabs()).toEqual([info]);
+      expect(sent.filter((value) => value.op === 'subscribe')).toHaveLength(2);
+      expect(sent).toContainEqual({ op: 'unsubscribe', threadId: info.threadId });
+    } finally {
+      error.mockRestore();
+      warning.mockRestore();
+    }
+  });
+
+  test.each(['before opening', 'after opening'])(
+    'delayed terminal frames %s do not replace the archived transcript',
+    (timing) => {
+      const { client, sent, frame } = openHistory();
+      const message: ThreadEvent = { kind: 'user_message', content: 'original message', ts: 1 };
+      const exited: ThreadEvent = { kind: 'status', status: 'exited', ts: 2 };
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        frame({ op: 'info', info: { ...info, archived: false, status: 'ready' } });
+        frame({ op: 'events', threadId: info.threadId, fromSeq: 0, events: [message] });
+        frame({ op: 'info', info: { ...info, lastSeq: 1 } });
+        if (timing === 'before opening') {
+          frame({ op: 'event', threadId: info.threadId, seq: 1, event: exited });
+        }
+
+        client.openArchivedThread(info.threadId);
+        if (timing === 'after opening') {
+          frame({ op: 'event', threadId: info.threadId, seq: 1, event: exited });
+        }
+
+        expect(sent.at(-1)).toEqual({ op: 'subscribe', threadId: info.threadId, sinceSeq: 0 });
+        expect(client.getThread(info.threadId)?.events).toEqual([]);
+        frame({
+          op: 'subscribed',
+          threadId: info.threadId,
+          fromSeq: 0,
+          info: { ...info, lastSeq: 1 },
+        });
+        frame({ op: 'events', threadId: info.threadId, fromSeq: 0, events: [message, exited] });
+        expect(client.getThread(info.threadId)?.events).toEqual([message, exited]);
+      } finally {
+        warning.mockRestore();
+      }
+    },
+  );
+
+  test('a non-subscription error preserves a completely replayed transcript', () => {
+    const error = vi.spyOn(toast, 'error').mockImplementation(() => 'toast');
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { client, frame } = openHistory();
+      frame({ op: 'subscribed', threadId: info.threadId, fromSeq: 0, info });
+      const event: ThreadEvent = { kind: 'user_message', content: 'kept', ts: 1 };
+      frame({ op: 'events', threadId: info.threadId, fromSeq: 0, events: [event] });
+      frame({ op: 'error', code: 'internal', message: 'rename failed', threadId: info.threadId });
+
+      expect(client.getOpenTabs()).toEqual([info]);
+      expect(client.getThread(info.threadId)?.events).toEqual([event]);
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+      warning.mockRestore();
+    }
+  });
+});
 
 describe('AgentThreadClient store snapshots', () => {
   test('getThreads returns a referentially stable snapshot until the store changes', () => {
@@ -1155,6 +1267,7 @@ describe('a refused resume keeps the archived thread open', () => {
     const frame = (f: ThreadServerFrame) => internals.handleFrame.call(client, f);
     frame({ op: 'threads', threads: [archivedInfo] });
     client.openArchivedThread('t1');
+    frame({ op: 'subscribed', threadId: 't1', fromSeq: 0, info: archivedInfo });
     frame({ op: 'events', threadId: 't1', fromSeq: 0, events: [ev(0), ev(1), ev(2), ev(3)] });
     return { client, sent, frame };
   }

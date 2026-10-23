@@ -2069,6 +2069,9 @@ msgstr "অক্ষর"
 msgid "Chat history"
 msgstr "চ্যাটের ইতিহাস"
 
+msgid "Chat history could not be loaded. Try opening the chat again from Chat history."
+msgstr "চ্যাটের ইতিহাস লোড করা যায়নি। চ্যাটের ইতিহাস থেকে চ্যাটটি আবার খোলার চেষ্টা করুন।"
+
 msgid "Chat name"
 msgstr "চ্যাটের নাম"
 

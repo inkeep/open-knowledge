@@ -2073,6 +2073,9 @@ msgstr "字符"
 msgid "Chat history"
 msgstr "聊天记录"
 
+msgid "Chat history could not be loaded. Try opening the chat again from Chat history."
+msgstr "无法加载聊天记录。请尝试从“聊天记录”重新打开此聊天。"
+
 msgid "Chat name"
 msgstr "对话名称"
 

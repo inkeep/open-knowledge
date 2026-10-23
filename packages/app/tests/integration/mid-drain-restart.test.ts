@@ -9,6 +9,7 @@ import {
   createRestartableServer,
   pollDiskContentStable,
   pollUntil,
+  refreshServerInfoAndAwaitMismatch,
   seedPoolServerInstanceId,
 } from './test-harness';
 
@@ -64,6 +65,7 @@ describe('T11: Mid-drain server restart', () => {
     server = await server.killAndRestartOnSamePort({ downtimeMs: 300 });
     cleanups.unshift(() => server.shutdown());
 
+    await refreshServerInfoAndAwaitMismatch(pool, `http://127.0.0.1:${server.port}`);
     await pollUntil(() => pool.getActive()?.provider.isSynced === true, 10_000, 50);
 
     await wait(500);

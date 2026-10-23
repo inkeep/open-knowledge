@@ -2073,6 +2073,9 @@ msgstr "حروف"
 msgid "Chat history"
 msgstr "چیٹ کی سرگزشت"
 
+msgid "Chat history could not be loaded. Try opening the chat again from Chat history."
+msgstr "چیٹ کی سرگزشت لوڈ نہیں ہو سکی۔ چیٹ کی سرگزشت سے چیٹ دوبارہ کھولنے کی کوشش کریں۔"
+
 msgid "Chat name"
 msgstr "چیٹ کا نام"
 

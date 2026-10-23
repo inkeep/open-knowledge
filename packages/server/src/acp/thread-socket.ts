@@ -64,7 +64,7 @@ export function attachAcpThreadSocket(
             return;
           }
           case 'subscribe': {
-            await subscribeTo(frame.threadId, frame.sinceSeq ?? 0);
+            await subscribeTo(frame.threadId, frame.sinceSeq ?? 0, true);
             return;
           }
           case 'resume': {
@@ -203,19 +203,39 @@ export function attachAcpThreadSocket(
           log.error({ err, op: frame.op }, '[acp-thread-socket] frame handling failed');
           sendError('internal', 'internal error', {
             reqId: 'reqId' in frame ? (frame as { reqId?: string }).reqId : undefined,
+            threadId: 'threadId' in frame ? frame.threadId : undefined,
           });
         }
       }
     })();
   });
 
-  const subscribeTo = async (threadId: string, sinceSeq: number): Promise<void> => {
-    if (subscriptions.has(threadId)) return;
-    const sink = (frame: ThreadServerFrame): void => send(frame);
+  const subscribeTo = async (
+    threadId: string,
+    sinceSeq: number,
+    replace = false,
+  ): Promise<void> => {
+    const existing = subscriptions.get(threadId);
+    if (existing !== undefined) {
+      if (!replace) return;
+      manager.unsubscribe(threadId, existing);
+      subscriptions.delete(threadId);
+    }
+    const sink = (frame: ThreadServerFrame): void => {
+      if (subscriptions.get(threadId) === sink) send(frame);
+    };
     subscriptions.set(threadId, sink);
     try {
       await manager.subscribe(threadId, sinceSeq, sink);
+      if (subscriptions.get(threadId) !== sink) manager.unsubscribe(threadId, sink);
     } catch (err) {
+      manager.unsubscribe(threadId, sink);
+      if (subscriptions.get(threadId) !== sink) {
+        if (!(err instanceof ThreadOpError)) {
+          log.error({ err, threadId }, '[acp-thread-socket] superseded subscription failed');
+        }
+        return;
+      }
       subscriptions.delete(threadId);
       if (err instanceof ThreadOpError) {
         sendError(err.code, err.message, { threadId });

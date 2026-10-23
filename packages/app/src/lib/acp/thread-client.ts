@@ -857,6 +857,20 @@ export class AgentThreadClient {
           }
         }
         console.warn('[agent-threads] server error frame:', frame.code, frame.message);
+        if (
+          frame.reqId === undefined &&
+          frame.threadId !== undefined &&
+          this.openedArchived.has(frame.threadId)
+        ) {
+          const state = this.threads.get(frame.threadId);
+          if (state !== undefined && state.lastSeq < state.replayThroughSeq) {
+            this.closeThread(frame.threadId);
+            toast.error(
+              t`Chat history could not be loaded. Try opening the chat again from Chat history.`,
+            );
+            return;
+          }
+        }
         return;
       }
       default:
@@ -867,6 +881,9 @@ export class AgentThreadClient {
   private appendEvents(threadId: string, fromSeq: number, events: readonly ThreadEvent[]): void {
     const state = this.threads.get(threadId);
     if (state === undefined || events.length === 0) return;
+    if (state.info.archived === true && state.replayThroughSeq === Number.POSITIVE_INFINITY) {
+      return;
+    }
     const skip = Math.max(state.lastSeq + 1 - fromSeq, 0);
     if (skip >= events.length) return;
     const fresh = skip === 0 ? events : events.slice(skip);

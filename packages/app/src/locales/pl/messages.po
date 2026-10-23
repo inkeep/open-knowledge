@@ -2073,6 +2073,9 @@ msgstr "znaki"
 msgid "Chat history"
 msgstr "Historia czatu"
 
+msgid "Chat history could not be loaded. Try opening the chat again from Chat history."
+msgstr "Nie udało się wczytać historii czatu. Spróbuj ponownie otworzyć czat z sekcji Historia czatu."
+
 msgid "Chat name"
 msgstr "Nazwa czatu"
 
