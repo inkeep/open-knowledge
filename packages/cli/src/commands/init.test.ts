@@ -3528,6 +3528,9 @@ describe('consent bypass never fabricates its own detection evidence (PRD-8007)'
     fakeHome = join(testDir, 'fakehome');
     mkdirSync(fakeHome, { recursive: true });
     process.env.HOME = fakeHome;
+    vi.stubEnv('XDG_CONFIG_HOME', undefined);
+    vi.stubEnv('CODEX_HOME', undefined);
+    vi.stubEnv('COPILOT_HOME', undefined);
     Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
   });
 
@@ -3535,6 +3538,7 @@ describe('consent bypass never fabricates its own detection evidence (PRD-8007)'
     Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
     if (originalHome === undefined) delete process.env.HOME;
     else process.env.HOME = originalHome;
+    vi.unstubAllEnvs();
     rmSync(testDir, { recursive: true, force: true });
   });
 
@@ -3549,6 +3553,7 @@ describe('consent bypass never fabricates its own detection evidence (PRD-8007)'
   for (const [editorId, resolvePath] of SELF_PROBING) {
     it(`${editorId}: an explicit tick on an absent tool writes nothing`, () => {
       const configPath = resolvePath({ home: fakeHome });
+      expect(configPath).toBe(resolvePath({ home: fakeHome, env: {} }));
       expect(existsSync(dirname(configPath))).toBe(false);
 
       const result = writeEditorMcpConfig(
@@ -3565,6 +3570,7 @@ describe('consent bypass never fabricates its own detection evidence (PRD-8007)'
 
     it(`${editorId}: the tick is still honoured once the tool is really there`, () => {
       const configPath = resolvePath({ home: fakeHome });
+      expect(configPath).toBe(resolvePath({ home: fakeHome, env: {} }));
       mkdirSync(dirname(configPath), { recursive: true });
 
       const result = writeEditorMcpConfig(
