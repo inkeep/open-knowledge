@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import {
   chmodSync,
   cpSync,
@@ -41,9 +41,32 @@ const STALE_STAGING_MTIME = new Date('2001-01-01T00:00:00Z');
 const PERMISSION_BITS_UNENFORCED = process.platform === 'win32' || process.getuid?.() === 0;
 
 const cleanup: string[] = [];
-afterEach(() => {
-  while (cleanup.length > 0) {
-    const path = cleanup.pop();
+const children = new Map<ChildProcess, Promise<Error | undefined>>();
+
+function observeClose(child: ChildProcess): Promise<Error | undefined> {
+  let error: Error | undefined;
+  child.on('error', (cause) => {
+    error = cause;
+  });
+  const closed = new Promise<Error | undefined>((resolve) => {
+    child.once('close', () => {
+      children.delete(child);
+      resolve(error);
+    });
+  });
+  children.set(child, closed);
+  return closed;
+}
+
+afterEach(async () => {
+  const roots = cleanup.splice(0);
+  const pending = [...children];
+  for (const [child] of pending) {
+    if (child.exitCode === null && child.signalCode === null) child.kill();
+  }
+  await Promise.all(pending.map(([, closed]) => closed));
+  while (roots.length > 0) {
+    const path = roots.pop();
     if (path) rmSync(path, { recursive: true, force: true });
   }
 });
@@ -251,12 +274,14 @@ process.stdout.write('composed\\n');
 
 type WriterOutcome =
   | { readonly writer: number; readonly outcome: 'composed' }
-  | { readonly writer: number; readonly outcome: 'hang-guard' }
   | {
       readonly writer: number;
-      readonly outcome: 'failed';
+      readonly outcome: 'failed' | 'hang-guard';
       readonly exitCode: number | null;
+      readonly signal: NodeJS.Signals | null;
+      readonly stdout: string;
       readonly stderr: string;
+      readonly error: Error | undefined;
     };
 
 type DestinationState = 'absent' | 'empty' | 'occupied';
@@ -377,7 +402,7 @@ describe('the lost-publish-race arbiter', () => {
 describe('skill-bundle publish atomicity', () => {
   test(
     'no concurrent reader observes a published bundle directory incomplete',
-    async () => {
+    async ({ signal }) => {
       const root = mkdtempSync(join(tmpdir(), 'ok-skill-atomic-publish-'));
       cleanup.push(root);
       const sourceSkills = defaultPaths().skillsDir;
@@ -437,13 +462,11 @@ describe('skill-bundle publish atomicity', () => {
       const observer = spawn(process.execPath, [observerPath, specPath], {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
+      const closed = observeClose(observer);
       let observerStderr = '';
       observer.stderr.setEncoding('utf-8');
       observer.stderr.on('data', (chunk: string) => {
         observerStderr += chunk;
-      });
-      const exited = new Promise<void>((resolve) => {
-        observer.on('exit', () => resolve());
       });
 
       try {
@@ -454,22 +477,30 @@ describe('skill-bundle publish atomicity', () => {
             stdout += chunk;
             if (stdout.includes('ready')) resolve();
           });
-          observer.on('error', reject);
-          observer.on('exit', () => {
-            reject(new Error(`observer exited before signalling ready: ${observerStderr}`));
+          void closed.then((error) => {
+            reject(
+              new Error(
+                `observer closed before signalling ready: exit=${observer.exitCode}, signal=${observer.signalCode}, stdout=${stdout}, stderr=${observerStderr}`,
+                { cause: error },
+              ),
+            );
           });
         });
 
+        signal.throwIfAborted();
         for (let cycle = 0; cycle < PUBLISH_CYCLES; cycle += 1) {
           buildSkillBundles(paths);
           buildPackSkills(paths);
           buildAgentPluginArtifact(paths);
         }
         writeFileSync(sentinelPath, '', 'utf-8');
-        await exited;
+        const error = await closed;
+        if (error) throw error;
       } finally {
         if (observer.exitCode === null && observer.signalCode === null) observer.kill();
+        await closed;
       }
+      signal.throwIfAborted();
 
       expect(existsSync(resultPath), `observer wrote no result. stderr: ${observerStderr}`).toBe(
         true,
@@ -512,7 +543,7 @@ describe('skill-bundle publish atomicity', () => {
 
   test(
     'concurrent composer processes all succeed and leave one complete published tree',
-    async () => {
+    async ({ signal }) => {
       const root = mkdtempSync(join(tmpdir(), 'ok-skill-writer-race-'));
       cleanup.push(root);
       const sourceSkills = defaultPaths().skillsDir;
@@ -534,15 +565,16 @@ describe('skill-bundle publish atomicity', () => {
         'utf-8',
       );
 
-      const writers = Array.from({ length: CONCURRENT_WRITERS }, () =>
-        spawn(process.execPath, ['--conditions=development', writerPath, specPath], {
+      const writers = Array.from({ length: CONCURRENT_WRITERS }, () => {
+        const writer = spawn(process.execPath, ['--conditions=development', writerPath, specPath], {
           stdio: ['ignore', 'pipe', 'pipe'],
-        }),
-      );
+        });
+        return { writer, closed: observeClose(writer) };
+      });
       let hangGuardFired = false;
       const deadline = setTimeout(() => {
         hangGuardFired = true;
-        for (const writer of writers) {
+        for (const { writer } of writers) {
           if (writer.exitCode === null && writer.signalCode === null) writer.kill();
         }
       }, HANG_GUARD_MS);
@@ -550,7 +582,7 @@ describe('skill-bundle publish atomicity', () => {
       let outcomes: WriterOutcome[];
       try {
         const armed: Array<Promise<void>> = [];
-        const settled = writers.map((writer, index) => {
+        const settled = writers.map(({ writer, closed }, index) => {
           let stdout = '';
           let stderr = '';
           writer.stdout.setEncoding('utf-8');
@@ -561,35 +593,39 @@ describe('skill-bundle publish atomicity', () => {
                 stdout += chunk;
                 if (stdout.includes('armed')) resolve();
               });
-              writer.on('exit', () => resolve());
+              void closed.then(() => resolve());
             }),
           );
           writer.stderr.on('data', (chunk: string) => {
             stderr += chunk;
           });
-          return new Promise<WriterOutcome>((resolve) => {
-            writer.on('exit', (exitCode) => {
-              if (exitCode === 0 && stdout.includes('composed')) {
-                resolve({ writer: index, outcome: 'composed' });
-                return;
-              }
-              resolve(
-                hangGuardFired
-                  ? { writer: index, outcome: 'hang-guard' }
-                  : { writer: index, outcome: 'failed', exitCode, stderr: stderr.slice(-1200) },
-              );
-            });
+          return closed.then((error): WriterOutcome => {
+            if (!hangGuardFired && !error && writer.exitCode === 0 && stdout.includes('composed')) {
+              return { writer: index, outcome: 'composed' };
+            }
+            return {
+              writer: index,
+              outcome: hangGuardFired ? 'hang-guard' : 'failed',
+              exitCode: writer.exitCode,
+              signal: writer.signalCode,
+              stdout,
+              stderr,
+              error,
+            };
           });
         });
         await Promise.all(armed);
+        signal.throwIfAborted();
         writeFileSync(startPath, '', 'utf-8');
         outcomes = await Promise.all(settled);
       } finally {
         clearTimeout(deadline);
-        for (const writer of writers) {
+        for (const { writer } of writers) {
           if (writer.exitCode === null && writer.signalCode === null) writer.kill();
         }
+        await Promise.all(writers.map(({ closed }) => closed));
       }
+      signal.throwIfAborted();
 
       expect
         .soft(
