@@ -6,6 +6,7 @@ import type { AcpThreadManager } from './acp/thread-manager.ts';
 import type { AgentFocusBroadcaster } from './agent-focus.ts';
 import type { AgentPresenceBroadcaster } from './agent-presence.ts';
 import type { AgentSessionManager } from './agent-sessions.ts';
+import type { ServerInspection } from './applied-runtime.ts';
 import { createCollaborationHost } from './collaboration-host.ts';
 import { createContentDispatch } from './http/content-dispatch.ts';
 import { errorResponse } from './http/error-response.ts';
@@ -43,6 +44,7 @@ export interface MountMcpAndApiOptions {
   acpThreadManager?: AcpThreadManager | null;
   ephemeral?: boolean;
   health?: HealthProvider;
+  inspection?: () => ServerInspection;
   nativeApi: NativeApiHandle | undefined;
   ingressPolicy?: IngressPolicy;
 }
@@ -120,6 +122,7 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
 
   const { requestListener } = createHttpApp({
     health: opts.health,
+    inspection: opts.inspection,
     nativeApi: opts.nativeApi,
     mcpDispatch:
       mcpHttpHandler !== undefined

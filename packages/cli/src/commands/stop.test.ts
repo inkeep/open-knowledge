@@ -15,11 +15,30 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { LockState } from './lock-state.ts';
 import {
   buildStopPlan,
+  findLockDirByNumber,
   formatNoTargetMessage,
   probeCollabClients,
   runStop,
   stopCommand,
 } from './stop.ts';
+
+test('legacy numeric lookup retains first port match before PID fallback', async () => {
+  const dirs = ['/tmp/a', '/tmp/b', '/tmp/c'];
+  const inspect = (dir: string) =>
+    dir === dirs[0]
+      ? aliveLock(4242, 3333)
+      : dir === dirs[1]
+        ? aliveLock(10, 4242)
+        : aliveLock(11, 4242);
+  expect(
+    await findLockDirByNumber(
+      4242,
+      () => true,
+      async () => dirs,
+      inspect,
+    ),
+  ).toBe('/tmp/b');
+});
 
 function aliveLock(pid: number, port: number): LockState {
   return {
@@ -87,6 +106,19 @@ describe('buildStopPlan', () => {
 });
 
 describe('runStop', () => {
+  test('never signals an unverified owner even with force', async () => {
+    const kill = vi.fn();
+    const outcome = await runStop({
+      lockDir: '/tmp/x',
+      force: true,
+      inspect: () => ({ status: 'unverified-owner', lockPath: '/tmp/server.lock', pid: 100 }),
+      kill,
+      log: () => {},
+      error: () => {},
+    });
+    expect(outcome.decision.code).toBe('ownership-unverified');
+    expect(kill).not.toHaveBeenCalled();
+  });
   test('no running processes → log and exit 0 equivalent', async () => {
     const logs: string[] = [];
     const killed: Array<[number, string]> = [];
@@ -100,6 +132,7 @@ describe('runStop', () => {
     expect(outcome.hadTargets).toBe(false);
     expect(outcome.stopped).toEqual([]);
     expect(outcome.failed).toEqual([]);
+    expect(outcome.decision.code).toBe('already-stopped');
     expect(killed).toEqual([]);
     expect(logs).toEqual(['No running open-knowledge processes.']);
   });
@@ -118,6 +151,7 @@ describe('runStop', () => {
     expect(killed).toEqual([[100, 'SIGTERM']]);
     expect(outcome.stopped.map((t) => t.name)).toEqual(['server']);
     expect(outcome.failed).toEqual([]);
+    expect(outcome.decision.code).toBe('signalled');
     expect(logs.at(0)).toContain('server (pid=100, port=3001)');
   });
 
@@ -137,6 +171,7 @@ describe('runStop', () => {
     expect(outcome.failed).toHaveLength(1);
     expect(outcome.failed[0]?.target.pid).toBe(100);
     expect(outcome.failed[0]?.error).toBe('EPERM');
+    expect(outcome.decision.code).toBe('signal-failed');
     expect(errors.at(0)).toContain('server (pid=100)');
   });
 
@@ -228,10 +263,22 @@ describe('runStop channel guard', () => {
 
   test("refuses to stop another channel's server", async () => {
     const { outcome, killed, errors } = run('stable');
-    expect((await outcome).declined).toEqual({ otherChannel: 'stable' });
+    const result = await outcome;
+    expect(result.declined).toEqual({ otherChannel: 'stable' });
+    expect(result.decision).toMatchObject({ code: 'channel-mismatch' });
+    expect(result.decision.detail).toContain('OpenKnowledge (Stable)');
+    expect(result.decision.detail).toContain('--force');
     expect(killed).toEqual([]);
     expect(errors[0]).toContain('OpenKnowledge (Stable)');
     expect(errors[0]).toContain('--force');
+  });
+
+  test('channel refusal precedes the connected-client probe', async () => {
+    const probeClients = vi.fn(async () => 2);
+    const { outcome, killed } = run('stable', { probeClients });
+    expect((await outcome).decision.code).toBe('channel-mismatch');
+    expect(probeClients).not.toHaveBeenCalled();
+    expect(killed).toEqual([]);
   });
 
   test("--force stops another channel's server", async () => {
@@ -336,6 +383,7 @@ describe('runStop in-use guard', () => {
     expect(killed).toEqual([]);
     expect(outcome.stopped).toEqual([]);
     expect(outcome.declined).toEqual({ clients: 2 });
+    expect(outcome.decision.code).toBe('clients-connected');
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain('2 collaboration clients');
     expect(errors[0]).toContain('--force');
@@ -490,7 +538,7 @@ describe('runStop identity check at the signal', () => {
       readProcessStart: startedLongAfterTheLock,
     });
 
-    expect(await outcome).toEqual({ stopped: [], failed: [], hadTargets: true });
+    expect(await outcome).toMatchObject({ stopped: [], failed: [], hadTargets: true });
     expect(killed).toEqual([]);
     expect(logs).toEqual([]);
     expect(errors).toEqual([
@@ -535,7 +583,7 @@ describe('runStop identity check at the signal', () => {
       readProcessStart: startedLongAfterTheLock,
     });
 
-    expect(await outcome).toEqual({ stopped: [], failed: [], hadTargets: true });
+    expect(await outcome).toMatchObject({ stopped: [], failed: [], hadTargets: true });
     expect(killed).toEqual([]);
     expect(logs).toEqual(['server (pid=100) had already exited']);
     expect(errors).toEqual([]);
@@ -555,7 +603,7 @@ describe('runStop identity check at the signal', () => {
       'Before ending process 100 yourself, confirm that it is an OpenKnowledge server. ' +
       `Once you have confirmed no OpenKnowledge server is running for this project, remove ${lockPath}.`;
 
-    expect(await outcome).toEqual({
+    expect(await outcome).toMatchObject({
       stopped: [],
       failed: [
         {
@@ -749,7 +797,7 @@ describe('runStop identity check at the signal', () => {
       'Before ending process 100 yourself, confirm that it is an OpenKnowledge server. ' +
       `Once you have confirmed no OpenKnowledge server is running for this project, remove ${lockPath}.`;
 
-    expect(await outcome).toEqual({
+    expect(await outcome).toMatchObject({
       stopped: [],
       failed: [
         {
@@ -778,7 +826,7 @@ describe('runStop identity check at the signal', () => {
       'Otherwise stop it from the machine that owns the lock. ' +
       'This lock records no process start; a server started by this release records one, which lets `ok stop` confirm it from any home folder.';
 
-    expect(await outcome).toEqual({
+    expect(await outcome).toMatchObject({
       stopped: [],
       failed: [
         {
@@ -1041,7 +1089,7 @@ describe('runStop on a live lock that records no owning machine', () => {
       `Check whether process ${process.pid} is an OpenKnowledge server, and if it is, stop it yourself. ` +
       'Do not remove the lock file while that process is running.';
 
-    expect(outcome).toEqual({
+    expect(outcome).toMatchObject({
       stopped: [],
       failed: [
         {
