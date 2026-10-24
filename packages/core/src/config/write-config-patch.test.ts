@@ -9,17 +9,19 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { isKnownConfigError } from './errors.ts';
 import { resolveConfigPath, writeConfigPatch } from './write-config-patch.ts';
 
 let testDir: string;
 
 beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
   testDir = mkdtempSync(join(tmpdir(), 'ok-write-config-patch-'));
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   if (existsSync(testDir)) rmSync(testDir, { recursive: true, force: true });
 });
 

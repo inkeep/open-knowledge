@@ -28,6 +28,7 @@ const { OK_DIR } = await import('../constants.ts');
 const { createProjectConfigResolver, loadConfig } = await import('./loader');
 
 beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
   testDir = resolve(
     tmpdir(),
     `ok-config-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -37,6 +38,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   rmSync(testDir, { recursive: true, force: true });
 });
 

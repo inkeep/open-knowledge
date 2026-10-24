@@ -1,5 +1,5 @@
 import { posix } from 'node:path';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { OK_BIN_DIRNAME, OK_DIR, okUserHomeDisplayPath, posixOkManagedBinDir } from './ok-dir.ts';
 
 describe('okUserHomeDisplayPath', () => {
@@ -22,6 +22,14 @@ describe('okUserHomeDisplayPath', () => {
 });
 
 describe('posixOkManagedBinDir', () => {
+  beforeEach(() => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   test('is the OK dir plus the bin dirname, under the given home', () => {
     expect(posixOkManagedBinDir('/Users/alice')).toBe(`/Users/alice/${OK_DIR}/${OK_BIN_DIRNAME}`);
     expect(posixOkManagedBinDir('/Users/alice')).toBe('/Users/alice/.ok/bin');

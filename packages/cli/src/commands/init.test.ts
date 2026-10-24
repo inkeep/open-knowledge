@@ -75,6 +75,14 @@ vi.mock('@inkeep/open-knowledge-server', async (importOriginal) => {
 
 const NATIVE_TOML_AVAILABLE = createTomlConfigEngine().backend === 'native';
 
+beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 async function runInit(...args: Parameters<typeof runInitProduct>) {
   const result = await runInitProduct(...args);
   if (result.didGitInit || existsSync(join(result.projectRoot, '.git', 'config'))) {

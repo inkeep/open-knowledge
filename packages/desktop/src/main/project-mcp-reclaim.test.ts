@@ -4,7 +4,7 @@ import {
   type McpDeclineReason,
   type McpEntryClassification,
 } from '@inkeep/open-knowledge';
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { McpWiringEditorId } from '../shared/ipc-channels.ts';
 import {
   checkAndRepairProjectMcpOnProjectOpen,
@@ -12,11 +12,20 @@ import {
 } from './project-mcp-reclaim.ts';
 
 const EXE = '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge';
-const CHAIN_ENTRY = buildManagedServerEntry({ mode: 'published' });
+let chainEntry: ReturnType<typeof buildManagedServerEntry>;
 const KNOWN_OLDER_ENTRY = {
   command: '/bin/sh',
   args: ['-l', '-c', '# ok-mcp-v1\nexit 127'],
 };
+
+beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
+  chainEntry = buildManagedServerEntry({ mode: 'published' });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function fakeTarget(id: McpWiringEditorId, projectConfigPath?: string): EditorMcpTarget {
   return {
@@ -26,7 +35,7 @@ function fakeTarget(id: McpWiringEditorId, projectConfigPath?: string): EditorMc
     topLevelKey: 'mcpServers',
     serverName: () => 'open-knowledge',
     configPath: () => `/home/${id}/config.json`,
-    buildEntry: () => CHAIN_ENTRY,
+    buildEntry: () => chainEntry,
     scope: 'global',
     ...(projectConfigPath ? { projectConfigPath: () => projectConfigPath } : {}),
   };
@@ -187,7 +196,7 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
     const { cli, writes } = buildCli({
       claude: {
         target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
-        classification: { kind: 'present', entry: CHAIN_ENTRY },
+        classification: { kind: 'present', entry: chainEntry },
       },
     });
     const r = await checkAndRepairProjectMcpOnProjectOpen({
@@ -208,7 +217,7 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
         target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
         classification: {
           kind: 'present',
-          entry: { ...CHAIN_ENTRY, env: { NODE_OPTIONS: '--require ./payload.cjs' } },
+          entry: { ...chainEntry, env: { NODE_OPTIONS: '--require ./payload.cjs' } },
         },
       },
     });
@@ -256,7 +265,7 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
         target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
         classification: {
           kind: 'present',
-          entry: { ...CHAIN_ENTRY, env: { NODE_OPTIONS: '--require ./payload.cjs' } },
+          entry: { ...chainEntry, env: { NODE_OPTIONS: '--require ./payload.cjs' } },
         },
         writeOutcome: { action: 'declined', reason: 'no-native-writer' },
       },
@@ -281,7 +290,7 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
         target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
         classification: {
           kind: 'present',
-          entry: { ...CHAIN_ENTRY, env: { NODE_OPTIONS: '--require ./payload.cjs' } },
+          entry: { ...chainEntry, env: { NODE_OPTIONS: '--require ./payload.cjs' } },
         },
         writeOutcome: { action: 'failed', error: 'EACCES' },
       },
@@ -305,7 +314,7 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
         target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
         classification: {
           kind: 'present',
-          entry: { ...CHAIN_ENTRY, env: { NODE_OPTIONS: '--require ./payload.cjs' } },
+          entry: { ...chainEntry, env: { NODE_OPTIONS: '--require ./payload.cjs' } },
         },
         writeOutcome: { action: 'unchanged' },
       },

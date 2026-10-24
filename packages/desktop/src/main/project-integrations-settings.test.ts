@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { McpEntryClassification } from '@inkeep/open-knowledge';
 import type { IpcMainInvokeEvent } from 'electron';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { EDITOR_TARGETS } from '../../../cli/src/commands/editors.ts';
 import { removeOwnMcpEntry } from '../../../cli/src/commands/mcp-config-removal.ts';
 import { ensurePiBridge } from '../../../cli/src/commands/pi-acp-bridge.ts';
@@ -229,6 +229,14 @@ describe('registerProjectIntegrationsSettings — status', () => {
 });
 
 describe('registerProjectIntegrationsSettings — set', () => {
+  beforeEach(() => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   test('editor install writes the config and returns ok', async () => {
     const cli = makeCli();
     const { set } = register(cli);

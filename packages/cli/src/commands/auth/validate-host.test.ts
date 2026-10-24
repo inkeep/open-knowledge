@@ -21,6 +21,7 @@ let home: string;
 
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'ok-validate-host-home-'));
+  vi.stubEnv('OK_CHANNEL', 'stable');
   vi.stubEnv('HOME', home);
   vi.stubEnv('USERPROFILE', home);
 });

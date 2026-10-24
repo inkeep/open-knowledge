@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { SHARED_OK_ENTRIES } from '@inkeep/open-knowledge-core';
 import { MCP_SERVER_NAME } from '@inkeep/open-knowledge-server';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { DESKTOP_UPDATER_CACHE_DIR_NAME } from '../integrations/desktop-state.ts';
 import { readPathInstallMarker } from '../integrations/path-shim.ts';
 import {
@@ -42,7 +42,16 @@ import {
   removalPlanToJson,
 } from './removal-render.ts';
 
-const OWN_ENTRY = buildManagedServerEntry({ mode: 'published' });
+let OWN_ENTRY: ReturnType<typeof buildManagedServerEntry>;
+
+beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
+  OWN_ENTRY = buildManagedServerEntry({ mode: 'published' });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function write(path: string, content: string): void {
   mkdirSync(dirname(path), { recursive: true });
