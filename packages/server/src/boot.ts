@@ -572,23 +572,6 @@ async function bootServerInner(
   collabClientCounter = attachCollabClientCounter(httpServer);
 
   let idleHandle: IdleShutdownHandle | null = null;
-  if (opts.idleShutdownMs !== null) {
-    const idleMs = opts.idleShutdownMs ?? DEFAULT_IDLE_THRESHOLD_MS;
-    const idleHandler =
-      opts.idleShutdownHandler ??
-      ((destroyFn) => async () => {
-        await destroyFn();
-      });
-    idleHandle = attachIdleShutdown({
-      httpServer,
-      counter: collabClientCounter,
-      thresholdMs: idleMs,
-      log,
-      onShutdown: idleHandler(async () => {
-        await destroy('idle-shutdown');
-      }),
-    });
-  }
 
   const listenAddresses = [...new Set(effectiveBindAddresses)];
   const primaryAddress = listenAddresses[0];
@@ -860,6 +843,24 @@ async function bootServerInner(
       { err, event: 'global-store-skill-migration-failed' },
       'Global store-skill in-place migration failed (non-fatal).',
     );
+  }
+
+  if (opts.idleShutdownMs !== null) {
+    const idleMs = opts.idleShutdownMs ?? DEFAULT_IDLE_THRESHOLD_MS;
+    const idleHandler =
+      opts.idleShutdownHandler ??
+      ((destroyFn) => async () => {
+        await destroyFn();
+      });
+    idleHandle = attachIdleShutdown({
+      httpServer,
+      counter: collabClientCounter,
+      thresholdMs: idleMs,
+      log,
+      onShutdown: idleHandler(async () => {
+        await destroy('idle-shutdown');
+      }),
+    });
   }
 
   return {

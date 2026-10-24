@@ -40,14 +40,23 @@ function seedOkScaffold(projectDir: string): void {
 const execFileAsync = promisify(execFile);
 const TEST_CONFIG = ConfigSchema.parse({});
 
+const bootHome = vi.hoisted(() => ({ path: undefined as string | undefined }));
+
+vi.mock('node:os', async (importOriginal) => {
+  const os = await importOriginal<typeof import('node:os')>();
+  return { ...os, homedir: () => bootHome.path ?? os.homedir() };
+});
+
 let tmpDir: string;
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(resolve(tmpdir(), 'ok-boot-test-'));
+  bootHome.path = mkdtempSync(resolve(tmpDir, 'home-'));
 });
 
 afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  bootHome.path = undefined;
 });
 
 describe('bootServer — MissingOkConfigError pre-listen check', () => {
@@ -296,6 +305,60 @@ describe('bootServer — idle-shutdown runs full destroy', () => {
         await new Promise((r) => setTimeout(r, 25));
       }
       expect(booted.httpServer.listening).toBe(false);
+    } finally {
+      await booted.destroy();
+    }
+  });
+
+  test('keeps the listener available when global skill migration is slow', async () => {
+    const projectDir = mkdtempSync(resolve(tmpDir, 'idle-global-skills-'));
+    await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
+    configureTestGitRepository(projectDir);
+    seedOkScaffold(projectDir);
+
+    if (bootHome.path === undefined) throw new Error('boot home was not initialized');
+    const home = bootHome.path;
+    const storeSkill = resolve(home, '.ok', 'skills', 'valid-name');
+    const globalSkills = resolve(home, '.claude', 'skills');
+    mkdirSync(storeSkill, { recursive: true });
+    mkdirSync(globalSkills, { recursive: true });
+    writeFileSync(
+      resolve(storeSkill, 'SKILL.md'),
+      '---\nname: valid-name\ndescription: A valid store skill.\n---\n# Valid\n',
+      'utf-8',
+    );
+    for (let index = 0; index < 300; index += 1) {
+      const skillDir = resolve(globalSkills, `global-${index}`);
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(
+        resolve(skillDir, 'SKILL.md'),
+        `---\nname: global-${index}\ndescription: A global skill.\n---\n# Global\n`,
+        'utf-8',
+      );
+    }
+    bootHome.path = home;
+
+    let idleAttachedAfterMigration = false;
+    const booted = await bootServer({
+      host: '127.0.0.1',
+      config: TEST_CONFIG,
+      contentDir: projectDir,
+      port: 0,
+      quiet: true,
+      gitEnabled: false,
+      idleShutdownMs: 50,
+      idleShutdownHandler: (destroyServer) => {
+        idleAttachedAfterMigration = existsSync(resolve(globalSkills, 'valid-name', 'SKILL.md'));
+        return async () => {
+          await destroyServer();
+        };
+      },
+    });
+
+    try {
+      expect(existsSync(resolve(globalSkills, 'valid-name', 'SKILL.md'))).toBe(true);
+      expect(idleAttachedAfterMigration).toBe(true);
+      expect(booted.httpServer.listening).toBe(true);
     } finally {
       await booted.destroy();
     }
