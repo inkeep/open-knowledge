@@ -405,6 +405,36 @@ export function updateEditorPane(
   };
 }
 
+export function preserveLivePreviewTabs(
+  workspace: EditorWorkspaceState,
+  liveWorkspace: EditorWorkspaceState,
+  persistedWorkspace: Pick<PersistedEditorWorkspace, 'panes'>,
+): EditorWorkspaceState {
+  const persistedTabsByPane = new Map(
+    persistedWorkspace.panes.map((pane) => [pane.id, new Set(pane.openTabs)]),
+  );
+  let nextWorkspace = workspace;
+  for (const livePane of liveWorkspace.panes) {
+    const previewTabId = livePane.previewTabId;
+    if (!previewTabId) continue;
+    const owner =
+      nextWorkspace.panes.find(
+        (pane) => pane.id === livePane.id && pane.openTabs.includes(previewTabId),
+      ) ?? findPaneOwningTab(nextWorkspace, previewTabId);
+    if (
+      !owner ||
+      owner.pinnedTabIds.includes(previewTabId) ||
+      persistedTabsByPane.get(owner.id)?.has(previewTabId)
+    )
+      continue;
+    nextWorkspace = updateEditorPane(nextWorkspace, owner.id, (pane) => ({
+      ...pane,
+      previewTabId,
+    }));
+  }
+  return nextWorkspace;
+}
+
 export function reorderPaneTabs(
   workspace: EditorWorkspaceState,
   paneId: EditorPaneId,

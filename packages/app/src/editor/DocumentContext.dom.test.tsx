@@ -46,6 +46,7 @@ const { DocumentProvider, useDocumentContext } = await import('./DocumentContext
 const PINNED_TAB_ID = docTabId('Pinned');
 const OTHER_TAB_ID = docTabId('Other');
 const THIRD_TAB_ID = docTabId('Third');
+const PREVIEW_TAB_ID = docTabId('Preview');
 const LICENSE_TAB_ID = assetTabId('LICENSE');
 const SKILL_TAB_ID = skillFileTabId({ scope: 'project', name: 'example', path: 'SKILL.md' });
 const originalFetch = globalThis.fetch;
@@ -434,6 +435,30 @@ function OpenLicenseDuringRestoreHarness() {
         }
       >
         Open license
+      </button>
+    </>
+  );
+}
+
+function OpenPreviewDuringRestoreHarness() {
+  const ctx = useDocumentContext();
+  return (
+    <>
+      <span data-testid="open-tabs">{ctx.openTabs.join('|')}</span>
+      <span data-testid="preview-tab">
+        {[...ctx.previewTabIdsByPane.values()].map((tabId) => tabId ?? '').join('|')}
+      </span>
+      <span data-testid="session-loaded">{String(ctx.tabSessionLoaded)}</span>
+      <button
+        type="button"
+        onClick={() =>
+          ctx.openTarget(
+            { kind: 'doc', target: 'Preview', docName: 'Preview' },
+            { disposition: 'preview', consumeActiveNewTab: true },
+          )
+        }
+      >
+        Open preview
       </button>
     </>
   );
@@ -1558,6 +1583,66 @@ describe('DocumentContext tab restore', () => {
       expect(screen.getByTestId('active-tab').textContent).toBe(LICENSE_TAB_ID);
     });
     expect(window.location.hash).toBe(hashFromAssetPath('LICENSE'));
+  });
+
+  test('keeps a preview marker when a sidebar preview opens before session restore resolves', async () => {
+    mockCollabUrl = 'ws://localhost:1/collab';
+    globalThis.fetch = vi.fn(() => Promise.reject(new Error('unexpected fetch'))) as never;
+    const stub = makeDeferredSessionBridgeStub(
+      persistedTabSession(
+        [OTHER_TAB_ID],
+        [],
+        OTHER_TAB_ID,
+        new Date('2026-06-07T00:00:00.000Z').toISOString(),
+      ),
+    );
+    window.okDesktop = stub.bridge;
+    window.location.hash = '#/Other';
+
+    render(<OpenPreviewDuringRestoreHarness />, { wrapper: ProviderHarness });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Open preview' }));
+    expect(screen.getByTestId('preview-tab').textContent).toBe(PREVIEW_TAB_ID);
+
+    act(() => {
+      stub.resolveSession();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('session-loaded').textContent).toBe('true');
+      expect(screen.getByTestId('preview-tab').textContent).toBe(PREVIEW_TAB_ID);
+    });
+  });
+
+  test('keeps a saved tab permanent when a live preview shares its id', async () => {
+    mockCollabUrl = 'ws://localhost:1/collab';
+    globalThis.fetch = vi.fn(() => Promise.reject(new Error('unexpected fetch'))) as never;
+    const stub = makeDeferredSessionBridgeStub(
+      persistedTabSession(
+        [PREVIEW_TAB_ID],
+        [],
+        PREVIEW_TAB_ID,
+        new Date('2026-06-07T00:00:00.000Z').toISOString(),
+      ),
+    );
+    window.okDesktop = stub.bridge;
+    window.location.hash = '#/Preview';
+
+    render(<OpenPreviewDuringRestoreHarness />, { wrapper: ProviderHarness });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Open preview' }));
+    expect(screen.getByTestId('preview-tab').textContent).toBe(PREVIEW_TAB_ID);
+
+    act(() => {
+      stub.resolveSession();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('session-loaded').textContent).toBe('true');
+      expect(screen.getByTestId('preview-tab').textContent).toBe('');
+    });
   });
 
   test('keeps a new tab active when session restore resolves afterward', async () => {
