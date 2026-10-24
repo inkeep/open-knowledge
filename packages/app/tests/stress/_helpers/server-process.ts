@@ -32,8 +32,27 @@ export { APP_PACKAGE_ROOT };
 export const VITE_E2E_SEED_DIR =
   process.env.OK_TEST_VITE_SEED_DIR ?? join(APP_PACKAGE_ROOT, 'node_modules', '.vite-e2e-seed');
 
-export function viteSeedIsReady(): boolean {
-  return existsSync(join(VITE_E2E_SEED_DIR, 'deps', '_metadata.json'));
+export const VITE_E2E_SEED_POINTER = `${VITE_E2E_SEED_DIR}.current`;
+
+export function resolveViteSeedDir(): string | undefined {
+  let pointer: string;
+  try {
+    pointer = readFileSync(VITE_E2E_SEED_POINTER, 'utf-8');
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') {
+      return existsSync(VITE_E2E_SEED_DIR) ? VITE_E2E_SEED_DIR : undefined;
+    }
+    throw new Error(
+      `the vite seed pointer ${VITE_E2E_SEED_POINTER} could not be read (${code ?? String(err)})`,
+      { cause: err },
+    );
+  }
+  return pointer.trim();
+}
+
+export function viteSeedIsReady(seedDir = resolveViteSeedDir()): boolean {
+  return seedDir !== undefined && existsSync(join(seedDir, 'deps', '_metadata.json'));
 }
 
 export function rollbackPreparedViteCacheDir(
@@ -52,11 +71,12 @@ export function rollbackPreparedViteCacheDir(
 }
 
 export function prepareViteCacheDir(prefix: string): string {
+  const seedDir = resolveViteSeedDir();
   mkdirSync(join(APP_PACKAGE_ROOT, 'node_modules'), { recursive: true });
   const dir = mkdtempSync(join(APP_PACKAGE_ROOT, 'node_modules', `.vite-${prefix}-`));
-  if (viteSeedIsReady()) {
+  if (seedDir !== undefined && viteSeedIsReady(seedDir)) {
     try {
-      cpSync(VITE_E2E_SEED_DIR, dir, { recursive: true, force: true });
+      cpSync(seedDir, dir, { recursive: true, force: true });
     } catch (err) {
       const rollbackFailure = rollbackPreparedViteCacheDir(dir);
       if (rollbackFailure !== undefined) console.warn(`[e2e teardown] ${rollbackFailure}`);
