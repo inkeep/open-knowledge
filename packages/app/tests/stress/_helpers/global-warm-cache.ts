@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 import { APP_PACKAGE_ROOT, computeSeedKey } from './seed-key.ts';
 import {
   beginViteStartup,
@@ -32,6 +33,14 @@ import { removeAllDuringTeardown } from './teardown-fs.ts';
 const SEED_KEY_FILENAME = '.seed-key';
 const OPTIMIZER_SETTLE_BUDGET_MS = 90_000;
 const WARM_ATTEMPTS = 2;
+const OWNER_GUARD = fileURLToPath(new URL('./warm-cache-owner-guard.cjs', import.meta.url));
+
+function appendNodeOption(options: string | undefined, option: string): string {
+  if (options?.split(/\s+/).includes(option)) return options;
+  return [options, option]
+    .filter((value): value is string => value !== undefined && value !== '')
+    .join(' ');
+}
 
 function publishSeed(buildDir: string): void {
   const seedParent = dirname(VITE_E2E_SEED_DIR);
@@ -77,6 +86,8 @@ async function buildSeedOnce(key: string): Promise<void> {
     env: {
       ...process.env,
       ...request.environment,
+      OK_WARM_CACHE_OWNER_PID: String(process.pid),
+      NODE_OPTIONS: appendNodeOption(process.env.NODE_OPTIONS, `--require=${OWNER_GUARD}`),
       OK_TEST_CONTENT_DIR: contentDir,
       OK_TEST_VITE_CACHE_DIR: buildDir,
       OK_TEST_SKIP_I18N_COMPILE: '1',
