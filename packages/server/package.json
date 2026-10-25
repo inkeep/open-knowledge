@@ -51,7 +51,7 @@
     "ignore": "^5.3.2",
     "ipaddr.js": "^2.3.0",
     "jsonc-parser": "^3.3.1",
-    "just-bash": "~2.14.3",
+    "just-bash": "2.14.5",
     "mermaid": "^11.14.0",
     "mrmime": "^2.0.1",
     "pino": "^10.3.1",

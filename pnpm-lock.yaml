@@ -155,6 +155,7 @@ patchedDependencies:
   '@tiptap/y-tiptap@3.0.3': cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43
   '@xterm/xterm@6.0.0': 52e724ea4ed73d38923344d68d2e1e8503110de5870507336fe8b096d92d7d90
   cmdk@1.1.1: b06bc76a3813cc8142d7f75f85020a8ebff65a0ee84fac816da25986da6aa2a1
+  just-bash@2.14.5: 4093617c8b341f27c6643c80bc7a1511f02a6d8b6c127f2669dde162d79e5c15
   react-medium-image-zoom@5.4.3: d59ed459a6ae570e843d0829f844dde24c0697b883351b198034f47606766517
   react-resizable-panels@4.12.1: bd17d922d19720e50c1805aeb59f56599bf2b15eefbb6e93fc84f7a548793f77
   sirv@3.0.2: c18b28f0bc922fd0abed32545bae498c471d8f715f8d5fac40e84840d4e23842
@@ -1351,8 +1352,8 @@ importers:
         specifier: ^3.3.1
         version: 3.3.1
       just-bash:
-        specifier: ~2.14.3
-        version: 2.14.5(supports-color@7.2.0)
+        specifier: 2.14.5
+        version: 2.14.5(patch_hash=4093617c8b341f27c6643c80bc7a1511f02a6d8b6c127f2669dde162d79e5c15)(supports-color@7.2.0)
       mermaid:
         specifier: ~11.16.1
         version: 11.16.1
@@ -20273,7 +20274,7 @@ snapshots:
     optionalDependencies:
       graceful-fs: 4.2.11
 
-  just-bash@2.14.5(supports-color@7.2.0):
+  just-bash@2.14.5(patch_hash=4093617c8b341f27c6643c80bc7a1511f02a6d8b6c127f2669dde162d79e5c15)(supports-color@7.2.0):
     dependencies:
       diff: 8.0.4
       fast-xml-parser: 5.10.1

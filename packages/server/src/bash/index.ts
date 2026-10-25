@@ -1,9 +1,8 @@
 import { isAbsolute, resolve } from 'node:path';
 /*
- * UPSTREAM(just-bash@2.14.3): below this floor the sandbox-containment gate
- * hardcodes the POSIX separator, so every backslash-separated path below the
- * root fails containment on Windows. Keep the range in package.json at or above
- * it.
+ * UPSTREAM(just-bash@2.14.5): releases before 2.14.3 hardcode the POSIX separator
+ * in the containment gate, rejecting backslash-separated Windows paths below
+ * the root. Keep package.json at or above that containment floor.
  */
 import { Bash, OverlayFs } from 'just-bash';
 

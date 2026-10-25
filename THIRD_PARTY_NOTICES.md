@@ -6703,7 +6703,7 @@ Copyright (c) 2026 Inkeep
 
 ## Patched dependencies
 
-The following MIT-licensed packages are patched in this repository via pnpm's `patchedDependencies` mechanism. Modifications are released under the same MIT license as the upstream package. Patch files live under `patches/` in the source repo; the bundled output of every shipped artifact incorporates the patched code.
+The following packages are patched in this repository via pnpm's `patchedDependencies` mechanism. Modifications are released under each upstream package's license. Patch files live under `patches/` in the source repo; the bundled output of every shipped artifact incorporates the patched code.
 
 | Package | Patch file |
 | --- | --- |
@@ -6716,6 +6716,7 @@ The following MIT-licensed packages are patched in this repository via pnpm's `p
 | `@tiptap/y-tiptap@3.0.3` | `patches/@tiptap%2Fy-tiptap@3.0.3.patch` |
 | `@xterm/xterm@6.0.0` | `patches/@xterm%2Fxterm@6.0.0.patch` |
 | `cmdk@1.1.1` | `patches/cmdk@1.1.1.patch` |
+| `just-bash@2.14.5` | `patches/just-bash@2.14.5.patch` |
 | `react-medium-image-zoom@5.4.3` | `patches/react-medium-image-zoom@5.4.3.patch` |
 | `react-resizable-panels@4.12.1` | `patches/react-resizable-panels@4.12.1.patch` |
 | `sirv@3.0.2` | `patches/sirv@3.0.2.patch` |

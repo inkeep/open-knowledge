@@ -756,7 +756,7 @@ function build() {
 
   push('## Patched dependencies', '');
   push(
-    "The following MIT-licensed packages are patched in this repository via pnpm's `patchedDependencies` mechanism. Modifications are released under the same MIT license as the upstream package. Patch files live under `patches/` in the source repo; the bundled output of every shipped artifact incorporates the patched code.",
+    "The following packages are patched in this repository via pnpm's `patchedDependencies` mechanism. Modifications are released under each upstream package's license. Patch files live under `patches/` in the source repo; the bundled output of every shipped artifact incorporates the patched code.",
     '',
   );
   push('| Package | Patch file |');

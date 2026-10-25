@@ -61,6 +61,12 @@ describe('just-bash + OverlayFs (per-call cwd)', () => {
     mkdirSync(join(root, 'sub'), { recursive: true });
     writeFileSync(join(root, 'file.txt'), 'hello\nworld\n');
     writeFileSync(join(root, 'sub', 'nested.md'), 'nested content\n');
+    writeFileSync(join(root, 'zero-width.txt'), 'foo\n');
+    writeFileSync(join(root, 'adjacent-zero-width.txt'), 'afoo\nar\n');
+    writeFileSync(
+      join(root, 'patterns.txt'),
+      'Request\nrequest\nbar\na.b\nx*y\na|b\nother\nfoobar\nbarfoo\n',
+    );
   });
 
   afterAll(() => {
@@ -124,6 +130,114 @@ describe('just-bash + OverlayFs (per-call cwd)', () => {
 
     it('throws when cwd is not an absolute path', () => {
       expect(() => createBashInstance('relative/path')).toThrow(/cwd must be absolute/);
+    });
+  });
+
+  describe('grep pattern alternatives', () => {
+    it.each([
+      ['-c -e Request -e dominance', '1\n', 0],
+      ['-c -e dominance -e Request', '1\n', 0],
+      ['-n -e Request -e bar', '1:Request\n3:bar\n8:foobar\n9:barfoo\n', 0],
+      ["-F -e 'a.b' -e 'x*y' -e 'a|b'", 'a.b\nx*y\na|b\n', 0],
+      ['-x -e Request -e bar', 'Request\nbar\n', 0],
+      ["-e '^Request$' -e '^bar$'", 'Request\nbar\n', 0],
+      ["-P -o -e 'Re\\Kquest' -e 'ba\\Kr'", 'quest\nr\nr\nr\n', 0],
+      ["-P -e '(?<word>Request)' -e '(?<word>bar)'", 'Request\nbar\nfoobar\nbarfoo\n', 0],
+      ['-o -e foo -e bar', 'bar\nfoo\nbar\nbar\nfoo\n', 0],
+      ['-o -e foo -e foobar', 'foobar\nfoo\n', 0],
+      ['-o -e foobar -e foo', 'foobar\nfoo\n', 0],
+      ['-w -e Request -e bar', 'Request\nbar\n', 0],
+      ["-c -e '^' -e missing", '9\n', 0],
+      ["-q -e '' -e missing", '', 0],
+      ['-E -x -e Request -e bar', 'Request\nbar\n', 0],
+      ['-F -x -e Request -e bar', 'Request\nbar\n', 0],
+      ['-i -x -e Request -e bar', 'Request\nrequest\nbar\n', 0],
+      ['-v -x -e Request -e bar', 'request\na.b\nx*y\na|b\nother\nfoobar\nbarfoo\n', 0],
+      ['-q -e Request -e dominance', '', 0],
+      ['-q -e missing -e dominance', '', 1],
+      ['-c -e missing -e dominance', '0\n', 1],
+      ['-e missing -e dominance', '', 1],
+      ["-e Request -e ''", 'Request\nrequest\nbar\na.b\nx*y\na|b\nother\nfoobar\nbarfoo\n', 0],
+    ])('OR-combines patterns for grep %s', async (flags, stdout, exitCode) => {
+      const result = await execBash(createBashInstance(root), `grep ${flags} patterns.txt`);
+      expect(result).toEqual({ stdout, stderr: '', exitCode });
+    });
+
+    it.each([
+      ["-x 'Request\nbar'", 'Request\nbar\n'],
+      ["-x -e 'Request\nbar'", 'Request\nbar\n'],
+      ["-x -e 'Request\nbar' -e dominance", 'Request\nbar\n'],
+      ["-e 'missing\n'", 'Request\nrequest\nbar\na.b\nx*y\na|b\nother\nfoobar\nbarfoo\n'],
+    ])('splits newline-separated pattern operands for grep %s', async (patterns, stdout) => {
+      const result = await execBash(createBashInstance(root), `grep ${patterns} patterns.txt`);
+      expect(result).toEqual({ stdout, stderr: '', exitCode: 0 });
+    });
+
+    it.each(["-e '\\(' -e '\\)'", "-e '^\\(a\\)\\1$'", "-e '^\\(a\\)\\1$' -e '^\\(b\\)\\1$'"])(
+      'rejects invalid or unsupported individual patterns: %s',
+      async (flags) => {
+        const result = await execBash(createBashInstance(root), `grep ${flags} patterns.txt`);
+        expect(result.exitCode).toBe(2);
+        expect(result.stdout).toBe('');
+        expect(result.stderr).toContain('grep: invalid regular expression:');
+      },
+    );
+
+    it.each([
+      ["-o -e '' -e foo", 'foo\n\n'],
+      ["-o -e foo -e 'q*'", 'foo\n\n'],
+      ["-o -e 'x*' -e foo", 'foo\n\n'],
+      ["-Eo -e 'a?' -e foo", 'foo\n\n'],
+      ["-co -e foo -e 'q*'", '2\n'],
+      ["-o -e '' -e ''", '\n\n\n\n'],
+      ["-o -e '$' -e '$'", '\n'],
+      ["-o -e '^' -e '^'", '\n'],
+    ])('finishes a zero-width global scan for grep %s', async (flags, stdout) => {
+      const result = await execBash(createBashInstance(root), `grep ${flags} zero-width.txt`);
+      expect(result).toEqual({ stdout, stderr: '', exitCode: 0 });
+    });
+
+    it.each(["-e foo -e '\\('", "-e '\\(' -e foo"])(
+      'names only the invalid pattern for grep %s',
+      async (flags) => {
+        const result = await execBash(createBashInstance(root), `grep ${flags} patterns.txt`);
+        expect(result).toEqual({
+          stdout: '',
+          stderr: 'grep: invalid regular expression: \\(\n',
+          exitCode: 2,
+        });
+      },
+    );
+
+    it.each([
+      ["-o -e 'x*' -e foo -e r", '\nfoo\n\n\nr\n\n'],
+      ["-o -e foo -e r -e 'x*'", '\nfoo\n\n\nr\n\n'],
+      ["-co -e 'x*' -e foo -e r", '6\n'],
+      ["-o -e '^' -e foo -e r", '\nfoo\n\nr\n'],
+      ["-i -o -e 'x*' -e FOO -e R", '\nfoo\n\n\nr\n\n'],
+      ["-P -o -e 'x*' -e 'f\\Koo' -e r", '\noo\n\n\nr\n\n'],
+    ])('keeps a match that follows an empty match for grep %s', async (flags, stdout) => {
+      const result = await execBash(
+        createBashInstance(root),
+        `grep ${flags} adjacent-zero-width.txt`,
+      );
+      expect(result).toEqual({ stdout, stderr: '', exitCode: 0 });
+    });
+
+    it('matches every pattern from piped input', async () => {
+      const result = await execBash(
+        createBashInstance(root),
+        'cat patterns.txt | grep -x -e Request -e bar',
+      );
+      expect(result).toEqual({ stdout: 'Request\nbar\n', stderr: '', exitCode: 0 });
+    });
+
+    it('keeps file operands before explicit patterns', async () => {
+      const result = await execBash(
+        createBashInstance(root),
+        'grep patterns.txt -x -e Request -e bar',
+      );
+      expect(result).toEqual({ stdout: 'Request\nbar\n', stderr: '', exitCode: 0 });
     });
   });
 
