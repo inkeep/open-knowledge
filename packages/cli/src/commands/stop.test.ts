@@ -447,6 +447,8 @@ describe('runStop identity check at the signal', () => {
     startedAtMs: Date.parse('2026-04-17T12:00:00Z'),
     clock: 'creation' as const,
   });
+  const bootedBeforeTheLock = () => Date.parse('2026-01-01T00:00:00Z');
+  const bootedLongAfterTheLock = () => Date.parse('2026-04-17T12:00:00Z');
 
   function lockState(status: 'alive' | 'foreign-host', owner: Record<string, string>): LockState {
     return {
@@ -479,6 +481,7 @@ describe('runStop identity check at the signal', () => {
       error: (msg) => errors.push(msg),
       probeClients: async () => null,
       logger,
+      readBootInstant: bootedBeforeTheLock,
       ...overrides,
     });
     return { outcome, killed, logs, errors, warnings };
@@ -668,6 +671,29 @@ describe('runStop identity check at the signal', () => {
         'Before ending process 100 yourself, confirm that it is an OpenKnowledge server. ' +
         `Once you have confirmed no OpenKnowledge server is running for this project, remove ${lockPath}.`,
     ]);
+  });
+
+  test('on Windows a holder the OS refuses to open, named by a lock written before the last boot, is reported stale and not signalled', async () => {
+    const { outcome, killed, logs, errors, warnings } = run(thisMachine(), {
+      isAlive: () => true,
+      readProcessStart: (_pid, options) => {
+        options?.onNativeFailure?.({
+          kind: 'query-failed',
+          reason: 'readProcessStart failed: OpenProcess: os error 5',
+        });
+        return null;
+      },
+      platform: 'win32',
+      readBootInstant: bootedLongAfterTheLock,
+    });
+
+    expect(await outcome).toEqual({ stopped: [], failed: [], hadTargets: true });
+    expect(killed).toEqual([]);
+    expect(logs).toEqual([]);
+    expect(errors).toEqual([
+      `Process 100 is no longer the server that wrote ${lockPath}; it was not signalled. Run \`ok clean\` to remove the stale lock.`,
+    ]);
+    expect(warnings).toEqual([]);
   });
 
   test('a holder whose start cannot be compared with the recorded start fails without a signal', async () => {

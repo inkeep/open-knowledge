@@ -93,6 +93,7 @@ import {
   prepareSpawnProjectLogsDir,
   type ResolvedSkillHost,
   RUNTIME_VERSION,
+  readBootStartedAtMs,
   readBundleDecision,
   readProcessStart,
   readServerLock,
@@ -200,7 +201,7 @@ import {
   resolveDesktopLocaleForPushed,
 } from './boot-locale.ts';
 import { resolveBootRestoreDecision, resolveRestoreActions } from './boot-restore-decision.ts';
-import { readBootSessionUuid, readBootStartedAtMs } from './boot-session.ts';
+import { readBootSessionUuid } from './boot-session.ts';
 import { runBootstrap } from './bootstrap.ts';
 import {
   type BranchInfoProxyDeps,

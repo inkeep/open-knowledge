@@ -10,6 +10,7 @@ const startedBeforeFixtureLocks = (): ProcessStart => ({
   startedAtMs: Date.parse('2026-04-15T00:00:00Z'),
   clock: 'creation',
 });
+const bootedBeforeFixtureLocks = () => Date.parse('2026-04-15T00:00:00Z');
 
 const tempDir = createTempDirFactory(afterEach);
 
@@ -257,7 +258,13 @@ describe('inspectLock', () => {
   ] as const)('a live pid whose holder %s stays alive', (_case, readProcessStart) => {
     const dir = freshLockDir();
     const lock = writeSameHostLock(dir);
-    expect(inspectLock(dir, 'server', { isAlive: () => true, readProcessStart })).toEqual({
+    expect(
+      inspectLock(dir, 'server', {
+        isAlive: () => true,
+        readProcessStart,
+        readBootInstant: bootedBeforeFixtureLocks,
+      }),
+    ).toEqual({
       status: 'alive',
       lockPath: join(dir, 'server.lock'),
       lock,

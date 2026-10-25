@@ -226,6 +226,7 @@ function buildEnv(): TestEnv {
         startedAtMs: Date.parse('2026-01-01T00:00:00Z'),
         clock: 'creation',
       }),
+      readBootInstant: () => Date.parse('2026-01-01T00:00:00Z'),
       activateApp,
       showGate,
       log: {

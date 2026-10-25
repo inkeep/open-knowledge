@@ -1,6 +1,6 @@
 import { type ExecFileSyncOptionsWithStringEncoding, execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { hostname } from 'node:os';
+import { hostname, uptime } from 'node:os';
 import {
   LOCAL_OP_PIPE_STDIO_OPTIONS,
   withHiddenWindowsConsole,
@@ -91,11 +91,14 @@ export interface ClassifyLockHolderOptions {
   sameMachine?: boolean;
   formatRecordsMachineId?: boolean;
   refuseHolderStartedAfterLock?: boolean;
+  platform?: NodeJS.Platform;
+  readBootInstant?: () => number | null;
 }
 
 const TOKEN_TOLERANCE_MS = 1000;
 const LEGACY_MARGIN_CREATION_MS = 10_000;
 const LEGACY_MARGIN_BOOT_DERIVED_MS = 300_000;
+const LOCK_BEFORE_BOOT_MARGIN_MS = 300_000;
 
 const MAX_PROCESS_ID = 0xffff_ffff;
 const MAX_BOOT_ID_LENGTH = 64;
@@ -385,6 +388,35 @@ function compareLockHolderStart(
   return drift > 0 ? { verdict: 'replaced' } : MISMATCH;
 }
 
+export function readBootStartedAtMs(
+  nowMs: number = Date.now(),
+  readUptimeSeconds: () => number = uptime,
+): number | null {
+  try {
+    const uptimeSeconds = readUptimeSeconds();
+    if (!Number.isFinite(uptimeSeconds) || uptimeSeconds <= 0) return null;
+    return nowMs - Math.round(uptimeSeconds * 1000);
+  } catch {
+    return null;
+  }
+}
+
+function lockWrittenAtMs(lock: LockHolderIdentity): number | null {
+  const token = parseProcessStartToken(lock.processStart);
+  const writtenAtMs = [
+    token !== undefined && 'startedAtMs' in token ? token.startedAtMs : Number.NaN,
+    typeof lock.startedAt === 'string' ? Date.parse(lock.startedAt) : Number.NaN,
+  ].filter(Number.isFinite);
+  return writtenAtMs.length === 0 ? null : Math.max(...writtenAtMs);
+}
+
+function lockPredatesBoot(lock: LockHolderIdentity, readBootInstant: () => number | null): boolean {
+  const writtenAtMs = lockWrittenAtMs(lock);
+  if (writtenAtMs === null) return false;
+  const bootStartedAtMs = readBootInstant();
+  return bootStartedAtMs !== null && bootStartedAtMs - writtenAtMs > LOCK_BEFORE_BOOT_MARGIN_MS;
+}
+
 function recordsProcessStart(lock: LockHolderIdentity): boolean {
   return parseProcessStartToken(lock.processStart) !== undefined;
 }
@@ -401,6 +433,14 @@ export function assessLockHolder(
   const read = options.readProcessStart ?? readProcessStart;
   const start = read(lock.pid);
   if (start === null && !isAlive(lock.pid)) return { verdict: 'gone' };
+  if (
+    start === null &&
+    sameMachine &&
+    (options.platform ?? process.platform) === 'win32' &&
+    lockPredatesBoot(lock, options.readBootInstant ?? (() => readBootStartedAtMs()))
+  ) {
+    return { verdict: 'replaced' };
+  }
   const comparison = compareLockHolderStart(
     lock,
     start,

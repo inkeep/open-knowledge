@@ -33,6 +33,7 @@ export type LockState =
 interface InspectLockOptions {
   isAlive?: (pid: number) => boolean;
   readProcessStart?: ProcessStartReader;
+  readBootInstant?: () => number | null;
   host?: string;
   machineId?: string;
 }
@@ -81,6 +82,7 @@ export function inspectLock(
   const assessment = assessLockHolder(lock, {
     isAlive: opts.isAlive,
     readProcessStart: opts.readProcessStart,
+    readBootInstant: opts.readBootInstant,
     sameMachine: hasOwner,
   });
   switch (assessment.verdict) {

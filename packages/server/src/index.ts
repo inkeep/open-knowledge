@@ -452,6 +452,7 @@ export {
   type ProcessStartToken,
   parseProcessStartToken,
   processStartToken,
+  readBootStartedAtMs,
   readProcessStart,
   recordsLockOwner,
   registerNativeProcessStartReader,

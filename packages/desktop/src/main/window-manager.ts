@@ -16,6 +16,7 @@ import {
   getLocalDir,
   type LockHolderIdentity,
   type ProcessStart,
+  readBootStartedAtMs,
   readProcessStart,
 } from '@inkeep/open-knowledge-server';
 import {
@@ -483,6 +484,7 @@ export interface WindowManagerDeps {
   removeServerLock?(lockDir: string, expected: { pid: number }): boolean;
   isProcessAlive?(pid: number): boolean;
   readProcessStart?(pid: number): ProcessStart | null;
+  readBootInstant?(): number | null;
   hostname?(): string;
   probeWsUpgrade?(url: string, timeoutMs: number): Promise<boolean>;
   utilityInitTimeoutMs?: number;
@@ -853,6 +855,11 @@ export class WindowManager {
     return read ? read(pid) : readProcessStart(pid);
   }
 
+  private readBootInstant(): number | null {
+    const read = this.deps.readBootInstant;
+    return read ? read() : readBootStartedAtMs();
+  }
+
   private settleUnlessLockWriter(
     lock: LockHolderIdentity,
     sigtermSent: boolean,
@@ -860,6 +867,7 @@ export class WindowManager {
     const assessment = assessLockHolder(lock, {
       isAlive: (pid) => this.isPidAlive(pid),
       readProcessStart: (pid) => this.readHolderStart(pid),
+      readBootInstant: () => this.readBootInstant(),
     });
     const withheld = sigtermSent ? 'SIGKILL' : 'SIGTERM';
     switch (assessment.verdict) {

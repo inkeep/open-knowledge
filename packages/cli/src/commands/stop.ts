@@ -122,6 +122,7 @@ interface RunStopDeps {
   logger?: PinoLoggerInstance;
   selfChannel?: 'stable' | 'beta' | 'dev';
   platform?: NodeJS.Platform;
+  readBootInstant?: () => number | null;
   refuseHolderStartedAfterLock?: boolean;
 }
 
@@ -292,6 +293,8 @@ export async function runStop(deps: RunStopDeps): Promise<StopOutcome> {
       isAlive: deps.isAlive ?? isProcessAlive,
       readProcessStart: () => holderStart,
       refuseHolderStartedAfterLock: deps.refuseHolderStartedAfterLock,
+      platform,
+      readBootInstant: deps.readBootInstant,
     });
     switch (assessment.verdict) {
       case 'writer':
