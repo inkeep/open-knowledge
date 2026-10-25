@@ -507,13 +507,32 @@ describe('runRemoval — uninstall end to end', () => {
     }
   });
 
-  test('idempotent — a second run is a clean no-op (nothing removed, nothing failed)', async () => {
+  test('idempotent — a second run is a clean no-op (nothing removed, nothing failed)', async ({
+    onTestFinished,
+  }) => {
     const home = mkdtempSync(join(tmpdir(), 'ok-uninst-'));
+    const ambientConfig = mkdtempSync(join(tmpdir(), 'ok-uninst-ambient-'));
+    const platform = process.platform;
+    onTestFinished(() => {
+      Object.defineProperty(process, 'platform', { value: platform });
+      vi.unstubAllEnvs();
+    });
     try {
+      Object.defineProperty(process, 'platform', { value: 'linux' });
+      vi.stubEnv('XDG_CONFIG_HOME', ambientConfig);
+      vi.stubEnv('OK_CHANNEL', 'stable');
+      write(
+        join(ambientConfig, 'OpenKnowledge', 'path-install.json'),
+        JSON.stringify(markerFor(ambientConfig)),
+      );
       seedHome(home);
       const input = baseInput(home);
       await runRemoval(buildUninstallPlan(input), stubDeps());
-      const secondInput: UninstallPlanInput = { ...input, marker: readPathInstallMarker(home) };
+      const secondInput: UninstallPlanInput = {
+        ...input,
+        marker: readPathInstallMarker(home, undefined, 'darwin', {}),
+      };
+      expect(secondInput.marker).toBeNull();
       const second = await runRemoval(
         buildUninstallPlan(secondInput),
         stubDeps({
@@ -523,8 +542,10 @@ describe('runRemoval — uninstall end to end', () => {
       );
       expect(second.failed).toHaveLength(0);
       expect(second.removed).toHaveLength(0);
+      expect(existsSync(join(ambientConfig, '.local', 'bin', 'ok'))).toBe(true);
     } finally {
       rmSync(home, { recursive: true, force: true });
+      rmSync(ambientConfig, { recursive: true, force: true });
     }
   });
 });

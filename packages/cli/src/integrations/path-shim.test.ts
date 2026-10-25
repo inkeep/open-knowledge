@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathShimBlockLabel, pathShimFishConfFileName } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -49,7 +49,7 @@ describe('readPathInstallMarker', () => {
   test('reads a valid v1 marker', () => {
     const home = mkdtempSync(join(tmpdir(), 'ok-marker-'));
     try {
-      const markerPath = pathInstallMarkerPath(home);
+      const markerPath = pathInstallMarkerPath(home, 'darwin', {});
       const dir = markerPath.slice(0, markerPath.lastIndexOf('/'));
       mkdirSync(dir, { recursive: true });
       writeFileSync(
@@ -67,7 +67,7 @@ describe('readPathInstallMarker', () => {
           extraSymlinks: [],
         }),
       );
-      const marker = readPathInstallMarker(home);
+      const marker = readPathInstallMarker(home, undefined, 'darwin', {});
       expect(marker?.version).toBe(1);
       expect(marker?.rcFiles).toEqual([join(home, '.zshrc')]);
     } finally {
@@ -78,14 +78,14 @@ describe('readPathInstallMarker', () => {
   test('returns null for an absent, malformed, or wrong-version marker', () => {
     const home = mkdtempSync(join(tmpdir(), 'ok-marker-'));
     try {
-      expect(readPathInstallMarker(home)).toBeNull();
-      const markerPath = pathInstallMarkerPath(home);
+      expect(readPathInstallMarker(home, undefined, 'darwin', {})).toBeNull();
+      const markerPath = pathInstallMarkerPath(home, 'darwin', {});
       const dir = markerPath.slice(0, markerPath.lastIndexOf('/'));
       mkdirSync(dir, { recursive: true });
       writeFileSync(markerPath, 'not json');
-      expect(readPathInstallMarker(home)).toBeNull();
+      expect(readPathInstallMarker(home, undefined, 'darwin', {})).toBeNull();
       writeFileSync(markerPath, JSON.stringify({ version: 2 }));
-      expect(readPathInstallMarker(home)).toBeNull();
+      expect(readPathInstallMarker(home, undefined, 'darwin', {})).toBeNull();
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -121,7 +121,7 @@ describe('path shim per channel', () => {
 
   test('Stable keeps its Application Support marker and strips only the Stable block', () => {
     vi.stubEnv('OK_CHANNEL', 'stable');
-    expect(pathInstallMarkerPath('/home/me')).toBe(
+    expect(pathInstallMarkerPath('/home/me', 'darwin')).toBe(
       join('/home/me', 'Library', 'Application Support', 'OpenKnowledge', 'path-install.json'),
     );
     const { text } = stripManagedPathBlock(`${block()}${BETA_BLOCK}`);
@@ -130,7 +130,7 @@ describe('path shim per channel', () => {
 
   test('Beta reads its marker under ~/.ok-beta and strips only the Beta block', () => {
     vi.stubEnv('OK_CHANNEL', 'beta');
-    expect(pathInstallMarkerPath('/home/me')).toBe(
+    expect(pathInstallMarkerPath('/home/me', 'darwin')).toBe(
       join('/home/me', '.ok-beta', 'path-install.json'),
     );
     const { text, changed } = stripManagedPathBlock(`${block()}${BETA_BLOCK}`);
@@ -151,5 +151,51 @@ describe('path shim per channel', () => {
   test('Stable keeps its fish file name', () => {
     vi.stubEnv('OK_CHANNEL', 'stable');
     expect(pathShimFishConfName()).toBe('open-knowledge.fish');
+  });
+});
+
+describe('Linux uninstall marker discovery', () => {
+  test.each(['current', 'legacy'])(
+    'reads the %s marker without Desktop starting first',
+    (location) => {
+      const home = mkdtempSync(join(tmpdir(), 'ok-linux-marker-read-'));
+      try {
+        const env = { XDG_CONFIG_HOME: join(home, 'settings') };
+        const path =
+          location === 'current'
+            ? pathInstallMarkerPath(home, 'linux', env)
+            : join(home, 'Library', 'Application Support', 'OpenKnowledge', 'path-install.json');
+        const marker = { version: 1, rcFiles: [join(home, 'custom.rc')], extraSymlinks: [] };
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, JSON.stringify(marker));
+        expect(readPathInstallMarker(home, undefined, 'linux', env)).toEqual(marker);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test('prefers the current marker over legacy state, including a current unknown version', () => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-linux-marker-priority-'));
+    try {
+      const env = { XDG_CONFIG_HOME: join(home, 'settings') };
+      const current = pathInstallMarkerPath(home, 'linux', env);
+      const legacy = join(
+        home,
+        'Library',
+        'Application Support',
+        'OpenKnowledge',
+        'path-install.json',
+      );
+      mkdirSync(dirname(current), { recursive: true });
+      mkdirSync(dirname(legacy), { recursive: true });
+      writeFileSync(legacy, JSON.stringify({ version: 1, rcFiles: ['legacy'] }));
+      writeFileSync(current, JSON.stringify({ version: 1, rcFiles: ['current'] }));
+      expect(readPathInstallMarker(home, undefined, 'linux', env)?.rcFiles).toEqual(['current']);
+      writeFileSync(current, JSON.stringify({ version: 2 }));
+      expect(readPathInstallMarker(home, undefined, 'linux', env)).toBeNull();
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

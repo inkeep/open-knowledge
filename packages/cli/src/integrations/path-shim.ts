@@ -47,8 +47,12 @@ export interface PathInstallMarker {
   consent?: PathInstallConsent;
 }
 
-export function pathInstallMarkerPath(home: string): string {
-  return pathShimMarkerPath(resolveDesktopProductName(), home);
+export function pathInstallMarkerPath(
+  home: string,
+  platform: string = process.platform,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  return pathShimMarkerPath(resolveDesktopProductName(), home, platform, env.XDG_CONFIG_HOME);
 }
 
 export function pathShimFishConfName(): string {
@@ -79,9 +83,18 @@ const defaultFsOps: PathShimFsOps = {
 export function readPathInstallMarker(
   home: string,
   fs: PathShimFsOps = defaultFsOps,
+  platform: string = process.platform,
+  env: Record<string, string | undefined> = process.env,
 ): PathInstallMarker | null {
-  const path = pathInstallMarkerPath(home);
-  if (!fs.existsSync(path)) return null;
+  const channel = resolveDesktopProductName();
+  const current = pathInstallMarkerPath(home, platform, env);
+  const legacy = pathShimMarkerPath(channel, home);
+  const path = fs.existsSync(current)
+    ? current
+    : channel === 'stable' && platform === 'linux' && fs.existsSync(legacy)
+      ? legacy
+      : null;
+  if (path === null) return null;
   try {
     const parsed = JSON.parse(fs.readFileSync(path, 'utf8')) as PathInstallMarker;
     return parsed?.version === 1 ? parsed : null;

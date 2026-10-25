@@ -50,6 +50,8 @@ How the app lands depends on your platform:
 
 On every platform the app writes app-level state and logs on launch. The table below shows the macOS locations; Beta substitutes `OpenKnowledge Beta` for the app-data directory and uses its own updater cache. On Windows, Stable app state lives under `%APPDATA%\OpenKnowledge\` and Beta under `%APPDATA%\OpenKnowledge Beta\`. On Linux, the corresponding defaults are `~/.config/OpenKnowledge/` and `~/.config/OpenKnowledge Beta/` (or the matching XDG directories). Stable keeps its command-line shortcuts under `~/.ok/` and Beta keeps its own under `~/.ok-beta/`. When Beta sets up its `PATH` shim, it removes the `~/.ok/variants/beta/` folder that earlier Beta builds used.
 
+On Linux, Stable keeps its `PATH` marker at `$XDG_CONFIG_HOME/OpenKnowledge/path-install.json` (default `~/.config/OpenKnowledge/path-install.json`). On startup after upgrading, it migrates a valid legacy marker from `~/Library/Application Support/OpenKnowledge/path-install.json` when the new marker is absent, preserving the recorded setup choices and removing only empty legacy folders.
+
 | Path | What it is | Scope |
 | --- | --- | --- |
 | `~/Library/Application Support/OpenKnowledge/state.json` | Recent projects, window/view state, update channel, and your automatic-updates preference | Outside-project (home dir) |

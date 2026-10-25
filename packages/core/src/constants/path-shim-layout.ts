@@ -13,8 +13,19 @@ export function pathShimBinDir(channel: DesktopProductName, home: string): strin
   return posixOkManagedBinDir(home, pathShimHomeDirName(channel));
 }
 
-export function pathShimMarkerPath(channel: DesktopProductName, home: string): string {
+export function pathShimMarkerPath(
+  channel: DesktopProductName,
+  home: string,
+  platform = 'darwin',
+  xdgConfigHome?: string,
+): string {
   if (channel === 'stable') {
+    if (platform === 'linux') {
+      const configHome = xdgConfigHome?.startsWith('/')
+        ? xdgConfigHome
+        : `${posixHome(home)}/.config`;
+      return `${posixHome(configHome)}/OpenKnowledge/path-install.json`;
+    }
     return `${posixHome(home)}/Library/Application Support/OpenKnowledge/path-install.json`;
   }
   return `${posixHome(home)}/${pathShimHomeDirName(channel)}/path-install.json`;

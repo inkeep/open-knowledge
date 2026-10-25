@@ -18,7 +18,7 @@ import {
   type EnsureCliOnPathResult,
   ensureCliOnPath,
   isPathShimInstalled,
-  pathInstallMarkerPath,
+  pathInstallMarkerPath as markerPathForPlatform,
   removePathShimFromRcFiles,
 } from './path-install.ts';
 
@@ -47,6 +47,10 @@ function baseOpts(h: string, overrides: Partial<EnsureOpts> = {}): EnsureOpts {
     spawn: async () => ({ code: 0, stdout: '/usr/bin:/bin', stderr: '' }),
     ...overrides,
   };
+}
+
+function pathInstallMarkerPath(h: string): string {
+  return markerPathForPlatform(h, 'darwin', {});
 }
 
 function readMarkerFile(h: string): Record<string, unknown> {
@@ -381,6 +385,8 @@ describe('ensureCliOnPath', () => {
       '/opt/OpenKnowledge/resources/cli/bin/ok.sh',
     );
     expect(readFileSync(join(h, '.bashrc'), 'utf8')).toContain('.ok/env.sh');
+    expect(existsSync(join(h, '.config', 'OpenKnowledge', 'path-install.json'))).toBe(true);
+    expect(existsSync(join(h, 'Library'))).toBe(false);
   });
 
   test('returns failed-all instead of throwing when an fs operation fails', async () => {
@@ -389,6 +395,8 @@ describe('ensureCliOnPath', () => {
     const result = await ensureCliOnPath(
       baseOpts(h, {
         fs: {
+          copyFileSync: () => {},
+          rmdirSync: () => {},
           existsSync: () => false,
           readFileSync: () => '',
           writeFileSync: () => {},
@@ -443,9 +451,9 @@ describe('ensureCliOnPath', () => {
 
     const marker = readMarkerFile(h);
     expect(marker.rcFiles).toEqual([fishConf, join(h, '.zshrc')]);
-    expect(removePathShimFromRcFiles({ home: h, env: { SHELL: '/bin/zsh' } }).status).toBe(
-      'removed',
-    );
+    expect(
+      removePathShimFromRcFiles({ platform: 'darwin', home: h, env: { SHELL: '/bin/zsh' } }).status,
+    ).toBe('removed');
     expect(existsSync(fishConf)).toBe(false);
   });
 
@@ -565,9 +573,9 @@ describe('computePathInstallDescriptor', () => {
     expect(readFileSync(fishConf, 'utf8')).toBe(legacyBlock);
     expect(readMarkerFile(h).rcFiles as string[]).not.toContain(fishConf);
 
-    expect(removePathShimFromRcFiles({ home: h, env: { SHELL: '/bin/zsh' } }).status).toBe(
-      'removed',
-    );
+    expect(
+      removePathShimFromRcFiles({ platform: 'darwin', home: h, env: { SHELL: '/bin/zsh' } }).status,
+    ).toBe('removed');
     expect(existsSync(fishConf)).toBe(false);
   });
 
@@ -652,9 +660,9 @@ describe('isPathShimInstalled / removePathShimFromRcFiles — the Settings → A
     writeFileSync(join(h, '.config', 'fish', 'config.fish'), '# user fish config\n');
     await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
     const env = { SHELL: '/bin/zsh' };
-    expect(isPathShimInstalled({ home: h, env })).toBe(true);
+    expect(isPathShimInstalled({ platform: 'darwin', home: h, env })).toBe(true);
 
-    const result = removePathShimFromRcFiles({ home: h, env });
+    const result = removePathShimFromRcFiles({ platform: 'darwin', home: h, env });
     expect(result.status).toBe('removed');
     expect(readFileSync(join(h, '.zshrc'), 'utf8')).not.toContain('# >>> open-knowledge cli >>>');
     expect(readFileSync(join(h, '.zshrc'), 'utf8')).toContain('export FOO=1');
@@ -663,14 +671,18 @@ describe('isPathShimInstalled / removePathShimFromRcFiles — the Settings → A
     expect(marker.rcFiles).toEqual([]);
     expect((marker.consent as { status: string }).status).toBe('declined');
     expect(marker.rcOptOuts).toEqual([]);
-    expect(isPathShimInstalled({ home: h, env })).toBe(false);
+    expect(isPathShimInstalled({ platform: 'darwin', home: h, env })).toBe(false);
   });
 
   test('startup after a Settings removal never re-appends; a Settings re-install does', async () => {
     const h = home();
     writeFileSync(join(h, '.zshrc'), 'export FOO=1\n');
     await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
-    removePathShimFromRcFiles({ home: h, platform: 'darwin', env: { SHELL: '/bin/zsh' } });
+    removePathShimFromRcFiles({
+      home: h,
+      platform: 'darwin',
+      env: { SHELL: '/bin/zsh' },
+    });
 
     await ensureCliOnPath(baseOpts(h));
     expect(readFileSync(join(h, '.zshrc'), 'utf8')).not.toContain('# >>> open-knowledge cli >>>');
@@ -678,9 +690,13 @@ describe('isPathShimInstalled / removePathShimFromRcFiles — the Settings → A
     const regrant = await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
     expect(regrant.status).toBe('installed');
     expect(readFileSync(join(h, '.zshrc'), 'utf8')).toContain('# >>> open-knowledge cli >>>');
-    expect(isPathShimInstalled({ home: h, platform: 'darwin', env: { SHELL: '/bin/zsh' } })).toBe(
-      true,
-    );
+    expect(
+      isPathShimInstalled({
+        home: h,
+        platform: 'darwin',
+        env: { SHELL: '/bin/zsh' },
+      }),
+    ).toBe(true);
   });
 
   test('re-grant works even when the probe shell inherits a stale PATH containing ~/.ok/bin', async () => {
@@ -692,23 +708,35 @@ describe('isPathShimInstalled / removePathShimFromRcFiles — the Settings → A
       stderr: '',
     });
     await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED, spawn: stalePathSpawn }));
-    removePathShimFromRcFiles({ home: h, platform: 'darwin', env: { SHELL: '/bin/zsh' } });
+    removePathShimFromRcFiles({
+      home: h,
+      platform: 'darwin',
+      env: { SHELL: '/bin/zsh' },
+    });
 
     const regrant = await ensureCliOnPath(
       baseOpts(h, { consentDecision: GRANTED, spawn: stalePathSpawn }),
     );
     expect(regrant.status).toBe('installed');
     expect(readFileSync(join(h, '.zshrc'), 'utf8')).toContain('# >>> open-knowledge cli >>>');
-    expect(isPathShimInstalled({ home: h, platform: 'darwin', env: { SHELL: '/bin/zsh' } })).toBe(
-      true,
-    );
+    expect(
+      isPathShimInstalled({
+        home: h,
+        platform: 'darwin',
+        env: { SHELL: '/bin/zsh' },
+      }),
+    ).toBe(true);
   });
 
   test('a wedged granted-but-blockless marker heals on the next explicit grant', async () => {
     const h = home();
     writeFileSync(join(h, '.zshrc'), 'export FOO=1\n');
     await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
-    removePathShimFromRcFiles({ home: h, platform: 'darwin', env: { SHELL: '/bin/zsh' } });
+    removePathShimFromRcFiles({
+      home: h,
+      platform: 'darwin',
+      env: { SHELL: '/bin/zsh' },
+    });
     const marker = readMarkerFile(h);
     writeFileSync(
       pathInstallMarkerPath(h),

@@ -141,6 +141,8 @@ type FsOps = NonNullable<Parameters<typeof ensureCliOnPath>[0]['fs']>;
 
 function fsWith(overrides: Partial<FsOps>): FsOps {
   return {
+    copyFileSync: (source, destination, flags) => nodeFs.copyFileSync(source, destination, flags),
+    rmdirSync: (path) => nodeFs.rmdirSync(path),
     existsSync: (path) => nodeFs.existsSync(path),
     readFileSync: (path, encoding) => nodeFs.readFileSync(path, encoding),
     writeFileSync: (path, content) => nodeFs.writeFileSync(path, content),
