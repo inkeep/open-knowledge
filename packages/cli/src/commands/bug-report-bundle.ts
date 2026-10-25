@@ -1,6 +1,13 @@
 import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from 'node:fs';
 import { freemem, type as osType, platform, release, totalmem, uptime } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import {
@@ -196,10 +203,22 @@ export function collectShipItLogFiles(
         return /^\d+$/.test(suffix) ? { entry, suffix: Number(suffix) } : null;
       })
       .filter((match) => match !== null)
-      .sort((a, b) => a.suffix - b.suffix)
+      .map((match) => {
+        const path = join(shipItDir, match.entry);
+        return { path, suffix: match.suffix, mtimeMs: readMtimeMs(path) };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs || b.suffix - a.suffix)
       .slice(0, SHIPIT_LOG_FILES_PER_STREAM)
-      .map((match) => join(shipItDir, match.entry)),
+      .map((match) => match.path),
   );
+}
+
+function readMtimeMs(path: string): number {
+  try {
+    return statSync(path).mtimeMs;
+  } catch {
+    return 0;
+  }
 }
 
 export const MAX_BUNDLED_LEDGER_REPORTS = 25;

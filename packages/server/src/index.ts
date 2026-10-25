@@ -85,6 +85,7 @@ export {
   type BootedServer,
   type BootServerOptions,
   bootServer,
+  type ServerExitDetail,
   type ServerExitReason,
 } from './boot.ts';
 export {

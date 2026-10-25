@@ -184,9 +184,13 @@ export interface BootServerOptions
 
 export type ServerExitReason = 'external-signal' | 'idle-shutdown' | 'parent-exit' | 'unspecified';
 
+export interface ServerExitDetail {
+  signal?: NodeJS.Signals;
+}
+
 export interface BootedServer {
   httpServer: HttpServer;
-  destroy: (reason?: ServerExitReason) => Promise<void>;
+  destroy: (reason?: ServerExitReason, detail?: ServerExitDetail) => Promise<void>;
   lockDir: string;
   contentDir: string;
   port: number;
@@ -264,9 +268,9 @@ export async function bootServer(opts: BootServerOptions): Promise<BootedServer>
     throw err;
   }
   const innerDestroy = booted.destroy;
-  booted.destroy = async (reason) => {
+  booted.destroy = async (reason, detail) => {
     try {
-      await innerDestroy(reason);
+      await innerDestroy(reason, detail);
     } finally {
       crashCapture.uninstall();
     }
@@ -565,7 +569,7 @@ async function bootServerInner(
     acpThreadManager,
   });
 
-  let destroy: (reason?: ServerExitReason) => Promise<void> = async () => {
+  let destroy: BootedServer['destroy'] = async () => {
     throw new Error('bootServer: destroy() invoked before initialization — boot did not complete');
   };
 
@@ -700,7 +704,10 @@ async function bootServerInner(
       if (timer !== undefined) clearTimeout(timer);
     }
   };
-  destroy = async (reason: ServerExitReason = 'unspecified'): Promise<void> => {
+  destroy = async (
+    reason: ServerExitReason = 'unspecified',
+    detail: ServerExitDetail = {},
+  ): Promise<void> => {
     if (destroyed) return;
     destroyed = true;
     try {
@@ -710,7 +717,10 @@ async function bootServerInner(
         tracedUtimesSync(projectLogsDir, now, now);
       }
     } catch {}
-    log.info({ reason, pid: process.pid, lockDir }, `[server] shutdown initiated (${reason})`);
+    log.info(
+      { reason, signal: detail.signal ?? null, pid: process.pid, lockDir },
+      `[server] shutdown initiated (${reason})`,
+    );
     readinessState = 'draining';
     const errors: unknown[] = [];
     const runStep = async (

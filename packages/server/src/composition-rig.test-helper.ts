@@ -57,9 +57,9 @@ export async function bootCompositionRig(
   }
   if (overrides.configHomedirOverride === undefined) {
     const inner = booted.destroy;
-    booted.destroy = async (reason) => {
+    booted.destroy = async (...args) => {
       try {
-        await inner(reason);
+        await inner(...args);
       } finally {
         rmSync(ownedHome, { recursive: true, force: true });
       }

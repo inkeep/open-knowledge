@@ -515,6 +515,7 @@ import {
   windowRestoreKey,
 } from './state-store.ts';
 import { stopCommandLine } from './stop-command.ts';
+import { createMacMemoryPressureProbe, readSystemMemorySample } from './system-memory-sample.ts';
 import { isTerminalAvailable, withTerminalCapabilityArg } from './terminal-capability.ts';
 import {
   isTerminalConsented,
@@ -6225,10 +6226,21 @@ function bootPrimaryInstance(): void {
   );
 
   startLocalCrashReporter(crashReporter);
+  const macMemoryPressure =
+    process.platform === 'darwin' ? createMacMemoryPressureProbe({ now: () => new Date() }) : null;
+  macMemoryPressure?.refresh();
   desktopProcessObservability = createDesktopProcessObservability({
     now: () => new Date(),
     getAppMetrics: () => app.getAppMetrics(),
     getAllWindows: () => BrowserWindow.getAllWindows(),
+    readSystemMemory: () => {
+      const sample = readSystemMemorySample(
+        process.getSystemMemoryInfo(),
+        macMemoryPressure?.latest() ?? null,
+      );
+      macMemoryPressure?.refresh();
+      return sample;
+    },
     logger: getLogger('desktop-process-observability'),
     setInterval: (callback, ms) => setInterval(callback, ms).unref(),
     clearInterval: (handle) => clearInterval(handle),

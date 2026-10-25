@@ -40,10 +40,11 @@ describe('server exit reason', () => {
     const booted = await bootCompositionRig(dir, { log });
     await booted.ready;
     try {
-      await booted.destroy('external-signal');
+      await booted.destroy('external-signal', { signal: 'SIGTERM' });
       const record = entries.find((e) => e.msg.includes('shutdown initiated'));
       expect(record).toBeDefined();
       expect(record?.payload.reason).toBe('external-signal');
+      expect(record?.payload.signal).toBe('SIGTERM');
       expect(record?.payload.pid).toBe(process.pid);
     } finally {
       await rm(dir, { recursive: true, force: true });

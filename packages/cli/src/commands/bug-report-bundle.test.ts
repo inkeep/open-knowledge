@@ -7,6 +7,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -619,6 +620,49 @@ describe('collectShipItLogFiles — Squirrel.Mac install logs', () => {
     expect(names).toEqual(['ShipIt_stderr.log', 'ShipIt_stderr.log.1', 'ShipIt_stdout.log.2']);
   });
 
+  test('keeps the newest fallback logs when Squirrel has left more than four', () => {
+    const cachesDir = makeTmpDir();
+    const names = ['', '.1', '.2', '.3', '.4', '.5'].map((suffix) => `ShipIt_stderr.log${suffix}`);
+    names.forEach((name, index) => {
+      writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/${name}`, `run ${index}\n`);
+      const at = new Date(Date.UTC(2026, 9, 1 + index));
+      utimesSync(join(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt`, name), at, at);
+    });
+
+    const collected = collectShipItLogFiles(cachesDir)
+      .map((f) => basename(f))
+      .sort();
+
+    expect(collected).toEqual([
+      'ShipIt_stderr.log.2',
+      'ShipIt_stderr.log.3',
+      'ShipIt_stderr.log.4',
+      'ShipIt_stderr.log.5',
+    ]);
+  });
+
+  test('orders fallback logs by when they were written, not by suffix', () => {
+    const cachesDir = makeTmpDir();
+    const writtenOldestFirst = ['.1', '.2', '.3', '.4', '.5', ''];
+    writtenOldestFirst.forEach((suffix, index) => {
+      const name = `ShipIt_stderr.log${suffix}`;
+      writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/${name}`, `run ${index}\n`);
+      const at = new Date(Date.UTC(2026, 9, 1 + index));
+      utimesSync(join(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt`, name), at, at);
+    });
+
+    const collected = collectShipItLogFiles(cachesDir)
+      .map((f) => basename(f))
+      .sort();
+
+    expect(collected).toEqual([
+      'ShipIt_stderr.log',
+      'ShipIt_stderr.log.3',
+      'ShipIt_stderr.log.4',
+      'ShipIt_stderr.log.5',
+    ]);
+  });
+
   test('ignores neighbours that merely start with a ShipIt log name', () => {
     const cachesDir = makeTmpDir();
     writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log.1`, 'ours\n');
@@ -641,10 +685,10 @@ describe('collectShipItLogFiles — Squirrel.Mac install logs', () => {
     const names = collectShipItLogFiles(cachesDir).map((f) => basename(f));
 
     expect(names).toEqual([
-      'ShipIt_stderr.log',
-      'ShipIt_stderr.log.1',
-      'ShipIt_stderr.log.2',
-      'ShipIt_stderr.log.3',
+      'ShipIt_stderr.log.12',
+      'ShipIt_stderr.log.11',
+      'ShipIt_stderr.log.10',
+      'ShipIt_stderr.log.9',
     ]);
   });
 

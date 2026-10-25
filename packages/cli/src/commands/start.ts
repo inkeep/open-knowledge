@@ -27,6 +27,7 @@ import {
   lockAdvertisesUi,
   type PinoLogger,
   prepareSingleFileOpen,
+  type ServerExitDetail,
   type ServerExitReason,
 } from '@inkeep/open-knowledge-server';
 import { Command, InvalidArgumentError, Option } from 'commander';
@@ -320,7 +321,7 @@ interface BootStartServerOptions {
 
 export interface BootedStartServer {
   httpServer: HttpServer;
-  destroy: (reason?: ServerExitReason) => Promise<void>;
+  destroy: (reason?: ServerExitReason, detail?: ServerExitDetail) => Promise<void>;
   lockDir: string;
   contentDir: string;
   port: number;
@@ -524,9 +525,9 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
 
   const innerDestroy = booted.destroy;
   const destroy = ownsEphemeralProjectDir
-    ? async (): Promise<void> => {
+    ? async (...args: Parameters<typeof innerDestroy>): Promise<void> => {
         try {
-          await innerDestroy();
+          await innerDestroy(...args);
         } finally {
           await reapOwnedEphemeralDir();
         }
@@ -804,7 +805,7 @@ export async function runStartCommand(configArg: Config, opts: StartCommandOptio
       console.log(dim(`  ${line}`));
     }
     try {
-      await booted.destroy('external-signal');
+      await booted.destroy('external-signal', { signal });
     } catch (err) {
       console.error(
         `${error('destroy() failed:')} ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,

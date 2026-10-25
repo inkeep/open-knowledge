@@ -123,6 +123,7 @@ interface DriveResult {
   readyErr?: Error;
   handle: UtilityHandle;
   destroyReasons: Array<string | undefined>;
+  destroySignals: Array<string | undefined>;
 }
 
 async function driveInit(opts: {
@@ -133,6 +134,7 @@ async function driveInit(opts: {
   const posted: Array<Record<string, unknown>> = [];
   const bootPorts: Array<number | undefined> = [];
   const destroyReasons: Array<string | undefined> = [];
+  const destroySignals: Array<string | undefined> = [];
   let messageHandler: ((e: { data: unknown }) => void) | undefined;
 
   const fakeBootServer = async (o: BootServerOptions): Promise<BootedServer> => {
@@ -141,8 +143,9 @@ async function driveInit(opts: {
     return {
       port: res.port,
       degraded: [],
-      destroy: async (reason?: string) => {
+      destroy: async (reason?: string, detail?: { signal?: string }) => {
         destroyReasons.push(reason);
+        destroySignals.push(detail?.signal);
       },
     } as unknown as BootedServer;
   };
@@ -183,9 +186,9 @@ async function driveInit(opts: {
   });
   try {
     const ready = await handle.readyPromise;
-    return { posted, bootPorts, ready, handle, destroyReasons };
+    return { posted, bootPorts, ready, handle, destroyReasons, destroySignals };
   } catch (err) {
-    return { posted, bootPorts, readyErr: err as Error, handle, destroyReasons };
+    return { posted, bootPorts, readyErr: err as Error, handle, destroyReasons, destroySignals };
   }
 }
 
@@ -264,9 +267,10 @@ describe('shutdown exit reason', () => {
   }
 
   test('a dead parent drains the server as parent-exit', async () => {
-    const { handle, destroyReasons } = await drive();
+    const { handle, destroyReasons, destroySignals } = await drive();
     await handle.shutdown('parent-died');
     expect(destroyReasons).toEqual(['parent-exit']);
+    expect(destroySignals).toEqual([undefined]);
   });
 
   test('window-close IPC drains as parent-exit too — the host is going away', async () => {
@@ -276,8 +280,9 @@ describe('shutdown exit reason', () => {
   });
 
   test('a signal drains as external-signal', async () => {
-    const { handle, destroyReasons } = await drive();
+    const { handle, destroyReasons, destroySignals } = await drive();
     await handle.shutdown('SIGTERM');
     expect(destroyReasons).toEqual(['external-signal']);
+    expect(destroySignals).toEqual(['SIGTERM']);
   });
 });

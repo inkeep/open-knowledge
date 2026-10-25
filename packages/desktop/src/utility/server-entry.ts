@@ -200,7 +200,10 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
     let drainOk = true;
     if (booted) {
       try {
-        await booted.destroy(SERVER_EXIT_REASONS[reason]);
+        await booted.destroy(
+          SERVER_EXIT_REASONS[reason],
+          reason === 'SIGTERM' || reason === 'SIGINT' ? { signal: reason } : undefined,
+        );
       } catch (err) {
         drainOk = false;
         deps.parentPort?.postMessage({

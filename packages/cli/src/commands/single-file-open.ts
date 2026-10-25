@@ -124,19 +124,19 @@ async function runSingleFileBrowserOpen(
 
   let tornDown = false;
   let booted: Awaited<ReturnType<typeof bootStartServer>> | undefined;
-  const teardown = async (): Promise<void> => {
+  const teardown = async (signal?: NodeJS.Signals): Promise<void> => {
     if (tornDown) return;
     tornDown = true;
     try {
-      await booted?.destroy('external-signal');
+      await booted?.destroy('external-signal', { signal });
     } catch {}
     try {
       await rm(projectDir, { recursive: true, force: true });
     } catch {}
   };
 
-  const onSignal = (): void => {
-    void teardown().then(() => process.exit(0));
+  const onSignal = (signal: NodeJS.Signals): void => {
+    void teardown(signal).then(() => process.exit(0));
   };
   process.once('SIGINT', onSignal);
   process.once('SIGTERM', onSignal);
