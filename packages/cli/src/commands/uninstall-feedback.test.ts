@@ -8,7 +8,7 @@ import {
   type UninstallFeedbackResult,
   type UninstallFeedbackSubmission,
 } from '@inkeep/open-knowledge-core';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { runUninstall } from './uninstall.ts';
 import { collectUninstallFeedbackAnswers, promptUninstallFeedback } from './uninstall-feedback.ts';
 
@@ -68,6 +68,14 @@ function drive(steps: Array<{ when: string; send: string }>): {
   });
   return { io: { input, output }, transcript: () => seen };
 }
+
+beforeEach(() => {
+  vi.stubEnv('XDG_CONFIG_HOME', undefined);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('collectUninstallFeedbackAnswers', () => {
   test('offers every reason plus a skip choice, all on one screen', async () => {

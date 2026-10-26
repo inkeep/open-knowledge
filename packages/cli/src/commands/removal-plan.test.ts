@@ -45,6 +45,7 @@ import {
 let OWN_ENTRY: ReturnType<typeof buildManagedServerEntry>;
 
 beforeEach(() => {
+  vi.stubEnv('XDG_CONFIG_HOME', undefined);
   vi.stubEnv('OK_CHANNEL', 'stable');
   OWN_ENTRY = buildManagedServerEntry({ mode: 'published' });
 });

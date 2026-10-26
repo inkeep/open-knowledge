@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { SHARED_OK_ENTRIES } from '@inkeep/open-knowledge-core';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ensurePiBridge } from './pi-acp-bridge.ts';
 import {
   detectInstallMethods,
@@ -16,6 +16,14 @@ function write(path: string, content: string): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, content);
 }
+
+beforeEach(() => {
+  vi.stubEnv('XDG_CONFIG_HOME', undefined);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('detectInstallMethods', () => {
   test('detects an app bundle, npm-global, and npx', () => {
