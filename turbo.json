@@ -416,6 +416,27 @@
         "test-results/vitest-test-conversion.provenance.json"
       ]
     },
+    "vitest:selected": {
+      "cache": false,
+      "inputs": [],
+      "command": ["pnpm"]
+    },
+    "vitest:selected:browser": {
+      "cache": false,
+      "inputs": [],
+      "command": ["pnpm"],
+      "passThroughEnv": [
+        "VITEST_CHROMIUM_GC_DISK_THRESHOLD_GB",
+        "VITEST_CHROMIUM_GC_FORCE",
+        "DEBUG"
+      ]
+    },
+    "vitest:selected:fidelity": {
+      "cache": false,
+      "inputs": [],
+      "command": ["pnpm"],
+      "env": ["STRESS_FIDELITY"]
+    },
     "test:e2e": {
       "dependsOn": ["^build", "build"],
       "cache": false,
