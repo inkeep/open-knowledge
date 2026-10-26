@@ -26,12 +26,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import type { AwarenessUser } from './identity.ts';
-import {
-  type AgentParticipant,
-  type HumanParticipant,
-  type Participant,
-  usePresence,
-} from './use-presence';
+import type { AgentParticipant, HumanParticipant, Participant, usePresence } from './use-presence';
 
 const M_CURRENT_PRIMARY = 4;
 const K_CROSSDOC_PRIMARY = 3;
@@ -323,16 +318,8 @@ function renderParticipant(
   );
 }
 
-export function PresenceBar() {
-  const {
-    activeProvider,
-    activeDocName,
-    systemProvider,
-    openActivityPanel,
-    docPanelMode,
-    docPanelAgentId,
-  } = useDocumentContext();
-  const { current, crossDoc } = usePresence(activeProvider, systemProvider, activeDocName);
+export function PresenceBar({ current, crossDoc }: ReturnType<typeof usePresence>) {
+  const { openActivityPanel, docPanelMode, docPanelAgentId } = useDocumentContext();
 
   if (current.length === 0 && crossDoc.length === 0) return null;
 

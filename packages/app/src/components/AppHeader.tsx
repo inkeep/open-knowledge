@@ -1,7 +1,7 @@
 import { parseManagedArtifactName } from '@inkeep/open-knowledge-core/constants/cc1';
 import { APP_HEADER_HEIGHT } from '@inkeep/open-knowledge-core/constants/chrome';
 import { useLingui } from '@lingui/react/macro';
-import { lazy, Suspense, useRef, useState } from 'react';
+import { lazy, Suspense, useLayoutEffect, useRef, useState } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { shouldShowAppMenubar } from '@/components/app-menubar-gate';
 import { BetaBadge } from '@/components/BetaBadge';
@@ -33,12 +33,16 @@ import { useSingleFileMode } from '@/lib/single-file-mode';
 import { cn } from '@/lib/utils';
 import { PresenceBar } from '@/presence/PresenceBar';
 import { SyncToastHost } from '@/presence/SyncToastHost';
+import { usePresence } from '@/presence/use-presence';
 
 const AppMenubar = lazy(() =>
   import('@/components/AppMenubar').then((m) => ({ default: m.AppMenubar })),
 );
 
 export { APP_HEADER_HEIGHT };
+
+const HEADER_FOCUSABLE_SELECTOR =
+  'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function centreNaturalWidth(centre: HTMLElement): number {
   let width = 0;
@@ -106,11 +110,13 @@ interface AppHeaderProps {
 export function AppHeader({ onOpenSearch }: AppHeaderProps) {
   const { t } = useLingui();
   const singleFile = useSingleFileMode();
-  const { activeDocName, activeTarget } = useDocumentContext();
+  const { activeDocName, activeTarget, activeProvider, systemProvider } = useDocumentContext();
+  const presence = usePresence(activeProvider, systemProvider, activeDocName);
   const desktopBridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
   const isElectronHost = desktopBridge != null;
   const foldsBadges = isElectronHost && desktopBridge.platform !== 'darwin';
   const [publishOpen, setPublishOpen] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
   const [badgeCompact, setBadgeCompact] = useState(false);
   const badgeCompactRef = useRef(false);
   const leadingBadgesRef = useRef({ width: 0, labelWidth: 0, hasLabel: false });
@@ -120,6 +126,7 @@ export function AppHeader({ onOpenSearch }: AppHeaderProps) {
   const [centre, setCentre] = useState<HTMLDivElement | null>(null);
   const shareButtonRef = useRef<HTMLButtonElement>(null);
   const overflowTriggerRef = useRef<HTMLButtonElement>(null);
+  const overflowFocusRemovedRef = useRef(false);
 
   const shareInput: ShareTargetInput | null = singleFile
     ? null
@@ -137,14 +144,17 @@ export function AppHeader({ onOpenSearch }: AppHeaderProps) {
     String(shareInput != null),
     gitSyncStatus?.hasRemote ? displayState(gitSyncStatus) : 'no-remote',
     paneButtonSet.join(','),
+    presence.current.length,
+    presence.crossDoc.length,
   ].join('|');
 
-  const actionsOverflowed = useTrailingOverflow({
+  const { overflowed: actionsOverflowed, remeasuring: actionsRemeasuring } = useTrailingOverflow({
     header,
     leading,
     trailing,
     centre,
     signature: trailingContentSignature,
+    deferRemeasure: overflowOpen,
     slack: HEADER_OVERFLOW_SLACK_PX,
     measureTrailingWidth: (elements) =>
       elements.trailing.offsetWidth +
@@ -181,11 +191,33 @@ export function AppHeader({ onOpenSearch }: AppHeaderProps) {
       return headerWidth - leadingSettledWidth - (centre != null ? centreFloorWidth(centre) : 0);
     },
   });
+  useLayoutEffect(() => {
+    if (!actionsOverflowed) setOverflowOpen(false);
+  }, [actionsOverflowed]);
+  useLayoutEffect(() => {
+    if (actionsRemeasuring || !overflowFocusRemovedRef.current || !trailing) return;
+    overflowFocusRemovedRef.current = false;
+    const ownerDocument = trailing.ownerDocument;
+    if (
+      ownerDocument.activeElement !== null &&
+      ownerDocument.activeElement !== ownerDocument.body
+    ) {
+      return;
+    }
+    if (actionsOverflowed) {
+      overflowTriggerRef.current?.focus();
+      return;
+    }
+    for (const control of trailing.querySelectorAll<HTMLElement>(HEADER_FOCUSABLE_SELECTOR)) {
+      control.focus();
+      if (ownerDocument.activeElement === control) return;
+    }
+  });
   const badgesFolded = (foldsBadges || singleFile) && actionsOverflowed;
 
   const renderTrailingActions = (onClickWhenNoRemote: ShareButtonProps['onClickWhenNoRemote']) => (
     <>
-      <PresenceBar />
+      <PresenceBar {...presence} />
       {!singleFile && (
         <ShareButton
           input={shareInput}
@@ -263,18 +295,18 @@ export function AppHeader({ onOpenSearch }: AppHeaderProps) {
         )}
       >
         {actionsOverflowed ? (
-          <HeaderOverflowActions syncStatus={gitSyncStatus} triggerRef={overflowTriggerRef}>
-            {(close) => (
-              <>
-                {badgesFolded && (
-                  <AppHeaderBadges compact={false} isElectronHost={isElectronHost} />
-                )}
-                {renderTrailingActions(() => {
-                  close();
-                  setPublishOpen(true);
-                })}
-              </>
-            )}
+          <HeaderOverflowActions
+            syncStatus={gitSyncStatus}
+            triggerRef={overflowTriggerRef}
+            open={overflowOpen}
+            onOpenChange={setOverflowOpen}
+            unmountedWhileFocusedRef={overflowFocusRemovedRef}
+          >
+            {badgesFolded && <AppHeaderBadges compact={false} isElectronHost={isElectronHost} />}
+            {renderTrailingActions(() => {
+              setOverflowOpen(false);
+              setPublishOpen(true);
+            })}
           </HeaderOverflowActions>
         ) : (
           renderTrailingActions(() => setPublishOpen(true))
