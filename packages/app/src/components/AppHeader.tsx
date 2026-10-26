@@ -17,7 +17,7 @@ import { NavigationHistoryControls } from '@/components/NavigationHistoryControl
 import { ProjectSwitcher } from '@/components/ProjectSwitcher';
 import { PublishToGitHubDialog } from '@/components/PublishToGitHubDialog';
 import { SettingsButton } from '@/components/SettingsButton';
-import { ShareButton } from '@/components/ShareButton';
+import { ShareButton, type ShareButtonProps } from '@/components/ShareButton';
 import { displayState, SyncStatusBadge } from '@/components/SyncStatusBadge';
 import { WebProjectName } from '@/components/WebProjectName';
 import { useDocumentContext } from '@/editor/DocumentContext';
@@ -183,13 +183,13 @@ export function AppHeader({ onOpenSearch }: AppHeaderProps) {
   });
   const badgesFolded = (foldsBadges || singleFile) && actionsOverflowed;
 
-  const trailingActions = (
+  const renderTrailingActions = (onClickWhenNoRemote: ShareButtonProps['onClickWhenNoRemote']) => (
     <>
       <PresenceBar />
       {!singleFile && (
         <ShareButton
           input={shareInput}
-          onClickWhenNoRemote={() => setPublishOpen(true)}
+          onClickWhenNoRemote={onClickWhenNoRemote}
           triggerRef={shareButtonRef}
         />
       )}
@@ -264,11 +264,20 @@ export function AppHeader({ onOpenSearch }: AppHeaderProps) {
       >
         {actionsOverflowed ? (
           <HeaderOverflowActions syncStatus={gitSyncStatus} triggerRef={overflowTriggerRef}>
-            {badgesFolded && <AppHeaderBadges compact={false} isElectronHost={isElectronHost} />}
-            {trailingActions}
+            {(close) => (
+              <>
+                {badgesFolded && (
+                  <AppHeaderBadges compact={false} isElectronHost={isElectronHost} />
+                )}
+                {renderTrailingActions(() => {
+                  close();
+                  setPublishOpen(true);
+                })}
+              </>
+            )}
           </HeaderOverflowActions>
         ) : (
-          trailingActions
+          renderTrailingActions(() => setPublishOpen(true))
         )}
         <HeaderPaneButtons />
         <SyncToastHost />

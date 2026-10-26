@@ -1,6 +1,6 @@
 import { useLingui } from '@lingui/react/macro';
 import { MoreHorizontalIcon } from 'lucide-react';
-import type { ReactNode, Ref } from 'react';
+import { type ReactNode, type Ref, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
@@ -21,7 +21,7 @@ function syncAttentionOf(status: GitSyncStatus | null): SyncAttention | null {
 
 interface HeaderOverflowActionsProps {
   syncStatus: GitSyncStatus | null;
-  children: ReactNode;
+  children: (close: () => void) => ReactNode;
   triggerRef?: Ref<HTMLButtonElement>;
 }
 
@@ -31,6 +31,7 @@ export function HeaderOverflowActions({
   triggerRef,
 }: HeaderOverflowActionsProps) {
   const { t } = useLingui();
+  const [open, setOpen] = useState(false);
   const syncAttention = syncAttentionOf(syncStatus);
   const syncAttentionLabel =
     syncAttention === 'conflict'
@@ -47,7 +48,7 @@ export function HeaderOverflowActions({
     : t`More actions`;
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           ref={triggerRef}
@@ -79,7 +80,7 @@ export function HeaderOverflowActions({
         data-header-overflow-actions=""
         className="flex w-auto max-w-[calc(100vw-1rem)] flex-wrap items-center justify-end gap-2 p-2"
       >
-        {children}
+        {children(() => setOpen(false))}
       </PopoverContent>
     </Popover>
   );
