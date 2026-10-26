@@ -55,22 +55,26 @@ export function createShowGateRegistry(deps: ShowGateRegistryDeps): ShowGateRegi
     window.show?.();
   }
 
+  function markShown(state: PerWindowGateState): void {
+    state.shown = true;
+    try {
+      deps.onShown?.(state.kind);
+    } catch (cbErr) {
+      deps.log?.warn(
+        {
+          event: 'show-gate-on-shown-failed',
+          windowKind: state.kind,
+          err: cbErr,
+        },
+        'show-gate onShown callback threw',
+      );
+    }
+  }
+
   function safeShow(window: BrowserWindowLike, state: PerWindowGateState): void {
     try {
       revealWindow(window, state.kind);
-      state.shown = true;
-      try {
-        deps.onShown?.(state.kind);
-      } catch (cbErr) {
-        deps.log?.warn(
-          {
-            event: 'show-gate-on-shown-failed',
-            windowKind: state.kind,
-            err: cbErr,
-          },
-          'show-gate onShown callback threw',
-        );
-      }
+      markShown(state);
     } catch (err) {
       deps.log?.warn(
         {
@@ -86,8 +90,14 @@ export function createShowGateRegistry(deps: ShowGateRegistryDeps): ShowGateRegi
   function maybeShow(window: BrowserWindowLike, state: PerWindowGateState): void {
     if (state.shown) return;
     if (!(state.readyToShow && state.themeApplied)) return;
-    if (window.isDestroyed?.() === true || window.isVisible?.() === true) {
+    if (window.isDestroyed?.() === true) {
       clearTimer(state);
+      states.delete(window);
+      return;
+    }
+    if (window.isVisible?.() === true) {
+      clearTimer(state);
+      markShown(state);
       states.delete(window);
       return;
     }
@@ -102,7 +112,12 @@ export function createShowGateRegistry(deps: ShowGateRegistryDeps): ShowGateRegi
       states.delete(window);
       return;
     }
-    if (window.isDestroyed?.() === true || window.isVisible?.() === true) {
+    if (window.isDestroyed?.() === true) {
+      states.delete(window);
+      return;
+    }
+    if (window.isVisible?.() === true) {
+      markShown(state);
       states.delete(window);
       return;
     }
