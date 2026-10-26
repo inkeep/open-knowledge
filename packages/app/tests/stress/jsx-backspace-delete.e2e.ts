@@ -237,19 +237,26 @@ test('FR17 regression: cursor in a regular paragraph + Backspace deletes one cha
   await setupDoc(page, api, 'hello world\n\n<Callout type="note">\n\nbody\n\n</Callout>\n');
   await page.waitForSelector('.jsx-component-wrapper[data-component-type="callout"]');
 
-  await page.evaluate(() => {
-    const editor = window.__activeEditor;
-    if (!editor) throw new Error('window.__activeEditor not set');
-    editor.chain().focus().setTextSelection(12).run();
-  });
+  const paragraph = page.locator('.ProseMirror:not(.composer-prosemirror) p').first();
+  await paragraph.click();
+  await page.keyboard.press('End');
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const editor = window.__activeEditor;
+        const selection = window.getSelection();
+        const anchor = selection?.anchorNode;
+        return {
+          model: editor?.state.selection.from ?? -1,
+          native:
+            anchor?.nodeType === Node.TEXT_NODE
+              ? `${anchor.textContent}:${selection?.anchorOffset ?? -1}`
+              : null,
+        };
+      }),
+    )
+    .toEqual({ model: 12, native: 'hello world:11' });
   expect(await selectionType(page)).toBe('TextSelection');
-
-  await page.evaluate(() => {
-    const pm = document.querySelector(
-      '.ProseMirror:not(.composer-prosemirror)',
-    ) as HTMLElement | null;
-    pm?.focus();
-  });
 
   await page.keyboard.press('Backspace');
 
