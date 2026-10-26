@@ -1,0 +1,26 @@
+diff --git a/dist/index.js b/dist/index.js
+index 2d0d314a00082c458d2f551d715572cd1fa1b5c3..a93a36e2d9d35f7c4545fe77ab7c9fe2c0f53c95 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -373,7 +373,7 @@ var TooltipContentImpl = React.forwardRef(
+         onEscapeKeyDown,
+         onPointerDownOutside,
+         onFocusOutside: (event) => event.preventDefault(),
+-        onDismiss: onClose,
++        onDismiss: context.open ? onClose : void 0,
+         children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+           PopperPrimitive.Content,
+           {
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 568389bf3ce8123fa6de6d298878b32d613e25cf..1fa56355918e2cdc6f4b9d9ca9e07cc756681eeb 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -326,7 +326,7 @@ var TooltipContentImpl = React.forwardRef(
+         onEscapeKeyDown,
+         onPointerDownOutside,
+         onFocusOutside: (event) => event.preventDefault(),
+-        onDismiss: onClose,
++        onDismiss: context.open ? onClose : void 0,
+         children: /* @__PURE__ */ jsxs(
+           PopperPrimitive.Content,
+           {

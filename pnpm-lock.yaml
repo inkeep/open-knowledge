@@ -151,6 +151,7 @@ patchedDependencies:
   '@lingui/core@6.5.0': 126db40cb2224e90abf5f063d3aa005eb1bc84796d77216d5a9e52d5cd28a656
   '@pierre/diffs@1.3.6': c823ecf3ff76ff3c3e71f441f2a7286aa2aae8e91b4d5e5a10554d8441d6c739
   '@pierre/trees@1.0.0-beta.4': 86ac804ac75d9f365ee9ef918460463a211ac5201ebc3cf04fc0534c5b3adf88
+  '@radix-ui/react-tooltip@1.2.8': 782d82d9e8abae7307ad4b4ab18b1680d374a2ff86f4aaa0a7a1528db1406693
   '@tiptap/extension-drag-handle@3.22.3': 1b9619bc7312665109e19145213057775714cfb21879fb32ab1237fbfbffcdc5
   '@tiptap/y-tiptap@3.0.3': cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43
   '@xterm/xterm@6.0.0': 52e724ea4ed73d38923344d68d2e1e8503110de5870507336fe8b096d92d7d90
@@ -13711,7 +13712,7 @@ snapshots:
       '@radix-ui/react-scroll-area': 1.2.10(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@radix-ui/react-slot': 1.3.0(@types/react@19.2.17)(react@19.2.5)
       '@radix-ui/react-tabs': 1.1.13(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@radix-ui/react-tooltip': 1.2.8(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@radix-ui/react-tooltip': 1.2.8(patch_hash=782d82d9e8abae7307ad4b4ab18b1680d374a2ff86f4aaa0a7a1528db1406693)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@radix-ui/react-use-callback-ref': 1.1.2(@types/react@19.2.17)(react@19.2.5)
       '@radix-ui/react-use-controllable-state': 1.2.3(@types/react@19.2.17)(react@19.2.5)
       '@radix-ui/react-use-layout-effect': 1.1.2(@types/react@19.2.17)(react@19.2.5)
@@ -16100,7 +16101,7 @@ snapshots:
       '@types/react': 19.2.17
       '@types/react-dom': 19.2.3(@types/react@19.2.17)
 
-  '@radix-ui/react-tooltip@1.2.8(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
+  '@radix-ui/react-tooltip@1.2.8(patch_hash=782d82d9e8abae7307ad4b4ab18b1680d374a2ff86f4aaa0a7a1528db1406693)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
       '@radix-ui/primitive': 1.1.4
       '@radix-ui/react-compose-refs': 1.1.3(@types/react@19.2.17)(react@19.2.5)
@@ -22173,7 +22174,7 @@ snapshots:
       '@radix-ui/react-toggle': 1.1.10(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@radix-ui/react-toggle-group': 1.1.11(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@radix-ui/react-toolbar': 1.1.11(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@radix-ui/react-tooltip': 1.2.8(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@radix-ui/react-tooltip': 1.2.8(patch_hash=782d82d9e8abae7307ad4b4ab18b1680d374a2ff86f4aaa0a7a1528db1406693)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@radix-ui/react-use-callback-ref': 1.1.2(@types/react@19.2.17)(react@19.2.5)
       '@radix-ui/react-use-controllable-state': 1.2.3(@types/react@19.2.17)(react@19.2.5)
       '@radix-ui/react-use-effect-event': 0.0.3(@types/react@19.2.17)(react@19.2.5)

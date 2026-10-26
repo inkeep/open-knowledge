@@ -6712,6 +6712,7 @@ The following packages are patched in this repository via pnpm's `patchedDepende
 | `@lingui/core@6.5.0` | `patches/@lingui%2Fcore@6.5.0.patch` |
 | `@pierre/diffs@1.3.6` | `patches/@pierre%2Fdiffs@1.3.6.patch` |
 | `@pierre/trees@1.0.0-beta.4` | `patches/@pierre%2Ftrees@1.0.0-beta.4.patch` |
+| `@radix-ui/react-tooltip@1.2.8` | `patches/@radix-ui__react-tooltip@1.2.8.patch` |
 | `@tiptap/extension-drag-handle@3.22.3` | `patches/@tiptap%2Fextension-drag-handle@3.22.3.patch` |
 | `@tiptap/y-tiptap@3.0.3` | `patches/@tiptap%2Fy-tiptap@3.0.3.patch` |
 | `@xterm/xterm@6.0.0` | `patches/@xterm%2Fxterm@6.0.0.patch` |
