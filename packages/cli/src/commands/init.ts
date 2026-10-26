@@ -59,7 +59,11 @@ import { isCollection, parseDocument, stringify as stringifyYaml } from 'yaml';
 import { CONFIG_FILENAME, OK_DIR } from '../constants.ts';
 import { formatPreviewBlock, type PreviewResult } from '../content/preview.ts';
 import { buildPiExtensionSource, makePiManagedFileEntry } from '../integrations/pi-extension.ts';
-import { isHomeDir, resolveProjectRoot } from '../integrations/resolve-project-root.ts';
+import {
+  isHomeDir,
+  type ResolveProjectRootResult,
+  resolveProjectRoot,
+} from '../integrations/resolve-project-root.ts';
 import {
   assertProjectPathSafe,
   type ProjectSkillResult,
@@ -578,6 +582,7 @@ interface ProjectConfigResult {
 
 interface InitCommandOptions {
   cwd?: string;
+  projectRootMode?: 'discover' | 'cwd';
   mcp?: boolean;
   devMcp?: boolean;
   editors?: EditorId[];
@@ -1166,7 +1171,15 @@ export function classifyExistingMcpEntry(
 
 export async function runInit(options: InitCommandOptions = {}): Promise<InitCommandResult> {
   const cwd = resolve(options.cwd ?? process.cwd());
-  const resolution = resolveProjectRoot(cwd, { homeDir: options.home });
+  const resolution =
+    options.projectRootMode === 'cwd'
+      ? ({
+          projectRoot: cwd,
+          defaultContentDir: '.',
+          ancestorPromoted: false,
+          gitRootPromoted: false,
+        } satisfies ResolveProjectRootResult)
+      : resolveProjectRoot(cwd, { homeDir: options.home });
   const projectRoot = resolution.projectRoot;
   if (isHomeDir(projectRoot, options.home ?? homedir())) {
     throw new HomeProjectRootError(projectRoot);
