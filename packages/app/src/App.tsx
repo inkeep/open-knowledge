@@ -244,7 +244,6 @@ function NavigationHandler() {
 
     function onHashChange(event: HashChangeEvent) {
       const traversedUrl = historyTraversalUrlRef.current;
-      historyTraversalUrlRef.current = null;
       const previousHash = event.oldURL === '' ? '' : new URL(event.oldURL).hash;
       const workspaceWrote = consumeWorkspaceHashWrite(window.location.hash);
       const returnedFromDialog =

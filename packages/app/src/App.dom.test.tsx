@@ -778,6 +778,97 @@ describe('App runtime wiring', () => {
     });
   });
 
+  test('a traversal whose open changed nothing opens as a preview again on the next render', async () => {
+    setHash('#/page-a');
+    const view = renderApp();
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        { kind: 'doc', target: 'page-a', docName: 'page-a' },
+        expect.objectContaining({ disposition: 'permanent' }),
+      );
+    });
+
+    pushHashWithoutNavigation('#/page-b');
+    pushHashWithoutNavigation('#/page-c');
+    openTargetTransitionMock.mockClear();
+
+    window.history.back();
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe('#/page-b');
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        { kind: 'doc', target: 'page-b', docName: 'page-b' },
+        expect.objectContaining({ disposition: 'preview' }),
+      );
+    });
+    expect(openTargetTransitionMock).toHaveBeenCalledTimes(1);
+
+    const retryTransitionMock = vi.fn(
+      (
+        _: NavigationTarget,
+        _options: { disposition: 'preview' | 'permanent'; consumeActiveNewTab: boolean },
+      ) => {},
+    );
+    openTargetTransitionMock = retryTransitionMock;
+    view.rerender(<App />);
+
+    await waitFor(() => expect(retryTransitionMock).toHaveBeenCalledTimes(1));
+    expect(retryTransitionMock).toHaveBeenCalledWith(
+      { kind: 'doc', target: 'page-b', docName: 'page-b' },
+      expect.objectContaining({ disposition: 'preview' }),
+    );
+
+    activeTarget = { kind: 'doc', target: 'page-b', docName: 'page-b' };
+    view.rerender(<App />);
+    retryTransitionMock.mockClear();
+
+    window.location.hash = '#/page-c';
+    await waitFor(() => {
+      expect(retryTransitionMock).toHaveBeenCalledWith(
+        { kind: 'doc', target: 'page-c', docName: 'page-c' },
+        expect.objectContaining({ disposition: 'permanent' }),
+      );
+    });
+  });
+
+  test('a traversal deferred while the page list loads opens as a preview once it loads', async () => {
+    setHash('#/page-a');
+    const view = renderApp();
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        { kind: 'doc', target: 'page-a', docName: 'page-a' },
+        expect.objectContaining({ disposition: 'permanent' }),
+      );
+    });
+
+    pushHashWithoutNavigation('#/page-b');
+    pushHashWithoutNavigation('#/page-c');
+    loading = true;
+    view.rerender(<App />);
+    openTargetTransitionMock.mockClear();
+
+    const traversalHandled = new Promise<void>((resolve) => {
+      window.addEventListener('hashchange', () => resolve(), { once: true });
+    });
+    window.history.back();
+    await traversalHandled;
+
+    expect(window.location.hash).toBe('#/page-b');
+    expect(openTargetTransitionMock).not.toHaveBeenCalled();
+
+    loading = false;
+    view.rerender(<App />);
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        { kind: 'doc', target: 'page-b', docName: 'page-b' },
+        expect.objectContaining({ disposition: 'preview' }),
+      );
+    });
+  });
+
   test('direct hash navigation preserves the active tab', async () => {
     setHash('#/page-a');
     renderApp();
