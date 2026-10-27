@@ -596,7 +596,9 @@ import {
   bringWindowToFront,
   collabUrlFromApiOrigin,
   heldChildServer,
+  pendingDeepLinkPayload,
   setWindowInstanceLabels,
+  shareBranchSwitchPayload,
   type UtilityProcessLike,
   WindowManager,
   type WindowManagerDeps,
@@ -5088,19 +5090,13 @@ function registerIpcHandlers() {
         | (BrowserWindowLike & { webContents: BrowserWindowLike['webContents'] })
         | null;
       if (existing) {
-        sendToRenderer(existing.webContents, 'ok:deep-link', {
-          doc: request.pendingDeepLinkTarget.path,
-          kind: request.pendingDeepLinkTarget.kind,
-          branch: request.pendingBranch ?? null,
-          multiCandidate: request.pendingMultiCandidate === true,
-          ...(request.pendingDeepLinkTarget.repositoryPath === undefined
-            ? {}
-            : { repositoryPath: request.pendingDeepLinkTarget.repositoryPath }),
-          ...(request.pendingDeepLinkTarget.contentRootDepth === undefined
-            ? {}
-            : { contentRootDepth: request.pendingDeepLinkTarget.contentRootDepth }),
-          ...(targetMissing ? { targetMissing: true } : {}),
+        const deepLink = pendingDeepLinkPayload({
+          pendingDeepLinkTarget: request.pendingDeepLinkTarget,
+          pendingBranch: request.pendingBranch,
+          pendingMultiCandidate: request.pendingMultiCandidate,
+          pendingTargetMissing: targetMissing,
         });
+        if (deepLink) sendToRenderer(existing.webContents, 'ok:deep-link', deepLink);
         return undefined;
       }
     }
@@ -5109,12 +5105,11 @@ function registerIpcHandlers() {
         | (BrowserWindowLike & { webContents: BrowserWindowLike['webContents'] })
         | null;
       if (existing) {
-        sendToRenderer(existing.webContents, 'ok:share:received', {
-          kind: 'project-branch-switch' as const,
-          share: request.pendingShareBranchSwitch.share,
-          projectPath: request.pendingShareBranchSwitch.projectPath,
-          currentBranch: request.pendingShareBranchSwitch.currentBranch,
-        });
+        sendToRenderer(
+          existing.webContents,
+          'ok:share:received',
+          shareBranchSwitchPayload(request.pendingShareBranchSwitch),
+        );
         return undefined;
       }
     }

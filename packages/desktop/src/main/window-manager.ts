@@ -9,6 +9,10 @@ import {
   desktopChannelLabel,
   sliceLastSpawnAttempt,
 } from '@inkeep/open-knowledge-core';
+import type {
+  OkDeepLinkPayload,
+  OkShareReceivedPayload,
+} from '@inkeep/open-knowledge-core/desktop-bridge';
 import type { KeepaliveHandle } from '@inkeep/open-knowledge-core/keepalive';
 import { projectSpawnErrorLogPath } from '@inkeep/open-knowledge-core/server';
 import {
@@ -34,7 +38,7 @@ import {
   utilityInitPhaseEvent,
 } from '../shared/boot-narration.ts';
 import type { OkServerRestartOutcome } from '../shared/bridge-contract.ts';
-import { registerPendingDelivery } from '../shared/ipc-send.ts';
+import { registerPendingDelivery, sendToRenderer } from '../shared/ipc-send.ts';
 import type { AssetOpenResult } from './asset-allowlist.ts';
 import { attachAssetSafetyNet } from './asset-safety-net.ts';
 import { startBootHeartbeat } from './boot-heartbeat.ts';
@@ -375,8 +379,7 @@ export interface EphemeralOpenIdentity {
   docName: string;
 }
 
-interface CreateProjectWindowOpts {
-  projectPath: string;
+export interface PendingDeepLinkOpts {
   pendingDeepLinkTarget?: {
     kind: 'doc' | 'folder';
     path: string;
@@ -386,12 +389,41 @@ interface CreateProjectWindowOpts {
   pendingBranch?: string | null;
   pendingMultiCandidate?: boolean;
   pendingTargetMissing?: boolean;
+}
+
+interface CreateProjectWindowOpts extends PendingDeepLinkOpts {
+  projectPath: string;
   pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload;
   didEnsureGit?: boolean;
   consentVersion?: number;
   localOpCliInvocation?: HostCliInvocation;
   pendingServerRestartedToast?: boolean;
   freshlyCreated?: boolean;
+}
+
+export function pendingDeepLinkPayload(opts: PendingDeepLinkOpts): OkDeepLinkPayload | undefined {
+  const target = opts.pendingDeepLinkTarget;
+  if (target === undefined) return undefined;
+  return {
+    doc: target.path,
+    kind: target.kind,
+    branch: opts.pendingBranch ?? null,
+    multiCandidate: opts.pendingMultiCandidate === true,
+    ...(target.repositoryPath === undefined ? {} : { repositoryPath: target.repositoryPath }),
+    ...(target.contentRootDepth === undefined ? {} : { contentRootDepth: target.contentRootDepth }),
+    ...(opts.pendingTargetMissing === true ? { targetMissing: true } : {}),
+  };
+}
+
+export function shareBranchSwitchPayload(
+  branchSwitch: ShareDeepLinkBranchSwitchPayload,
+): OkShareReceivedPayload {
+  return {
+    kind: 'project-branch-switch',
+    share: branchSwitch.share,
+    projectPath: branchSwitch.projectPath,
+    currentBranch: branchSwitch.currentBranch,
+  };
 }
 
 export interface SpawnedServer {
@@ -630,6 +662,25 @@ export class WindowManager {
 
   private bringToFront(win: BrowserWindowLike, opts?: { activate?: boolean }): void {
     bringWindowToFront(win, () => this.deps.activateApp?.(), opts);
+  }
+
+  private focusOpenProjectWindow(
+    ctx: ProjectContext,
+    opts: CreateProjectWindowOpts,
+  ): ProjectContext {
+    this.bringToFront(ctx.window);
+    const deepLink = pendingDeepLinkPayload(opts);
+    if (deepLink) {
+      sendToRenderer(ctx.window.webContents, 'ok:deep-link', deepLink);
+    }
+    if (opts.pendingShareBranchSwitch) {
+      sendToRenderer(
+        ctx.window.webContents,
+        'ok:share:received',
+        shareBranchSwitchPayload(opts.pendingShareBranchSwitch),
+      );
+    }
+    return ctx;
   }
 
   getContextForBrowserWindow(win: BrowserWindowLike): ProjectContext | undefined {
@@ -1447,8 +1498,7 @@ export class WindowManager {
     if (inFlight) {
       const ctx = await inFlight;
       if (ctx.window.isDestroyed?.() !== true) {
-        this.bringToFront(ctx.window);
-        return ctx;
+        return this.focusOpenProjectWindow(ctx, opts);
       }
     }
     const work = (async (): Promise<ProjectContext> => {
@@ -1470,8 +1520,7 @@ export class WindowManager {
     const existing = this.windowsByPath.get(canonicalKey);
     if (existing) {
       if (existing.window.isDestroyed?.() !== true) {
-        this.bringToFront(existing.window);
-        return existing;
+        return this.focusOpenProjectWindow(existing, opts);
       }
       this.deps.log?.warn(
         { canonicalKey },
@@ -1803,34 +1852,17 @@ export class WindowManager {
     this.deps.startup?.markWindowCreated?.();
     this.attachSafetyNet(window.webContents, apiOrigin, projectPath);
 
-    if (opts.pendingDeepLinkTarget) {
-      const doc = opts.pendingDeepLinkTarget.path;
-      const kind = opts.pendingDeepLinkTarget.kind;
-      const branch = opts.pendingBranch ?? null;
-      const multiCandidate = opts.pendingMultiCandidate === true;
-      registerPendingDelivery(window.webContents, 'ok:deep-link', {
-        doc,
-        kind,
-        branch,
-        multiCandidate,
-        ...(opts.pendingDeepLinkTarget.repositoryPath === undefined
-          ? {}
-          : { repositoryPath: opts.pendingDeepLinkTarget.repositoryPath }),
-        ...(opts.pendingDeepLinkTarget.contentRootDepth === undefined
-          ? {}
-          : { contentRootDepth: opts.pendingDeepLinkTarget.contentRootDepth }),
-        ...(opts.pendingTargetMissing === true ? { targetMissing: true } : {}),
-      });
+    const deepLink = pendingDeepLinkPayload(opts);
+    if (deepLink) {
+      registerPendingDelivery(window.webContents, 'ok:deep-link', deepLink);
     }
 
     if (opts.pendingShareBranchSwitch) {
-      const branchSwitch = opts.pendingShareBranchSwitch;
-      registerPendingDelivery(window.webContents, 'ok:share:received', {
-        kind: 'project-branch-switch' as const,
-        share: branchSwitch.share,
-        projectPath: branchSwitch.projectPath,
-        currentBranch: branchSwitch.currentBranch,
-      });
+      registerPendingDelivery(
+        window.webContents,
+        'ok:share:received',
+        shareBranchSwitchPayload(opts.pendingShareBranchSwitch),
+      );
     }
 
     const disposeShowGate = this.deps.showGate.register(window, { kind: 'editor' });
@@ -2544,33 +2576,22 @@ export class WindowManager {
     return upgradeOk;
   }
 
-  private async attachToExistingServer(args: {
-    projectPath: string;
-    canonicalKey: string;
-    projectName: string;
-    lock: ServerLockMetadataLike;
-    pendingDeepLinkTarget?: {
-      kind: 'doc' | 'folder';
-      path: string;
-      repositoryPath?: string;
-      contentRootDepth?: number;
-    };
-    pendingBranch?: string | null;
-    pendingMultiCandidate?: boolean;
-    pendingTargetMissing?: boolean;
-    pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload;
-    pendingServerRestartedToast?: boolean;
-    freshlyCreated?: boolean;
-  }): Promise<ProjectContext> {
+  private async attachToExistingServer(
+    args: PendingDeepLinkOpts & {
+      projectPath: string;
+      canonicalKey: string;
+      projectName: string;
+      lock: ServerLockMetadataLike;
+      pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload;
+      pendingServerRestartedToast?: boolean;
+      freshlyCreated?: boolean;
+    },
+  ): Promise<ProjectContext> {
     const {
       projectPath,
       canonicalKey,
       projectName,
       lock,
-      pendingDeepLinkTarget,
-      pendingBranch,
-      pendingMultiCandidate,
-      pendingTargetMissing,
       pendingShareBranchSwitch,
       pendingServerRestartedToast,
       freshlyCreated,
@@ -2613,34 +2634,17 @@ export class WindowManager {
     this.deps.startup?.markWindowCreated?.();
     this.attachSafetyNet(window.webContents, apiOrigin, projectPath);
 
-    if (pendingDeepLinkTarget) {
-      const doc = pendingDeepLinkTarget.path;
-      const kind = pendingDeepLinkTarget.kind;
-      const branch = pendingBranch ?? null;
-      const multiCandidate = pendingMultiCandidate === true;
-      registerPendingDelivery(window.webContents, 'ok:deep-link', {
-        doc,
-        kind,
-        branch,
-        multiCandidate,
-        ...(pendingDeepLinkTarget.repositoryPath === undefined
-          ? {}
-          : { repositoryPath: pendingDeepLinkTarget.repositoryPath }),
-        ...(pendingDeepLinkTarget.contentRootDepth === undefined
-          ? {}
-          : { contentRootDepth: pendingDeepLinkTarget.contentRootDepth }),
-        ...(pendingTargetMissing === true ? { targetMissing: true } : {}),
-      });
+    const deepLink = pendingDeepLinkPayload(args);
+    if (deepLink) {
+      registerPendingDelivery(window.webContents, 'ok:deep-link', deepLink);
     }
 
     if (pendingShareBranchSwitch) {
-      const branchSwitch = pendingShareBranchSwitch;
-      registerPendingDelivery(window.webContents, 'ok:share:received', {
-        kind: 'project-branch-switch' as const,
-        share: branchSwitch.share,
-        projectPath: branchSwitch.projectPath,
-        currentBranch: branchSwitch.currentBranch,
-      });
+      registerPendingDelivery(
+        window.webContents,
+        'ok:share:received',
+        shareBranchSwitchPayload(pendingShareBranchSwitch),
+      );
     }
 
     const selfProtocol = this.deps.selfProtocolVersion;

@@ -4947,6 +4947,73 @@ describe('WindowManager — pendingDeepLinkTarget dom-ready gate (M4 US-007 / Fi
       multiCandidate: false,
     });
   });
+
+  test('open window: a second open with pendingDeepLinkTarget focuses it and delivers the target', async () => {
+    const wm = new WindowManager(env.deps);
+    const first = wm.createProjectWindow({ projectPath: '/tmp/deep-link-open' });
+    env.utilities[0]?.fire({ type: 'ready', port: 51224, apiOrigin: 'http://localhost:51224' });
+    const ctx = await first;
+    const window = env.windows[0];
+    if (!window) throw new Error('expected window to be created');
+    window.fireDomReady();
+    const send = window.webContents.send as ReturnType<typeof vi.fn>;
+    expect(send.mock.calls.filter((c) => c[0] === 'ok:deep-link')).toEqual([]);
+
+    const second = await wm.createProjectWindow({
+      projectPath: '/tmp/deep-link-open',
+      pendingDeepLinkTarget: { kind: 'doc', path: 'notes/opened-from-finder' },
+      pendingBranch: 'feature',
+    });
+
+    expect(second).toBe(ctx);
+    expect(env.windows.length).toBe(1);
+    expect(env.utilities.length).toBe(1);
+    expect(window.focus).toHaveBeenCalled();
+    expect(send.mock.calls.filter((c) => c[0] === 'ok:deep-link')).toEqual([
+      [
+        'ok:deep-link',
+        { doc: 'notes/opened-from-finder', kind: 'doc', branch: 'feature', multiCandidate: false },
+      ],
+    ]);
+  });
+
+  test('opening window: an open with pendingDeepLinkTarget while the window loads delivers it without a later dom-ready', async () => {
+    const wm = new WindowManager(env.deps);
+    const first = wm.createProjectWindow({ projectPath: '/tmp/deep-link-opening' });
+    const second = wm.createProjectWindow({
+      projectPath: '/tmp/deep-link-opening',
+      pendingDeepLinkTarget: { kind: 'doc', path: 'notes/while-loading' },
+    });
+    env.utilities[0]?.fire({ type: 'ready', port: 51225, apiOrigin: 'http://localhost:51225' });
+    const [ctx1, ctx2] = await Promise.all([first, second]);
+
+    expect(ctx2).toBe(ctx1);
+    expect(env.windows.length).toBe(1);
+    const window = env.windows[0];
+    if (!window) throw new Error('expected window to be created');
+    const send = window.webContents.send as ReturnType<typeof vi.fn>;
+    expect(send.mock.calls.filter((c) => c[0] === 'ok:deep-link')).toEqual([
+      [
+        'ok:deep-link',
+        { doc: 'notes/while-loading', kind: 'doc', branch: null, multiCandidate: false },
+      ],
+    ]);
+  });
+
+  test('open window: a second open without pendingDeepLinkTarget sends no deep link', async () => {
+    const wm = new WindowManager(env.deps);
+    const first = wm.createProjectWindow({ projectPath: '/tmp/deep-link-refocus' });
+    env.utilities[0]?.fire({ type: 'ready', port: 51226, apiOrigin: 'http://localhost:51226' });
+    await first;
+    const window = env.windows[0];
+    if (!window) throw new Error('expected window to be created');
+    window.fireDomReady();
+
+    await wm.createProjectWindow({ projectPath: '/tmp/deep-link-refocus' });
+
+    const send = window.webContents.send as ReturnType<typeof vi.fn>;
+    expect(send.mock.calls.filter((c) => c[0] === 'ok:deep-link')).toEqual([]);
+  });
 });
 
 describe('WindowManager — pendingShareBranchSwitch dom-ready gate (US-004)', () => {
@@ -5112,6 +5179,36 @@ describe('WindowManager — pendingShareBranchSwitch dom-ready gate (US-004)', (
       projectPath: '/tmp/attach-share-branch-switch',
       currentBranch: 'main',
     });
+  });
+
+  test('opening window: an open with pendingShareBranchSwitch while the window loads delivers it without a later dom-ready', async () => {
+    const branchSwitch = {
+      share: {
+        owner: 'inkeep',
+        repo: 'playbooks',
+        branch: 'feature/y',
+        path: 'docs/while-loading.md',
+        blobUrl: 'https://github.com/inkeep/playbooks/blob/feature/y/docs/while-loading.md',
+      },
+      projectPath: '/tmp/share-branch-switch-opening',
+      currentBranch: 'main',
+    };
+    const wm = new WindowManager(env.deps);
+    const first = wm.createProjectWindow({ projectPath: '/tmp/share-branch-switch-opening' });
+    const second = wm.createProjectWindow({
+      projectPath: '/tmp/share-branch-switch-opening',
+      pendingShareBranchSwitch: branchSwitch,
+    });
+    env.utilities[0]?.fire({ type: 'ready', port: 51890, apiOrigin: 'http://localhost:51890' });
+    const [ctx1, ctx2] = await Promise.all([first, second]);
+
+    expect(ctx2).toBe(ctx1);
+    const window = env.windows[0];
+    if (!window) throw new Error('expected window to be created');
+    const send = window.webContents.send as ReturnType<typeof vi.fn>;
+    expect(send.mock.calls.filter((c) => c[0] === 'ok:share:received')).toEqual([
+      ['ok:share:received', { kind: 'project-branch-switch', ...branchSwitch }],
+    ]);
   });
 });
 
