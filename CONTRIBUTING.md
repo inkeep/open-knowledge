@@ -4,7 +4,7 @@ Thanks for helping make OpenKnowledge better! The best way to contribute is a [d
 
 - **Found a bug or have an idea?** [Open an issue](https://github.com/inkeep/open-knowledge/issues/new/choose), and see [Write an issue we can build from](#write-an-issue-we-can-build-from) for what helps.
 - **Question or setup help?** Ask in [Discord](https://discord.gg/VRKk2EaGHN).
-- **Read a language other than English?** Most of our interface translations are machine-translated and have never been read by a native speaker, and we ship them anyway rather than hide them from the people who could fix them. Correcting one is the most useful thing you can do for it — see [Translate the interface](https://openknowledge.ai/docs/contribute/translations).
+- **Want a translation updated or changed?** [Translate the interface](https://openknowledge.ai/docs/contribute/translations) says what to put in the issue.
 
 ## Why issues come first
 
@@ -20,7 +20,7 @@ Use the bug report or feature request form. The issues we can act on fastest:
 - **One problem per issue.** Separate problems are easier to track and fix.
 - **Anything else that helps is welcome,** such as code you suspect or your own ideas. None of it is required.
 
-We read every issue. We cannot promise to build every request, but a clear issue gives it the best chance. When a fix ships, we close your issue, and our release automation usually comments on it with the version it shipped in.
+We read every issue, and a clear one gives your request the best chance. When a fix ships, we close your issue, and our release automation usually comments on it with the version it shipped in.
 
 ## How credit works
 
@@ -100,7 +100,7 @@ If lint stops you, the diagnostic names the class of comment, the fix, and links
 
 ## Pull requests
 
-We build every change ourselves from issues, small fixes and translation corrections included, so we do not merge outside pull requests. If you have spotted something, the most helpful thing you can do is [open an issue](https://github.com/inkeep/open-knowledge/issues/new/choose) describing it.
+We build every change ourselves, from issues. If you have spotted something, the most helpful thing you can do is [open an issue](https://github.com/inkeep/open-knowledge/issues/new/choose) describing it.
 
 ## License
 
