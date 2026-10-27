@@ -106,7 +106,9 @@ program
     if (anchorRoot !== null) {
       recordInvocationCwd(process.cwd());
       process.chdir(anchorRoot);
-      console.error(`[ok] Using OpenKnowledge project at ${anchorRoot}`);
+      if (subcommandName !== 'deinit' || actionCommand.args.length === 0) {
+        console.error(`[ok] Using OpenKnowledge project at ${anchorRoot}`);
+      }
     }
 
     let config: Config;
