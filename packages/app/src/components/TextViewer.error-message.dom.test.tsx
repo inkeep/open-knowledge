@@ -1,4 +1,4 @@
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { cleanup, render, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 
 const { TextViewer } = await import('./TextViewer.tsx');
@@ -17,6 +17,22 @@ describe('TextViewer — human-readable load errors', () => {
   afterEach(() => {
     cleanup();
     globalThis.fetch = originalFetch;
+  });
+
+  test('TextViewer host contract names the CodeMirror textbox after a successful load', async () => {
+    const { container } = render(
+      <TextViewer
+        loadText={async () => ({ ok: true, text: 'plain text' })}
+        fileName="notes.txt"
+        extension="txt"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('.cm-content')).not.toBeNull();
+    });
+    const content = container.querySelector('.cm-content');
+    expect(within(container).getByRole('textbox', { name: /\S/ })).toBe(content);
   });
 
   test('413 renders a size-limit explanation, not a bare status code', async () => {

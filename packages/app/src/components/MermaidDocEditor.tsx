@@ -15,6 +15,7 @@ import { useTheme } from 'next-themes';
 import { useEffect, useRef, useState } from 'react';
 import { yCollab } from 'y-codemirror.next';
 import type * as Y from 'yjs';
+import { codeMirrorContentAttributes } from '@/editor/code-mirror-content-attributes';
 import { propEditorHighlight } from '@/editor/components/CodeMirrorPropInput';
 import { type MermaidSourceBinding, MermaidView } from '@/editor/components/Mermaid';
 import { okCmTheme } from '@/editor/extensions/cm-theme';
@@ -55,11 +56,13 @@ export function replaceYText(ytext: Y.Text, next: string, origin?: unknown): voi
 }
 
 function MermaidSourcePane({
+  contentLabel,
   docName,
   ytext,
   provider,
   undoManager,
 }: {
+  contentLabel: string;
   docName: string;
   ytext: Y.Text;
   provider: HocuspocusProvider;
@@ -76,6 +79,7 @@ function MermaidSourcePane({
       state: EditorState.create({
         doc: ytext.toString(),
         extensions: [
+          codeMirrorContentAttributes(contentLabel),
           basicSetup,
           yCollab(ytext, provider.awareness, { undoManager }),
           mermaid(),
@@ -92,7 +96,7 @@ function MermaidSourcePane({
       unregisterFullPageCmView(docName, view);
       view.destroy();
     };
-  }, [docName, ytext, provider, resolvedTheme, undoManager]);
+  }, [docName, ytext, provider, resolvedTheme, undoManager, contentLabel]);
 
   return <div ref={containerRef} className="h-full min-h-0 overflow-auto" />;
 }
@@ -228,6 +232,7 @@ export function MermaidDocEditor({
       <div className="min-h-0 flex-1 overflow-hidden">
         {isSourceMode ? (
           <MermaidSourcePane
+            contentLabel={t`Mermaid diagram`}
             docName={docName}
             ytext={ytext}
             provider={provider}

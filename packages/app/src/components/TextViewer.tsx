@@ -5,6 +5,7 @@ import { codeLanguageForExtension } from '@inkeep/open-knowledge-core/constants/
 import { basicSetup } from 'codemirror';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef } from 'react';
+import { codeMirrorContentAttributes } from '@/editor/code-mirror-content-attributes';
 import { okCmTheme, okSyntaxHighlight } from '@/editor/extensions/cm-theme';
 import { loadCodeMirrorLanguageForExtension } from './text-viewer-languages';
 import { useViewerText, type ViewerTextSource } from './use-viewer-text';
@@ -47,6 +48,7 @@ export function TextViewer({ fileName, extension, ...source }: TextViewerProps) 
       if (aborted) return;
       if (!containerRef.current) return;
       const extensions = [
+        codeMirrorContentAttributes(fileName),
         basicSetup,
         syntaxHighlighting(okSyntaxHighlight),
         ...(language ? [language] : []),
@@ -67,7 +69,7 @@ export function TextViewer({ fileName, extension, ...source }: TextViewerProps) 
       view?.destroy();
       viewRef.current = null;
     };
-  }, [loadedContent, extension, resolvedTheme]);
+  }, [loadedContent, extension, resolvedTheme, fileName]);
 
   const extraAttrs = { 'data-text-viewer-extension': extension };
   if (fetchState.status === 'loading') {

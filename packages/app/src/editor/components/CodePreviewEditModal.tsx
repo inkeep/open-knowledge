@@ -28,6 +28,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Kbd } from '@/components/ui/kbd';
+import {
+  codeMirrorContentAttributes,
+  relabelCodeMirrorContent,
+} from '@/editor/code-mirror-content-attributes';
 import { propEditorHighlight } from './CodeMirrorPropInput';
 
 type SupportedLanguage =
@@ -118,12 +122,18 @@ export function CodePreviewEditModal({
   const viewRef = useRef<EditorView | null>(null);
   const languageRef = useRef(language);
   const initialValueRef = useRef(initialValue);
+  const titleRef = useRef(title);
   useEffect(() => {
     languageRef.current = language;
   }, [language]);
   useEffect(() => {
     initialValueRef.current = initialValue;
   }, [initialValue]);
+  useEffect(() => {
+    titleRef.current = title;
+    const view = viewRef.current;
+    if (view) relabelCodeMirrorContent(view, title);
+  }, [title]);
 
   const setHostRef = (host: HTMLDivElement | null) => {
     if (!host) {
@@ -139,6 +149,7 @@ export function CodePreviewEditModal({
     const state = EditorState.create({
       doc: initialValueRef.current,
       extensions: [
+        codeMirrorContentAttributes(titleRef.current),
         lineNumbers(),
         history(),
         indentOnInput(),

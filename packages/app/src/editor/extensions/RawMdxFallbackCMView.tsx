@@ -15,6 +15,10 @@ import { NodeViewWrapper } from '@tiptap/react';
 import { Trash2 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef } from 'react';
+import {
+  codeMirrorContentAttributes,
+  relabelCodeMirrorContent,
+} from '@/editor/code-mirror-content-attributes';
 import { useConfigContext } from '@/lib/config-provider';
 import { markUserTyping } from '../observers';
 import { getEditorView } from '../utils/get-editor-view';
@@ -148,6 +152,7 @@ export function RawMdxFallbackView({ node, editor, getPos }: NodeViewProps) {
   const { merged } = useConfigContext();
   const wordWrap = merged?.editor?.wordWrap ?? true;
   const reason = (node.attrs.reason as string) || t`Parse failed`;
+  const contentLabel = t`Editing broken MDX source: ${reason}`;
   const severity = classifySeverity(reason);
   const style = SEVERITY_STYLES[severity];
   const unregisteredComponentName =
@@ -184,7 +189,7 @@ export function RawMdxFallbackView({ node, editor, getPos }: NodeViewProps) {
     updatingRef.current = false;
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: CM view mounts once imperatively; re-mount on deps change would destroy the editor state. Theme/word-wrap handled by separate compartment effects; content sync handled by PM→CM sync effect below.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: CM view mounts once imperatively; re-mount on deps change would destroy the editor state. Theme, word-wrap and the content label handled by separate compartment effects; content sync handled by PM→CM sync effect below.
   useEffect(() => {
     const container = cmContainerRef.current;
     if (!container) return;
@@ -258,6 +263,7 @@ export function RawMdxFallbackView({ node, editor, getPos }: NodeViewProps) {
       extraKeymaps: undoRedoKeymap,
     });
     extensions.push(escapeKeymap);
+    extensions.push(codeMirrorContentAttributes(contentLabel));
 
     extensions.push(
       CMEditorView.updateListener.of((update) => {
@@ -362,6 +368,12 @@ export function RawMdxFallbackView({ node, editor, getPos }: NodeViewProps) {
       ),
     });
   }, [wordWrap]);
+
+  useEffect(() => {
+    const cmView = cmViewRef.current;
+    if (!cmView) return;
+    relabelCodeMirrorContent(cmView, contentLabel);
+  }, [contentLabel]);
 
   useEffect(() => {
     const handler = () => {
