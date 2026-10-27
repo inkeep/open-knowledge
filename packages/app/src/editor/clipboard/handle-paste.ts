@@ -547,6 +547,28 @@ function buildMixedSiblingSpliceTr(
   return tr;
 }
 
+function inlineParagraphPayload(
+  state: EditorState,
+  docNode: ProseMirrorNode,
+): ProseMirrorNode | null {
+  const { $from, $to } = state.selection;
+  if (docNode.childCount !== 1 || !$from.sameParent($to) || !$from.parent.isTextblock) return null;
+  const paragraph = docNode.child(0);
+  return paragraph.type.name === 'paragraph' ? paragraph : null;
+}
+
+function buildSiblingSpliceTr(state: EditorState, docNode: ProseMirrorNode): Transaction | null {
+  try {
+    return buildListSiblingSpliceTr(state, docNode) ?? buildMixedSiblingSpliceTr(state, docNode);
+  } catch {
+    return null;
+  }
+}
+
+function replaceSelectionWithContent(state: EditorState, node: ProseMirrorNode): Transaction {
+  return state.tr.replaceSelection(node.slice(0, node.content.size));
+}
+
 function applyJsonSlice(
   view: EditorView,
   json: JSONContent,
@@ -556,14 +578,10 @@ function applyJsonSlice(
 ): boolean {
   try {
     const node = view.state.schema.nodeFromJSON(json);
-    let spliceTr: Transaction | null = null;
-    try {
-      spliceTr =
-        buildListSiblingSpliceTr(view.state, node) ?? buildMixedSiblingSpliceTr(view.state, node);
-    } catch {
-      spliceTr = null;
-    }
-    const tr = spliceTr ?? view.state.tr.replaceSelection(node.slice(0, node.content.size));
+    const inlineParagraph = inlineParagraphPayload(view.state, node);
+    const tr = inlineParagraph
+      ? replaceSelectionWithContent(view.state, inlineParagraph)
+      : (buildSiblingSpliceTr(view.state, node) ?? replaceSelectionWithContent(view.state, node));
     view.dispatch(tr.setMeta(PREVENT_AUTOLINK_META, true).scrollIntoView());
     return true;
   } catch (err) {

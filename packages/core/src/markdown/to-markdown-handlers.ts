@@ -176,14 +176,20 @@ export const toMarkdownHandlers = {
     return value;
   },
 
-  link(node, _parent, state, info) {
-    if (node.data?.sourceStyle === 'autolink') {
-      return `<${node.url ?? ''}>`;
+  link(node, parent, state, info) {
+    if (node.data?.sourceStyle === 'autolink' && linkTextIsUrl(node)) {
+      return `<${node.url}>`;
     }
     if (node.data?.sourceStyle === 'gfm-autolink') {
       const onlyChild = node.children?.length === 1 ? node.children[0] : null;
       if (onlyChild?.type === 'text' && typeof onlyChild.value === 'string') {
-        return onlyChild.value;
+        const literal = onlyChild.value;
+        const form = gfmLiteralForm(literal, node.url);
+        if (form === undefined) return literal;
+        if (bareGfmLiteralReadsBack(form, literalNeighborCodes(node, parent, state, info))) {
+          return literal;
+        }
+        if (form === 'protocol' && readsBackAsAngleAutolink(literal)) return `<${literal}>`;
       }
     }
     const tracker = state.createTracker(info);
@@ -834,6 +840,103 @@ function normalizeAttrForUpstream(
     };
   }
   return attr;
+}
+
+const GFM_PROTOCOL_LITERAL_RE = /^https?:\/\//i;
+
+const GFM_WWW_LITERAL_RE = /^www\./i;
+
+const ANGLE_AUTOLINK_PLAIN_URL_RE = /^https?:\/\/[A-Za-z0-9./:?#@+,;()!'-]*$/i;
+
+const WWW_LABEL_RE = /www\./i;
+
+type GfmLiteralForm = 'protocol' | 'www' | 'email';
+
+function gfmLiteralForm(text: string, href: string): GfmLiteralForm | undefined {
+  if (text === href && GFM_PROTOCOL_LITERAL_RE.test(text)) return 'protocol';
+  if (href === `http://${text}` && GFM_WWW_LITERAL_RE.test(text)) return 'www';
+  if (href === `mailto:${text}`) return 'email';
+  return undefined;
+}
+
+function linkTextIsUrl(node: Link): boolean {
+  let text = '';
+  for (const child of node.children) {
+    if (child.type !== 'text') return false;
+    text += child.value;
+  }
+  return text === node.url;
+}
+
+function isAsciiAlpha(code: number): boolean {
+  return (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a);
+}
+
+function isAsciiAlphanumeric(code: number): boolean {
+  return isAsciiAlpha(code) || (code >= 0x30 && code <= 0x39);
+}
+
+function isEmailDomainCode(code: number): boolean {
+  return code === 0x2d || code === 0x5f || isAsciiAlphanumeric(code);
+}
+
+function isEmailAtextCode(code: number): boolean {
+  return code === 0x2b || code === 0x2e || isEmailDomainCode(code);
+}
+
+function emailLiteralOpensAfter(code: number): boolean {
+  return code !== 0x2f && !isEmailAtextCode(code);
+}
+
+interface NeighborCodes {
+  readonly before: number;
+  readonly after: number;
+  readonly afterNext: number;
+}
+
+function literalNeighborCodes(
+  node: Link,
+  parent: Parents | undefined,
+  state: State,
+  info: Info,
+): NeighborCodes {
+  const siblings: readonly Nodes[] = parent?.children ?? [];
+  const index = siblings.indexOf(node);
+  const previous = index > 0 ? siblings[index - 1] : undefined;
+  const next = index >= 0 ? siblings[index + 1] : undefined;
+  const beforeText = previous?.type === 'text' ? previous.value : info.before;
+  const afterText =
+    next === undefined
+      ? info.after
+      : state.handle(next, parent, state, {
+          ...state.createTracker(info).current(),
+          before: '',
+          after: '',
+        });
+  return {
+    before: beforeText.charCodeAt(beforeText.length - 1),
+    after: afterText.charCodeAt(0),
+    afterNext: afterText.charCodeAt(1),
+  };
+}
+
+function emailDomainContinuesAt(after: number, afterNext: number): boolean {
+  return isEmailDomainCode(after) || (after === 0x2e && isAsciiAlphanumeric(afterNext));
+}
+
+function bareGfmLiteralReadsBack(
+  form: GfmLiteralForm,
+  { before, after, afterNext }: NeighborCodes,
+): boolean {
+  if (form === 'email') {
+    return emailLiteralOpensAfter(before) && !emailDomainContinuesAt(after, afterNext);
+  }
+  const opens = form === 'protocol' ? !isAsciiAlpha(before) : classifyFlank(before) !== 'other';
+  return opens && classifyFlank(after) !== 'other';
+}
+
+function readsBackAsAngleAutolink(url: string): boolean {
+  return ANGLE_AUTOLINK_PLAIN_URL_RE.test(url) && !WWW_LABEL_RE.test(url);
 }
 
 function emitLinkTitle(

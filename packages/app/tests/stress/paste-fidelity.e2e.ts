@@ -6,6 +6,7 @@ import type { Page } from '@playwright/test';
 import {
   expect,
   selectAllAndWaitForSelection,
+  selectText,
   simulateCopyAndRead,
   simulateCutAndRead,
   test,
@@ -1602,5 +1603,97 @@ test.describe('cell-insertion gate — component paste into a table cell (persis
     const after = await getYText(page);
     expect(after).toBe(baseline);
     expect(after).not.toContain('Callout');
+  });
+});
+
+const INLINE_PASTE_SEED = '- fooo\n\n## alpha\n';
+
+async function openNewEmptyBullet(page: Page): Promise<void> {
+  await setListItemCaret(page, 0, 'end');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => {
+    const editor = window.__activeEditor;
+    if (!editor) return false;
+    let items = 0;
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'listItem') items++;
+      return true;
+    });
+    const { $from } = editor.state.selection;
+    return (
+      items === 2 &&
+      $from.parent.textContent === '' &&
+      $from.node($from.depth - 1).type.name === 'listItem'
+    );
+  });
+}
+
+async function setHeadingCaret(page: Page, offset: number): Promise<void> {
+  await page.evaluate((at) => {
+    const editor = window.__activeEditor;
+    if (!editor) throw new Error('setHeadingCaret: no active editor');
+    let start = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (start !== -1) return false;
+      if (node.type.name === 'heading') {
+        start = pos + 1;
+        return false;
+      }
+      return true;
+    });
+    if (start === -1) throw new Error('setHeadingCaret: heading not found');
+    editor.commands.setTextSelection(start + at);
+  }, offset);
+  await waitForPmSelectionInNode(page, 'heading');
+}
+
+test.describe('inline paste stays in the block at the caret (persisted bytes)', () => {
+  let docName: string;
+
+  test.beforeEach(async ({ page, api }) => {
+    docName = `test-paste-inline-${randomUUID().slice(0, 8)}`;
+    await api.createPage(`${docName}.md`);
+    await page.goto(`/#/${docName}`);
+    await waitForProvider(page);
+    await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
+    await api.replaceDoc(docName, INLINE_PASTE_SEED);
+    await expect.poll(() => getYText(page), { timeout: 5_000 }).toContain('## alpha');
+    await page.click('.ProseMirror:not(.composer-prosemirror)');
+  });
+
+  test('bold text pasted into a new empty bullet stays in that bullet', async ({ page }) => {
+    await openNewEmptyBullet(page);
+    await pasteWithMimes(page, { 'text/plain': 'foo', 'text/html': '<b>foo</b>' });
+    await expect.poll(() => getYText(page), { timeout: 8_000 }).toContain('- fooo\n- **foo**\n');
+  });
+
+  test('a URL pasted into a new empty bullet stays in that bullet', async ({ page }) => {
+    await openNewEmptyBullet(page);
+    await pasteText(page, 'https://example.com');
+    await expect
+      .poll(() => getYText(page), { timeout: 8_000 })
+      .toContain('- fooo\n- https://example.com\n');
+  });
+
+  test('a URL pasted right after a word stays in the bullet as a link', async ({ page }) => {
+    await setListItemCaret(page, 0, 'end');
+    await pasteText(page, 'https://example.com');
+    await expect
+      .poll(() => getYText(page), { timeout: 8_000 })
+      .toContain('- fooo<https://example.com>\n');
+  });
+
+  test('bold text pasted over a selection inside a bullet replaces it in place', async ({
+    page,
+  }) => {
+    await selectText(page, 'oo');
+    await pasteWithMimes(page, { 'text/plain': 'foo', 'text/html': '<b>foo</b>' });
+    await expect.poll(() => getYText(page), { timeout: 8_000 }).toContain('- f**foo**o\n');
+  });
+
+  test('bold text pasted inside a heading stays in the heading', async ({ page }) => {
+    await setHeadingCaret(page, 2);
+    await pasteWithMimes(page, { 'text/plain': 'foo', 'text/html': '<b>foo</b>' });
+    await expect.poll(() => getYText(page), { timeout: 8_000 }).toContain('## al**foo**pha');
   });
 });
