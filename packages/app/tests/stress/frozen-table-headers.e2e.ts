@@ -84,6 +84,49 @@ ${Array.from({ length: 12 }, (_, i) => `| R${i + 1} | Agent markdown write path 
 ${Array.from({ length: 28 }, (_, i) => `Appendix paragraph ${i + 1} below the table so the document keeps scrolling.`).join('\n\n')}
 `;
 
+const TRACKER_WORDS = [
+  'status',
+  'owner',
+  'cloud',
+  'editor',
+  'shipped',
+  'blocked',
+  'review',
+  'tracker',
+  'launch',
+  'sidebar',
+];
+const trackerWords = (count: number, seed: number) =>
+  Array.from({ length: count }, (_, i) => TRACKER_WORDS[(i * 7 + seed) % 10]).join(' ');
+const trackerTable = (seed: number) =>
+  [
+    '| Col 1 | Col 2 | Col 3 | Col 4 | Col 5 |',
+    '| --- | --- | --- | --- | --- |',
+    ...Array.from(
+      { length: 20 },
+      (_, r) =>
+        `| Item ${seed}-${r} | ${[1, 2, 3, 4].map((c) => trackerWords(4 + ((r + c) % 4), r + c)).join(' | ')} |`,
+    ),
+  ].join('\n');
+const trackerParagraphs = (count: number, seed: number) =>
+  Array.from({ length: count }, (_, i) => `${trackerWords(30, i + seed)}.`).join('\n\n');
+const TWO_TABLE_TRACKER_MARKDOWN = `# Tracker
+
+${trackerParagraphs(6, 1)}
+
+## A
+
+${trackerTable(1)}
+
+${trackerParagraphs(8, 2)}
+
+## B
+
+${trackerTable(2)}
+
+${trackerParagraphs(8, 3)}
+`;
+
 const SCROLL_SELECTOR = '[data-testid="editor-scroll-container"]';
 const TOOLBAR_HEIGHT = 56;
 
@@ -476,6 +519,67 @@ test('a document height change keeps the frozen header on its existing animation
     });
   });
   expect(sameAnimations).toBe(true);
+});
+
+test('a window resize round trip leaves an on-screen frozen header pinned under the toolbar', async ({
+  page,
+  api,
+  workerServer,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1512, height: 656 });
+  await api.seedDocs([{ name: 'frozen-hdr-resize', markdown: TWO_TABLE_TRACKER_MARKDOWN }]);
+  await page.goto(`${workerServer.baseURL}/#/frozen-hdr-resize`);
+  await waitForActiveProviderSynced(page);
+  await page.locator('table').first().waitFor({ state: 'visible' });
+  await waitForQuiescence(page, SCROLL_SELECTOR);
+  const readSecondTable = (scroll: boolean) =>
+    page.evaluate(
+      ({ sel, toolbarHeight, scroll }) =>
+        new Promise<{ shiftPx: number; pinErrorPx: number }>((resolve) => {
+          const scrollEl = document.querySelector(sel) as HTMLElement;
+          const table = document.querySelectorAll<HTMLTableElement>(
+            '.ProseMirror .tableWrapper > table',
+          )[1];
+          if (scroll)
+            scrollEl.scrollTo({
+              top:
+                scrollEl.scrollTop +
+                table.getBoundingClientRect().top -
+                scrollEl.getBoundingClientRect().top -
+                toolbarHeight +
+                300,
+              behavior: 'instant' as ScrollBehavior,
+            });
+          const started = performance.now();
+          const tick = (): void => {
+            const cell = table.tBodies[0].rows[0].cells[0];
+            const transform = getComputedStyle(cell).transform;
+            const shiftPx = transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m42;
+            const expectedTop = scrollEl.getBoundingClientRect().top + toolbarHeight;
+            const pinErrorPx = Math.abs(cell.getBoundingClientRect().top - expectedTop);
+            if (pinErrorPx < 2 || performance.now() - started > 3_000) {
+              resolve({ shiftPx, pinErrorPx });
+              return;
+            }
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        }),
+      { sel: SCROLL_SELECTOR, toolbarHeight: TOOLBAR_HEIGHT, scroll },
+    );
+  const before = await readSecondTable(true);
+  expect(before.shiftPx).toBeGreaterThan(0.5);
+  expect(before.pinErrorPx).toBeLessThan(2);
+
+  await page.setViewportSize({ width: 1000, height: 656 });
+  await waitForQuiescence(page, SCROLL_SELECTOR);
+  await page.setViewportSize({ width: 1512, height: 656 });
+  await waitForQuiescence(page, SCROLL_SELECTOR);
+
+  const after = await readSecondTable(false);
+  await page.screenshot({ path: testInfo.outputPath('after-resize.png') });
+  expect(after.shiftPx).toBeGreaterThan(0.5);
+  expect(after.pinErrorPx).toBeLessThan(2);
 });
 
 test('a browser that rejects ViewTimeline construction still pins the header', async ({
