@@ -301,12 +301,7 @@ function RowActionButton({
       return null;
     case 'install':
       return (
-        <Button
-          variant="link"
-          size="sm"
-          className="shrink-0 text-muted-foreground hover:text-foreground"
-          asChild
-        >
+        <Button variant="link" size="sm" className="shrink-0" asChild>
           <a
             href={action.url}
             target="_blank"
@@ -321,12 +316,7 @@ function RowActionButton({
       );
     case 'setup-doc':
       return (
-        <Button
-          variant="link"
-          size="sm"
-          className="shrink-0 text-muted-foreground hover:text-foreground"
-          asChild
-        >
+        <Button variant="link" size="sm" className="shrink-0" asChild>
           <a
             href={`https://openknowledge.ai/docs/integrations/${action.slug}`}
             target="_blank"

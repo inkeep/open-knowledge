@@ -1084,6 +1084,9 @@ msgstr "عنوان، وصف، وسوم — أي شيء يصف هذا المجل�
 msgid "A token added here only applies to HTTPS remotes, and this project's remote doesn't use HTTPS."
 msgstr "الرمز المضاف هنا ينطبق فقط على المستودعات البعيدة عبر HTTPS، والمستودع البعيد لهذا المشروع لا يستخدم HTTPS."
 
+msgid "A variable needs two braces on each side, such as {filenameVariable}."
+msgstr "يحتاج المتغير إلى قوسين معقوفين على كل جانب، مثل {filenameVariable}."
+
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "يوجد بالفعل مجلد شجرة عمل للفرع {shareBranch}."
 
@@ -2671,9 +2674,6 @@ msgstr "مجلد المحتوى"
 msgid "Content directory must be inside the project"
 msgstr "يجب أن يكون مجلد المحتوى داخل المشروع"
 
-msgid "Content root"
-msgstr "جذر المحتوى"
-
 msgid "Content rules"
 msgstr "قواعد المحتوى"
 
@@ -3307,6 +3307,18 @@ msgstr "تعذّر تحديث {subRoot}: {0}"
 msgid "Couldn't update from {0}: {1}"
 msgstr "تعذّر التحديث من {0}: {1}"
 
+msgid "Couldn't upload the file. The {settingKey} value in {configFile} can't be used. Fix it in that file."
+msgstr "تعذّر رفع الملف. لا يمكن استخدام قيمة {settingKey} في {configFile}. أصلحها في ذلك الملف."
+
+msgid "Couldn't upload the file. The attachment folder has a {open} or {close} without its pair. Fix it under Attachments in Settings."
+msgstr "تعذّر رفع الملف. يحتوي مجلد المرفقات على {open} أو {close} دون نظيره. أصلحه ضمن المرفقات في الإعدادات."
+
+msgid "Couldn't upload the file. The attachment folder uses {filenameVariable} more than once in one folder name. Fix it under Attachments in Settings."
+msgstr "تعذّر رفع الملف. يستخدم مجلد المرفقات {filenameVariable} أكثر من مرة في اسم مجلد واحد. أصلحه ضمن المرفقات في الإعدادات."
+
+msgid "Couldn't upload the file. The attachment folder uses the unknown variable {variables}. Fix it under Attachments in Settings."
+msgstr "تعذّر رفع الملف. يستخدم مجلد المرفقات المتغير غير المعروف {variables}. أصلحه ضمن المرفقات في الإعدادات."
+
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
 msgstr "تعذر التحقق من توفر {displayName} ({bin})، لذا هذه جلسة shell عادية. لا يزال بإمكانك تشغيل {bin} بنفسك."
 
@@ -3486,9 +3498,6 @@ msgstr "التاريخ"
 
 msgid "Default"
 msgstr "الافتراضي"
-
-msgid "Default location for new attachments"
-msgstr "الموقع الافتراضي للمرفقات الجديدة"
 
 msgid "Default properties"
 msgstr "الخصائص الافتراضية"
@@ -3895,9 +3904,6 @@ msgstr "تم التكرار إلى «{0}»"
 msgid "Duplicates dropped"
 msgstr "إسقاط المكرر"
 
-msgid "e.g. assets/uploads"
-msgstr "مثال: assets/uploads"
-
 msgid "e.g. drafts/ or *.draft.md"
 msgstr "مثال: drafts/ أو *.draft.md"
 
@@ -3909,6 +3915,9 @@ msgstr "مثال: تبديل المشاريع أثناء تشغيل مزامنة
 
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr "مثال: تجمّد المحرر بعد لصق جدول كبير"
+
+msgid "Each {open} needs a matching {close}."
+msgstr "كل {open} يحتاج إلى {close} مطابق."
 
 #. Says what symlinking two skill folders together buys the user, before any button names it
 msgid "Each AI tool reads skills from its own folder. Point one folder at another and both tools see the same skills — add a skill once instead of copying it into every tool."
@@ -4266,6 +4275,9 @@ msgstr "كل ما تحت مجلدات {0}/ داخل {1}/"
 
 msgid "everything under any {0}/ folder"
 msgstr "كل ما تحت أي مجلد {0}/"
+
+msgid "Example: a file added to <0>{exampleDoc}</0> is saved as <1>{exampleFile}</1>"
+msgstr "مثال: الملف المضاف إلى <0>{exampleDoc}</0> يُحفظ في <1>{exampleFile}</1>"
 
 msgid "Excalidraw board"
 msgstr "لوحة Excalidraw"
@@ -4751,9 +4763,6 @@ msgstr "ثابت"
 msgid "Fixed {total, plural, one {# file} other {# files}}."
 msgstr "{total, plural, zero {لم يتم إصلاح أي ملف} one {تم إصلاح ملف واحد} two {تم إصلاح ملفين} few {تم إصلاح # ملفات} many {تم إصلاح # ملفًا} other {تم إصلاح # ملف}}."
 
-msgid "Fixed folder in content root"
-msgstr "مجلد ثابت في جذر المحتوى"
-
 msgid "Fixed port number"
 msgstr "رقم المنفذ الثابت"
 
@@ -4789,6 +4798,12 @@ msgstr "اسم المجلد"
 
 msgid "Folder name: {detail}"
 msgstr "اسم المجلد: {detail}"
+
+msgid "Folder names cannot contain {reserved}."
+msgstr "لا يمكن أن تحتوي أسماء المجلدات على {reserved}."
+
+msgid "Folder path must start with {documentPrefix} or {rootPrefix} and cannot contain {parentFolder}"
+msgstr "يجب أن يبدأ مسار المجلد بـ {documentPrefix} أو {rootPrefix} ولا يمكن أن يحتوي على {parentFolder}"
 
 msgid "Folder properties"
 msgstr "خصائص المجلد"
@@ -8589,6 +8604,12 @@ msgstr "إزالة التحديد"
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "إزالة مجلد <0>.git</0> الأب"
 
+msgid "Remove the slash at the end of the path."
+msgstr "احذف الشرطة المائلة في نهاية المسار."
+
+msgid "Remove the spaces at the start or end of the path."
+msgstr "احذف المسافات في بداية المسار أو نهايته."
+
 msgid "Removed"
 msgstr "أُزيل"
 
@@ -9018,9 +9039,6 @@ msgstr "تجري مراجعة المشروع"
 
 msgid "Runs a shell command"
 msgstr "يشغّل أمر shell"
-
-msgid "Same folder as current file"
-msgstr "المجلد نفسه للملف الحالي"
 
 msgid "Sample image"
 msgstr "صورة نموذجية"
@@ -9463,8 +9481,8 @@ msgstr "إعداد تكاملات OpenKnowledge…"
 msgid "Set up syncing"
 msgstr "إعداد المزامنة"
 
-msgid "Set where pasted and dropped files are stored for this project."
-msgstr "اضبط مكان تخزين الملفات الملصوقة والمفلَتة لهذا المشروع."
+msgid "Set where pasted and dropped files are stored."
+msgstr "اضبط مكان تخزين الملفات الملصوقة والمفلَتة."
 
 msgid "Setting up"
 msgstr "يجري الإعداد"
@@ -10114,9 +10132,6 @@ msgstr "subagents"
 
 msgid "Subfolder name"
 msgstr "اسم المجلد الفرعي"
-
-msgid "Subfolder under current folder"
-msgstr "مجلد فرعي تحت المجلد الحالي"
 
 msgid "Subscribe"
 msgstr "اشتراك"
@@ -11530,6 +11545,9 @@ msgstr "تاريخ غير معروف"
 msgid "Unknown error"
 msgstr "خطأ غير معروف"
 
+msgid "Unknown variable {unknownList}. Available variables: {supportedVariables}."
+msgstr "متغير غير معروف {unknownList}. المتغيرات المتاحة: {supportedVariables}."
+
 msgid "unlink"
 msgstr "فك الارتباط"
 
@@ -11699,6 +11717,9 @@ msgstr "استخدام {0} للوضع الفاتح النشط"
 msgid "Use {editor} version"
 msgstr "استخدام نسخة {editor}"
 
+msgid "Use {filenameVariable} at most once in each folder name."
+msgstr "استخدم {filenameVariable} مرة واحدة على الأكثر في كل اسم مجلد."
+
 msgid "Use <0>{copyShortcut}</0> to copy the link below, or open OK in the desktop app."
 msgstr "استخدم <0>{copyShortcut}</0> لنسخ الرابط أدناه، أو افتح OK في تطبيق سطح المكتب."
 
@@ -11737,6 +11758,9 @@ msgstr "استخدم الحروف الصغيرة والأرقام و<0>-</0> ف�
 
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "استخدم الحروف الصغيرة والأرقام والشرطات فقط"
+
+msgid "Use one slash between folder names."
+msgstr "استخدم شرطة مائلة واحدة بين أسماء المجلدات."
 
 msgid "Use their version"
 msgstr "استخدام نسختهم"
@@ -11964,9 +11988,6 @@ msgstr "عند تثبيتك مهارة منشورة، أخبر دليل المه
 
 msgid "Where"
 msgstr "أين"
-
-msgid "Where newly added attachments are placed."
-msgstr "أين توضع المرفقات المضافة حديثًا."
 
 msgid "Where should it live?"
 msgstr "أين ينبغي أن يعيش؟"

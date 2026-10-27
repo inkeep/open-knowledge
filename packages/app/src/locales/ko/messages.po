@@ -1084,6 +1084,9 @@ msgstr "이 폴더를 설명하는 제목, 설명, 태그 등입니다."
 msgid "A token added here only applies to HTTPS remotes, and this project's remote doesn't use HTTPS."
 msgstr "여기에 추가한 토큰은 HTTPS 원격 저장소에만 적용되며, 이 프로젝트의 원격 저장소는 HTTPS를 사용하지 않습니다."
 
+msgid "A variable needs two braces on each side, such as {filenameVariable}."
+msgstr "변수는 양쪽에 중괄호가 두 개씩 필요합니다(예: {filenameVariable})."
+
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "{shareBranch}용 워크트리 폴더가 이미 있습니다."
 
@@ -2671,9 +2674,6 @@ msgstr "콘텐츠 디렉터리"
 msgid "Content directory must be inside the project"
 msgstr "콘텐츠 디렉터리는 프로젝트 내부에 있어야 합니다"
 
-msgid "Content root"
-msgstr "콘텐츠 루트"
-
 msgid "Content rules"
 msgstr "콘텐츠 규칙"
 
@@ -3307,6 +3307,18 @@ msgstr "{subRoot} 업데이트 실패: {0}"
 msgid "Couldn't update from {0}: {1}"
 msgstr "{0}에서 업데이트할 수 없습니다: {1}"
 
+msgid "Couldn't upload the file. The {settingKey} value in {configFile} can't be used. Fix it in that file."
+msgstr "파일을 업로드할 수 없습니다. {configFile}의 {settingKey} 값을 사용할 수 없습니다. 그 파일에서 수정하세요."
+
+msgid "Couldn't upload the file. The attachment folder has a {open} or {close} without its pair. Fix it under Attachments in Settings."
+msgstr "파일을 업로드할 수 없습니다. 첨부 파일 폴더에 짝이 없는 {open} 또는 {close}가 있습니다. 설정의 첨부 파일에서 수정하세요."
+
+msgid "Couldn't upload the file. The attachment folder uses {filenameVariable} more than once in one folder name. Fix it under Attachments in Settings."
+msgstr "파일을 업로드할 수 없습니다. 첨부 파일 폴더의 한 폴더 이름에 {filenameVariable}가 두 번 이상 있습니다. 설정의 첨부 파일에서 수정하세요."
+
+msgid "Couldn't upload the file. The attachment folder uses the unknown variable {variables}. Fix it under Attachments in Settings."
+msgstr "파일을 업로드할 수 없습니다. 첨부 파일 폴더에 알 수 없는 변수 {variables}가 있습니다. 설정의 첨부 파일에서 수정하세요."
+
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
 msgstr "{displayName}({bin})이(가) 사용 가능한지 확인할 수 없어 일반 셸이 열렸습니다. 직접 {bin}을(를) 실행할 수 있습니다."
 
@@ -3486,9 +3498,6 @@ msgstr "날짜"
 
 msgid "Default"
 msgstr "기본값"
-
-msgid "Default location for new attachments"
-msgstr "새 첨부 파일의 기본 위치"
 
 msgid "Default properties"
 msgstr "기본 속성"
@@ -3895,9 +3904,6 @@ msgstr "\"{0}\"에 복제됨"
 msgid "Duplicates dropped"
 msgstr "중복 항목 정리"
 
-msgid "e.g. assets/uploads"
-msgstr "예: assets/uploads"
-
 msgid "e.g. drafts/ or *.draft.md"
 msgstr "예: drafts/ 또는 *.draft.md"
 
@@ -3909,6 +3915,9 @@ msgstr "예: 동기화 중 프로젝트 전환"
 
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr "예: 큰 표를 붙여넣은 후 편집기가 멈춤"
+
+msgid "Each {open} needs a matching {close}."
+msgstr "각 {open}에는 짝이 되는 {close}가 필요합니다."
 
 #. Says what symlinking two skill folders together buys the user, before any button names it
 msgid "Each AI tool reads skills from its own folder. Point one folder at another and both tools see the same skills — add a skill once instead of copying it into every tool."
@@ -4266,6 +4275,9 @@ msgstr "{0}/ 폴더가 {1}/ 안에 있는 모든 항목"
 
 msgid "everything under any {0}/ folder"
 msgstr "모든 {0}/ 폴더 아래의 항목"
+
+msgid "Example: a file added to <0>{exampleDoc}</0> is saved as <1>{exampleFile}</1>"
+msgstr "예: <0>{exampleDoc}</0>에 추가한 파일은 <1>{exampleFile}</1>에 저장됩니다"
 
 msgid "Excalidraw board"
 msgstr "Excalidraw 보드"
@@ -4751,9 +4763,6 @@ msgstr "고정"
 msgid "Fixed {total, plural, one {# file} other {# files}}."
 msgstr "{total, plural, other {파일 #개}}를 수정했습니다."
 
-msgid "Fixed folder in content root"
-msgstr "콘텐츠 루트의 고정 폴더"
-
 msgid "Fixed port number"
 msgstr "고정 포트 번호"
 
@@ -4789,6 +4798,12 @@ msgstr "폴더 이름"
 
 msgid "Folder name: {detail}"
 msgstr "폴더 이름: {detail}"
+
+msgid "Folder names cannot contain {reserved}."
+msgstr "폴더 이름에는 {reserved}를 사용할 수 없습니다."
+
+msgid "Folder path must start with {documentPrefix} or {rootPrefix} and cannot contain {parentFolder}"
+msgstr "폴더 경로는 {documentPrefix} 또는 {rootPrefix}로 시작해야 하며, {parentFolder}는 포함할 수 없습니다."
 
 msgid "Folder properties"
 msgstr "폴더 속성"
@@ -8589,6 +8604,12 @@ msgstr "선택 영역 제거"
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "상위 <0>.git</0> 폴더 제거"
 
+msgid "Remove the slash at the end of the path."
+msgstr "경로 끝의 슬래시를 지우세요."
+
+msgid "Remove the spaces at the start or end of the path."
+msgstr "경로 앞이나 뒤의 공백을 지우세요."
+
 msgid "Removed"
 msgstr "제거됨"
 
@@ -9018,9 +9039,6 @@ msgstr "프로젝트 감사 실행 중"
 
 msgid "Runs a shell command"
 msgstr "셸 명령을 실행합니다"
-
-msgid "Same folder as current file"
-msgstr "현재 파일과 같은 폴더"
 
 msgid "Sample image"
 msgstr "샘플 이미지"
@@ -9463,8 +9481,8 @@ msgstr "OpenKnowledge 통합 설정…"
 msgid "Set up syncing"
 msgstr "동기화 설정"
 
-msgid "Set where pasted and dropped files are stored for this project."
-msgstr "이 프로젝트에서 붙여넣거나 드롭한 파일의 저장 위치를 설정합니다."
+msgid "Set where pasted and dropped files are stored."
+msgstr "붙여넣거나 드롭한 파일의 저장 위치를 설정합니다."
 
 msgid "Setting up"
 msgstr "설정 중"
@@ -10114,9 +10132,6 @@ msgstr "서브에이전트"
 
 msgid "Subfolder name"
 msgstr "하위 폴더 이름"
-
-msgid "Subfolder under current folder"
-msgstr "현재 폴더의 하위 폴더"
 
 msgid "Subscribe"
 msgstr "구독"
@@ -11530,6 +11545,9 @@ msgstr "알 수 없는 날짜"
 msgid "Unknown error"
 msgstr "알 수 없는 오류"
 
+msgid "Unknown variable {unknownList}. Available variables: {supportedVariables}."
+msgstr "알 수 없는 변수 {unknownList}. 사용할 수 있는 변수: {supportedVariables}."
+
 msgid "unlink"
 msgstr "링크 해제"
 
@@ -11699,6 +11717,9 @@ msgstr "현재 밝은 모드로 {0} 사용"
 msgid "Use {editor} version"
 msgstr "{editor} 버전 사용"
 
+msgid "Use {filenameVariable} at most once in each folder name."
+msgstr "각 폴더 이름에는 {filenameVariable}을(를) 한 번만 사용하세요."
+
 msgid "Use <0>{copyShortcut}</0> to copy the link below, or open OK in the desktop app."
 msgstr "아래 링크 복사에는 <0>{copyShortcut}</0> 사용, 또는 데스크톱 앱에서 OK 열기"
 
@@ -11737,6 +11758,9 @@ msgstr "소문자, 숫자, <0>-</0>만 사용하세요."
 
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "소문자, 숫자, 하이픈만 사용하세요"
+
+msgid "Use one slash between folder names."
+msgstr "폴더 이름 사이에는 슬래시를 하나만 쓰세요."
 
 msgid "Use their version"
 msgstr "상대 버전 사용"
@@ -11964,9 +11988,6 @@ msgstr "게시된 스킬을 설치하면 skills.sh에 알려 설치 횟수가 �
 
 msgid "Where"
 msgstr "위치"
-
-msgid "Where newly added attachments are placed."
-msgstr "새로 추가한 첨부 파일의 위치"
 
 msgid "Where should it live?"
 msgstr "어디에 둘까요?"

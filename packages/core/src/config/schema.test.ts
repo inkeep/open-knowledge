@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
 import { SUPPORTED_LOCALES } from '../i18n/locales.ts';
 import {
+  attachmentFolderForDocument,
+  attachmentFolderPathVariableIssue,
   ConfigSchema,
   checkEmbeddingsBaseUrl,
   isValidAttachmentFolderPath,
@@ -40,13 +42,35 @@ describe('checkEmbeddingsBaseUrl', () => {
 });
 
 describe('content.attachmentFolderPath', () => {
-  test('defaults to "./" when absent', () => {
-    expect(ConfigSchema.parse({}).content.attachmentFolderPath).toBe('./');
+  test('accepts brace values, so a bad variable never invalidates the rest of the config', () => {
+    for (const value of ['./{{filename', 'a}}b', './{{filename}}{{filename}}']) {
+      const parsed = ConfigSchema.safeParse({
+        content: { attachmentFolderPath: value },
+        validation: { links: 'error' },
+      });
+      expect(parsed.success).toBe(true);
+    }
   });
 
-  test('defaults to "./" when key is absent inside content', () => {
+  test.each([
+    ['/uploads/{{filename}}/img', null],
+    ['/attachments', null],
+    ['attachments', null],
+    ['uploads/{{filename}}', null],
+    ['/{{filename}}/{{filename}}', null],
+    ['./{{ date }}', { kind: 'unknown-variable', variables: ['{{ date }}'] }],
+    ['./filename}}', { kind: 'unclosed-braces' }],
+  ])('attachmentFolderPathVariableIssue(%s)', (value, expected) => {
+    expect(attachmentFolderPathVariableIssue(value)).toEqual(expected);
+  });
+
+  test('defaults to a folder per document when absent', () => {
+    expect(ConfigSchema.parse({}).content.attachmentFolderPath).toBe('./{{filename}}.assets');
+  });
+
+  test('defaults to a folder per document when key is absent inside content', () => {
     expect(ConfigSchema.parse({ content: { dir: 'docs' } }).content.attachmentFolderPath).toBe(
-      './',
+      './{{filename}}.assets',
     );
   });
 
@@ -83,13 +107,13 @@ describe('content.attachmentFolderPath', () => {
     ).toBe('assets/uploads');
   });
 
-  test('normalizes empty string to "./"', () => {
-    expect(normalizeAttachmentFolderPath('')).toBe('./');
+  test('normalizes empty string to the default', () => {
+    expect(normalizeAttachmentFolderPath('')).toBe('./{{filename}}.assets');
     expect(isValidAttachmentFolderPath('')).toBe(true);
   });
 
-  test('normalizes whitespace-only to "./"', () => {
-    expect(normalizeAttachmentFolderPath('   ')).toBe('./');
+  test('normalizes whitespace-only to the default', () => {
+    expect(normalizeAttachmentFolderPath('   ')).toBe('./{{filename}}.assets');
     expect(isValidAttachmentFolderPath('   ')).toBe(true);
   });
 
@@ -113,22 +137,32 @@ describe('content.attachmentFolderPath', () => {
     ).toThrow();
   });
 
+  test('rejects a drive letter', () => {
+    expect(isValidAttachmentFolderPath('C:/attachments')).toBe(false);
+    expect(isValidAttachmentFolderPath('/C:/attachments')).toBe(false);
+    expect(isValidAttachmentFolderPath('./C:/attachments')).toBe(false);
+  });
+
   test('rejects backslash', () => {
     expect(() =>
       ConfigSchema.parse({ content: { attachmentFolderPath: 'attach\\ments' } }),
     ).toThrow();
   });
 
-  test('rejects absolute POSIX path "/etc/passwd"', () => {
-    expect(() =>
-      ConfigSchema.parse({ content: { attachmentFolderPath: '/etc/passwd' } }),
-    ).toThrow();
+  test('reads a leading slash as the content root, so "/etc/passwd" stays inside the project', () => {
+    expect(
+      ConfigSchema.parse({ content: { attachmentFolderPath: '/etc/passwd' } }).content
+        .attachmentFolderPath,
+    ).toBe('/etc/passwd');
+    expect(attachmentFolderForDocument('/etc/passwd', 'docs/guide.md')).toBe('etc/passwd');
   });
 
-  test('rejects absolute POSIX path "/attachments"', () => {
-    expect(() =>
-      ConfigSchema.parse({ content: { attachmentFolderPath: '/attachments' } }),
-    ).toThrow();
+  test('accepts "/attachments" as a folder at the content root', () => {
+    expect(
+      ConfigSchema.parse({ content: { attachmentFolderPath: '/attachments' } }).content
+        .attachmentFolderPath,
+    ).toBe('/attachments');
+    expect(attachmentFolderForDocument('/attachments', 'docs/guide.md')).toBe('attachments');
   });
 
   test('rejects Windows drive-letter path "C:/"', () => {

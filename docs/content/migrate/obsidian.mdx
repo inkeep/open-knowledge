@@ -57,7 +57,7 @@ A handful of Obsidian features are not supported, or behave differently. None of
 | **Canvas (`.canvas`) and Bases (`.base`)** | Open in a read-only text view rather than as interactive canvases or bases. They're still indexed and linkable from your notes. |
 
 <Callout type="info">
-  OpenKnowledge's defaults match Obsidian's defaults — wiki links and attachments stored alongside your notes — so a standard vault works as-is. There's no migration step today; if you have a vault with heavily non-default settings, [let us know](https://github.com/inkeep/open-knowledge/issues).
+  OpenKnowledge reads a standard vault as-is, wiki links included. One default differs: a file you paste or drop goes to a folder named after the note, such as `notes/meeting.assets/`, while Obsidian puts it at the vault root. To keep your vault's layout, set the [attachment folder](/docs/features/assets-and-embeds#attachment-folder): `/` matches Obsidian's "Vault folder", `./` its "Same folder as current file", `/folder` "In the folder specified below", and `./folder` "In subfolder under current folder". There's no migration step today; if you have a vault with heavily non-default settings, [let us know](https://github.com/inkeep/open-knowledge/issues).
 </Callout>
 
 ## Agent skills, built in

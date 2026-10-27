@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { DEFAULT_ATTACHMENT_FOLDER_PATH } from '../constants/upload.ts';
+import { SUPPORTED_DOC_EXTENSIONS } from '../constants/doc-extensions.ts';
+import {
+  BESIDE_DOCUMENT_ATTACHMENT_FOLDER_PATH,
+  DEFAULT_ATTACHMENT_FOLDER_PATH,
+} from '../constants/upload.ts';
 import { SUPPORTED_LOCALES } from '../i18n/locales.ts';
 import {
   DEFAULT_LINKS_VALIDATION,
@@ -108,16 +112,228 @@ export function normalizeAttachmentFolderPath(value: string): string {
   return trimmed === '' ? DEFAULT_ATTACHMENT_FOLDER_PATH : trimmed;
 }
 
+export function canonicalAttachmentFolderPath(value: string): string {
+  const normalized = normalizeAttachmentFolderPath(value);
+  if (normalized === '.') return '/';
+  if (normalized.startsWith('./') || normalized.startsWith('/')) return normalized;
+  return `/${normalized}`;
+}
+
+export const ATTACHMENT_FOLDER_PATH_VARIABLES = ['filename'] as const;
+
+type AttachmentFolderPathVariable = (typeof ATTACHMENT_FOLDER_PATH_VARIABLES)[number];
+
+export type AttachmentFolderPathPart =
+  | { kind: 'text'; text: string; start: number }
+  | { kind: 'variable'; text: string; start: number; name: AttachmentFolderPathVariable }
+  | { kind: 'unknown-variable'; text: string; start: number; name: string };
+
+export type AttachmentFolderPathVariableIssue =
+  | { kind: 'unknown-variable'; variables: string[] }
+  | { kind: 'unclosed-braces' }
+  | { kind: 'repeated-variable' };
+
+const ATTACHMENT_FOLDER_VARIABLE_PATTERN = /\{\{([^{}\n]+?)\}\}/g;
+
+function isAttachmentFolderPathVariable(name: string): name is AttachmentFolderPathVariable {
+  return (ATTACHMENT_FOLDER_PATH_VARIABLES as readonly string[]).includes(name);
+}
+
+export function parseAttachmentFolderPath(value: string): AttachmentFolderPathPart[] {
+  const parts: AttachmentFolderPathPart[] = [];
+  let cursor = 0;
+  for (const match of value.matchAll(ATTACHMENT_FOLDER_VARIABLE_PATTERN)) {
+    const start = match.index;
+    if (start > cursor)
+      parts.push({ kind: 'text', text: value.slice(cursor, start), start: cursor });
+    const name = (match[1] ?? '').trim();
+    parts.push(
+      isAttachmentFolderPathVariable(name)
+        ? { kind: 'variable', text: match[0], start, name }
+        : { kind: 'unknown-variable', text: match[0], start, name },
+    );
+    cursor = start + match[0].length;
+  }
+  if (cursor < value.length) parts.push({ kind: 'text', text: value.slice(cursor), start: cursor });
+  return parts;
+}
+
+function countVariables(parts: readonly AttachmentFolderPathPart[]): number {
+  return parts.filter((part) => part.kind === 'variable').length;
+}
+
+export function attachmentFolderPathVariableIssue(
+  value: string,
+): AttachmentFolderPathVariableIssue | null {
+  const parts = parseAttachmentFolderPath(value);
+  const unknown = parts.flatMap((part) => (part.kind === 'unknown-variable' ? [part.text] : []));
+  if (unknown.length > 0) return { kind: 'unknown-variable', variables: unknown };
+  if (
+    parts.some(
+      (part) => part.kind === 'text' && (part.text.includes('{{') || part.text.includes('}}')),
+    )
+  ) {
+    return { kind: 'unclosed-braces' };
+  }
+  if (value.split('/').some((segment) => countVariables(parseAttachmentFolderPath(segment)) > 1)) {
+    return { kind: 'repeated-variable' };
+  }
+  return null;
+}
+
+export function describeAttachmentFolderPathVariableIssue(
+  issue: AttachmentFolderPathVariableIssue,
+): string {
+  const supported = ATTACHMENT_FOLDER_PATH_VARIABLES.map((name) => `{{${name}}}`).join(', ');
+  switch (issue.kind) {
+    case 'unknown-variable':
+      return `content.attachmentFolderPath uses the unknown variable ${issue.variables.join(', ')}. Supported variables: ${supported}.`;
+    case 'unclosed-braces':
+      return 'content.attachmentFolderPath has a "{{" or "}}" without its pair.';
+    case 'repeated-variable':
+      return 'content.attachmentFolderPath uses a variable more than once in one folder name.';
+  }
+}
+
+function expandAttachmentFolderPath(
+  value: string,
+  variables: Record<AttachmentFolderPathVariable, string>,
+): string {
+  return parseAttachmentFolderPath(value)
+    .map((part) => (part.kind === 'variable' ? variables[part.name] : part.text))
+    .join('');
+}
+
+function documentFilenameVariable(docFile: string): string {
+  const lower = docFile.toLowerCase();
+  const docExt = SUPPORTED_DOC_EXTENSIONS.find((candidate) => lower.endsWith(candidate));
+  return docExt ? docFile.slice(0, -docExt.length) : '';
+}
+
+export function attachmentFolderForDocument(attachmentFolderPath: string, docPath: string): string {
+  const slash = docPath.lastIndexOf('/');
+  const docDir = slash === -1 ? '' : docPath.slice(0, slash);
+  const filename = documentFilenameVariable(docPath.slice(slash + 1));
+  const normalized = normalizeAttachmentFolderPath(attachmentFolderPath);
+  const template =
+    filename === '' && countVariables(parseAttachmentFolderPath(normalized)) > 0
+      ? BESIDE_DOCUMENT_ATTACHMENT_FOLDER_PATH
+      : normalized;
+  const expanded = expandAttachmentFolderPath(template, { filename });
+  const docRelative = expanded.startsWith('./');
+  const rest = docRelative ? expanded.slice(2) : expanded;
+  return [...(docRelative ? [docDir] : []), ...rest.split('/')]
+    .filter((segment) => segment !== '' && segment !== '.')
+    .join('/');
+}
+
+export function attachmentFolderSegmentMatcher(segment: string): (candidate: string) => boolean {
+  const parts = parseAttachmentFolderPath(segment);
+  if (countVariables(parts) !== 1) return (candidate) => candidate === segment;
+  const variableIndex = parts.findIndex((part) => part.kind === 'variable');
+  const textOf = (side: readonly AttachmentFolderPathPart[]) =>
+    side.map((part) => part.text).join('');
+  const prefix = textOf(parts.slice(0, variableIndex));
+  const suffix = textOf(parts.slice(variableIndex + 1));
+  return (candidate) =>
+    candidate.length > prefix.length + suffix.length &&
+    candidate.startsWith(prefix) &&
+    candidate.endsWith(suffix);
+}
+
+const ATTACHMENT_FOLDER_PATH_SAFETY_RULE =
+  "must not contain '..' segments, NUL bytes, backslashes, or drive letters";
+
 export function isValidAttachmentFolderPath(value: string): boolean {
   const normalized = normalizeAttachmentFolderPath(value);
   if (normalized.includes('\0')) return false;
   if (normalized.includes('\\')) return false;
-  if (normalized === '/') return true;
-  if (normalized.startsWith('/')) return false;
-  if (/^[A-Za-z]:/.test(normalized)) return false;
   const segments = normalized.split('/');
+  const firstFolder = segments.find((segment) => segment !== '' && segment !== '.');
+  if (firstFolder !== undefined && /^[A-Za-z]:/.test(firstFolder)) return false;
   if (segments.some((seg) => seg === '..')) return false;
   return true;
+}
+
+const RESERVED_FOLDER_NAME_CHARACTERS = /[<>:"\\|?*]/;
+
+export type AttachmentFolderPathInputIssue =
+  | { kind: 'empty' }
+  | { kind: 'outside-project' }
+  | { kind: 'reserved-character' }
+  | { kind: 'surrounding-space' }
+  | { kind: 'missing-prefix' }
+  | { kind: 'empty-folder-name' }
+  | { kind: 'trailing-slash' }
+  | { kind: 'single-brace' }
+  | AttachmentFolderPathVariableIssue;
+
+function inputIssue(issue: AttachmentFolderPathInputIssue) {
+  return { params: issue };
+}
+
+function hasSingleBrace(path: string): boolean {
+  return parseAttachmentFolderPath(path).some(
+    (part) => part.kind === 'text' && /[{}]/.test(part.text),
+  );
+}
+
+const AttachmentFolderPathInputSchema = z
+  .string()
+  .refine((path) => path.trim() !== '', inputIssue({ kind: 'empty' }))
+  .refine(
+    (path) => !RESERVED_FOLDER_NAME_CHARACTERS.test(path),
+    inputIssue({ kind: 'reserved-character' }),
+  )
+  .refine(isValidAttachmentFolderPath, inputIssue({ kind: 'outside-project' }))
+  .refine((path) => path === path.trim(), inputIssue({ kind: 'surrounding-space' }))
+  .refine(
+    (path) => path.startsWith('./') || path.startsWith('/'),
+    inputIssue({ kind: 'missing-prefix' }),
+  )
+  .refine((path) => !path.includes('//'), inputIssue({ kind: 'empty-folder-name' }))
+  .refine(
+    (path) => path === './' || path === '/' || !path.endsWith('/'),
+    inputIssue({ kind: 'trailing-slash' }),
+  )
+  .superRefine((path, ctx) => {
+    const issue = attachmentFolderPathVariableIssue(path);
+    if (issue) ctx.addIssue({ code: 'custom', params: issue });
+  })
+  .refine((path) => !hasSingleBrace(path), inputIssue({ kind: 'single-brace' }));
+
+const INPUT_ISSUE_KINDS = {
+  empty: true,
+  'outside-project': true,
+  'reserved-character': true,
+  'surrounding-space': true,
+  'missing-prefix': true,
+  'empty-folder-name': true,
+  'trailing-slash': true,
+  'single-brace': true,
+  'unknown-variable': true,
+  'unclosed-braces': true,
+  'repeated-variable': true,
+} satisfies Record<AttachmentFolderPathInputIssue['kind'], true>;
+
+function isAttachmentFolderPathInputIssue(value: unknown): value is AttachmentFolderPathInputIssue {
+  if (typeof value !== 'object' || value === null || !('kind' in value)) return false;
+  const { kind } = value;
+  if (typeof kind !== 'string' || !Object.hasOwn(INPUT_ISSUE_KINDS, kind)) return false;
+  return kind !== 'unknown-variable' || ('variables' in value && Array.isArray(value.variables));
+}
+
+export function attachmentFolderPathInputIssue(
+  path: string,
+): AttachmentFolderPathInputIssue | null {
+  const result = AttachmentFolderPathInputSchema.safeParse(path);
+  if (result.success) return null;
+  const [first] = result.error.issues;
+  const params = first?.code === 'custom' ? first.params : undefined;
+  if (isAttachmentFolderPathInputIssue(params)) return params;
+  throw new Error(
+    `Attachment folder path check failed without a known problem kind: ${first?.message}`,
+  );
 }
 
 export const ConfigSchema = z.looseObject({
@@ -142,11 +358,10 @@ export const ConfigSchema = z.looseObject({
           reload: 'live',
           defaultScope: 'project',
           description:
-            "Where pasted and dropped assets, and MCP write assets given a bare file name, are stored, relative to the content root. './' colocates beside the current document (default); '/' targets the content root; './subdir' targets a subfolder under the current document folder; 'folder' targets a fixed folder under the content root. Whitespace-only values are treated as './'.",
+            "Where pasted and dropped assets, and MCP write assets given a bare file name, are stored. The path must start with './' (relative to the current document) or '/' (relative to the content root): './' colocates beside the current document; './subdir' targets a subfolder next to it; '/' targets the content root; '/folder' targets a fixed folder under the content root. '{{filename}}' expands to the current document's name without its extension, so the default './{{filename}}.assets' keeps each document's files in its own folder. An upload whose parent is not a Markdown document, such as an MCP write asset given a bare file name, ignores {{filename}} and is placed as with './', which for a bare file name is the content root. A bare name such as 'attachments', saved by older versions, is read as '/attachments'. A path with an unknown variable refuses uploads until it is fixed. Whitespace-only values are treated as the default.",
         })
         .refine(isValidAttachmentFolderPath, {
-          message:
-            "Invalid attachment folder path: must not contain '..' segments, NUL bytes, backslashes, or OS absolute paths (use '/' for the content root).",
+          message: `Invalid attachment folder path: ${ATTACHMENT_FOLDER_PATH_SAFETY_RULE}.`,
         })
         .default(DEFAULT_ATTACHMENT_FOLDER_PATH),
     })

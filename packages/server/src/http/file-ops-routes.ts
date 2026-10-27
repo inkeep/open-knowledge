@@ -10,6 +10,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { dirname, extname, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import {
+  type AttachmentFolderUploadIssue,
   CreateFolderRequestSchema,
   CreateFolderSuccessSchema,
   CreatePageRequestSchema,
@@ -18,6 +19,7 @@ import {
   DeletePathSuccessSchema,
   DuplicatePathRequestSchema,
   DuplicatePathSuccessSchema,
+  describeAttachmentFolderPathVariableIssue,
   findTemplateByName,
   instantiateDoc,
   isManagedArtifactDocName,
@@ -62,7 +64,7 @@ import {
 import { classifyFsPath, normalizeFsPath } from '../fs-traced.ts';
 import type { PinoLogger } from '../logger.ts';
 import { createMultipartParser, type MultipartParser } from '../multipart.ts';
-import type { AssetService } from '../services/assets.ts';
+import { type AssetService, AttachmentFolderPathConfigError } from '../services/assets.ts';
 import { DuplicateNameExhaustedError, type FileOpsService } from '../services/file-ops.ts';
 import { type getMeter, withSpan } from '../telemetry.ts';
 import {
@@ -1541,12 +1543,32 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
           500,
           'urn:ok:error:internal-server-error',
           'Server configuration error: invalid attachment folder path.',
-          { handler: 'upload-asset', cause: outcome.cause },
+          {
+            handler: 'upload-asset',
+            cause: outcome.cause,
+            detail:
+              outcome.cause instanceof AttachmentFolderPathConfigError
+                ? `content.attachmentFolderPath in .ok/config.yml: ${outcome.cause.reasons.join('; ')}`
+                : 'content.attachmentFolderPath in .ok/config.yml could not be read.',
+            extensions: {
+              attachmentFolderIssue: {
+                kind: 'invalid-config',
+              } satisfies AttachmentFolderUploadIssue,
+            },
+          },
         );
         return;
       case 'invalid-attachment-folder':
         errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid attachment folder path.', {
           handler: 'upload-asset',
+          ...(outcome.issue
+            ? {
+                detail: describeAttachmentFolderPathVariableIssue(outcome.issue),
+                extensions: {
+                  attachmentFolderIssue: outcome.issue satisfies AttachmentFolderUploadIssue,
+                },
+              }
+            : {}),
         });
         return;
       case 'path-escape':

@@ -7,22 +7,11 @@ import {
   createMp4Buffer,
   createPngBuffer,
   expect,
+  openPropPanel,
   test,
   uniqueAssetName,
   waitForActiveProviderSynced,
 } from './_helpers';
-
-async function openPropPanel(page: Page): Promise<ReturnType<Page['locator']>> {
-  const wrapper = page.locator('[data-jsx-component]').first();
-  await wrapper.waitFor({ state: 'visible', timeout: 5000 });
-  await wrapper.hover();
-  const gear = wrapper.locator('button[aria-label*="properties"]').first();
-  await gear.waitFor({ state: 'visible', timeout: 5000 });
-  await gear.click({ force: true });
-  const panel = page.locator('[data-prop-panel]').first();
-  await panel.waitFor({ state: 'visible', timeout: 5000 });
-  return panel;
-}
 
 async function readSrc(page: Page, tag: 'img' | 'video' | 'audio'): Promise<string> {
   return page.evaluate((sel) => {

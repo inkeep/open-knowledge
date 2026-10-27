@@ -25,7 +25,11 @@ import { getEditorSingleFileMode } from '../extensions/editor-mode-context.ts';
 import { buildUnresolvedWikiLinkAttrs } from '../extensions/wiki-link-helpers.ts';
 import { HttpResponseParseError } from '../http-client.ts';
 import { singleFileUploadMessage } from './upload-admission.ts';
-import { reportUploadFailure, type UploadFailureReport } from './upload-failure.ts';
+import {
+  attachmentFolderRefusalMessage,
+  reportUploadFailure,
+  type UploadFailureReport,
+} from './upload-failure.ts';
 
 const uploadPluginKey = new PluginKey<UploadPluginState>('imageUpload');
 
@@ -291,7 +295,7 @@ export async function uploadAndInsert(
       return;
     }
     console.error('[uploadAndInsert] Server error:', problem.data);
-    showError(editor, uploadId, problem.data.title);
+    showError(editor, uploadId, attachmentFolderRefusalMessage(problem.data) ?? problem.data.title);
     return;
   }
 

@@ -441,7 +441,7 @@ export function CustomThemeEditor({
               rel="noopener noreferrer"
               onClick={(e) => dispatchExternalLinkClick(e, SCHEMES_URL)}
               onAuxClick={(e) => dispatchExternalLinkClick(e, SCHEMES_URL)}
-              className="inline-flex items-center gap-0.5 underline-offset-2 hover:text-foreground hover:underline"
+              className="inline-flex items-center gap-0.5 text-primary underline-offset-2 hover:underline"
             >
               {t`Browse hundreds of themes`}
               <ArrowUpRight aria-hidden className="size-3" />

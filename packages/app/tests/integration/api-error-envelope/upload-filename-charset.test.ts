@@ -138,9 +138,9 @@ describe('multipart filename charset -- POST /api/upload', () => {
         `sent U+ ${hexPointsOf(c.uploaded)}\nas string "${c.uploaded}" -> got "${body.src}"`,
       ).toBe(hexPointsOf(c.expected));
       expect(body.src).toBe(c.expected);
-      expect(body.path).toBe(`docs/${c.id}/${c.expected}`);
+      expect(body.path).toBe(`docs/${c.id}/guide.assets/${c.expected}`);
 
-      const entries = readdirSync(join(server.contentDir, 'docs', c.id));
+      const entries = readdirSync(join(server.contentDir, 'docs', c.id, 'guide.assets'));
       expect(entries.map((e) => e.normalize('NFC'))).toContain(c.expected.normalize('NFC'));
     });
   }

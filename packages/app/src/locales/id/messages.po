@@ -1080,6 +1080,9 @@ msgstr "Judul, deskripsi, tag — apa saja yang menggambarkan folder ini."
 msgid "A token added here only applies to HTTPS remotes, and this project's remote doesn't use HTTPS."
 msgstr "Token yang ditambahkan di sini hanya berlaku untuk remote HTTPS, dan remote proyek ini tidak memakai HTTPS."
 
+msgid "A variable needs two braces on each side, such as {filenameVariable}."
+msgstr "Variabel memerlukan dua kurung kurawal di setiap sisi, seperti {filenameVariable}."
+
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "Folder worktree untuk {shareBranch} sudah ada."
 
@@ -2667,9 +2670,6 @@ msgstr "Direktori konten"
 msgid "Content directory must be inside the project"
 msgstr "Direktori konten harus berada di dalam proyek"
 
-msgid "Content root"
-msgstr "Akar konten"
-
 msgid "Content rules"
 msgstr "Aturan konten"
 
@@ -3303,6 +3303,18 @@ msgstr "{subRoot} tidak bisa diperbarui: {0}"
 msgid "Couldn't update from {0}: {1}"
 msgstr "Tidak dapat memperbarui dari {0}: {1}"
 
+msgid "Couldn't upload the file. The {settingKey} value in {configFile} can't be used. Fix it in that file."
+msgstr "Tidak dapat mengunggah berkas. Nilai {settingKey} di {configFile} tidak dapat dipakai. Perbaiki di berkas itu."
+
+msgid "Couldn't upload the file. The attachment folder has a {open} or {close} without its pair. Fix it under Attachments in Settings."
+msgstr "Tidak dapat mengunggah berkas. Folder lampiran memiliki {open} atau {close} tanpa pasangannya. Perbaiki di Lampiran, di Pengaturan."
+
+msgid "Couldn't upload the file. The attachment folder uses {filenameVariable} more than once in one folder name. Fix it under Attachments in Settings."
+msgstr "Tidak dapat mengunggah berkas. Folder lampiran memakai {filenameVariable} lebih dari sekali dalam satu nama folder. Perbaiki di Lampiran, di Pengaturan."
+
+msgid "Couldn't upload the file. The attachment folder uses the unknown variable {variables}. Fix it under Attachments in Settings."
+msgstr "Tidak dapat mengunggah berkas. Folder lampiran memakai variabel tak dikenal {variables}. Perbaiki di Lampiran, di Pengaturan."
+
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
 msgstr "Tidak dapat memverifikasi bahwa {displayName} ({bin}) tersedia, jadi ini adalah shell biasa. Anda tetap dapat menjalankan {bin} sendiri."
 
@@ -3482,9 +3494,6 @@ msgstr "Tanggal"
 
 msgid "Default"
 msgstr "Bawaan"
-
-msgid "Default location for new attachments"
-msgstr "Lokasi bawaan untuk lampiran baru"
 
 msgid "Default properties"
 msgstr "Properti bawaan"
@@ -3891,9 +3900,6 @@ msgstr "Digandakan menjadi \"{0}\""
 msgid "Duplicates dropped"
 msgstr "Duplikat dibuang"
 
-msgid "e.g. assets/uploads"
-msgstr "mis. assets/uploads"
-
 msgid "e.g. drafts/ or *.draft.md"
 msgstr "mis. drafts/ atau *.draft.md"
 
@@ -3905,6 +3911,9 @@ msgstr "mis. Berpindah proyek saat sinkronisasi sedang berjalan"
 
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr "mis. Penyunting membeku setelah saya menempelkan tabel besar"
+
+msgid "Each {open} needs a matching {close}."
+msgstr "Setiap {open} perlu {close} pasangannya."
 
 #. Says what symlinking two skill folders together buys the user, before any button names it
 msgid "Each AI tool reads skills from its own folder. Point one folder at another and both tools see the same skills — add a skill once instead of copying it into every tool."
@@ -4262,6 +4271,9 @@ msgstr "semua yang ada di folder {0}/ di dalam {1}/"
 
 msgid "everything under any {0}/ folder"
 msgstr "semua yang ada di folder {0}/ mana pun"
+
+msgid "Example: a file added to <0>{exampleDoc}</0> is saved as <1>{exampleFile}</1>"
+msgstr "Contoh: berkas yang ditambahkan ke <0>{exampleDoc}</0> disimpan di <1>{exampleFile}</1>"
 
 msgid "Excalidraw board"
 msgstr "Papan Excalidraw"
@@ -4747,9 +4759,6 @@ msgstr "Tetap"
 msgid "Fixed {total, plural, one {# file} other {# files}}."
 msgstr "{total, plural, other {# berkas diperbaiki}}."
 
-msgid "Fixed folder in content root"
-msgstr "Folder tetap di akar konten"
-
 msgid "Fixed port number"
 msgstr "Nomor port tetap"
 
@@ -4785,6 +4794,12 @@ msgstr "Nama folder"
 
 msgid "Folder name: {detail}"
 msgstr "Nama folder: {detail}"
+
+msgid "Folder names cannot contain {reserved}."
+msgstr "Nama folder tidak boleh berisi {reserved}."
+
+msgid "Folder path must start with {documentPrefix} or {rootPrefix} and cannot contain {parentFolder}"
+msgstr "Jalur folder harus diawali {documentPrefix} atau {rootPrefix} dan tidak boleh berisi {parentFolder}"
 
 msgid "Folder properties"
 msgstr "Properti folder"
@@ -8585,6 +8600,12 @@ msgstr "Hapus pilihan"
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "Hapus folder <0>.git</0> induknya"
 
+msgid "Remove the slash at the end of the path."
+msgstr "Hapus garis miring di akhir jalur."
+
+msgid "Remove the spaces at the start or end of the path."
+msgstr "Hapus spasi di awal atau akhir jalur."
+
 msgid "Removed"
 msgstr "Dihapus"
 
@@ -9014,9 +9035,6 @@ msgstr "Menjalankan audit proyek"
 
 msgid "Runs a shell command"
 msgstr "Menjalankan perintah shell"
-
-msgid "Same folder as current file"
-msgstr "Folder yang sama dengan berkas saat ini"
 
 msgid "Sample image"
 msgstr "Contoh gambar"
@@ -9459,8 +9477,8 @@ msgstr "Siapkan integrasi OpenKnowledge…"
 msgid "Set up syncing"
 msgstr "Siapkan sinkronisasi"
 
-msgid "Set where pasted and dropped files are stored for this project."
-msgstr "Tentukan tempat berkas yang ditempel dan dijatuhkan disimpan untuk proyek ini."
+msgid "Set where pasted and dropped files are stored."
+msgstr "Tentukan tempat berkas yang ditempel dan dijatuhkan disimpan."
 
 msgid "Setting up"
 msgstr "Menyiapkan"
@@ -10110,9 +10128,6 @@ msgstr "subagen"
 
 msgid "Subfolder name"
 msgstr "Nama subfolder"
-
-msgid "Subfolder under current folder"
-msgstr "Subfolder di bawah folder saat ini"
 
 msgid "Subscribe"
 msgstr "Berlangganan"
@@ -11526,6 +11541,9 @@ msgstr "Tanggal tidak diketahui"
 msgid "Unknown error"
 msgstr "Galat tidak diketahui"
 
+msgid "Unknown variable {unknownList}. Available variables: {supportedVariables}."
+msgstr "Variabel tidak dikenal {unknownList}. Variabel yang tersedia: {supportedVariables}."
+
 msgid "unlink"
 msgstr "lepas tautan"
 
@@ -11695,6 +11713,9 @@ msgstr "Pakai {0} untuk mode terang yang aktif"
 msgid "Use {editor} version"
 msgstr "Pakai versi {editor}"
 
+msgid "Use {filenameVariable} at most once in each folder name."
+msgstr "Gunakan {filenameVariable} paling banyak sekali di setiap nama folder."
+
 msgid "Use <0>{copyShortcut}</0> to copy the link below, or open OK in the desktop app."
 msgstr "Gunakan <0>{copyShortcut}</0> untuk menyalin tautan di bawah, atau buka OK di aplikasi desktop."
 
@@ -11733,6 +11754,9 @@ msgstr "Pakai hanya huruf kecil, angka, dan <0>-</0>."
 
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "Pakai hanya huruf kecil, angka, dan tanda hubung"
+
+msgid "Use one slash between folder names."
+msgstr "Gunakan satu garis miring di antara nama folder."
 
 msgid "Use their version"
 msgstr "Pakai versi mereka"
@@ -11960,9 +11984,6 @@ msgstr "Ketika Anda memasang keterampilan yang diterbitkan, direktori keterampil
 
 msgid "Where"
 msgstr "Di mana"
-
-msgid "Where newly added attachments are placed."
-msgstr "Tempat lampiran yang baru ditambahkan diletakkan."
 
 msgid "Where should it live?"
 msgstr "Di mana ia sebaiknya berada?"

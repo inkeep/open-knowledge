@@ -1,3 +1,7 @@
+import {
+  AttachmentFolderUploadIssueSchema,
+  type ProblemDetails,
+} from '@inkeep/open-knowledge-core/schemas/api';
 import { t } from '@lingui/core/macro';
 import { singleFileUploadMessage } from './upload-admission.ts';
 
@@ -19,6 +23,13 @@ export class UploadFailedError extends Error {
     super(message);
     this.name = 'UploadFailedError';
     this.kind = kind;
+  }
+}
+
+export class UploadRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UploadRejectedError';
   }
 }
 
@@ -50,6 +61,36 @@ export async function probeFileReadable(
     return await Promise.race([read, deadline]);
   } finally {
     clearTimeout(timer);
+  }
+}
+
+function leftToRight(text: string): string {
+  return `\u2066${text}\u2069`;
+}
+
+export function attachmentFolderRefusalMessage(problem: ProblemDetails): string | null {
+  const parsed = AttachmentFolderUploadIssueSchema.safeParse(problem.attachmentFolderIssue);
+  if (!parsed.success) return null;
+  const issue = parsed.data;
+  switch (issue.kind) {
+    case 'unknown-variable': {
+      const variables = leftToRight(issue.variables.join(', '));
+      return t`Couldn't upload the file. The attachment folder uses the unknown variable ${variables}. Fix it under Attachments in Settings.`;
+    }
+    case 'unclosed-braces': {
+      const open = leftToRight('{{');
+      const close = leftToRight('}}');
+      return t`Couldn't upload the file. The attachment folder has a ${open} or ${close} without its pair. Fix it under Attachments in Settings.`;
+    }
+    case 'repeated-variable': {
+      const filenameVariable = leftToRight('{{filename}}');
+      return t`Couldn't upload the file. The attachment folder uses ${filenameVariable} more than once in one folder name. Fix it under Attachments in Settings.`;
+    }
+    case 'invalid-config': {
+      const settingKey = leftToRight('content.attachmentFolderPath');
+      const configFile = leftToRight('.ok/config.yml');
+      return t`Couldn't upload the file. The ${settingKey} value in ${configFile} can't be used. Fix it in that file.`;
+    }
   }
 }
 

@@ -5,6 +5,8 @@ import { homedir } from 'node:os';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import {
+  attachmentFolderSegmentMatcher,
+  BESIDE_DOCUMENT_ATTACHMENT_FOLDER_PATH,
   DEFAULT_ATTACHMENT_FOLDER_PATH,
   isValidAttachmentFolderPath,
   LEGACY_SKILL_STORE_ROOT,
@@ -72,27 +74,37 @@ function isBuiltinSkipDirName(name: string): boolean {
   return BUILTIN_SKIP_DIRS.has(name) || ALWAYS_SKIP_DIRS.has(name.toLowerCase());
 }
 
+type AttachmentFolderSegment = (candidate: string) => boolean;
+
 type AttachmentFolderShape =
   | { kind: 'sibling' }
   | { kind: 'content-root' }
-  | { kind: 'fixed'; path: string }
-  | { kind: 'doc-relative'; path: string };
+  | { kind: 'fixed'; segments: readonly AttachmentFolderSegment[] }
+  | { kind: 'doc-relative'; segments: readonly AttachmentFolderSegment[] };
 
 function attachmentFolderShape(value: string): AttachmentFolderShape {
   const normalized = normalizeAttachmentFolderPath(value);
   if (!isValidAttachmentFolderPath(normalized)) {
     throw new Error('Invalid attachment folder path');
   }
-  if (normalized === './') return { kind: 'sibling' };
+  if (normalized === BESIDE_DOCUMENT_ATTACHMENT_FOLDER_PATH) return { kind: 'sibling' };
   if (normalized === '/' || normalized === '.') return { kind: 'content-root' };
 
   const docRelative = normalized.startsWith('./');
-  const path = (docRelative ? normalized.slice(2) : normalized)
+  const segments = (docRelative ? normalized.slice(2) : normalized)
     .split('/')
     .filter((segment) => segment !== '' && segment !== '.')
-    .join('/');
-  if (path === '') return docRelative ? { kind: 'sibling' } : { kind: 'content-root' };
-  return { kind: docRelative ? 'doc-relative' : 'fixed', path };
+    .map(attachmentFolderSegmentMatcher);
+  if (segments.length === 0) return docRelative ? { kind: 'sibling' } : { kind: 'content-root' };
+  return { kind: docRelative ? 'doc-relative' : 'fixed', segments };
+}
+
+function segmentsMatchAt(
+  dirSegments: readonly string[],
+  start: number,
+  segments: readonly AttachmentFolderSegment[],
+): boolean {
+  return segments.every((matches, offset) => matches(dirSegments[start + offset] ?? ''));
 }
 
 function assertNeverAttachmentShape(shape: never): never {
@@ -110,16 +122,15 @@ function isConfiguredAttachmentAsset(
   const lastSlash = relativePath.lastIndexOf('/');
   const fileDir = lastSlash === -1 ? '' : relativePath.slice(0, lastSlash);
   if (shape.kind === 'content-root') return fileDir === '';
+  const dirSegments = fileDir === '' ? [] : fileDir.split('/');
   if (shape.kind === 'fixed') {
-    return fileDir === shape.path || fileDir.startsWith(`${shape.path}/`);
+    return (
+      dirSegments.length >= shape.segments.length && segmentsMatchAt(dirSegments, 0, shape.segments)
+    );
   }
   if (shape.kind === 'doc-relative') {
-    const dirSegments = fileDir === '' ? [] : fileDir.split('/');
-    const shapeSegments = shape.path.split('/');
-    for (let start = 0; start <= dirSegments.length - shapeSegments.length; start++) {
-      if (!shapeSegments.every((segment, offset) => dirSegments[start + offset] === segment)) {
-        continue;
-      }
+    for (let start = 0; start <= dirSegments.length - shape.segments.length; start++) {
+      if (!segmentsMatchAt(dirSegments, start, shape.segments)) continue;
       const parentDir = dirSegments.slice(0, start).join('/');
       if (hasDocumentInDir(parentDir)) return true;
     }

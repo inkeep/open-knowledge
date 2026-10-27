@@ -1084,6 +1084,9 @@ msgstr "Tytuł, opis, tagi — wszystko, co opisuje ten folder."
 msgid "A token added here only applies to HTTPS remotes, and this project's remote doesn't use HTTPS."
 msgstr "Token dodany tutaj dotyczy tylko zdalnych repozytoriów HTTPS, a zdalne repozytorium tego projektu nie używa HTTPS."
 
+msgid "A variable needs two braces on each side, such as {filenameVariable}."
+msgstr "Zmienna potrzebuje dwóch nawiasów klamrowych z każdej strony, na przykład {filenameVariable}."
+
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "Folder worktree dla {shareBranch} już istnieje."
 
@@ -2671,9 +2674,6 @@ msgstr "Katalog zawartości"
 msgid "Content directory must be inside the project"
 msgstr "Katalog zawartości musi znajdować się w projekcie"
 
-msgid "Content root"
-msgstr "Główny katalog zawartości"
-
 msgid "Content rules"
 msgstr "Zasady treści"
 
@@ -3307,6 +3307,18 @@ msgstr "Nie udało się zaktualizować {subRoot}: {0}"
 msgid "Couldn't update from {0}: {1}"
 msgstr "Nie udało się zaktualizować z {0}: {1}"
 
+msgid "Couldn't upload the file. The {settingKey} value in {configFile} can't be used. Fix it in that file."
+msgstr "Nie udało się przesłać pliku. Wartości {settingKey} w {configFile} nie można użyć. Popraw ją w tym pliku."
+
+msgid "Couldn't upload the file. The attachment folder has a {open} or {close} without its pair. Fix it under Attachments in Settings."
+msgstr "Nie udało się przesłać pliku. Folder załączników ma {open} lub {close} bez pary. Popraw to w sekcji Załączniki w Ustawieniach."
+
+msgid "Couldn't upload the file. The attachment folder uses {filenameVariable} more than once in one folder name. Fix it under Attachments in Settings."
+msgstr "Nie udało się przesłać pliku. Folder załączników używa {filenameVariable} więcej niż raz w jednej nazwie folderu. Popraw to w sekcji Załączniki w Ustawieniach."
+
+msgid "Couldn't upload the file. The attachment folder uses the unknown variable {variables}. Fix it under Attachments in Settings."
+msgstr "Nie udało się przesłać pliku. Folder załączników używa nieznanej zmiennej {variables}. Popraw to w sekcji Załączniki w Ustawieniach."
+
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
 msgstr "Nie udało się potwierdzić, że {displayName} ({bin}) jest dostępne, więc to zwykła powłoka. Nadal możesz uruchomić {bin} samodzielnie."
 
@@ -3486,9 +3498,6 @@ msgstr "Data"
 
 msgid "Default"
 msgstr "Domyślny"
-
-msgid "Default location for new attachments"
-msgstr "Domyślna lokalizacja nowych załączników"
 
 msgid "Default properties"
 msgstr "Domyślne właściwości"
@@ -3895,9 +3904,6 @@ msgstr "Zduplikowano do \"{0}\""
 msgid "Duplicates dropped"
 msgstr "Duplikaty odrzucone"
 
-msgid "e.g. assets/uploads"
-msgstr "np. assets/uploads"
-
 msgid "e.g. drafts/ or *.draft.md"
 msgstr "np. drafts/ lub *.draft.md"
 
@@ -3909,6 +3915,9 @@ msgstr "np. Przełączanie projektów podczas trwającej synchronizacji"
 
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr "np. Edytor zawiesił się po wklejeniu dużej tabeli"
+
+msgid "Each {open} needs a matching {close}."
+msgstr "Każde {open} wymaga pasującego {close}."
 
 #. Says what symlinking two skill folders together buys the user, before any button names it
 msgid "Each AI tool reads skills from its own folder. Point one folder at another and both tools see the same skills — add a skill once instead of copying it into every tool."
@@ -4266,6 +4275,9 @@ msgstr "wszystko w folderach {0}/ wewnątrz {1}/"
 
 msgid "everything under any {0}/ folder"
 msgstr "wszystko w dowolnym folderze {0}/"
+
+msgid "Example: a file added to <0>{exampleDoc}</0> is saved as <1>{exampleFile}</1>"
+msgstr "Przykład: plik dodany do <0>{exampleDoc}</0> zostanie zapisany jako <1>{exampleFile}</1>"
 
 msgid "Excalidraw board"
 msgstr "Tablica Excalidraw"
@@ -4751,9 +4763,6 @@ msgstr "Stały"
 msgid "Fixed {total, plural, one {# file} other {# files}}."
 msgstr "Naprawiono {total, plural, one {# plik} few {# pliki} many {# plików} other {# pliku}}."
 
-msgid "Fixed folder in content root"
-msgstr "Stały folder w katalogu głównym treści"
-
 msgid "Fixed port number"
 msgstr "Stały numer portu"
 
@@ -4789,6 +4798,12 @@ msgstr "Nazwa folderu"
 
 msgid "Folder name: {detail}"
 msgstr "Nazwa folderu: {detail}"
+
+msgid "Folder names cannot contain {reserved}."
+msgstr "Nazwy folderów nie mogą zawierać {reserved}."
+
+msgid "Folder path must start with {documentPrefix} or {rootPrefix} and cannot contain {parentFolder}"
+msgstr "Ścieżka folderu musi zaczynać się od {documentPrefix} lub {rootPrefix} i nie może zawierać {parentFolder}"
 
 msgid "Folder properties"
 msgstr "Właściwości folderu"
@@ -8589,6 +8604,12 @@ msgstr "Usuń zaznaczenie"
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "Usuń nadrzędny folder <0>.git</0>"
 
+msgid "Remove the slash at the end of the path."
+msgstr "Usuń ukośnik na końcu ścieżki."
+
+msgid "Remove the spaces at the start or end of the path."
+msgstr "Usuń spacje na początku lub na końcu ścieżki."
+
 msgid "Removed"
 msgstr "Usunięto"
 
@@ -9018,9 +9039,6 @@ msgstr "Audyt projektu w toku"
 
 msgid "Runs a shell command"
 msgstr "Uruchamia polecenie powłoki"
-
-msgid "Same folder as current file"
-msgstr "Ten sam folder, co bieżący plik"
 
 msgid "Sample image"
 msgstr "Obraz przykładowy"
@@ -9463,8 +9481,8 @@ msgstr "Konfiguruj integracje OpenKnowledge…"
 msgid "Set up syncing"
 msgstr "Skonfiguruj synchronizację"
 
-msgid "Set where pasted and dropped files are stored for this project."
-msgstr "Ustaw, gdzie przechowywane są wklejone i upuszczane pliki w tym projekcie."
+msgid "Set where pasted and dropped files are stored."
+msgstr "Ustaw, gdzie przechowywane są wklejone i upuszczane pliki."
 
 msgid "Setting up"
 msgstr "Konfigurowanie"
@@ -10114,9 +10132,6 @@ msgstr "podagenty"
 
 msgid "Subfolder name"
 msgstr "Nazwa podfolderu"
-
-msgid "Subfolder under current folder"
-msgstr "Podfolder w bieżącym folderze"
 
 msgid "Subscribe"
 msgstr "Subskrybuj"
@@ -11530,6 +11545,9 @@ msgstr "Nieznana data"
 msgid "Unknown error"
 msgstr "Nieznany błąd"
 
+msgid "Unknown variable {unknownList}. Available variables: {supportedVariables}."
+msgstr "Nieznana zmienna {unknownList}. Dostępne zmienne: {supportedVariables}."
+
 msgid "unlink"
 msgstr "odłącz"
 
@@ -11699,6 +11717,9 @@ msgstr "Użyj {0} dla aktywnego trybu jasnego"
 msgid "Use {editor} version"
 msgstr "Użyj wersji {editor}"
 
+msgid "Use {filenameVariable} at most once in each folder name."
+msgstr "Używaj {filenameVariable} najwyżej raz w każdej nazwie folderu."
+
 msgid "Use <0>{copyShortcut}</0> to copy the link below, or open OK in the desktop app."
 msgstr "Użyj <0>{copyShortcut}</0>, aby skopiować poniższy link, lub otwórz OK w aplikacji desktopowej."
 
@@ -11737,6 +11758,9 @@ msgstr "Używaj wyłącznie małych liter, cyfr oraz <0>-</0>."
 
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "Używaj wyłącznie małych liter, cyfr i myślników"
+
+msgid "Use one slash between folder names."
+msgstr "Między nazwami folderów użyj jednego ukośnika."
 
 msgid "Use their version"
 msgstr "Użyj ich wersji"
@@ -11964,9 +11988,6 @@ msgstr "Instalując opublikowaną umiejętność, powiadom katalog umiejętnośc
 
 msgid "Where"
 msgstr "Gdzie"
-
-msgid "Where newly added attachments are placed."
-msgstr "Gdzie umieszczane są nowo dodane załączniki."
 
 msgid "Where should it live?"
 msgstr "Gdzie ma się znajdować?"

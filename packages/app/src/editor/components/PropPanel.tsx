@@ -21,7 +21,7 @@ import { Switch } from '@/components/ui/switch';
 import { ColorPickerInput } from '@/editor/components/ColorPickerInput.tsx';
 import { IconPickerInput } from '@/editor/components/IconPickerInput.tsx';
 import { SrcAutocomplete } from '@/editor/components/SrcAutocomplete.tsx';
-import { UploadFailedError } from '@/editor/image-upload/upload-failure.ts';
+import { UploadFailedError, UploadRejectedError } from '@/editor/image-upload/upload-failure.ts';
 import { uploadFile } from '@/editor/image-upload/upload-file.ts';
 import type { JsxComponentDescriptor } from '@/editor/registry/types.ts';
 import { getAutoFocusedPropName, humanizePropName } from '@/editor/utils/editor-strings.ts';
@@ -81,7 +81,7 @@ async function runUpload(
     const { url } = await uploadFile(file, accept, { singleFile });
     onUploaded(url);
   } catch (err) {
-    if (err instanceof UploadFailedError) {
+    if (err instanceof UploadFailedError || err instanceof UploadRejectedError) {
       toast.error(err.message);
       return;
     }

@@ -9,7 +9,7 @@ import type { CommonWidgetProps } from '@/components/PropertyWidgets';
 import { resolvePageCover, resolvePageIcon } from '@/components/page-header-utils';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { UploadFailedError } from '@/editor/image-upload/upload-failure';
+import { UploadFailedError, UploadRejectedError } from '@/editor/image-upload/upload-failure';
 import { uploadFile } from '@/editor/image-upload/upload-file';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 import { cn } from '@/lib/utils';
@@ -126,7 +126,9 @@ export function PageCoverWidget({ keyName, value, onCommit }: CommonWidgetProps<
     } catch (err) {
       if (!mountedRef.current) return;
       const message =
-        err instanceof UploadFailedError ? err.message : t`Upload failed — please try again`;
+        err instanceof UploadFailedError || err instanceof UploadRejectedError
+          ? err.message
+          : t`Upload failed — please try again`;
       setUploadError(message);
       setUploading(false);
     }

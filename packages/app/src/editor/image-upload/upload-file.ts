@@ -6,9 +6,11 @@ import { HttpResponseParseError } from '../http-client.ts';
 import { getCurrentDocName } from './current-doc-name.ts';
 import { singleFileUploadMessage } from './upload-admission.ts';
 import {
+  attachmentFolderRefusalMessage,
   reportUploadFailure,
   UploadFailedError,
   type UploadFailureReport,
+  UploadRejectedError,
 } from './upload-failure.ts';
 
 interface UploadFileResult {
@@ -40,7 +42,7 @@ export async function uploadFile(
 
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('parentDocName', docName);
+  formData.append('parentDocName', `${docName}.md`);
 
   let res: Response;
   try {
@@ -84,6 +86,8 @@ export async function uploadFile(
         status: res.status,
       });
     }
+    const refusal = attachmentFolderRefusalMessage(problem.data);
+    if (refusal) throw new UploadRejectedError(refusal);
     throw new Error(problem.data.title);
   }
 

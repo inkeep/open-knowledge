@@ -152,7 +152,7 @@ function StatusRow({ availability }: { availability: Availability }) {
           onClick={(e) => dispatchExternalLinkClick(e, SLIDEV_INSTALL_DOCS)}
           onAuxClick={(e) => dispatchExternalLinkClick(e, SLIDEV_INSTALL_DOCS)}
           aria-label={t`Other ways to install Slidev`}
-          className="inline-flex items-center gap-0.5 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          className="inline-flex items-center gap-0.5 text-xs text-primary underline-offset-2 hover:underline"
           data-testid="slides-install-docs-link"
         >
           <Trans>Other ways to install</Trans>

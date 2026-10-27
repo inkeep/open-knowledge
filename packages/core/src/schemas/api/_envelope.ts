@@ -181,6 +181,14 @@ export const UploadAssetSuccessSchema = z
   .loose() satisfies StandardSchemaV1;
 export type UploadAssetSuccess = z.infer<typeof UploadAssetSuccessSchema>;
 
+export const AttachmentFolderUploadIssueSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('unknown-variable'), variables: z.array(z.string()) }),
+  z.object({ kind: z.literal('unclosed-braces') }),
+  z.object({ kind: z.literal('repeated-variable') }),
+  z.object({ kind: z.literal('invalid-config') }),
+]);
+export type AttachmentFolderUploadIssue = z.infer<typeof AttachmentFolderUploadIssueSchema>;
+
 export const LocalOpCloneRequestSchema = z
   .object({
     url: z.string().min(1),

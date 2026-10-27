@@ -1080,6 +1080,9 @@ msgstr "একটি শিরোনাম, বিবরণ, ট্যাগ —
 msgid "A token added here only applies to HTTPS remotes, and this project's remote doesn't use HTTPS."
 msgstr "এখানে যোগ করা টোকেন শুধু HTTPS রিমোটে প্রযোজ্য, আর এই প্রকল্পের রিমোট HTTPS ব্যবহার করে না।"
 
+msgid "A variable needs two braces on each side, such as {filenameVariable}."
+msgstr "একটি ভেরিয়েবলের প্রতিটি পাশে দুটি বন্ধনী লাগে, যেমন {filenameVariable}।"
+
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "{shareBranch}-এর জন্য একটি ওয়ার্কট্রি ফোল্ডার আগে থেকেই আছে।"
 
@@ -2667,9 +2670,6 @@ msgstr "বিষয়বস্তুর ডিরেক্টরি"
 msgid "Content directory must be inside the project"
 msgstr "বিষয়বস্তুর ডিরেক্টরি প্রকল্পের ভেতরে হতে হবে"
 
-msgid "Content root"
-msgstr "বিষয়বস্তুর রুট"
-
 msgid "Content rules"
 msgstr "বিষয়বস্তুর নিয়ম"
 
@@ -3303,6 +3303,18 @@ msgstr "{subRoot} হালনাগাদ করা যায়নি: {0}"
 msgid "Couldn't update from {0}: {1}"
 msgstr "{0} থেকে আপডেট করা যায়নি: {1}"
 
+msgid "Couldn't upload the file. The {settingKey} value in {configFile} can't be used. Fix it in that file."
+msgstr "ফাইলটি আপলোড করা যায়নি। {configFile}-এর {settingKey} মানটি ব্যবহার করা যাচ্ছে না। ওই ফাইলে এটি ঠিক করুন।"
+
+msgid "Couldn't upload the file. The attachment folder has a {open} or {close} without its pair. Fix it under Attachments in Settings."
+msgstr "ফাইলটি আপলোড করা যায়নি। সংযুক্তি ফোল্ডারে জোড়া ছাড়া {open} বা {close} আছে। সেটিং-এর সংযুক্তি অংশে এটি ঠিক করুন।"
+
+msgid "Couldn't upload the file. The attachment folder uses {filenameVariable} more than once in one folder name. Fix it under Attachments in Settings."
+msgstr "ফাইলটি আপলোড করা যায়নি। সংযুক্তি ফোল্ডারে একটি ফোল্ডারের নামে {filenameVariable} একাধিকবার ব্যবহার করা হয়েছে। সেটিং-এর সংযুক্তি অংশে এটি ঠিক করুন।"
+
+msgid "Couldn't upload the file. The attachment folder uses the unknown variable {variables}. Fix it under Attachments in Settings."
+msgstr "ফাইলটি আপলোড করা যায়নি। সংযুক্তি ফোল্ডারে অজানা ভেরিয়েবল {variables} ব্যবহার করা হয়েছে। সেটিং-এর সংযুক্তি অংশে এটি ঠিক করুন।"
+
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
 msgstr "{displayName} ({bin}) উপলব্ধ কি না তা যাচাই করা যায়নি, তাই এটি একটি সাধারণ শেল। আপনি এখনও নিজে {bin} চালাতে পারেন।"
 
@@ -3482,9 +3494,6 @@ msgstr "তারিখ"
 
 msgid "Default"
 msgstr "ডিফল্ট"
-
-msgid "Default location for new attachments"
-msgstr "নতুন সংযুক্তির ডিফল্ট জায়গা"
 
 msgid "Default properties"
 msgstr "ডিফল্ট প্রপার্টি"
@@ -3891,9 +3900,6 @@ msgstr "\"{0}\"-এ প্রতিলিপি করা হয়েছে"
 msgid "Duplicates dropped"
 msgstr "ডুপ্লিকেট বাদ"
 
-msgid "e.g. assets/uploads"
-msgstr "যেমন assets/uploads"
-
 msgid "e.g. drafts/ or *.draft.md"
 msgstr "যেমন drafts/ বা *.draft.md"
 
@@ -3905,6 +3911,9 @@ msgstr "যেমন সিঙ্ক চলার সময় প্রকল�
 
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr "যেমন একটি বড় টেবিল পেস্ট করার পর সম্পাদক জমে গিয়েছিল"
+
+msgid "Each {open} needs a matching {close}."
+msgstr "প্রতিটি {open}-এর জন্য একটি মিলে যাওয়া {close} দরকার।"
 
 #. Says what symlinking two skill folders together buys the user, before any button names it
 msgid "Each AI tool reads skills from its own folder. Point one folder at another and both tools see the same skills — add a skill once instead of copying it into every tool."
@@ -4262,6 +4271,9 @@ msgstr "{1}/-এর ভেতরের {0}/ ফোল্ডারগুলোর
 
 msgid "everything under any {0}/ folder"
 msgstr "যেকোনো {0}/ ফোল্ডারের নিচের সবকিছু"
+
+msgid "Example: a file added to <0>{exampleDoc}</0> is saved as <1>{exampleFile}</1>"
+msgstr "উদাহরণ: <0>{exampleDoc}</0>-এ যোগ করা ফাইল <1>{exampleFile}</1>-এ সংরক্ষিত হয়"
 
 msgid "Excalidraw board"
 msgstr "Excalidraw বোর্ড"
@@ -4747,9 +4759,6 @@ msgstr "নির্দিষ্ট"
 msgid "Fixed {total, plural, one {# file} other {# files}}."
 msgstr "{total, plural, one {# টি ফাইল ঠিক করা হয়েছে} other {# টি ফাইল ঠিক করা হয়েছে}}।"
 
-msgid "Fixed folder in content root"
-msgstr "বিষয়বস্তুর রুটে নির্দিষ্ট ফোল্ডার"
-
 msgid "Fixed port number"
 msgstr "নির্দিষ্ট পোর্ট নম্বর"
 
@@ -4785,6 +4794,12 @@ msgstr "ফোল্ডারের নাম"
 
 msgid "Folder name: {detail}"
 msgstr "ফোল্ডারের নাম: {detail}"
+
+msgid "Folder names cannot contain {reserved}."
+msgstr "ফোল্ডারের নামে {reserved} থাকতে পারে না।"
+
+msgid "Folder path must start with {documentPrefix} or {rootPrefix} and cannot contain {parentFolder}"
+msgstr "ফোল্ডারের পাথ {documentPrefix} বা {rootPrefix} দিয়ে শুরু হতে হবে এবং এতে {parentFolder} থাকতে পারবে না।"
 
 msgid "Folder properties"
 msgstr "ফোল্ডার প্রপার্টি"
@@ -8585,6 +8600,12 @@ msgstr "নির্বাচন সরান"
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "মূল <0>.git</0> ফোল্ডারটি সরান"
 
+msgid "Remove the slash at the end of the path."
+msgstr "পাথের শেষের স্ল্যাশটি সরান।"
+
+msgid "Remove the spaces at the start or end of the path."
+msgstr "পাথের শুরু বা শেষের ফাঁকা জায়গা সরান।"
+
 msgid "Removed"
 msgstr "সরানো হয়েছে"
 
@@ -9014,9 +9035,6 @@ msgstr "প্রকল্প নিরীক্ষা চালানো হচ
 
 msgid "Runs a shell command"
 msgstr "একটি শেল কমান্ড চালায়"
-
-msgid "Same folder as current file"
-msgstr "বর্তমান ফাইলের একই ফোল্ডার"
 
 msgid "Sample image"
 msgstr "নমুনা ছবি"
@@ -9459,8 +9477,8 @@ msgstr "OpenKnowledge সংযুক্তি সেট আপ করুন…"
 msgid "Set up syncing"
 msgstr "সিঙ্ক সেট আপ করুন"
 
-msgid "Set where pasted and dropped files are stored for this project."
-msgstr "এই প্রকল্পের জন্য পেস্ট করা ও ফেলে দেওয়া ফাইল কোথায় রাখা হবে তা নির্ধারণ করুন।"
+msgid "Set where pasted and dropped files are stored."
+msgstr "পেস্ট করা ও ফেলে দেওয়া ফাইল কোথায় রাখা হবে তা নির্ধারণ করুন।"
 
 msgid "Setting up"
 msgstr "সেট আপ করা হচ্ছে"
@@ -10110,9 +10128,6 @@ msgstr "উপ-এজেন্ট"
 
 msgid "Subfolder name"
 msgstr "উপ-ফোল্ডারের নাম"
-
-msgid "Subfolder under current folder"
-msgstr "বর্তমান ফোল্ডারের নিচে উপ-ফোল্ডার"
 
 msgid "Subscribe"
 msgstr "সদস্য হোন"
@@ -11526,6 +11541,9 @@ msgstr "অজানা তারিখ"
 msgid "Unknown error"
 msgstr "অজানা ত্রুটি"
 
+msgid "Unknown variable {unknownList}. Available variables: {supportedVariables}."
+msgstr "অজানা ভেরিয়েবল {unknownList}। উপলব্ধ ভেরিয়েবল: {supportedVariables}।"
+
 msgid "unlink"
 msgstr "আনলিংক করুন"
 
@@ -11695,6 +11713,9 @@ msgstr "সক্রিয় হালকা মোডের জন্য {0} �
 msgid "Use {editor} version"
 msgstr "{editor} সংস্করণ ব্যবহার করুন"
 
+msgid "Use {filenameVariable} at most once in each folder name."
+msgstr "প্রতিটি ফোল্ডারের নামে {filenameVariable} সর্বোচ্চ একবার ব্যবহার করুন।"
+
 msgid "Use <0>{copyShortcut}</0> to copy the link below, or open OK in the desktop app."
 msgstr "নিচের লিংকটি কপি করতে <0>{copyShortcut}</0> ব্যবহার করুন, নয়তো OK ডেস্কটপ অ্যাপে খুলুন।"
 
@@ -11733,6 +11754,9 @@ msgstr "কেবল ছোট হাতের অক্ষর, অঙ্ক ও
 
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "কেবল ছোট হাতের অক্ষর, সংখ্যা ও হাইফেন ব্যবহার করুন"
+
+msgid "Use one slash between folder names."
+msgstr "ফোল্ডারের নামের মাঝে একটি স্ল্যাশ ব্যবহার করুন।"
 
 msgid "Use their version"
 msgstr "তাদের সংস্করণ ব্যবহার করুন"
@@ -11960,9 +11984,6 @@ msgstr "আপনি কোনো প্রকাশিত স্কিল ই�
 
 msgid "Where"
 msgstr "কোথায়"
-
-msgid "Where newly added attachments are placed."
-msgstr "নতুন যোগ করা সংযুক্তি কোথায় রাখা হয়।"
 
 msgid "Where should it live?"
 msgstr "এটি কোথায় থাকবে?"

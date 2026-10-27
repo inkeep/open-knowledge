@@ -62,7 +62,7 @@ describe('uploadFile', () => {
     expect(call?.init?.method).toBe('POST');
     expect(call?.init?.body).toBeInstanceOf(FormData);
     const fd = call?.init?.body as FormData;
-    expect(fd.get('parentDocName')).toBe('docs/guide');
+    expect(fd.get('parentDocName')).toBe('docs/guide.md');
     const sentFile = fd.get('file');
     expect(sentFile).toBeInstanceOf(File);
     expect((sentFile as File).name).toBe('screenshot.png');

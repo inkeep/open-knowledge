@@ -388,7 +388,7 @@ function SyncSectionContent({
                     href={status.remote.webUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-foreground hover:text-primary hover:underline inline-flex items-center gap-0.5"
+                    className="inline-flex items-center gap-0.5 text-primary underline-offset-2 hover:underline"
                     aria-label={t`Open ${status.remote.label} on GitHub (opens in a new tab)`}
                     data-testid="settings-sync-remote-link"
                   >

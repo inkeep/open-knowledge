@@ -69,8 +69,9 @@ describe('uploaded asset names, from the wire to the reader', () => {
     const body = (await res.json()) as { src: string; deduped: boolean };
     expect(body.deduped).toBe(false);
 
-    const entries = readdirSync(dir).filter((e) => e !== 'guide.md');
-    expect(entries, `dir listing: ${JSON.stringify(readdirSync(dir))}`).toHaveLength(1);
+    const assetDir = join(dir, 'guide.assets');
+    const entries = readdirSync(assetDir);
+    expect(entries, `dir listing: ${JSON.stringify(entries)}`).toHaveLength(1);
     const stored = entries[0] as string;
     expect(hexOf(stored), `sent ${hexOf(SENT)} -> stored "${stored}"`).toBe(hexOf(EXPECTED));
     expect(
@@ -78,7 +79,7 @@ describe('uploaded asset names, from the wire to the reader', () => {
       `stored name still carries the latin1 mojibake: "${stored}"`,
     ).toBe(false);
 
-    await agentWriteMd(server.port, `\n![shot](${body.src})\n`, {
+    await agentWriteMd(server.port, `\n![shot](guide.assets/${body.src})\n`, {
       docName: `docs/${id}/guide`,
       position: 'append',
     });
@@ -89,7 +90,9 @@ describe('uploaded asset names, from the wire to the reader', () => {
     expect(ref, `document was: ${JSON.stringify(doc)}`).toBeDefined();
 
     const target = decodeURIComponent(ref as string);
-    expect(hexOf(target), `reference "${target}" vs on-disk "${stored}"`).toBe(hexOf(stored));
+    expect(hexOf(target), `reference "${target}" vs on-disk "${stored}"`).toBe(
+      hexOf(`guide.assets/${stored}`),
+    );
     expect(existsSync(join(dir, target)), `reference does not resolve: "${target}"`).toBe(true);
   });
 
@@ -121,7 +124,7 @@ describe('uploaded asset names, from the wire to the reader', () => {
       const parsed = JSON.parse(out?.bodyText ?? '{}') as { src: string; deduped: boolean };
       expect(parsed.deduped).toBe(false);
       expect(hexOf(parsed.src), `sent ${hexOf(sent)} -> got "${parsed.src}"`).toBe(hexOf(expected));
-      expect(existsSync(join(dir, parsed.src))).toBe(true);
+      expect(existsSync(join(dir, 'guide.assets', parsed.src))).toBe(true);
     },
   );
 });

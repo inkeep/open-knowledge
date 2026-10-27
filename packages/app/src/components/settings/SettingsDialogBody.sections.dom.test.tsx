@@ -591,98 +591,6 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     );
   });
 
-  test('project preferences includes attachments controls mapped to content.attachmentFolderPath', async () => {
-    projectConfig = {
-      autoSync: { default: null },
-      content: { attachmentFolderPath: './' },
-    };
-
-    await renderBody({ activeId: 'project-preferences' });
-
-    const attachments = () => within(screen.getByTestId('settings-attachments'));
-    expect(screen.getByTestId('settings-attachments')).not.toBeNull();
-    expect(attachments().getByTestId('select-root').getAttribute('data-value')).toBe('same-folder');
-
-    fireEvent.click(attachments().getByText('Fixed folder in content root'));
-    expect(projectBindingPatchCalls.at(-1)).toEqual({
-      content: { attachmentFolderPath: 'attachments' },
-    });
-    expect(screen.getByTestId('settings-attachments-folder')).not.toBeNull();
-
-    fireEvent.change(screen.getByTestId('settings-attachments-folder'), {
-      target: { value: 'assets/uploads' },
-    });
-    fireEvent.blur(screen.getByTestId('settings-attachments-folder'));
-
-    expect(projectBindingPatchCalls.at(-1)).toEqual({
-      content: { attachmentFolderPath: 'assets/uploads' },
-    });
-
-    fireEvent.click(attachments().getByText('Content root'));
-    expect(projectBindingPatchCalls.at(-1)).toEqual({
-      content: { attachmentFolderPath: '/' },
-    });
-  });
-
-  test('project preferences round trips current-folder attachment subfolders', async () => {
-    projectConfig = {
-      autoSync: { default: null },
-      content: { attachmentFolderPath: './attachments' },
-    };
-
-    await renderBody({ activeId: 'project-preferences' });
-
-    expect(
-      within(screen.getByTestId('settings-attachments'))
-        .getByTestId('select-root')
-        .getAttribute('data-value'),
-    ).toBe('current-folder-subfolder');
-    expect((screen.getByTestId('settings-attachments-folder') as HTMLInputElement).value).toBe(
-      'attachments',
-    );
-
-    fireEvent.change(screen.getByTestId('settings-attachments-folder'), {
-      target: { value: 'media' },
-    });
-    fireEvent.blur(screen.getByTestId('settings-attachments-folder'));
-
-    expect(projectBindingPatchCalls.at(-1)).toEqual({
-      content: { attachmentFolderPath: './media' },
-    });
-  });
-
-  test('fixed content-root folder strips leading dot slash to avoid remounting as current-folder mode', async () => {
-    projectConfig = {
-      autoSync: { default: null },
-      content: { attachmentFolderPath: 'attachments' },
-    };
-
-    await renderBody({ activeId: 'project-preferences' });
-
-    const attachmentsSelectValue = () =>
-      within(screen.getByTestId('settings-attachments'))
-        .getByTestId('select-root')
-        .getAttribute('data-value');
-    expect(attachmentsSelectValue()).toBe('content-root-folder');
-    fireEvent.change(screen.getByTestId('settings-attachments-folder'), {
-      target: { value: './media' },
-    });
-    fireEvent.blur(screen.getByTestId('settings-attachments-folder'));
-
-    expect(projectBindingPatchCalls.at(-1)).toEqual({
-      content: { attachmentFolderPath: 'media' },
-    });
-
-    projectConfig = {
-      autoSync: { default: null },
-      content: { attachmentFolderPath: 'media' },
-    };
-    cleanup();
-    await renderBody({ activeId: 'project-preferences' });
-
-    expect(attachmentsSelectValue()).toBe('content-root-folder');
-  });
-
   test('project preferences surfaces attachment patch failures inline', async () => {
     projectConfig = {
       autoSync: { default: null },
@@ -709,12 +617,12 @@ describe('SettingsDialogBody section runtime dispatch', () => {
 
     await renderBody({ activeId: 'project-preferences' });
 
-    fireEvent.click(
-      within(screen.getByTestId('settings-attachments')).getByText('Fixed folder in content root'),
-    );
+    const field = screen.getByTestId('settings-attachments-path');
+    fireEvent.change(field, { target: { value: '/attachments' } });
+    fireEvent.blur(field);
 
     expect(projectBindingPatchCalls.at(-1)).toEqual({
-      content: { attachmentFolderPath: 'attachments' },
+      content: { attachmentFolderPath: '/attachments' },
     });
     expect(within(screen.getByTestId('settings-attachments')).getByRole('alert').textContent).toBe(
       'Folder must stay inside the content root',

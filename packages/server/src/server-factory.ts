@@ -337,6 +337,7 @@ import {
   registerLoadedDocsProvider,
   registerPersistenceQueueDepthProvider,
 } from './server-workload-telemetry.ts';
+import { AttachmentFolderPathConfigError } from './services/assets.ts';
 import { shadowOpGateFor } from './shadow-op-gate.ts';
 import {
   buildWipTree,
@@ -896,8 +897,7 @@ export function createServer(options: ServerOptions): ServerInstance {
             )
           : [];
       if (attachmentIssues.length > 0) {
-        const details = attachmentIssues.map((issue) => issue.message).join('; ');
-        throw new Error(`Invalid content.attachmentFolderPath in project config: ${details}`);
+        throw new AttachmentFolderPathConfigError(attachmentIssues.map((issue) => issue.message));
       }
       if (options?.requireValid) {
         throw new Error('Project config is invalid', { cause: project.error });
@@ -2141,7 +2141,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     } catch (err) {
       log.warn(
         { err },
-        '[content-filter] invalid attachment folder at boot — using sibling admission',
+        '[content-filter] invalid attachment folder at boot — using default attachment placement',
       );
     }
     lastAppliedAttachmentFolderPath = initialAttachmentFolderPath;
