@@ -186,9 +186,8 @@ export const toMarkdownHandlers = {
         const literal = onlyChild.value;
         const form = gfmLiteralForm(literal, node.url);
         if (form === undefined) return literal;
-        if (bareGfmLiteralReadsBack(form, literalNeighborCodes(node, parent, state, info))) {
-          return literal;
-        }
+        const neighbors = literalNeighborCodes(literal, node, parent, state, info);
+        if (bareGfmLiteralReadsBack(form, neighbors)) return literal;
         if (form === 'protocol' && readsBackAsAngleAutolink(literal)) return `<${literal}>`;
       }
     }
@@ -895,6 +894,7 @@ interface NeighborCodes {
 }
 
 function literalNeighborCodes(
+  literal: string,
   node: Link,
   parent: Parents | undefined,
   state: State,
@@ -910,7 +910,7 @@ function literalNeighborCodes(
       ? info.after
       : state.handle(next, parent, state, {
           ...state.createTracker(info).current(),
-          before: '',
+          before: literal,
           after: '',
         });
   return {

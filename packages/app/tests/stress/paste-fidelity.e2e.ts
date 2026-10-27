@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { Page } from '@playwright/test';
 import {
   expect,
+  placeCaretAtEndOfText,
   selectAllAndWaitForSelection,
   selectText,
   simulateCopyAndRead,
@@ -1606,7 +1607,7 @@ test.describe('cell-insertion gate — component paste into a table cell (persis
   });
 });
 
-const INLINE_PASTE_SEED = '- fooo\n\n## alpha\n';
+const INLINE_PASTE_SEED = '- fooo\n\n## alpha\n\nMail _case\n';
 
 async function openNewEmptyBullet(page: Page): Promise<void> {
   await setListItemCaret(page, 0, 'end');
@@ -1695,5 +1696,13 @@ test.describe('inline paste stays in the block at the caret (persisted bytes)', 
     await setHeadingCaret(page, 2);
     await pasteWithMimes(page, { 'text/plain': 'foo', 'text/html': '<b>foo</b>' });
     await expect.poll(() => getYText(page), { timeout: 8_000 }).toContain('## al**foo**pha');
+  });
+
+  test('an email pasted right before an underscore keeps its address', async ({ page }) => {
+    await placeCaretAtEndOfText(page, 'Mail ');
+    await pasteText(page, 'a@b.com');
+    await expect
+      .poll(() => getYText(page), { timeout: 8_000 })
+      .toContain('Mail [a@b.com](mailto:a@b.com)\\_case\n');
   });
 });
