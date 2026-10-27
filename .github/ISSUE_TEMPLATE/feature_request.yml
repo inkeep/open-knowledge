@@ -11,13 +11,21 @@ body:
     id: problem
     attributes:
       label: What problem are you trying to solve?
-      description: Describe the use case or pain point, not just the proposed solution.
+      description: "The situation you are in and what you are trying to get done, rather than the feature you have in mind. For example: when I …, I want to …, so that …"
     validations:
       required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: How do you handle this today?
+      description: What you do instead now, and what makes it hard.
+    validations:
+      required: false
   - type: textarea
     id: proposal
     attributes:
       label: Proposed solution
+      description: Optional. Any ideas for how it could work.
     validations:
       required: false
   - type: textarea
@@ -30,8 +38,8 @@ body:
   - type: textarea
     id: code-pointers
     attributes:
-      label: Relevant code
-      description: Files, functions or links to lines you think are involved, with the change described in words. Please don't paste a full patch or open a pull request.
+      label: Anything else?
+      description: Anything else that might help, such as related issues or code you suspect. Optional.
     validations:
       required: false
   - type: dropdown
@@ -52,5 +60,6 @@ body:
     id: alternatives
     attributes:
       label: Alternatives considered
+      description: Other tools or approaches you looked at, and why they did not work for you.
     validations:
       required: false

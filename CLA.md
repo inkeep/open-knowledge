@@ -1,4 +1,4 @@
-> Historical agreement for earlier code contributions. OpenKnowledge no longer accepts pull requests; please [file a detailed issue](./CONTRIBUTING.md#write-an-issue-we-can-build-from). This agreement is retained as a record, and no signature is requested for issues.
+> This agreement covers earlier code contributions and is kept as a record. Contributions now come in as [detailed issues](./CONTRIBUTING.md#write-an-issue-we-can-build-from), which need no signature.
 
 > Based on the Apache Individual Contributor License Agreement (ICLA) V2.2, with Inkeep, Inc. as the grantee. It is a copyright and patent **license**, not an assignment, so you keep full ownership of your contributions. The license-grant and representation clauses (sections 1 to 8) are the verbatim Apache text; the Foundation's nonprofit-specific covenant and the paper contact-form fields are omitted.
 

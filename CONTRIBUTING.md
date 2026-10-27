@@ -1,8 +1,8 @@
 # Contributing to OpenKnowledge
 
-Thanks for helping. We do not accept pull requests. Please [file a detailed issue](https://github.com/inkeep/open-knowledge/issues/new/choose) so we can understand the problem and consider it for our work.
+Thanks for helping make OpenKnowledge better! The best way to contribute is a [detailed issue](https://github.com/inkeep/open-knowledge/issues/new/choose): tell us what you ran into or what you would like to do, and we will take it from there.
 
-- **Found a bug or have an idea?** [Open an issue](https://github.com/inkeep/open-knowledge/issues/new/choose). This is the main way to contribute; see [Write an issue we can build from](#write-an-issue-we-can-build-from).
+- **Found a bug or have an idea?** [Open an issue](https://github.com/inkeep/open-knowledge/issues/new/choose), and see [Write an issue we can build from](#write-an-issue-we-can-build-from) for what helps.
 - **Question or setup help?** Ask in [Discord](https://discord.gg/VRKk2EaGHN).
 - **Read a language other than English?** Most of our interface translations are machine-translated and have never been read by a native speaker, and we ship them anyway rather than hide them from the people who could fix them. Correcting one is the most useful thing you can do for it — see [Translate the interface](https://openknowledge.ai/docs/contribute/translations).
 
@@ -15,12 +15,12 @@ Reviewing an outside pull request takes us longer than building the same change 
 Use the bug report or feature request form. The issues we can act on fastest:
 
 - **Start with the problem, not the solution.** Say what you were doing, what happened, and why it matters to you.
-- **For a bug,** give steps that reproduce it, your version and platform, and any logs or screenshots.
-- **For a feature,** describe what you would see if it worked. That tells us when it is done.
-- **Point at the code if you found it.** A file, a function or a link to a line helps.
-- **Describe a proposed fix in words.** Please do not paste a full patch or open a pull request.
+- **For a bug,** tell us what you did, what you expected and what you saw instead. Then add the fewest steps that show it, ideally in a new project; how often it happens; whether it worked in an earlier version; your version, platform and install method; and the full error text or logs, pasted as text.
+- **For a feature,** describe the situation you are in and what you are trying to get done, how you handle it today, and what you would see if it worked.
+- **One problem per issue.** Separate problems are easier to track and fix.
+- **Anything else that helps is welcome,** such as code you suspect or your own ideas. None of it is required.
 
-Filing an issue does not commit us to building the change. When a fix ships, we close your issue, and our release automation usually comments on it with the version the fix shipped in.
+We read every issue. We cannot promise to build every request, but a clear issue gives it the best chance. When a fix ships, we close your issue, and our release automation usually comments on it with the version it shipped in.
 
 ## How credit works
 
@@ -100,7 +100,7 @@ If lint stops you, the diagnostic names the class of comment, the fix, and links
 
 ## Pull requests
 
-We do not accept pull requests, including small fixes and translation changes. Please use the [issue forms](https://github.com/inkeep/open-knowledge/issues/new/choose) and the guidance above instead.
+We build every change ourselves from issues, small fixes and translation corrections included, so we do not merge outside pull requests. If you have spotted something, the most helpful thing you can do is [open an issue](https://github.com/inkeep/open-knowledge/issues/new/choose) describing it.
 
 ## License
 

@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to file a bug. Please fill in the fields below so we can reproduce it quickly.
+        Thanks for taking the time to file a bug. The reports we can fix fastest say what happens and when, and give the fewest steps that show it. One problem per issue, please. For a security problem, please [report it privately](https://github.com/inkeep/open-knowledge/security/advisories/new) instead of opening a public issue.
 
         For setup help or "how do I…" questions, please use [Discord](https://discord.gg/VRKk2EaGHN) or the [docs](https://openknowledge.ai) instead — those get faster answers than an issue.
   - type: checkboxes
@@ -22,20 +22,44 @@ body:
     id: what-happened
     attributes:
       label: What happened?
-      description: A clear description of the bug, including what you expected to happen instead.
+      description: What you did, what you expected, and what you saw instead. A screenshot helps for visual problems.
     validations:
       required: true
   - type: textarea
     id: repro
     attributes:
       label: Steps to reproduce
-      description: Numbered steps that reliably trigger the bug.
+      description: The fewest steps that still show the bug, ideally starting from a new project.
       placeholder: |
         1. Open …
         2. Click …
         3. See …
     validations:
       required: true
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does it happen?
+      options:
+        - Every time
+        - Sometimes
+        - Only once so far
+    validations:
+      required: false
+  - type: input
+    id: last-working-version
+    attributes:
+      label: Did it work in an earlier version?
+      description: If it used to work, the last version where it did.
+    validations:
+      required: false
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you already tried?
+      description: Workarounds or checks you have already done, and what they showed.
+    validations:
+      required: false
   - type: dropdown
     id: platform
     attributes:
@@ -71,15 +95,15 @@ body:
   - type: textarea
     id: code-pointers
     attributes:
-      label: Relevant code
-      description: Files, functions or links to lines you think are involved, with the fix described in words. Please don't paste a full patch or open a pull request.
+      label: Anything else?
+      description: Anything else that might help, such as code you suspect, related issues, or your own ideas. Optional.
     validations:
       required: false
   - type: textarea
     id: logs
     attributes:
-      label: Logs, errors, or screenshots
-      description: Paste any console output or attach screenshots. Text is rendered as code.
+      label: Error text and logs
+      description: The full error message and any log output, pasted as text.
       render: shell
     validations:
       required: false
