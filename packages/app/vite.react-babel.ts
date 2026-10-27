@@ -3,10 +3,7 @@ import type { PluginOptions } from 'babel-plugin-react-compiler';
 
 /**
  * Shared renderer Babel-pass options — single source of truth for both
- * `packages/app/vite.config.ts` (`babel(RENDERER_BABEL_OPTIONS)`) and
- * `packages/desktop/electron.vite.config.ts`
- * (`await babel(RENDERER_BABEL_OPTIONS)` — the `await` is the electron-vite
- * deep-clone workaround, https://github.com/alex8088/electron-vite/issues/902).
+ * `packages/app/vite.config.ts` and `packages/desktop/electron.vite.config.ts`.
  *
  * Keeping this here means a React Compiler tweak or a Lingui-plugin change
  * propagates to both builds without a manual mirror — same rationale as the
