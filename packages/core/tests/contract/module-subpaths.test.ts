@@ -33,6 +33,8 @@ import * as constantsManualUpdateCheckSubpath from '@inkeep/open-knowledge-core/
 import * as constantsMcpSubpath from '@inkeep/open-knowledge-core/constants/mcp';
 import * as constantsMenuLabelsSubpath from '@inkeep/open-knowledge-core/constants/menu-labels';
 import * as constantsNativeMenuLabelsSubpath from '@inkeep/open-knowledge-core/constants/native-menu-labels';
+import * as constantsOkDirSubpath from '@inkeep/open-knowledge-core/constants/ok-dir';
+import * as constantsOkUserHomeSubpath from '@inkeep/open-knowledge-core/constants/ok-user-home';
 import * as constantsPreviewEmbedStartersSubpath from '@inkeep/open-knowledge-core/constants/preview-embed-starters';
 import * as constantsPreviewThemeTokensSubpath from '@inkeep/open-knowledge-core/constants/preview-theme-tokens';
 import * as constantsProductSubpath from '@inkeep/open-knowledge-core/constants/product';
@@ -84,6 +86,7 @@ import * as schemasApiSubpath from '@inkeep/open-knowledge-core/schemas/api';
 import * as schemasCc1Subpath from '@inkeep/open-knowledge-core/schemas/cc1';
 import * as searchWorkspaceSearchSubpath from '@inkeep/open-knowledge-core/search/workspace-search';
 import * as seedPlanWorkSubpath from '@inkeep/open-knowledge-core/seed-plan-work';
+import * as serverBarrel from '@inkeep/open-knowledge-core/server';
 import * as sharingSubpath from '@inkeep/open-knowledge-core/sharing';
 import * as skillTargetsSchemaSubpath from '@inkeep/open-knowledge-core/skill-targets/schema';
 import * as skillsCatalogSchemaSubpath from '@inkeep/open-knowledge-core/skills-catalog/schema';
@@ -99,6 +102,7 @@ import * as typesIdentitySubpath from '@inkeep/open-knowledge-core/types/identit
 import * as typesPrincipalSubpath from '@inkeep/open-knowledge-core/types/principal';
 import * as typesTimelineSubpath from '@inkeep/open-knowledge-core/types/timeline';
 import * as uninstallBridgeSubpath from '@inkeep/open-knowledge-core/uninstall-bridge';
+import * as utilAtomicYamlWriteSubpath from '@inkeep/open-knowledge-core/util/atomic-yaml-write';
 import * as utilDocNameSubpath from '@inkeep/open-knowledge-core/util/doc-name';
 import * as utilsAssetHrefSubpath from '@inkeep/open-knowledge-core/utils/asset-href';
 import * as utilsChunkedInsertSubpath from '@inkeep/open-knowledge-core/utils/chunked-insert';
@@ -177,6 +181,7 @@ const MODULE_SUBPATHS: Record<string, object> = {
   './constants/mcp': constantsMcpSubpath,
   './constants/menu-labels': constantsMenuLabelsSubpath,
   './constants/native-menu-labels': constantsNativeMenuLabelsSubpath,
+  './constants/ok-dir': constantsOkDirSubpath,
   './constants/preview-embed-starters': constantsPreviewEmbedStartersSubpath,
   './constants/preview-theme-tokens': constantsPreviewThemeTokensSubpath,
   './constants/product': constantsProductSubpath,
@@ -270,23 +275,31 @@ const MODULE_SUBPATHS: Record<string, object> = {
   './utils/youtube-embed': utilsYoutubeEmbedSubpath,
 };
 
+const SERVER_MODULE_SUBPATHS: Record<string, object> = {
+  './constants/ok-user-home': constantsOkUserHomeSubpath,
+  './util/atomic-yaml-write': utilAtomicYamlWriteSubpath,
+};
+
 const CONDITION_ORDER = ['@inkeep/source', 'development', 'types', 'default'];
 
 const packageJson: { exports: Record<string, Record<string, string>> } = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
 );
 
+const MODULE_SUBPATH_KEYS = Object.keys({ ...MODULE_SUBPATHS, ...SERVER_MODULE_SUBPATHS });
+
 const rootBindings = new Map(Object.entries(root));
+const serverBindings = new Map(Object.entries(serverBarrel));
 
 describe('per-module core subpaths', () => {
   test('every export key beside the pre-existing entries is imported by this contract', () => {
     const declared = Object.keys(packageJson.exports).filter(
       (key) => !PRE_EXISTING_KEYS.includes(key),
     );
-    expect(Object.keys(MODULE_SUBPATHS).sort()).toEqual(declared.sort());
+    expect(MODULE_SUBPATH_KEYS.toSorted()).toEqual(declared.toSorted());
   });
 
-  test.each(Object.keys(MODULE_SUBPATHS))(
+  test.each(MODULE_SUBPATH_KEYS)(
     '%s points its conditions at the module its name implies',
     (key) => {
       const conditions = packageJson.exports[key];
@@ -312,6 +325,18 @@ describe('per-module core subpaths', () => {
         .map(([name]) => name);
       expect(divergent).toEqual([]);
       if (bindings.length > 0) expect(shared.length).toBeGreaterThan(0);
+    },
+  );
+
+  test.each(Object.entries(SERVER_MODULE_SUBPATHS))(
+    '%s serves the same runtime bindings as the ./server barrel',
+    (_key, namespace) => {
+      const shared = Object.entries(namespace).filter(([name]) => serverBindings.has(name));
+      const divergent = shared
+        .filter(([name, value]) => value !== serverBindings.get(name))
+        .map(([name]) => name);
+      expect(divergent).toEqual([]);
+      expect(shared.length).toBeGreaterThan(0);
     },
   );
 });

@@ -287,6 +287,18 @@
       "types": "./dist/constants-native-menu-labels.d.mts",
       "default": "./dist/constants-native-menu-labels.mjs"
     },
+    "./constants/ok-dir": {
+      "@inkeep/source": "./src/constants/ok-dir.ts",
+      "development": "./src/constants/ok-dir.ts",
+      "types": "./dist/constants-ok-dir.d.mts",
+      "default": "./dist/constants-ok-dir.mjs"
+    },
+    "./constants/ok-user-home": {
+      "@inkeep/source": "./src/constants/ok-user-home.ts",
+      "development": "./src/constants/ok-user-home.ts",
+      "types": "./dist/constants-ok-user-home.d.mts",
+      "default": "./dist/constants-ok-user-home.mjs"
+    },
     "./constants/preview-embed-starters": {
       "@inkeep/source": "./src/constants/preview-embed-starters.ts",
       "development": "./src/constants/preview-embed-starters.ts",
@@ -682,6 +694,12 @@
       "development": "./src/uninstall-bridge.ts",
       "types": "./dist/uninstall-bridge.d.mts",
       "default": "./dist/uninstall-bridge.mjs"
+    },
+    "./util/atomic-yaml-write": {
+      "@inkeep/source": "./src/util/atomic-yaml-write.ts",
+      "development": "./src/util/atomic-yaml-write.ts",
+      "types": "./dist/util-atomic-yaml-write.d.mts",
+      "default": "./dist/util-atomic-yaml-write.mjs"
     },
     "./util/doc-name": {
       "@inkeep/source": "./src/util/doc-name.ts",

@@ -26,6 +26,7 @@ import {
   trustSystemCertificates,
 } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
+import { recordCliEntryPath } from './cli-entry-path.ts';
 import { getCliLogger, initCliLogger } from './cli-logger.ts';
 import { auditCommand } from './commands/audit.ts';
 import { authCommand } from './commands/auth/index.ts';
@@ -64,6 +65,8 @@ import { PACKAGE_VERSION } from './constants.ts';
 import { loadConfig } from './index.ts';
 import { recordInvocationCwd, resolveProjectAnchor } from './project-anchor.ts';
 import { buildVersionNotice } from './version-notice.ts';
+
+recordCliEntryPath(import.meta.url);
 
 const program = new Command();
 

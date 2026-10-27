@@ -70,7 +70,10 @@ const CHECKS: BuildArtifactCheck[] = [
   {
     name: '@inkeep/open-knowledge CLI executable',
     out: resolve(DESKTOP_PKG, '..', 'cli', 'dist', 'cli.mjs'),
-    srcs: [resolve(DESKTOP_PKG, '..', 'cli', 'src', 'cli.ts')],
+    srcs: [
+      resolve(DESKTOP_PKG, '..', 'cli', 'src', 'bin.ts'),
+      resolve(DESKTOP_PKG, '..', 'cli', 'src', 'cli.ts'),
+    ],
   },
 ];
 

@@ -1,11 +1,12 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
-  currentDesktopProduct,
   OK_USER_HOME_AUTH_FILE,
   okUserHomeDisplayPath,
-} from '@inkeep/open-knowledge-core';
-import { atomicWriteFileSync, okUserHomeDir } from '@inkeep/open-knowledge-core/server';
+} from '@inkeep/open-knowledge-core/constants/ok-dir';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/constants/ok-user-home';
+import { currentDesktopProduct } from '@inkeep/open-knowledge-core/constants/product';
+import { atomicWriteFileSync } from '@inkeep/open-knowledge-core/util/atomic-yaml-write';
 import { parse as yamlParse, stringify as yamlStringify } from 'yaml';
 
 interface TokenEntry {

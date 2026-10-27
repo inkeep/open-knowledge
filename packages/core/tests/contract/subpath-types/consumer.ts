@@ -206,6 +206,11 @@ export type {
 } from '@inkeep/open-knowledge-core/constants/menu-labels';
 export type { NativeMenuLabelKey } from '@inkeep/open-knowledge-core/constants/native-menu-labels';
 export type {
+  OK_USER_HOME_AUTH_FILE,
+  okUserHomeDisplayPath,
+} from '@inkeep/open-knowledge-core/constants/ok-dir';
+export type { okUserHomeDir } from '@inkeep/open-knowledge-core/constants/ok-user-home';
+export type {
   PREVIEW_EMBED_STARTERS,
   PreviewEmbedStarter,
 } from '@inkeep/open-knowledge-core/constants/preview-embed-starters';
@@ -758,6 +763,10 @@ export type {
   UninstallProjectRow,
   UninstallScreenSpec,
 } from '@inkeep/open-knowledge-core/uninstall-bridge';
+export type {
+  atomicWriteFile,
+  atomicWriteFileSync,
+} from '@inkeep/open-knowledge-core/util/atomic-yaml-write';
 export type {
   isHiddenDocName,
   isProjectSkillBundlePath,

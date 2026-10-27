@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import type { Config } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
+import { recordedCliEntryPath } from '../cli-entry-path.ts';
 import {
   emitBundleProxyEvent,
   findBundledOkPath,
@@ -86,6 +87,7 @@ export function mcpCommand(getConfig: () => Config): Command {
         await startGlobalMcpServer({
           startupCwd,
           startupConfig,
+          bundleAnchorPath: recordedCliEntryPath(),
         });
       } catch (err) {
         process.stderr.write(

@@ -37,8 +37,6 @@ import { attachLifecycleLogging } from './lifecycle-logging.ts';
 import { parseSpawnTimeoutEnv, resolveMcpHttpUrl, resolveMcpKeepaliveWsUrl } from './shim.ts';
 import { createMcpStderrMirror } from './stderr-mirror.ts';
 
-const BUNDLE_IDENTITY_ANCHOR = fileURLToPath(import.meta.url);
-
 const execFileAsync = promisify(execFile);
 
 export async function countWorktrees(dir: string): Promise<number> {
@@ -59,6 +57,7 @@ export async function countWorktrees(dir: string): Promise<number> {
 interface StartGlobalMcpServerOptions {
   startupCwd: string;
   startupConfig: Config;
+  bundleAnchorPath: string | undefined;
   spawnTimeoutMs?: number;
   envAutoStart?: string;
 }
@@ -346,8 +345,12 @@ export async function startGlobalMcpServer(
     stdin: process.stdin,
   });
 
-  if (process.platform === 'darwin') {
-    const bootIdentity = captureBootIdentity(BUNDLE_IDENTITY_ANCHOR, {
+  const bundleAnchorPath = process.platform === 'darwin' ? opts.bundleAnchorPath : undefined;
+  if (process.platform === 'darwin' && bundleAnchorPath === undefined) {
+    stderr.write('[mcp] bundle identity watcher off: no CLI entry path was recorded\n');
+  }
+  if (bundleAnchorPath !== undefined) {
+    const bootIdentity = captureBootIdentity(bundleAnchorPath, {
       realpathSync,
       statInoSync: (p) => filesystemIdentity(statSync(p, { bigint: true })),
       log: (m) => stderr.write(`${m}\n`),
@@ -358,7 +361,7 @@ export async function startGlobalMcpServer(
       bundleWatcher = startBundleIdentityWatcher({
         detect: () =>
           detectBundleIdentity({
-            bundleAnchorPath: BUNDLE_IDENTITY_ANCHOR,
+            bundleAnchorPath,
             currentInode: capturedInode,
             platform: process.platform,
             realpath: realpathSync,

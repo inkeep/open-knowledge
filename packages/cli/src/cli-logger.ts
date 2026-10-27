@@ -1,4 +1,5 @@
-import { createFileLogger, findEnclosingProjectRoot } from '@inkeep/open-knowledge-server';
+import { createFileLogger } from '@inkeep/open-knowledge-server/file-logger';
+import { findEnclosingProjectRoot } from '@inkeep/open-knowledge-server/fs/find-project-root';
 import type { Logger as PinoLoggerInstance } from 'pino';
 
 let cliLogger: PinoLoggerInstance | undefined;

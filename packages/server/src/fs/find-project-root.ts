@@ -1,6 +1,6 @@
 import { statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { OK_PROJECT_MARKER } from '@inkeep/open-knowledge-core';
+import { OK_PROJECT_MARKER } from '@inkeep/open-knowledge-core/constants/ok-dir';
 
 const ANCESTOR_WALK_DEPTH_LIMIT = 30;
 

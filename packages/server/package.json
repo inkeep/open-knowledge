@@ -16,6 +16,18 @@
       "development": "./src/parse-worker.ts",
       "types": "./dist/parse-worker.d.mts",
       "default": "./dist/parse-worker.mjs"
+    },
+    "./file-logger": {
+      "@inkeep/source": "./src/file-logger.ts",
+      "development": "./src/file-logger.ts",
+      "types": "./dist/file-logger.d.mts",
+      "default": "./dist/file-logger.mjs"
+    },
+    "./fs/find-project-root": {
+      "@inkeep/source": "./src/fs/find-project-root.ts",
+      "development": "./src/fs/find-project-root.ts",
+      "types": "./dist/fs-find-project-root.d.mts",
+      "default": "./dist/fs-find-project-root.mjs"
     }
   },
   "files": [
