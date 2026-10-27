@@ -113,7 +113,7 @@ export interface StallLogFields {
 }
 
 export interface MainThreadWatchdogHandle {
-  stop(): void;
+  stop(): void | Promise<void>;
 }
 
 export interface MainThreadWatchdog {
@@ -183,17 +183,49 @@ export function boundStallFrames(
   return { frames, framesTruncated: all.length > maxFrames };
 }
 
-/* STOP: computeWatchdogTick and boundStallFrames are serialized into WORKER_SOURCE through
-   toString(), so they must stay closure-free and import-free. WORKER_SOURCE is an eval string
-   rather than a file-backed worker entry because electron-builder.yml unpacks node-pty's worker
-   on the recorded ground that worker_threads cannot load JS from inside app.asar; a file-backed
-   entry has to prove it loads from a packaged build before it replaces this. */
+export const LIFECYCLE_PROBE_SLOTS = {
+  sequence: 0,
+  workerSpawned: 1,
+  sessionConnected: 2,
+  stopPosted: 3,
+  sessionDisconnected: 4,
+  stopCompleted: 5,
+  workerExited: 6,
+} as const;
+
+type LifecycleProbeMark = Exclude<keyof typeof LIFECYCLE_PROBE_SLOTS, 'sequence'>;
+
+export function createLifecycleProbeForTests(): SharedArrayBuffer {
+  return new SharedArrayBuffer(
+    Int32Array.BYTES_PER_ELEMENT * Object.keys(LIFECYCLE_PROBE_SLOTS).length,
+  );
+}
+
+function markLifecycleProbe(probe: Int32Array, sequenceSlot: number, slot: number): void {
+  Atomics.store(probe, slot, Atomics.add(probe, sequenceSlot, 1) + 1);
+  Atomics.notify(probe, slot);
+}
+
+/* STOP: computeWatchdogTick, boundStallFrames and markLifecycleProbe are serialized into
+   WORKER_SOURCE through toString(), so they must stay closure-free and import-free. WORKER_SOURCE
+   is an eval string rather than a file-backed worker entry because electron-builder.yml unpacks
+   node-pty's worker on the recorded ground that worker_threads cannot load JS from inside
+   app.asar; a file-backed entry has to prove it loads from a packaged build before it replaces
+   this. */
 const WORKER_SOURCE = `
 const { mkdirSync, renameSync, unlinkSync, writeFileSync } = require('node:fs');
 const { dirname } = require('node:path');
 const { parentPort, workerData } = require('node:worker_threads');
 
-const { path, stallPath, bootId, tickMs } = workerData;
+const { path, stallPath, bootId, tickMs, lifecycleProbe } = workerData;
+const probe = lifecycleProbe ? new Int32Array(lifecycleProbe) : null;
+const markProbe = ${markLifecycleProbe.toString()};
+const markLifecycle = (slot) => {
+  if (probe !== null) markProbe(probe, ${LIFECYCLE_PROBE_SLOTS.sequence}, slot);
+};
+const holdSessionUntilStopPosted = () => {
+  if (probe !== null) Atomics.wait(probe, ${LIFECYCLE_PROBE_SLOTS.stopPosted}, 0);
+};
 const stallThresholdMs = tickMs * ${STALL_THRESHOLD_TICKS};
 const computeTick = ${computeWatchdogTick.toString()};
 const boundFrames = ${boundStallFrames.toString()};
@@ -204,8 +236,69 @@ const state = {
 };
 let reportedFailure = false;
 let stallEpisodeCaptured = false;
+let activeSession = null;
+let sessionDisconnecting = false;
+let disconnectWaiters = [];
+let stopRequested = false;
+let tickTimer = null;
 
-parentPort.on('message', () => {
+function disconnectSession(done) {
+  if (sessionDisconnecting) {
+    disconnectWaiters.push(done);
+    return;
+  }
+  const current = activeSession;
+  if (current === null) {
+    done();
+    return;
+  }
+  activeSession = null;
+  sessionDisconnecting = true;
+  disconnectWaiters = [done];
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    sessionDisconnecting = false;
+    markLifecycle(${LIFECYCLE_PROBE_SLOTS.sessionDisconnected});
+    const waiters = disconnectWaiters;
+    disconnectWaiters = [];
+    for (const waiter of waiters) waiter();
+  };
+  try {
+    current.post('Debugger.disable', () => {
+      try {
+        current.disconnect();
+      } catch {}
+      finish();
+    });
+  } catch {
+    try {
+      current.disconnect();
+    } catch {}
+    finish();
+  }
+}
+
+function finishStop() {
+  if (!stopRequested || activeSession !== null || sessionDisconnecting) return;
+  markLifecycle(${LIFECYCLE_PROBE_SLOTS.stopCompleted});
+  parentPort.close();
+}
+
+function stopWorker() {
+  if (stopRequested) return;
+  stopRequested = true;
+  if (tickTimer !== null) clearInterval(tickTimer);
+  disconnectSession(finishStop);
+}
+
+parentPort.on('message', (message) => {
+  if (message === 'stop') {
+    stopWorker();
+    return;
+  }
+  if (stopRequested) return;
   state.lastMainAt = performance.now();
   state.mainTicksObserved += 1;
   stallEpisodeCaptured = false;
@@ -227,6 +320,7 @@ function writeJsonAtomically(target, value) {
 }
 
 function writeWitness() {
+  if (stopRequested) return;
   const record = computeTick(
     state,
     performance.now(),
@@ -248,6 +342,7 @@ function writeWitness() {
 }
 
 function requestStallSnapshot(record) {
+  if (sessionDisconnecting || activeSession !== null) return;
   const request = {
     schemaVersion: 1,
     bootId,
@@ -266,14 +361,12 @@ function requestStallSnapshot(record) {
     settled = true;
     const snapshot = Object.assign({}, request, fields);
     const writeError = writeJsonAtomically(stallPath, snapshot);
+    if (stopRequested) {
+      disconnectSession(finishStop);
+      return;
+    }
     parentPort.postMessage({ type: 'stall-snapshot', snapshot, writeError });
-    if (session === null) return;
-    try {
-      session.post('Debugger.disable');
-    } catch {}
-    try {
-      session.disconnect();
-    } catch {}
+    disconnectSession(finishStop);
   };
   const fail = (err) => {
     settle({ outcome: 'failed', error: describeError(err) });
@@ -281,7 +374,10 @@ function requestStallSnapshot(record) {
   try {
     const inspector = require('node:inspector');
     session = new inspector.Session();
+    activeSession = session;
     session.connectToMainThread();
+    markLifecycle(${LIFECYCLE_PROBE_SLOTS.sessionConnected});
+    holdSessionUntilStopPosted();
     const urlByScriptId = new Map();
     session.on('Debugger.scriptParsed', (message) => {
       const params = message && message.params;
@@ -329,7 +425,7 @@ function requestStallSnapshot(record) {
 }
 
 writeWitness();
-setInterval(writeWitness, tickMs);
+tickTimer = setInterval(writeWitness, tickMs);
 
 function errorCode(err) {
   return err && typeof err.code === 'string' ? err.code : 'unknown';
@@ -619,8 +715,16 @@ export function createMainThreadWatchdog(opts: {
   stallPath: string;
   logger: WatchdogLogger;
   tickMs?: number;
+  lifecycleProbeForTests?: SharedArrayBuffer;
 }): MainThreadWatchdog {
   const tickMs = opts.tickMs ?? WATCHDOG_TICK_MS;
+  let lastStop = Promise.resolve();
+  const lifecycleProbe =
+    opts.lifecycleProbeForTests === undefined ? null : new Int32Array(opts.lifecycleProbeForTests);
+  const markLifecycle = (mark: LifecycleProbeMark): void => {
+    if (lifecycleProbe === null) return;
+    markLifecycleProbe(lifecycleProbe, LIFECYCLE_PROBE_SLOTS.sequence, LIFECYCLE_PROBE_SLOTS[mark]);
+  };
 
   return {
     readPrevious(): WatchdogRead {
@@ -645,75 +749,99 @@ export function createMainThreadWatchdog(opts: {
     },
 
     start(bootId: string): MainThreadWatchdogHandle {
-      let worker: Worker;
-      try {
-        worker = new Worker(WORKER_SOURCE, {
-          eval: true,
-          workerData: { path: opts.path, stallPath: opts.stallPath, bootId, tickMs },
-        });
-      } catch (err) {
-        opts.logger.warn(
-          { event: 'main-thread-watchdog.spawn-failed', ...watchdogFailureFields(err) },
-          'could not start the main-thread watchdog — a hang will not be told apart from a death',
-        );
-        return { stop() {} };
-      }
-      worker.unref();
-      const ping = setInterval(() => {
-        worker.postMessage(1);
-      }, tickMs);
-      ping.unref();
-
       let stopped = false;
-      let warnedWorkerFailed = false;
-      const warnWorkerFailed = (cause: Error | number): void => {
-        if (stopped || warnedWorkerFailed) return;
-        warnedWorkerFailed = true;
-        opts.logger.warn(
-          { event: 'main-thread-watchdog.worker-failed', ...watchdogFailureFields(cause) },
-          'the main-thread watchdog stopped witnessing this session',
-        );
-      };
-      worker.on('error', (err) => {
-        warnWorkerFailed(err);
-      });
-      worker.on('exit', (code) => {
-        clearInterval(ping);
-        if (code !== 0) warnWorkerFailed(code);
-      });
-
-      let warnedWriteFailed = false;
-      worker.on('message', (message: unknown) => {
-        if (typeof message !== 'object' || message === null) return;
-        const { type, code, snapshot, writeError } = message as {
-          type?: unknown;
-          code?: unknown;
-          snapshot?: unknown;
-          writeError?: unknown;
-        };
-        if (type === 'stall-snapshot') {
-          logStallSnapshot(opts.logger, snapshot, writeError);
-          return;
+      let stopPromise: Promise<void> | null = null;
+      const workerPromise = lastStop.then(() => {
+        let worker: Worker;
+        try {
+          worker = new Worker(WORKER_SOURCE, {
+            eval: true,
+            workerData: {
+              path: opts.path,
+              stallPath: opts.stallPath,
+              bootId,
+              tickMs,
+              lifecycleProbe: opts.lifecycleProbeForTests,
+            },
+          });
+        } catch (err) {
+          opts.logger.warn(
+            { event: 'main-thread-watchdog.spawn-failed', ...watchdogFailureFields(err) },
+            'could not start the main-thread watchdog — a hang will not be told apart from a death',
+          );
+          return null;
         }
-        if (type !== 'write-failed' || warnedWriteFailed) return;
-        warnedWriteFailed = true;
-        opts.logger.warn(
-          {
-            event: 'main-thread-watchdog.write-failed',
-            code: typeof code === 'string' ? code : 'unknown',
+        markLifecycle('workerSpawned');
+        worker.unref();
+        const ping = setInterval(() => {
+          worker.postMessage(1);
+        }, tickMs);
+        ping.unref();
+
+        let warnedWorkerFailed = false;
+        const warnWorkerFailed = (cause: Error | number): void => {
+          if (stopped || warnedWorkerFailed) return;
+          warnedWorkerFailed = true;
+          opts.logger.warn(
+            { event: 'main-thread-watchdog.worker-failed', ...watchdogFailureFields(cause) },
+            'the main-thread watchdog stopped witnessing this session',
+          );
+        };
+        worker.on('error', (err) => {
+          warnWorkerFailed(err);
+        });
+        const exited = new Promise<void>((resolve) => {
+          worker.on('exit', (code) => {
+            clearInterval(ping);
+            markLifecycle('workerExited');
+            if (code !== 0) warnWorkerFailed(code);
+            resolve();
+          });
+        });
+
+        let warnedWriteFailed = false;
+        worker.on('message', (message: unknown) => {
+          if (typeof message !== 'object' || message === null) return;
+          const { type, code, snapshot, writeError } = message as {
+            type?: unknown;
+            code?: unknown;
+            snapshot?: unknown;
+            writeError?: unknown;
+          };
+          if (type === 'stall-snapshot') {
+            logStallSnapshot(opts.logger, snapshot, writeError);
+            return;
+          }
+          if (type !== 'write-failed' || warnedWriteFailed) return;
+          warnedWriteFailed = true;
+          opts.logger.warn(
+            {
+              event: 'main-thread-watchdog.write-failed',
+              code: typeof code === 'string' ? code : 'unknown',
+            },
+            'the main-thread watchdog could not write its witness file',
+          );
+        });
+
+        return {
+          stop(): Promise<void> {
+            clearInterval(ping);
+            worker.postMessage('stop');
+            markLifecycle('stopPosted');
+            return exited;
           },
-          'the main-thread watchdog could not write its witness file',
-        );
+        };
       });
 
-      return {
-        stop() {
-          if (stopped) return;
-          stopped = true;
-          clearInterval(ping);
-          void worker.terminate();
-        },
+      const stop = (): Promise<void> => {
+        if (stopPromise !== null) return stopPromise;
+        stopped = true;
+        stopPromise = workerPromise.then((state) => state?.stop()).then(() => {});
+        lastStop = stopPromise;
+        return stopPromise;
       };
+
+      return { stop };
     },
   };
 }

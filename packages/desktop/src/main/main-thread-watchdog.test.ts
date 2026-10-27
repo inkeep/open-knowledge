@@ -10,7 +10,9 @@ import {
   classifyPreviousLiveness,
   classifyPreviousStall,
   computeWatchdogTick,
+  createLifecycleProbeForTests,
   createMainThreadWatchdog,
+  LIFECYCLE_PROBE_SLOTS,
   livenessLogFields,
   type MainThreadWatchdog,
   type MainThreadWatchdogHandle,
@@ -31,8 +33,8 @@ import {
 const tmpDirs: string[] = [];
 const handles: MainThreadWatchdogHandle[] = [];
 
-afterEach(() => {
-  for (const handle of handles.splice(0)) handle.stop();
+afterEach(async () => {
+  await Promise.all(handles.splice(0).map((handle) => handle.stop()));
   for (const dir of tmpDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -90,6 +92,17 @@ async function pollFor<T>(read: () => T | null, timeoutMs = 10_000): Promise<T |
     await delay(20);
   }
   return read();
+}
+
+async function nextLifecycleMark(
+  probe: Int32Array,
+  slot: number,
+  after: number,
+  timeoutMs = 10_000,
+): Promise<number> {
+  const waited = Atomics.waitAsync(probe, slot, after, timeoutMs);
+  if (waited.async) await waited.value;
+  return Atomics.load(probe, slot);
 }
 
 function capturedStall(watchdog: MainThreadWatchdog, after = ''): StallSnapshot | null {
@@ -752,6 +765,49 @@ describe('stallLogFields', () => {
 });
 
 describe('the worker witness', () => {
+  test('a stop that arrives while the stall session is connected waits for its disconnect, and the next start waits for the exit', async () => {
+    const dir = makeDir();
+    const lifecycleProbeForTests = createLifecycleProbeForTests();
+    const probe = new Int32Array(lifecycleProbeForTests);
+    const markOf = (slot: keyof typeof LIFECYCLE_PROBE_SLOTS): number =>
+      Atomics.load(probe, LIFECYCLE_PROBE_SLOTS[slot]);
+    const watchdog = createMainThreadWatchdog({
+      path: join(dir, 'watchdog.json'),
+      stallPath: join(dir, 'stall.json'),
+      logger: { warn: () => {} },
+      tickMs: 20,
+      lifecycleProbeForTests,
+    });
+    const handle = watchdog.start('boot-stop');
+    handles.push(handle);
+    const firstSpawn = await nextLifecycleMark(probe, LIFECYCLE_PROBE_SLOTS.workerSpawned, 0);
+    expect(firstSpawn).toBeGreaterThan(0);
+
+    expect(Atomics.wait(probe, LIFECYCLE_PROBE_SLOTS.sessionConnected, 0, 10_000)).not.toBe(
+      'timed-out',
+    );
+    const connected = markOf('sessionConnected');
+    expect(connected).toBeGreaterThan(firstSpawn);
+    expect(markOf('sessionDisconnected')).toBe(0);
+
+    const stopping = handle.stop();
+    const next = watchdog.start('boot-after-stop');
+    handles.push(next);
+    await stopping;
+
+    const stopPosted = markOf('stopPosted');
+    const disconnected = markOf('sessionDisconnected');
+    const stopCompleted = markOf('stopCompleted');
+    const exited = markOf('workerExited');
+    expect(stopPosted).toBeGreaterThan(connected);
+    expect(disconnected).toBeGreaterThan(stopPosted);
+    expect(stopCompleted).toBeGreaterThan(disconnected);
+    expect(exited).toBeGreaterThan(stopCompleted);
+    expect(
+      await nextLifecycleMark(probe, LIFECYCLE_PROBE_SLOTS.workerSpawned, firstSpawn),
+    ).toBeGreaterThan(exited);
+  });
+
   test('it records the running session and the pings it heard from main', async () => {
     const path = join(makeDir(), 'nested', 'watchdog.json');
     const warnings: Record<string, unknown>[] = [];
