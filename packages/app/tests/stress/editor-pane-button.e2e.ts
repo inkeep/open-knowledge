@@ -738,6 +738,15 @@ test.describe('deliberate opens show a hidden editor', () => {
     await hideEditor(page);
     await runPaletteCommand(page, 'hidden', 'toggle-show-hidden-files');
     await expect(headerPaneButton(page, 'editor')).toHaveAttribute('aria-pressed', 'true');
+
+    const treeOptions = page.getByRole('button', { name: 'Tree view options' });
+    const hiddenFiles = page.getByTestId('tree-options-show-hidden-files');
+    await treeOptions.click();
+    if (await hiddenFiles.isChecked()) {
+      await hiddenFiles.click();
+      await treeOptions.click();
+    }
+    await expect(hiddenFiles).not.toBeChecked();
   });
 
   test('a file created from the palette opens with the editor shown', async ({ page, api }) => {
