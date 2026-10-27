@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
@@ -15,21 +15,26 @@ const RULE = 'no-hand-rolled-test-file-suffix';
 const FIXTURE = `lint-plugins/ok-rules/__fixtures__/${RULE}.fixture.tsx`;
 const README = 'lint-plugins/ok-rules/README.md';
 
-function lint(args) {
-  const result = spawnSync(join(ROOT, 'node_modules/.bin/oxlint'), ['-f', 'json', ...args], {
-    cwd: ROOT,
-    encoding: 'utf8',
-    windowsHide: true,
-    maxBuffer: 64 * 1024 * 1024,
-  });
+function lint(files) {
+  const result = spawnSync(
+    join(ROOT, 'node_modules/.bin/oxlint'),
+    ['-f', 'json', '--max-warnings', '0', ...files],
+    {
+      cwd: ROOT,
+      encoding: 'utf8',
+      windowsHide: true,
+      maxBuffer: 64 * 1024 * 1024,
+    },
+  );
   expect(result.error).toBeUndefined();
   expect(typeof result.status).toBe('number');
   const output = JSON.parse(result.stdout);
-  expect(output.number_of_files).toBe(1);
+  expect(output.number_of_files).toBe(files.length);
   expect(output.number_of_rules).toBeGreaterThan(0);
   return {
     status: result.status,
-    diagnostics: output.diagnostics.filter((diagnostic) => diagnostic.code === `ok(${RULE})`),
+    diagnosticsIn: (file) =>
+      output.diagnostics.filter((diagnostic) => resolve(ROOT, diagnostic.filename) === file),
   };
 }
 
@@ -66,19 +71,20 @@ describe('shared test-file predicate enforcement', () => {
 
   test('the real lint configuration rejects a planted check and accepts the shared predicate', () => {
     const dir = mkdtempSync(join(ROOT, 'scripts/test-file-predicate-'));
-    const file = join(dir, 'probe.ts');
+    const planted = join(dir, 'planted.ts');
+    const shared = join(dir, 'shared.ts');
     try {
-      writeFileSync(file, "export const probe = (path: string) => path.endsWith('.test.ts');\n");
-      const positive = lint(['--max-warnings', '0', file]);
-      expect(positive.status).toBe(1);
-      expect(positive.diagnostics).toHaveLength(1);
+      writeFileSync(planted, "export const probe = (path: string) => path.endsWith('.test.ts');\n");
       writeFileSync(
-        file,
+        shared,
         "import { isTestOnlySourceFile } from '../../test-support/test-only-source-file.mjs';\nexport const probe = (path: string) => isTestOnlySourceFile(path);\n",
       );
-      const negative = lint(['--max-warnings', '0', file]);
-      expect(negative.status).toBe(0);
-      expect(negative.diagnostics).toEqual([]);
+      const result = lint([planted, shared]);
+      expect(result.status).toBe(1);
+      expect(
+        result.diagnosticsIn(planted).filter((diagnostic) => diagnostic.code === `ok(${RULE})`),
+      ).toHaveLength(1);
+      expect(result.diagnosticsIn(shared)).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -104,8 +110,9 @@ describe('shared test-file predicate enforcement', () => {
     expect(prose).toContain(`### \`${RULE}\``);
     expect(prose).toContain(`rules/${RULE}.mjs`);
     expect(prose).toContain('Scanners classify test-only TypeScript through');
-    const excluded = lint(['--max-warnings', '0', 'lint-plugins/no-comments/portability.test.mjs']);
+    const exempt = join(ROOT, 'lint-plugins/no-comments/portability.test.mjs');
+    const excluded = lint([exempt]);
     expect(excluded.status).toBe(0);
-    expect(excluded.diagnostics).toEqual([]);
+    expect(excluded.diagnosticsIn(exempt)).toEqual([]);
   });
 });
