@@ -2447,8 +2447,8 @@ msgstr "Réduire Demander à l'IA"
 msgid "Collapse graph"
 msgstr "Réduire le graphe"
 
-msgid "Collapsible content block (Notion-style toggle)."
-msgstr "Bloc de contenu repliable (bascule de type Notion)."
+msgid "Collapsible block, the same as Accordion."
+msgstr "Bloc repliable, identique à Accordion."
 
 msgid "Collapsible section with a clickable summary."
 msgstr "Section repliable avec un résumé cliquable."
@@ -5533,6 +5533,9 @@ msgstr "Formule en ligne"
 msgid "Inline Math Properties"
 msgstr "Propriétés de la formule en ligne"
 
+msgid "Inline row for a downloadable file. Drag-drop also works."
+msgstr "Ligne en ligne pour un fichier téléchargeable. Le glisser-déposer fonctionne aussi."
+
 msgid "Input"
 msgstr "Entrée"
 
@@ -7129,9 +7132,6 @@ msgstr "Rien à valider : l'arbre de travail est propre."
 
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "Rien n'a été envoyé. Le rapport reste sur cet ordinateur jusqu'à ce que vous nous l'envoyiez par e-mail."
-
-msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
-msgstr "Ligne en ligne façon Notion pour un fichier téléchargeable. Le glisser-déposer fonctionne aussi."
 
 msgid "Number"
 msgstr "Nombre"

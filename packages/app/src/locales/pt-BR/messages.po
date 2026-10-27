@@ -2443,8 +2443,8 @@ msgstr "Recolher Perguntar à IA"
 msgid "Collapse graph"
 msgstr "Recolher o grafo"
 
-msgid "Collapsible content block (Notion-style toggle)."
-msgstr "Bloco de conteúdo recolhível (alternador no estilo Notion)."
+msgid "Collapsible block, the same as Accordion."
+msgstr "Bloco recolhível, igual ao Accordion."
 
 msgid "Collapsible section with a clickable summary."
 msgstr "Seção recolhível com um resumo clicável."
@@ -5529,6 +5529,9 @@ msgstr "Fórmula em linha"
 msgid "Inline Math Properties"
 msgstr "Propriedades da fórmula em linha"
 
+msgid "Inline row for a downloadable file. Drag-drop also works."
+msgstr "Linha embutida para um arquivo baixável. Arrastar e soltar também funciona."
+
 msgid "Input"
 msgstr "Entrada"
 
@@ -7125,9 +7128,6 @@ msgstr "Nada para commitar: a árvore de trabalho está limpa."
 
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "Nada foi enviado. O relatório fica neste computador até você nos enviar por e-mail."
-
-msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
-msgstr "Linha embutida no estilo Notion para um arquivo baixável. Arrastar e soltar também funciona."
 
 msgid "Number"
 msgstr "Número"

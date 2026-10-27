@@ -2443,8 +2443,8 @@ msgstr "Ask AI समेटें"
 msgid "Collapse graph"
 msgstr "ग्राफ़ समेटें"
 
-msgid "Collapsible content block (Notion-style toggle)."
-msgstr "संक्षिप्त किया जा सकने वाला सामग्री ब्लॉक (Notion-शैली टॉगल)।"
+msgid "Collapsible block, the same as Accordion."
+msgstr "संक्षिप्त किया जा सकने वाला ब्लॉक, Accordion जैसा ही।"
 
 msgid "Collapsible section with a clickable summary."
 msgstr "क्लिक करने योग्य सारांश वाला समेटा जा सकने वाला अनुभाग।"
@@ -5529,6 +5529,9 @@ msgstr "इनलाइन गणित"
 msgid "Inline Math Properties"
 msgstr "इनलाइन गणित प्रॉपर्टी"
 
+msgid "Inline row for a downloadable file. Drag-drop also works."
+msgstr "डाउनलोड की जा सकने वाली फ़ाइल के लिए इनलाइन पंक्ति। खींचकर छोड़ना भी काम करता है।"
+
 msgid "Input"
 msgstr "इनपुट"
 
@@ -7125,9 +7128,6 @@ msgstr "कमिट करने को कुछ नहीं: वर्कि
 
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "कुछ भी अपलोड नहीं किया गया। जब तक आप हमें ईमेल नहीं करते, रिपोर्ट इसी कंप्यूटर पर रहती है।"
-
-msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
-msgstr "डाउनलोड की जा सकने वाली फ़ाइल के लिए Notion-शैली की इनलाइन पंक्ति। खींचकर छोड़ना भी काम करता है।"
 
 msgid "Number"
 msgstr "संख्या"

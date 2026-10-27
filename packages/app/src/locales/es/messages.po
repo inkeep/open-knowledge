@@ -2447,8 +2447,8 @@ msgstr "Contraer Preguntar a la IA"
 msgid "Collapse graph"
 msgstr "Contraer el grafo"
 
-msgid "Collapsible content block (Notion-style toggle)."
-msgstr "Bloque de contenido plegable (alternador estilo Notion)."
+msgid "Collapsible block, the same as Accordion."
+msgstr "Bloque plegable, igual que Accordion."
 
 msgid "Collapsible section with a clickable summary."
 msgstr "Sección plegable con un resumen en el que se puede hacer clic."
@@ -5533,6 +5533,9 @@ msgstr "Fórmula en línea"
 msgid "Inline Math Properties"
 msgstr "Propiedades de la fórmula en línea"
 
+msgid "Inline row for a downloadable file. Drag-drop also works."
+msgstr "Fila en línea para un archivo descargable. También funciona arrastrar y soltar."
+
 msgid "Input"
 msgstr "Entrada"
 
@@ -7129,9 +7132,6 @@ msgstr "Nada que confirmar: el árbol de trabajo está limpio."
 
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "No se subió nada. El informe permanece en este equipo hasta que nos lo envíes por correo."
-
-msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
-msgstr "Fila en línea al estilo Notion para un archivo descargable. También funciona arrastrar y soltar."
 
 msgid "Number"
 msgstr "Número"

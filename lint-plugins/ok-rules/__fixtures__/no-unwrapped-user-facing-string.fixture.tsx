@@ -70,7 +70,7 @@ export function Positive5() {
 // (6) Nested one level down — the rule spans the value wherever the object
 //     sits, not just at the top of a literal.
 export function Positive6() {
-  return { preview: { description: 'Notion-style inline row for a file' } };
+  return { preview: { description: 'Inline row for a downloadable file' } };
 }
 
 // === Negative cases — must NOT fire ===

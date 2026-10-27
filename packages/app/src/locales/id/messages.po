@@ -2443,8 +2443,8 @@ msgstr "Ciutkan Tanya AI"
 msgid "Collapse graph"
 msgstr "Ciutkan graf"
 
-msgid "Collapsible content block (Notion-style toggle)."
-msgstr "Blok konten yang dapat dilipat (toggle gaya Notion)."
+msgid "Collapsible block, the same as Accordion."
+msgstr "Blok yang dapat dilipat, sama seperti Accordion."
 
 msgid "Collapsible section with a clickable summary."
 msgstr "Bagian yang bisa diciutkan dengan ringkasan yang bisa diklik."
@@ -5529,6 +5529,9 @@ msgstr "Matematika Sebaris"
 msgid "Inline Math Properties"
 msgstr "Properti Matematika Sebaris"
 
+msgid "Inline row for a downloadable file. Drag-drop also works."
+msgstr "Baris sebaris untuk berkas yang bisa diunduh. Seret-lepas juga berfungsi."
+
 msgid "Input"
 msgstr "Masukan"
 
@@ -7125,9 +7128,6 @@ msgstr "Tidak ada yang perlu di-commit: working tree bersih."
 
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "Tidak ada yang diunggah. Laporan tetap di komputer ini sampai Anda mengirimkannya kepada kami lewat email."
-
-msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
-msgstr "Baris sebaris bergaya Notion untuk berkas yang bisa diunduh. Seret-lepas juga berfungsi."
 
 msgid "Number"
 msgstr "Angka"

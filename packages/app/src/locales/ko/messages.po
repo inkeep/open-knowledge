@@ -2447,8 +2447,8 @@ msgstr "Ask AI 접기"
 msgid "Collapse graph"
 msgstr "그래프 접기"
 
-msgid "Collapsible content block (Notion-style toggle)."
-msgstr "접을 수 있는 콘텐츠 블록입니다. Notion 스타일 토글입니다."
+msgid "Collapsible block, the same as Accordion."
+msgstr "Accordion과 같은 접을 수 있는 블록입니다."
 
 msgid "Collapsible section with a clickable summary."
 msgstr "클릭할 수 있는 요약이 있는 접을 수 있는 섹션입니다."
@@ -5533,6 +5533,9 @@ msgstr "인라인 수식"
 msgid "Inline Math Properties"
 msgstr "인라인 수식 속성"
 
+msgid "Inline row for a downloadable file. Drag-drop also works."
+msgstr "다운로드 가능한 파일을 위한 인라인 행입니다. 드래그 앤 드롭도 사용할 수 있습니다."
+
 msgid "Input"
 msgstr "입력"
 
@@ -7129,9 +7132,6 @@ msgstr "커밋할 내용이 없습니다. 작업 트리가 깨끗합니다."
 
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "아무것도 업로드되지 않았습니다. 보고서는 이메일로 보내기 전까지 이 컴퓨터에 남아 있습니다."
-
-msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
-msgstr "다운로드 가능한 파일을 위한 Notion 스타일 인라인 행입니다. 드래그 앤 드롭도 사용할 수 있습니다."
 
 msgid "Number"
 msgstr "숫자"

@@ -2447,8 +2447,8 @@ msgstr "Zwiń „Zapytaj AI”"
 msgid "Collapse graph"
 msgstr "Zwiń graf"
 
-msgid "Collapsible content block (Notion-style toggle)."
-msgstr "Blok treści z możliwością zwijania (przełącznik w stylu Notion)."
+msgid "Collapsible block, the same as Accordion."
+msgstr "Zwijany blok, taki sam jak Accordion."
 
 msgid "Collapsible section with a clickable summary."
 msgstr "Sekcja z możliwością zwijania, z klikalnym podsumowaniem."
@@ -5533,6 +5533,9 @@ msgstr "Matematyka w wierszu"
 msgid "Inline Math Properties"
 msgstr "Właściwości matematyki w wierszu"
 
+msgid "Inline row for a downloadable file. Drag-drop also works."
+msgstr "Wbudowany wiersz dla pliku do pobrania. Przeciągnij i upuść też działa."
+
 msgid "Input"
 msgstr "Wejście"
 
@@ -7129,9 +7132,6 @@ msgstr "Nic do zapisania — drzewo robocze czyste."
 
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "Nic nie zostało przesłane. Zgłoszenie pozostaje na tym komputerze, dopóki nie prześlesz go e-mailem."
-
-msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
-msgstr "Wiersz w stylu Notion dla pliku do pobrania. Przeciągnij i upuść też działa."
 
 msgid "Number"
 msgstr "Liczba"

@@ -2447,8 +2447,8 @@ msgstr "«AI سے پوچھیں» سکیڑیں"
 msgid "Collapse graph"
 msgstr "گراف سکیڑیں"
 
-msgid "Collapsible content block (Notion-style toggle)."
-msgstr "سکڑنے والا مواد بلاک (Notion طرز کا ٹوگل)۔"
+msgid "Collapsible block, the same as Accordion."
+msgstr "سکڑنے والا بلاک، Accordion جیسا ہی۔"
 
 msgid "Collapsible section with a clickable summary."
 msgstr "قابلِ کلک خلاصے کے ساتھ سکڑنے والا سیکشن۔"
@@ -5533,6 +5533,9 @@ msgstr "اِن لائن ریاضی"
 msgid "Inline Math Properties"
 msgstr "اِن لائن ریاضی کی خصوصیات"
 
+msgid "Inline row for a downloadable file. Drag-drop also works."
+msgstr "قابلِ ڈاؤن لوڈ فائل کے لیے اِن لائن قطار۔ کھینچ کر چھوڑنا بھی کام کرتا ہے۔"
+
 msgid "Input"
 msgstr "اِن پٹ"
 
@@ -7129,9 +7132,6 @@ msgstr "کمٹ کرنے کو کچھ نہیں: ورکنگ ٹری صاف ہے۔"
 
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "کچھ بھی اپ لوڈ نہیں ہوا۔ جب تک آپ ہمیں ای میل نہیں کرتے، رپورٹ اسی کمپیوٹر پر رہتی ہے۔"
-
-msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
-msgstr "قابلِ ڈاؤن لوڈ فائل کے لیے Notion طرز کی اِن لائن قطار۔ کھینچ کر چھوڑنا بھی کام کرتا ہے۔"
 
 msgid "Number"
 msgstr "عدد"

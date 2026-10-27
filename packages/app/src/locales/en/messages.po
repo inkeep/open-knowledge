@@ -2447,8 +2447,8 @@ msgstr "Collapse Ask AI"
 msgid "Collapse graph"
 msgstr "Collapse graph"
 
-msgid "Collapsible content block (Notion-style toggle)."
-msgstr "Collapsible content block (Notion-style toggle)."
+msgid "Collapsible block, the same as Accordion."
+msgstr "Collapsible block, the same as Accordion."
 
 msgid "Collapsible section with a clickable summary."
 msgstr "Collapsible section with a clickable summary."
@@ -5533,6 +5533,9 @@ msgstr "Inline Math"
 msgid "Inline Math Properties"
 msgstr "Inline Math Properties"
 
+msgid "Inline row for a downloadable file. Drag-drop also works."
+msgstr "Inline row for a downloadable file. Drag-drop also works."
+
 msgid "Input"
 msgstr "Input"
 
@@ -7129,9 +7132,6 @@ msgstr "Nothing to commit — working tree clean."
 
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "Nothing was uploaded. The report stays on this computer until you email it to us."
-
-msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
-msgstr "Notion-style inline row for a downloadable file. Drag-drop also works."
 
 msgid "Number"
 msgstr "Number"

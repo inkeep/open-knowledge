@@ -2447,8 +2447,8 @@ msgstr "折叠「问 AI」"
 msgid "Collapse graph"
 msgstr "折叠关系图"
 
-msgid "Collapsible content block (Notion-style toggle)."
-msgstr "可折叠内容块（Notion 风格折叠）。"
+msgid "Collapsible block, the same as Accordion."
+msgstr "可折叠块，与 Accordion 相同。"
 
 msgid "Collapsible section with a clickable summary."
 msgstr "带可点击摘要的可折叠区块。"
@@ -5533,6 +5533,9 @@ msgstr "行内公式"
 msgid "Inline Math Properties"
 msgstr "行内公式属性"
 
+msgid "Inline row for a downloadable file. Drag-drop also works."
+msgstr "用于展示可下载文件的行内一行。也支持拖放。"
+
 msgid "Input"
 msgstr "输入"
 
@@ -7129,9 +7132,6 @@ msgstr "没有需要提交的内容：工作区是干净的。"
 
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "未上传任何内容。在你通过电子邮件发送给我们之前，报告会保留在这台电脑上。"
-
-msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
-msgstr "Notion 风格的行内一行，用于展示可下载文件。也支持拖放。"
 
 msgid "Number"
 msgstr "数字"

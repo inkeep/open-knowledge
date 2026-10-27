@@ -2447,8 +2447,8 @@ msgstr "طيّ «اسأل الذكاء الاصطناعي»"
 msgid "Collapse graph"
 msgstr "طيّ الرسم البياني"
 
-msgid "Collapsible content block (Notion-style toggle)."
-msgstr "كتلة محتوى قابلة للطي (تبديل بنمط Notion)."
+msgid "Collapsible block, the same as Accordion."
+msgstr "كتلة قابلة للطي، مماثلة لـ Accordion."
 
 msgid "Collapsible section with a clickable summary."
 msgstr "قسم قابل للطي بملخص قابل للنقر."
@@ -5533,6 +5533,9 @@ msgstr "رياضيات مضمَّنة"
 msgid "Inline Math Properties"
 msgstr "خصائص الرياضيات المضمَّنة"
 
+msgid "Inline row for a downloadable file. Drag-drop also works."
+msgstr "صف مضمَّن لملف قابل للتنزيل. السحب والإفلات يعمل أيضًا."
+
 msgid "Input"
 msgstr "إدخال"
 
@@ -7129,9 +7132,6 @@ msgstr "لا شيء لإيداعه: شجرة العمل نظيفة."
 
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "لم يُرفع أي شيء. يبقى التقرير على هذا الجهاز حتى ترسله إلينا بالبريد الإلكتروني."
-
-msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
-msgstr "صف مضمَّن بأسلوب Notion لملف قابل للتنزيل. السحب والإفلات يعمل أيضًا."
 
 msgid "Number"
 msgstr "رقم"
