@@ -11,6 +11,8 @@ import { tmpdir } from 'node:os';
 import { join, win32 } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
+  buildProcessIdProbe,
+  readTerminalProcessId,
   readWindowsShellProfileFailure,
   reportedWorkingDirectory,
   seedTerminalShellProfiles,
@@ -133,7 +135,7 @@ describe('terminal smoke shell commands', () => {
     expect(commands.readEnvironment('OK_MARK', 'marker')).toBe(
       'Write-Output "marker=[$env:OK_MARK]"',
     );
-    expect(commands.processId('SHELLPID')).toBe('Write-Output "SHELLPID=$PID"');
+    expect(commands.processId('SHELLPID')).toBe('Write-Output "SHELLPID=$PID;"');
     expect(commands.output('MARK_ONE')).toBe("Write-Output 'MARK_ONE'");
     expect(commands.oscTitle('program', 'OSC_FED')).toBe(
       '[Console]::Write("$([char]27)]0;program$([char]7)"); Write-Output \'OSC_FED\'',
@@ -154,7 +156,7 @@ describe('terminal smoke shell commands', () => {
       expect(commands.columns('COLS')).toBe('echo COLS=$(tput cols)');
       expect(commands.setEnvironment('OK_MARK', 'survived')).toBe("export OK_MARK='survived'");
       expect(commands.readEnvironment('OK_MARK', 'marker')).toBe('echo "marker=[$OK_MARK]"');
-      expect(commands.processId('SHELLPID')).toBe('printf \'SHELLPID=%s\\n\' "$$"');
+      expect(commands.processId('SHELLPID')).toBe('printf \'SHELLPID=%s;\\n\' "$$"');
       expect(commands.output('MARK_ONE')).toBe("printf '%s\\n' 'MARK_ONE'");
     }
   });
@@ -558,4 +560,84 @@ describe('working directory reported by the evaluated command', () => {
       expect(reportedWorkingDirectory('WINDOW_CWD', text)).toBeNull();
     });
   }
+});
+
+describe('process id reported by terminal rows', () => {
+  const marker = 'RESTART_PROCESS_abcdef0123456789abcdef0123456789';
+
+  test('reads the marker pid when the following rendered row begins with digits', () => {
+    const text = [`${marker}=5784;`, '671PS C:\\Users\\runneradmin> '].join('');
+
+    expect(readTerminalProcessId(marker, text)).toBe(5784);
+  });
+
+  test('keeps a genuinely different marker pid different', () => {
+    const text = [`${marker}=8449;`, 'PS C:\\Users\\runneradmin> '].join('');
+
+    expect(readTerminalProcessId(marker, text)).toBe(8449);
+  });
+
+  test('uses the latest complete marker row after replay', () => {
+    const text = [`${marker}=5784;`, 'PS C:\\Users\\runneradmin> ', `${marker}=8448;`].join('');
+
+    expect(readTerminalProcessId(marker, text)).toBe(8448);
+  });
+
+  test('reads the full pid of a marker line wrapped at any column', () => {
+    const line = `${marker}=5784;`;
+    for (let column = 1; column < line.length; column += 1) {
+      const text = [
+        `${marker}=1111;`,
+        'PS C:\\Users\\runneradmin> ',
+        line.slice(0, column),
+        line.slice(column),
+        '671PS C:\\Users\\runneradmin> ',
+      ].join('');
+
+      expect({ column, pid: readTerminalProcessId(marker, text) }).toEqual({ column, pid: 5784 });
+    }
+  });
+
+  test('reads no pid from a newest marker line whose ending has not arrived', () => {
+    const text = [`${marker}=1111;`, 'PS C:\\Users\\runneradmin> ', `${marker}=57`].join('');
+
+    expect(readTerminalProcessId(marker, text)).toBe(0);
+  });
+
+  test('reads no pid while the newest marker is the echoed command', () => {
+    for (const platform of ['win32', 'linux'] as const) {
+      const text = [
+        `${marker}=1111;`,
+        `PS C:\\Users\\runneradmin> ${terminalSmokeShellCommands(platform).processId(marker)}`,
+      ].join('');
+
+      expect({ platform, pid: readTerminalProcessId(marker, text) }).toEqual({ platform, pid: 0 });
+    }
+  });
+});
+
+describe('process id probes repeated for one marker', () => {
+  const marker = 'RESTART_PROCESS_abcdef0123456789abcdef0123456789';
+  const prompt = 'PS C:\\Users\\runneradmin> ';
+
+  test('reads no pid for a later probe until its own output arrives', () => {
+    for (const platform of ['win32', 'linux'] as const) {
+      const earlier = buildProcessIdProbe(marker, platform);
+      const later = buildProcessIdProbe(marker, platform);
+      const earlierAnswered = [
+        `${prompt}${earlier.command}`,
+        `${earlier.marker}=1111;`,
+        prompt,
+      ].join('');
+      const laterEchoed = `${earlierAnswered}${later.command}`;
+      const laterAnswered = `${laterEchoed}${later.marker}=2222;${prompt}`;
+
+      expect({
+        platform,
+        earlierAnswered: readTerminalProcessId(later.marker, earlierAnswered),
+        laterEchoed: readTerminalProcessId(later.marker, laterEchoed),
+        laterAnswered: readTerminalProcessId(later.marker, laterAnswered),
+      }).toEqual({ platform, earlierAnswered: 0, laterEchoed: 0, laterAnswered: 2222 });
+    }
+  });
 });

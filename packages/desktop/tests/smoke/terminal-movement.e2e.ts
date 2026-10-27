@@ -36,6 +36,8 @@ import {
   type ScrollbackExpectation,
 } from './_helpers/terminal-scrollback';
 import {
+  buildProcessIdProbe,
+  readTerminalProcessId,
   seedTerminalShellProfiles,
   terminalSmokeEnvironment,
   terminalSmokeShellCommands,
@@ -427,14 +429,13 @@ function readBurstOutcome(
 }
 
 async function readShellPid(page: Page, marker: string): Promise<number> {
-  await typeInActiveTerminal(page, `${SHELL_COMMANDS.processId(marker)}\r`);
+  const probe = buildProcessIdProbe(marker);
+  await typeInActiveTerminal(page, `${probe.command}\r`);
   let processId = 0;
   await expect
     .poll(
       async () => {
-        const rows = await readTerminalRows(page);
-        const matches = [...rows.matchAll(new RegExp(`${marker}=(\\d+)`, 'g'))];
-        processId = Number(matches.at(-1)?.[1] ?? 0);
+        processId = readTerminalProcessId(probe.marker, await readTerminalRows(page));
         return processId;
       },
       { timeout: 15_000 },
