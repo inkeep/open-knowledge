@@ -14,7 +14,14 @@ const ownerPreload = new URL('./fixtures/server-authority-owner.test-helper.mjs'
 const observationSetup = fileURLToPath(
   new URL('./fixtures/server-authority-observation.test-helper.ts', import.meta.url),
 );
-const observationOverrides: ViteUserConfig = { test: { setupFiles: [observationSetup] } };
+const testOwnedModules = /\.test(?:-helper)?\.[cm]?[jt]sx?$/;
+const serverAndCoreSource = /\/packages\/(?:core|server)\/src\//;
+const observationOverrides: ViteUserConfig = {
+  test: {
+    setupFiles: [observationSetup],
+    server: { deps: { inline: [testOwnedModules], external: [serverAndCoreSource] } },
+  },
+};
 const scriptsConfig = 'vitest.scripts.config.ts';
 const serverConfig = 'packages/server/vitest.config.ts';
 const helperFixture = relative(
