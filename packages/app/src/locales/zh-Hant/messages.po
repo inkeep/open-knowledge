@@ -94,8 +94,8 @@ msgstr "（分離狀態）"
 msgid "(inline)"
 msgstr "（行內）"
 
-msgid "(no id)"
-msgstr "（無 id）"
+msgid "(no name)"
+msgstr "（無名稱）"
 
 msgid "(opens in new tab)"
 msgstr "（在新分頁中開啟）"
@@ -892,11 +892,11 @@ msgstr "<0>{cliCommand}</0> 在你稍後從「檔案」選單新增之前，無�
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> 無法在這裡合併。請選擇要保留的版本。"
 
-msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
-msgstr "<0>鏡像——請挑一個來源。</0>在屬性面板中設定 <1>src</1> + <2>anchor</2>，指向別處的 <3><MirrorSource></3>。"
+msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
+msgstr "<0>鏡像——請挑一個來源。</0>在屬性面板中設定 <1>src</1> + <2>name</2>，指向別處的 <3><MirrorSource></3>。"
 
-msgid "<0>Mirror anchor not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
-msgstr "<0>找不到鏡像錨點。</0><2>{src}</2> 中不存在 <1>{mirrorSourceTag}</1>。"
+msgid "<0>Mirror name not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
+msgstr "<0>找不到鏡像名稱。</0><2>{src}</2> 中不存在 <1>{mirrorSourceTag}</1>。"
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>鏡像來源已移除。</0>文件 <1>{src}</1> 已無法使用。"
@@ -3792,6 +3792,9 @@ msgstr "文件統計"
 msgid "Document structure"
 msgstr "文件結構"
 
+msgid "Document suggestions"
+msgstr "文件建議"
+
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "記錄這個儲存庫的架構：建立一頁總覽，連到每個主要模組的頁面，說明各自的職責和進入點。"
 
@@ -6294,6 +6297,9 @@ msgstr "鏡像來源 <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "鏡像來源 <0>api-spec</0>"
 
+msgid "Mirror source names"
+msgstr "鏡像來源名稱"
+
 msgid "Missing"
 msgstr "缺失"
 
@@ -6920,6 +6926,12 @@ msgstr "沒有相符的儲存庫。"
 
 msgid "No matching worktrees or branches."
 msgstr "沒有相符的 worktree 或分支。"
+
+msgid "No Mirror Source block in {docName} matches the text in this field. Clear it to see them all."
+msgstr "{docName} 中沒有與此欄位文字相符的鏡像來源區塊。清空此欄位即可查看全部。"
+
+msgid "No Mirror Source blocks in {docName}"
+msgstr "{docName} 中沒有鏡像來源區塊"
 
 msgid "No Outgoing"
 msgstr "沒有連出"

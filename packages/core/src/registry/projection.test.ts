@@ -121,6 +121,13 @@ describe('projectFull — example + form-aware params (FR-11)', () => {
     expect((typeParam?.values ?? []).length).toBeGreaterThan(0);
   });
 
+  test('tells agents the older spelling a renamed prop still accepts', () => {
+    const mirror = getAgentCanonicalDescriptors().find((d) => d.name === 'Mirror');
+    if (!mirror) throw new Error('no Mirror descriptor');
+    const name = projectFull(mirror).params.find((param) => param.name === 'name');
+    expect(name?.description).toContain('Also read as `anchor`; write `name` instead.');
+  });
+
   test('example for jsx-void components contains no body text', () => {
     const img = getCanonicalDescriptors().find((d) => d.name === 'img');
     expect(img).toBeDefined();

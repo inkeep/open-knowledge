@@ -94,8 +94,8 @@ msgstr "(منقطع)"
 msgid "(inline)"
 msgstr "(اِن لائن)"
 
-msgid "(no id)"
-msgstr "(کوئی شناخت نہیں)"
+msgid "(no name)"
+msgstr "(کوئی نام نہیں)"
 
 msgid "(opens in new tab)"
 msgstr "(نئے ٹیب میں کھلتا ہے)"
@@ -892,11 +892,11 @@ msgstr "<0>{cliCommand}</0> بیرونی ٹرمینلز میں اس وقت تک 
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> کو یہاں مرج نہیں کیا جا سکتا۔ رکھنے کے لیے ورژن چنیں۔"
 
-msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
-msgstr "<0>مرر — ایک ماخذ منتخب کریں۔</0> خصوصیات کے پینل سے <1>src</1> + <2>anchor</2> مقرر کریں تاکہ کہیں اور موجود <3><MirrorSource></3> کی طرف اشارہ ہو۔"
+msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
+msgstr "<0>مرر — ایک ماخذ منتخب کریں۔</0> خصوصیات کے پینل سے <1>src</1> + <2>name</2> مقرر کریں تاکہ کہیں اور موجود <3><MirrorSource></3> کی طرف اشارہ ہو۔"
 
-msgid "<0>Mirror anchor not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
-msgstr "<0>مرر اینکر نہیں ملا۔</0> <2>{src}</2> میں کوئی <1>{mirrorSourceTag}</1> موجود نہیں۔"
+msgid "<0>Mirror name not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
+msgstr "<0>مرر کا نام نہیں ملا۔</0> <2>{src}</2> میں کوئی <1>{mirrorSourceTag}</1> موجود نہیں۔"
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>مرر کا ماخذ ہٹا دیا گیا۔</0> دستاویز <1>{src}</1> اب دستیاب نہیں۔"
@@ -3792,6 +3792,9 @@ msgstr "دستاویز کے اعداد و شمار"
 msgid "Document structure"
 msgstr "دستاویز کا ڈھانچہ"
 
+msgid "Document suggestions"
+msgstr "دستاویزات کی تجاویز"
+
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "اس ریپو کے ڈھانچے کی دستاویز بنائیں: ایک جائزہ صفحہ بنائیں جو ہر بڑے ماڈیول کے صفحے سے جڑا ہو اور اس کی ذمہ داریاں اور داخلی نقاط بیان کرے۔"
 
@@ -6294,6 +6297,9 @@ msgstr "مرر کا ماخذ <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "مرر کا ماخذ <0>api-spec</0>"
 
+msgid "Mirror source names"
+msgstr "مرر کے ماخذوں کے نام"
+
 msgid "Missing"
 msgstr "غائب"
 
@@ -6920,6 +6926,12 @@ msgstr "کوئی مماثل ریپازٹری نہیں۔"
 
 msgid "No matching worktrees or branches."
 msgstr "کوئی مماثل ورک ٹری یا برانچ نہیں۔"
+
+msgid "No Mirror Source block in {docName} matches the text in this field. Clear it to see them all."
+msgstr "{docName} میں اس فیلڈ کے متن سے ملتا ہوا مرر کا کوئی ماخذ بلاک نہیں ہے۔ سب دیکھنے کے لیے اسے خالی کریں۔"
+
+msgid "No Mirror Source blocks in {docName}"
+msgstr "{docName} میں مرر کے ماخذ کا کوئی بلاک نہیں ہے"
 
 msgid "No Outgoing"
 msgstr "کوئی جانے والا نہیں"

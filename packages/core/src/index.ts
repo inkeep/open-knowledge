@@ -1186,6 +1186,7 @@ export {
   builtInComponents,
   type ComponentRegistry,
   createRegistry,
+  propDescription,
   wildcardMeta,
 } from './registry/index.ts';
 export { JSX_SRC_REF_TAGS, type JsxSrcRefTagSpec } from './registry/jsx-src-ref-tags.ts';

@@ -55,7 +55,7 @@ import {
 } from '../bridge/structural-freshness.ts';
 import type { LinkStyle } from '../extensions/link-fidelity.ts';
 import { isValidSourceLiteralRaw } from '../extensions/source-literal-mark.ts';
-import { createRegistry } from '../registry/index.ts';
+import { createRegistry, jsxAttributeValue } from '../registry/index.ts';
 import type { PropDef, SerializeContext } from '../registry/types.ts';
 import {
   type AuthoredJsxSourceReader,
@@ -227,34 +227,7 @@ function destructureAttrs(
 
   for (const attr of attributes) {
     if (attr.type === 'mdxJsxExpressionAttribute') continue;
-
-    const name = attr.name;
-    const propDef = propMap.get(name);
-
-    if (attr.value === null || attr.value === undefined) {
-      result[name] = true;
-      continue;
-    }
-
-    if (typeof attr.value === 'string') {
-      if (propDef?.type === 'number') {
-        const num = Number(attr.value);
-        result[name] = Number.isNaN(num) ? attr.value : num;
-      } else if (propDef?.type === 'boolean') {
-        result[name] = attr.value === 'true';
-      } else {
-        result[name] = attr.value;
-      }
-      continue;
-    }
-
-    const exprValue = attr.value.value;
-    try {
-      const parsed = JSON.parse(exprValue);
-      result[name] = parsed;
-    } catch {
-      result[name] = exprValue;
-    }
+    result[attr.name] = jsxAttributeValue(attr.value, propMap.get(attr.name));
   }
 
   return result;

@@ -94,8 +94,8 @@ msgstr "(분리됨)"
 msgid "(inline)"
 msgstr "(인라인)"
 
-msgid "(no id)"
-msgstr "(ID 없음)"
+msgid "(no name)"
+msgstr "(이름 없음)"
 
 msgid "(opens in new tab)"
 msgstr "(새 탭에서 열기)"
@@ -892,11 +892,11 @@ msgstr "<0>{cliCommand}</0>는 나중에 파일 메뉴에서 추가할 때까지
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0>은 여기에서 병합할 수 없습니다. 유지할 버전을 고르세요."
 
-msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
-msgstr "<0>미러, 소스를 선택하세요.</0> 속성 패널에서 <1>src</1>와 <2>anchor</2>를 설정해 다른 곳의 <3><MirrorSource></3>를 가리키세요."
+msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
+msgstr "<0>미러, 소스를 선택하세요.</0> 속성 패널에서 <1>src</1>와 <2>name</2>을 설정해 다른 곳의 <3><MirrorSource></3>를 가리키세요."
 
-msgid "<0>Mirror anchor not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
-msgstr "<0>미러 앵커를 찾을 수 없습니다.</0> <1>{mirrorSourceTag}</1>가 <2>{src}</2>에 없습니다."
+msgid "<0>Mirror name not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
+msgstr "<0>미러 이름을 찾을 수 없습니다.</0> <1>{mirrorSourceTag}</1>가 <2>{src}</2>에 없습니다."
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>미러 소스가 삭제되었습니다.</0> 문서 <1>{src}</1>는 더 이상 사용할 수 없습니다."
@@ -3792,6 +3792,9 @@ msgstr "문서 통계"
 msgid "Document structure"
 msgstr "문서 구조"
 
+msgid "Document suggestions"
+msgstr "문서 제안"
+
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "이 리포지토리의 아키텍처를 문서화합니다. 개요 페이지를 만들고 각 주요 모듈의 책임과 진입점을 설명하는 페이지로 연결합니다."
 
@@ -6294,6 +6297,9 @@ msgstr "미러 소스 <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "미러 소스 <0>api-spec</0>"
 
+msgid "Mirror source names"
+msgstr "미러 소스 이름"
+
 msgid "Missing"
 msgstr "누락됨"
 
@@ -6920,6 +6926,12 @@ msgstr "일치하는 저장소가 없습니다."
 
 msgid "No matching worktrees or branches."
 msgstr "일치하는 워크트리 또는 브랜치 없음."
+
+msgid "No Mirror Source block in {docName} matches the text in this field. Clear it to see them all."
+msgstr "{docName}에 이 입력란의 텍스트와 일치하는 미러 소스 블록이 없습니다. 모두 보려면 입력란을 비우세요."
+
+msgid "No Mirror Source blocks in {docName}"
+msgstr "{docName}에 미러 소스 블록이 없습니다"
 
 msgid "No Outgoing"
 msgstr "나가는 링크 없음"

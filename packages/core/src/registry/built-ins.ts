@@ -656,22 +656,25 @@ const mirrorProps: PropDef[] = [
     required: true,
     description: 'Path of the source doc, extension-less (e.g. `api-spec`).',
     autoFocus: true,
+    documentPicker: true,
   },
   {
-    name: 'anchor',
+    name: 'name',
     type: 'string',
     required: true,
-    description: 'Id of the `<MirrorSource>` block within the source doc.',
+    legacyNames: ['anchor'],
+    mirrorSourcePicker: 'src',
+    description: 'Name of the `<MirrorSource>` block in the source doc.',
   },
 ];
 
 const mirrorSourceProps: PropDef[] = [
   {
-    name: 'id',
+    name: 'name',
     type: 'string',
     required: true,
-    description:
-      'Stable id agents and authors use to reference this block from `<Mirror>` elsewhere.',
+    legacyNames: ['id'],
+    description: 'Stable name a `<Mirror>` uses to reference this block.',
     autoFocus: true,
   },
   {
@@ -985,10 +988,10 @@ export const builtInComponents: JsxComponentMeta[] = [
     category: 'content',
     displayName: 'Mirror Source',
     description:
-      'Mark a block as the source of truth for content that appears in multiple docs. Wrap any block content; `<Mirror src="…" anchor="<id>">` references render this verbatim read-only at every call-site. Edit here, propagate everywhere.',
+      'Mark a block as the source of truth for content that appears in multiple docs. Wrap any block content; `<Mirror src="…" name="…">` references render this verbatim read-only at every call-site. Edit here, propagate everywhere.',
     searchTerms: ['mirror source', 'sync source', 'source block', 'master block', 'shared'],
     exampleBody:
-      'Authoritative content lives inside this block — edits here propagate to every `<Mirror>` that references this id.',
+      'Authoritative content lives inside this block — edits here propagate to every `<Mirror>` that references this name.',
     serialize: (node, ctx) => emitMdxJsx('MirrorSource', node, ctx, mirrorSourceProps),
   },
 

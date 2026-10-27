@@ -54,6 +54,18 @@ export function hashFromDocName(docName: string, anchor?: string | null): string
   return anchor ? `${base}#${encodeSegment(anchor)}` : base;
 }
 
+const MIRROR_SOURCE_ANCHOR_PREFIX = 'source:';
+
+export function hashFromMirrorSource(docName: string, sourceName: string): string {
+  return `${hashFromDocName(docName)}#${MIRROR_SOURCE_ANCHOR_PREFIX}${encodeSegment(sourceName)}`;
+}
+
+export function mirrorSourceNameFromAnchor(anchor: string): string | null {
+  if (!anchor.startsWith(MIRROR_SOURCE_ANCHOR_PREFIX)) return null;
+  const sourceName = anchor.slice(MIRROR_SOURCE_ANCHOR_PREFIX.length);
+  return sourceName === '' ? null : sourceName;
+}
+
 export function isSameHash(a: string, b: string): boolean {
   return a === b || decodeHashForComparison(a) === decodeHashForComparison(b);
 }

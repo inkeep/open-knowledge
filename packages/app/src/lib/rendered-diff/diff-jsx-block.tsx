@@ -30,6 +30,7 @@ import {
   shouldRenderPlaceholder,
 } from '@/editor/registry/resolve-descriptor-placeholder';
 import type { JsxComponentDescriptor } from '@/editor/registry/types';
+import { authoredText } from '@/editor/utils/authored-text';
 import { reconstructSource } from '@/editor/utils/reconstruct-source';
 
 export interface RenderedJsxBlock {
@@ -51,9 +52,9 @@ function opensLiveDocument(
 }
 
 function referenceTarget(renderProps: Record<string, unknown>): string {
-  const src = typeof renderProps.src === 'string' ? renderProps.src : '';
-  const anchor = typeof renderProps.anchor === 'string' ? renderProps.anchor : '';
-  return anchor ? `${src}#${anchor}` : src;
+  const src = authoredText(renderProps.src);
+  const name = authoredText(renderProps.name);
+  return name ? `${src}#${name}` : src;
 }
 
 function diffRenderProps(
@@ -133,7 +134,7 @@ function DiffJsxBlock({
     );
   }
 
-  const primitiveProps = extractPrimitiveProps(node.attrs, descriptor.reactNodePropNames);
+  const primitiveProps = extractPrimitiveProps(node.attrs, descriptor);
   const renderProps = resolveJsxRenderProps(descriptor, primitiveProps, docName);
 
   if (

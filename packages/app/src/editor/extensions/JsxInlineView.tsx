@@ -9,7 +9,7 @@ import { Button } from '../../components/ui/button.tsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.tsx';
 import { PropPanel } from '../components/PropPanel.tsx';
 import { getDescriptor } from '../registry/index.ts';
-import { stableHash } from './JsxComponentView.tsx';
+import { attrsWithChangedProp, getElementJsxAttrs, stableHash } from './JsxComponentView.tsx';
 import { extractPrimitiveProps, resolveJsxSourceDocName } from './jsx-render-contract.ts';
 import { normalizeDocRelativeMediaRenderProps } from './media-render-props.ts';
 
@@ -41,7 +41,7 @@ function RegisteredInlineView({
   const [popoverOpen, setPopoverOpen] = useState(false);
   const wasSelected = useRef(false);
 
-  const primitiveProps = extractPrimitiveProps(node.attrs, descriptor.reactNodePropNames);
+  const primitiveProps = extractPrimitiveProps(node.attrs, descriptor);
   const bodyText = (node.attrs.props as Record<string, unknown> | undefined)?.children;
   if (typeof bodyText === 'string' && bodyText !== '') {
     (primitiveProps as Record<string, unknown>).children = bodyText;
@@ -69,8 +69,7 @@ function RegisteredInlineView({
     };
   }, [editor, getPos]);
 
-  const structuredProps = (node.attrs.props ?? {}) as Record<string, unknown>;
-  const { children: _body, ...panelValues } = structuredProps;
+  const { children: _body, ...panelValues } = primitiveProps;
 
   return (
     <NodeViewWrapper
@@ -143,12 +142,13 @@ function RegisteredInlineView({
               if (typeof p !== 'number') return;
               const curNode = editor.state.doc.nodeAt(p);
               if (curNode?.type.name !== 'jsxInline') return;
-              const nextProps = { ...curNode.attrs.props, [propName]: value };
-              const tr = editor.state.tr.setNodeMarkup(p, null, {
-                ...curNode.attrs,
-                props: nextProps,
-                sourceDirty: true,
-              });
+              const elementAttrs = getElementJsxAttrs(curNode.attrs);
+              if (!elementAttrs) return;
+              const tr = editor.state.tr.setNodeMarkup(
+                p,
+                null,
+                attrsWithChangedProp(elementAttrs, descriptor, propName, value),
+              );
               tr.setSelection(NodeSelection.create(tr.doc, p));
               editor.view.dispatch(tr);
             }}

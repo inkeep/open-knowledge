@@ -12,6 +12,7 @@ import { resolveIcon } from '../registry/icons.ts';
 import { getDescriptor, getRegisteredDescriptors } from '../registry/index.ts';
 import type { JsxComponentDescriptor } from '../registry/types.ts';
 import type { SlashCommandContext, SlashCommandItem } from './items';
+import { nextMirrorSourceName } from './mirror-source-name.ts';
 import imagePreview from './preview-assets/image-preview.png';
 import videoPreview from './preview-assets/video-preview.png';
 
@@ -392,6 +393,13 @@ function createInsertCommand(
       tab1Attrs.props = { ...(tab1Attrs.props as Record<string, unknown>), label: 'Tab 1' };
       tab2Attrs.props = { ...(tab2Attrs.props as Record<string, unknown>), label: 'Tab 2' };
       (inserted as Record<string, unknown>).content = [tab1, tab2];
+    }
+    if (descriptor.name === 'MirrorSource') {
+      const insertedAttrs = inserted.attrs as Record<string, unknown>;
+      insertedAttrs.props = {
+        ...(insertedAttrs.props as Record<string, unknown>),
+        name: nextMirrorSourceName(state.doc, state.selection.from),
+      };
     }
     chain().insertContent(inserted).run();
 

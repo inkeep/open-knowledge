@@ -37,7 +37,7 @@ import { toast } from 'sonner';
 import { emitStartComment } from '@/comments/store';
 import { Button } from '@/components/ui/button';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
-import { hashFromDocName } from '@/lib/doc-hash';
+import { hashFromDocName, hashFromMirrorSource } from '@/lib/doc-hash';
 import {
   Popover,
   PopoverAnchor,
@@ -59,12 +59,14 @@ import {
   resolveDescriptorPlaceholder,
   shouldRenderPlaceholder,
 } from '../registry/resolve-descriptor-placeholder.ts';
+import type { JsxComponentDescriptor } from '../registry/types.ts';
 import { moveCaretAfterNode, placeGapCursorAfterNode } from '../selection/place-caret.ts';
 import {
   consumeAutoOpen,
   createChildNode,
   focusInsertedComponent,
 } from '../slash-command/component-items.tsx';
+import { authoredText } from '../utils/authored-text.ts';
 import { formatContainerAriaLabel } from '../utils/editor-strings.ts';
 import { getEditorView } from '../utils/get-editor-view.ts';
 import { reconstructSource } from '../utils/reconstruct-source.ts';
@@ -133,6 +135,42 @@ export function getElementJsxAttrs(attrs: Record<string, unknown>): ElementJsxAt
   return attrs.kind === 'element' ? (attrs as ElementJsxAttrs) : null;
 }
 
+function isMdxJsxAttributeNamed(attribute: unknown, names: ReadonlySet<string>): boolean {
+  if (attribute == null || typeof attribute !== 'object') return false;
+  const { type, name } = attribute as Record<string, unknown>;
+  return type === 'mdxJsxAttribute' && typeof name === 'string' && names.has(name);
+}
+
+export function attrsWithChangedProp(
+  elementAttrs: ElementJsxAttrs,
+  descriptor: Pick<JsxComponentDescriptor, 'props'>,
+  propName: string,
+  value: unknown,
+): ElementJsxAttrs {
+  const legacyNames = descriptor.props.find((prop) => prop.name === propName)?.legacyNames ?? [];
+  const removedNames = new Set(value === undefined ? [propName, ...legacyNames] : legacyNames);
+  const nextProps: Record<string, unknown> = { ...elementAttrs.props };
+  for (const removedName of removedNames) delete nextProps[removedName];
+  if (value !== undefined) nextProps[propName] = value;
+  if (
+    propName === 'src' &&
+    elementAttrs.componentName === 'CommonMarkImage' &&
+    value !== elementAttrs.props.src
+  ) {
+    delete nextProps.sourceUrl;
+  }
+  const attributes = Array.isArray(elementAttrs.attributes) ? elementAttrs.attributes : [];
+  return {
+    ...elementAttrs,
+    attributes:
+      removedNames.size === 0
+        ? attributes
+        : attributes.filter((attribute) => !isMdxJsxAttributeNamed(attribute, removedNames)),
+    props: nextProps,
+    sourceDirty: true,
+  };
+}
+
 const MAX_AUTO_CONVERT_ATTEMPTS = 3;
 
 export function JsxComponentView({ node, editor, extension, getPos, selected }: NodeViewProps) {
@@ -185,13 +223,14 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
   );
 
   const currentProps = (node.attrs.props as Record<string, unknown>) ?? {};
+  const primitiveProps = extractPrimitiveProps(node.attrs, descriptor);
   const needsConfig =
     hasEditableProps &&
     descriptor.props.some((p) => {
       if (p.type !== 'string') return false;
       if (!p.required) return false;
       if ('hidden' in p && p.hidden) return false;
-      return !Object.hasOwn(currentProps, p.name);
+      return !Object.hasOwn(primitiveProps, p.name);
     });
 
   const showPlaceholder = shouldRenderPlaceholder(descriptor, currentProps);
@@ -236,7 +275,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
     wasSelected.current = selected;
   }, [selected, hasEditableProps, isSourceBearing, pos]);
 
-  const primitiveProps = extractPrimitiveProps(node.attrs, descriptor.reactNodePropNames);
   const renderProps = resolveJsxRenderProps(
     descriptor,
     primitiveProps,
@@ -628,18 +666,17 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
             )}
 
           {descriptor.name === 'Mirror' &&
-            typeof primitiveProps.src === 'string' &&
-            primitiveProps.src.length > 0 &&
+            authoredText(primitiveProps.src) !== '' &&
             (() => {
-              const mirrorSrc = primitiveProps.src as string;
+              const mirrorSrc = authoredText(primitiveProps.src);
+              const mirrorName = authoredText(primitiveProps.name);
               return (
                 <a
-                  href={hashFromDocName(
-                    mirrorSrc,
-                    typeof primitiveProps.anchor === 'string' && primitiveProps.anchor.length > 0
-                      ? primitiveProps.anchor
-                      : null,
-                  )}
+                  href={
+                    mirrorName !== ''
+                      ? hashFromMirrorSource(mirrorSrc, mirrorName)
+                      : hashFromDocName(mirrorSrc)
+                  }
                   className="jsx-chrome-btn"
                   aria-label={t`Open source doc: ${mirrorSrc}`}
                   title={t`Open source: ${mirrorSrc}`}
@@ -1047,40 +1084,12 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
               const { pos: p, node: curNode } = target;
               const elementAttrs = getElementJsxAttrs(curNode.attrs);
               if (!elementAttrs) return;
-              const currentNodeProps = elementAttrs.props;
-              const nextProps: Record<string, unknown> = { ...currentNodeProps };
-              const currentAttributes = Array.isArray(curNode.attrs.attributes)
-                ? (curNode.attrs.attributes as unknown[])
-                : [];
-              let nextAttributes = currentAttributes;
-              if (value === undefined) {
-                delete nextProps[propName];
-                nextAttributes = currentAttributes.filter(
-                  (a) =>
-                    !(
-                      a != null &&
-                      typeof a === 'object' &&
-                      (a as Record<string, unknown>).type === 'mdxJsxAttribute' &&
-                      (a as Record<string, unknown>).name === propName
-                    ),
-                );
-              } else {
-                nextProps[propName] = value;
-              }
-              if (
-                propName === 'src' &&
-                elementAttrs.componentName === 'CommonMarkImage' &&
-                value !== currentNodeProps.src
-              ) {
-                delete nextProps.sourceUrl;
-              }
               editor.view.dispatch(
-                editor.state.tr.setNodeMarkup(p, null, {
-                  ...elementAttrs,
-                  attributes: nextAttributes,
-                  props: nextProps,
-                  sourceDirty: true,
-                }),
+                editor.state.tr.setNodeMarkup(
+                  p,
+                  null,
+                  attrsWithChangedProp(elementAttrs, descriptor, propName, value),
+                ),
               );
               markUserTyping();
             }}

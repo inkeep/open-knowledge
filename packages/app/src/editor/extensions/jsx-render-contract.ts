@@ -1,4 +1,5 @@
 import { incrementJsxRenderFailure } from '@inkeep/open-knowledge-core/metrics/parse-health';
+import { resolveLegacyProps } from '@inkeep/open-knowledge-core/registry';
 import type { Editor } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import type { ErrorInfo } from 'react';
@@ -12,12 +13,15 @@ export const JSX_WRAPPER_CLASS = 'jsx-component-wrapper my-2';
 
 export function extractPrimitiveProps(
   attrs: Record<string, unknown>,
-  reactNodeNames: ReadonlySet<string>,
+  descriptor: Pick<JsxComponentDescriptor, 'props' | 'reactNodePropNames'>,
 ): Record<string, unknown> {
-  const propsObj = (attrs.props ?? {}) as Record<string, unknown>;
+  const propsObj = resolveLegacyProps(
+    descriptor.props,
+    (attrs.props ?? {}) as Record<string, unknown>,
+  );
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(propsObj)) {
-    if (reactNodeNames.has(key)) continue;
+    if (descriptor.reactNodePropNames.has(key)) continue;
     result[key] = value;
   }
   return sanitizeComponentProps(result);

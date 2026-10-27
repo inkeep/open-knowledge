@@ -158,19 +158,28 @@ describe('RenderedDiffView', () => {
     expect(callout.textContent).toContain('Mind the gap.');
   });
 
-  test('a Mirror renders as a static reference to its source, not a live embed', async () => {
-    const pane = await mountDiff(
-      'Intro.',
-      'Intro.\n\n<Mirror src="specs/shared-intro" anchor="overview" />',
-    );
+  test.each([
+    ['name', '<Mirror src="specs/shared-intro" name="overview" />', 'specs/shared-intro#overview'],
+    [
+      'the older anchor spelling',
+      '<Mirror src="specs/shared-intro" anchor="overview" />',
+      'specs/shared-intro#overview',
+    ],
+    ['a numeric name', '<Mirror src="specs/shared-intro" name={7} />', 'specs/shared-intro#7'],
+    ['a numeric src', '<Mirror src={42} name="overview" />', '42#overview'],
+  ])(
+    'a Mirror written with %s renders as a static reference to its source, not a live embed',
+    async (_spelling, mirror, target) => {
+      const pane = await mountDiff('Intro.', `Intro.\n\n${mirror}`);
 
-    const reference = await waitFor(() => {
-      const el = pane.querySelector('.ok-diff-ins-block [data-diff-jsx-reference]');
-      if (!el) throw new Error('reference not rendered');
-      return el;
-    });
-    expect(reference.textContent).toContain('specs/shared-intro#overview');
-  });
+      const reference = await waitFor(() => {
+        const el = pane.querySelector('.ok-diff-ins-block [data-diff-jsx-reference]');
+        if (!el) throw new Error('reference not rendered');
+        return el;
+      });
+      expect(reference.textContent).toContain(target);
+    },
+  );
 
   test('an unregistered component renders its source', async () => {
     const pane = await mountDiff('Intro.', 'Intro.\n\n<Widget size="2" />');

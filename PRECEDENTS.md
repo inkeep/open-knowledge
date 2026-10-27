@@ -2,7 +2,7 @@
 
 Titles index for the architectural precedents that Open Knowledge code cites as `precedent #N`. Numbers are a stability contract: a slot is never renumbered and never reused, so a citation resolves to the same rule for as long as the code carries it. A rule that was withdrawn keeps its slot and is marked below.
 
-60 numbered slots, 57 active, 3 retracted.
+61 numbered slots, 58 active, 3 retracted.
 
 ## Convention & discipline (precedents 1–8)
 
@@ -141,3 +141,7 @@ Titles index for the architectural precedents that Open Knowledge code cites as 
 ## Native-handoff transport carries path and prompt only (precedent 60)
 
 60. **A native-handoff deep link carries a folder or workspace path plus a short directive prompt — never a `file=` attach param and never whole-doc bytes; the receiving agent grounds by reading the doc through the OpenKnowledge MCP server.**
+
+## JSX prop renames (precedent 61)
+
+61. **Rename a JSX prop by listing its old spelling in the new prop's `legacyNames`; old spellings stay readable.**

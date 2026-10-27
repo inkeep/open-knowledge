@@ -1,6 +1,14 @@
 import { mdastToHtml } from '@inkeep/open-knowledge-core/markdown/mdast-to-html';
+import {
+  builtInComponents,
+  type JsxAttributeValueSource,
+  jsxAttributeValue,
+  resolveLegacyProps,
+} from '@inkeep/open-knowledge-core/registry';
+import type { PropDef } from '@inkeep/open-knowledge-core/registry/types';
 import { useEffect, useRef, useState } from 'react';
 import { useCollabUrl } from '@/lib/use-collab-url';
+import { authoredText } from '../utils/authored-text.ts';
 import { getSharedMarkdownManager } from '../utils/md-singleton.ts';
 import {
   type AcquireLiveDocResult,
@@ -13,15 +21,15 @@ import {
 interface MdxJsxAttrLike {
   type: string;
   name?: string;
-  value?: unknown;
+  value?: JsxAttributeValueSource;
 }
-interface MdxJsxFlowElementLike {
+export interface MdxJsxFlowElementLike {
   type: 'mdxJsxFlowElement';
   name?: string | null;
   attributes?: MdxJsxAttrLike[];
   children?: MdastNodeLike[];
 }
-interface MdastNodeLike {
+export interface MdastNodeLike {
   type: string;
   children?: MdastNodeLike[];
   [key: string]: unknown;
@@ -35,33 +43,41 @@ type MirrorSourceStatus =
   | { kind: 'loading' }
   | { kind: 'ready'; html: string }
   | { kind: 'source-removed' }
-  | { kind: 'anchor-not-found' }
+  | { kind: 'name-not-found' }
   | { kind: 'empty-props' }
   | { kind: 'at-capacity' };
 
-export function findMirrorSource(
-  tree: MdastNodeLike,
-  anchor: string,
-): MdxJsxFlowElementLike | null {
+function builtInPropsOf(componentName: string): readonly PropDef[] {
+  const meta = builtInComponents.find((component) => component.name === componentName);
+  if (!meta) throw new Error(`No built-in component descriptor named '${componentName}'`);
+  return meta.props;
+}
+
+const MIRROR_SOURCE_PROPS = builtInPropsOf('MirrorSource');
+
+export function mirrorSourceNameFromProps(values: Readonly<Record<string, unknown>>): string {
+  return authoredText(resolveLegacyProps(MIRROR_SOURCE_PROPS, values).name);
+}
+
+export function mirrorSourceNameOf(node: MdxJsxFlowElementLike): string {
+  const values: Record<string, unknown> = {};
+  for (const attr of node.attributes ?? []) {
+    if (attr.type === 'mdxJsxAttribute' && attr.name !== undefined) {
+      values[attr.name] = jsxAttributeValue(attr.value);
+    }
+  }
+  return mirrorSourceNameFromProps(values);
+}
+
+export function findMirrorSource(tree: MdastNodeLike, name: string): MdxJsxFlowElementLike | null {
   if (tree.type === 'mdxJsxFlowElement') {
     const node = tree as MdxJsxFlowElementLike;
-    if (node.name === 'MirrorSource') {
-      for (const attr of node.attributes ?? []) {
-        if (
-          attr.type === 'mdxJsxAttribute' &&
-          attr.name === 'id' &&
-          typeof attr.value === 'string' &&
-          attr.value === anchor
-        ) {
-          return node;
-        }
-      }
-    }
+    if (node.name === 'MirrorSource' && mirrorSourceNameOf(node) === name) return node;
   }
   const children = tree.children;
   if (Array.isArray(children)) {
     for (const child of children) {
-      const found = findMirrorSource(child, anchor);
+      const found = findMirrorSource(child, name);
       if (found) return found;
     }
   }
@@ -90,11 +106,11 @@ function refusedMirrorStatus(
   }
 }
 
-export function useMirrorSource(src: string, anchor: string): MirrorSourceStatus {
+export function useMirrorSource(src: string, name: string): MirrorSourceStatus {
   const { collabUrl } = useCollabUrl();
   const acquireLiveDoc = useLiveDocAcquirer();
   const [status, setStatus] = useState<MirrorSourceStatus>({ kind: 'loading' });
-  const anchorRef = useRef(anchor);
+  const nameRef = useRef(name);
   const recomputeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -119,8 +135,8 @@ export function useMirrorSource(src: string, anchor: string): MirrorSourceStatus
     const { entry } = acquired;
 
     const recomputeNow = () => {
-      const currentAnchor = anchorRef.current;
-      if (!currentAnchor) {
+      const currentName = nameRef.current;
+      if (!currentName) {
         setStatus({ kind: 'empty-props' });
         return;
       }
@@ -134,21 +150,21 @@ export function useMirrorSource(src: string, anchor: string): MirrorSourceStatus
         // biome-ignore lint/suspicious/noExplicitAny: structural type match across the core boundary
         tree = getSharedMarkdownManager().parseToMdast(markdown) as any;
       } catch (err) {
-        console.warn('[Mirror] parseToMdast failed', { src, anchor: currentAnchor, err });
+        console.warn('[Mirror] parseToMdast failed', { src, name: currentName, err });
         setStatus({ kind: 'source-removed' });
         return;
       }
-      const node = findMirrorSource(tree, currentAnchor);
+      const node = findMirrorSource(tree, currentName);
       if (!node) {
-        setStatus({ kind: 'anchor-not-found' });
+        setStatus({ kind: 'name-not-found' });
         return;
       }
       let html: string;
       try {
         html = renderMirrorSubtree(node);
       } catch (err) {
-        console.warn('[Mirror] renderMirrorSubtree failed', { src, anchor: currentAnchor, err });
-        setStatus({ kind: 'anchor-not-found' });
+        console.warn('[Mirror] renderMirrorSubtree failed', { src, name: currentName, err });
+        setStatus({ kind: 'name-not-found' });
         return;
       }
       setStatus((prev) =>
@@ -195,9 +211,9 @@ export function useMirrorSource(src: string, anchor: string): MirrorSourceStatus
   }, [collabUrl, src, acquireLiveDoc]);
 
   useEffect(() => {
-    anchorRef.current = anchor;
+    nameRef.current = name;
     recomputeRef.current?.();
-  }, [anchor]);
+  }, [name]);
 
   return status;
 }

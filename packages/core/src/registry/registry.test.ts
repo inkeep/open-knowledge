@@ -531,38 +531,44 @@ describe('builtInComponents manifest', () => {
     expect(mermaid?.displayName).toBe('Mermaid');
   });
 
-  test('Mirror exposes split-prop self-closing shape (src + anchor)', () => {
+  test('Mirror exposes split-prop self-closing shape (src + name, `anchor` read as name)', () => {
     const mirror = builtInComponents.find((m) => m.name === 'Mirror');
     expect(mirror).toBeDefined();
     if (!mirror) return;
     expect(mirror.hasChildren).toBe(false);
     expect(mirror.isSelfClosing).toBe(true);
     const propNames = mirror.props.map((p) => p.name).sort();
-    expect(propNames).toEqual(['anchor', 'src']);
+    expect(propNames).toEqual(['name', 'src']);
     const src = mirror.props.find((p) => p.name === 'src');
-    const anchor = mirror.props.find((p) => p.name === 'anchor');
+    const name = mirror.props.find((p) => p.name === 'name');
     expect(src?.type).toBe('string');
     expect(src?.required).toBe(true);
     if (src?.type === 'string') {
       expect(src.autoFocus).toBe(true);
+      expect(src.documentPicker).toBe(true);
     }
-    expect(anchor?.type).toBe('string');
-    expect(anchor?.required).toBe(true);
+    expect(name?.type).toBe('string');
+    expect(name?.required).toBe(true);
+    expect(name?.legacyNames).toEqual(['anchor']);
+    if (name?.type === 'string') {
+      expect(name.mirrorSourcePicker).toBe('src');
+    }
   });
 
-  test('MirrorSource exposes container shape (id + children slot)', () => {
+  test('MirrorSource exposes container shape (name + children slot, `id` read as name)', () => {
     const mirrorSource = builtInComponents.find((m) => m.name === 'MirrorSource');
     expect(mirrorSource).toBeDefined();
     if (!mirrorSource) return;
     expect(mirrorSource.hasChildren).toBe(true);
     expect(mirrorSource.isSelfClosing).toBeUndefined();
     const propNames = mirrorSource.props.map((p) => p.name).sort();
-    expect(propNames).toEqual(['children', 'id']);
-    const id = mirrorSource.props.find((p) => p.name === 'id');
-    expect(id?.type).toBe('string');
-    expect(id?.required).toBe(true);
-    if (id?.type === 'string') {
-      expect(id.autoFocus).toBe(true);
+    expect(propNames).toEqual(['children', 'name']);
+    const name = mirrorSource.props.find((p) => p.name === 'name');
+    expect(name?.type).toBe('string');
+    expect(name?.required).toBe(true);
+    expect(name?.legacyNames).toEqual(['id']);
+    if (name?.type === 'string') {
+      expect(name.autoFocus).toBe(true);
     }
   });
 

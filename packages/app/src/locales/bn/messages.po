@@ -94,8 +94,8 @@ msgstr "(বিচ্ছিন্ন)"
 msgid "(inline)"
 msgstr "(ইনলাইন)"
 
-msgid "(no id)"
-msgstr "(কোনো id নেই)"
+msgid "(no name)"
+msgstr "(কোনো নাম নেই)"
 
 msgid "(opens in new tab)"
 msgstr "(নতুন ট্যাবে খোলে)"
@@ -888,11 +888,11 @@ msgstr "পরে File মেনু থেকে যোগ না করা প�
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> এখানে মার্জ করা যাবে না। কোন সংস্করণটি রাখবেন বেছে নিন।"
 
-msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
-msgstr "<0>মিরর — একটি উৎস বাছুন।</0> অন্য কোথাও থাকা কোনো <3><MirrorSource></3>-এর দিকে নির্দেশ করতে প্রপার্টি প্যানেল থেকে <1>src</1> + <2>anchor</2> নির্ধারণ করুন।"
+msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
+msgstr "<0>মিরর — একটি উৎস বাছুন।</0> অন্য কোথাও থাকা কোনো <3><MirrorSource></3>-এর দিকে নির্দেশ করতে প্রপার্টি প্যানেল থেকে <1>src</1> + <2>name</2> নির্ধারণ করুন।"
 
-msgid "<0>Mirror anchor not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
-msgstr "<0>মিরর অ্যাংকর পাওয়া যায়নি।</0> <2>{src}</2>-এ কোনো <1>{mirrorSourceTag}</1> নেই।"
+msgid "<0>Mirror name not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
+msgstr "<0>মিররের নাম পাওয়া যায়নি।</0> <2>{src}</2>-এ কোনো <1>{mirrorSourceTag}</1> নেই।"
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>মিরর উৎস সরানো হয়েছে।</0> <1>{src}</1> নথিটি আর নেই।"
@@ -3788,6 +3788,9 @@ msgstr "নথির পরিসংখ্যান"
 msgid "Document structure"
 msgstr "নথি কাঠামো"
 
+msgid "Document suggestions"
+msgstr "নথির পরামর্শ"
+
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "এই রিপোজিটরির স্থাপত্য নথিভুক্ত করুন: একটি সংক্ষিপ্তসার পাতা তৈরি করুন যা প্রতিটি প্রধান মডিউলের পাতার সঙ্গে যুক্ত থাকে এবং তার দায়িত্ব ও প্রবেশবিন্দু বর্ণনা করে।"
 
@@ -6290,6 +6293,9 @@ msgstr "মিরর উৎস <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "মিরর উৎস <0>api-spec</0>"
 
+msgid "Mirror source names"
+msgstr "মিরর উৎসের নাম"
+
 msgid "Missing"
 msgstr "অনুপস্থিত"
 
@@ -6916,6 +6922,12 @@ msgstr "মিলে যাওয়া কোনো রিপোজিটরি
 
 msgid "No matching worktrees or branches."
 msgstr "মিলে যাওয়া কোনো ওয়ার্কট্রি বা ব্রাঞ্চ নেই।"
+
+msgid "No Mirror Source block in {docName} matches the text in this field. Clear it to see them all."
+msgstr "{docName}-এ এই ঘরের লেখার সাথে মেলে এমন কোনো মিরর উৎস ব্লক নেই। সবগুলো দেখতে এটি খালি করুন।"
+
+msgid "No Mirror Source blocks in {docName}"
+msgstr "{docName}-এ কোনো মিরর উৎস ব্লক নেই"
 
 msgid "No Outgoing"
 msgstr "কোনো বহির্গামী নেই"

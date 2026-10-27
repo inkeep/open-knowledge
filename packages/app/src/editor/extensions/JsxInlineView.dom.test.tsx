@@ -3,8 +3,13 @@ import type { Editor } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { getSharedMarkdownManager } from '../utils/md-singleton.ts';
 import { sharedExtensions } from './shared';
+
+vi.mock('@/lib/use-collab-url', () => ({
+  useCollabUrl: () => ({ collabUrl: null }),
+}));
 
 function Host({ content, onEditor }: { content: object; onEditor: (e: Editor) => void }) {
   const editor = useEditor({
@@ -123,6 +128,36 @@ describe('JsxInlineView', () => {
     mountEditor(docWithInline({ componentName: '' }, '<Unregistered />'));
     await waitFor(() => {
       expect(document.body.textContent).toContain('<Unregistered />');
+    });
+  });
+
+  test('an inline Mirror written with the older anchor spelling resolves, and an edit writes name', async () => {
+    const { getEditor } = mountEditor(
+      docWithInline({
+        componentName: 'Mirror',
+        sourceRaw: '<Mirror src="pricing" anchor="plans" />',
+        attributes: [
+          { type: 'mdxJsxAttribute', name: 'src', value: 'pricing' },
+          { type: 'mdxJsxAttribute', name: 'anchor', value: 'plans' },
+        ],
+        props: { src: 'pricing', anchor: 'plans' },
+      }),
+    );
+    await waitFor(() => {
+      expect(document.querySelector('[data-jsx-inline-widget]')?.textContent).toContain(
+        'pricing#plans',
+      );
+    });
+    const editor = getEditor();
+    editor.commands.setNodeSelection(1 + 'before '.length);
+
+    const nameField = await screen.findByDisplayValue('plans');
+    fireEvent.change(nameField, { target: { value: 'faq' } });
+
+    await waitFor(() => {
+      const saved = getSharedMarkdownManager().serialize(editor.getJSON());
+      expect(saved).toContain('<Mirror src="pricing" name="faq" />');
+      expect(saved).not.toContain('anchor=');
     });
   });
 

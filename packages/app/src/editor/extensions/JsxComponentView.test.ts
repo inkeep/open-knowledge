@@ -1,24 +1,28 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { builtInComponents } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
-import { getElementJsxAttrs, stableHash } from './JsxComponentView.tsx';
+import type { JsxComponentDescriptor } from '../registry/types.ts';
+import { attrsWithChangedProp, getElementJsxAttrs, stableHash } from './JsxComponentView.tsx';
 import { extractPrimitiveProps } from './jsx-render-contract.ts';
 
-function reactNodes(...names: string[]): ReadonlySet<string> {
-  return new Set(names);
+function descriptorWith(
+  ...reactNodeNames: string[]
+): Pick<JsxComponentDescriptor, 'props' | 'reactNodePropNames'> {
+  return { props: [], reactNodePropNames: new Set(reactNodeNames) };
 }
 
 describe('extractPrimitiveProps', () => {
   test('passes through declared non-reactnode props', () => {
     const attrs = { props: { type: 'warning', title: 'Heads up' } };
-    const result = extractPrimitiveProps(attrs, reactNodes());
+    const result = extractPrimitiveProps(attrs, descriptorWith());
     expect(result).toEqual({ type: 'warning', title: 'Heads up' });
   });
 
   test('excludes reactnode-typed prop names (content holes are NOT render-time props)', () => {
     const attrs = { props: { title: 'Hi', children: 'shouldnt be here' } };
-    const result = extractPrimitiveProps(attrs, reactNodes('children'));
+    const result = extractPrimitiveProps(attrs, descriptorWith('children'));
     expect(result).toEqual({ title: 'Hi' });
     expect(result).not.toHaveProperty('children');
   });
@@ -32,7 +36,7 @@ describe('extractPrimitiveProps', () => {
         ],
       },
     };
-    const result = extractPrimitiveProps(attrs, reactNodes('children'));
+    const result = extractPrimitiveProps(attrs, descriptorWith('children'));
 
     expect(result).toHaveProperty('items');
     expect(Array.isArray(result.items)).toBe(true);
@@ -48,7 +52,7 @@ describe('extractPrimitiveProps', () => {
         external: true,
       },
     };
-    const result = extractPrimitiveProps(attrs, reactNodes());
+    const result = extractPrimitiveProps(attrs, descriptorWith());
     expect(result).toEqual({
       title: 'Custom Card',
       description: 'With extras',
@@ -58,18 +62,18 @@ describe('extractPrimitiveProps', () => {
   });
 
   test('handles empty props', () => {
-    const result = extractPrimitiveProps({ props: {} }, reactNodes());
+    const result = extractPrimitiveProps({ props: {} }, descriptorWith());
     expect(result).toEqual({});
   });
 
   test('handles missing props attr', () => {
-    const result = extractPrimitiveProps({}, reactNodes());
+    const result = extractPrimitiveProps({}, descriptorWith());
     expect(result).toEqual({});
   });
 
   test('XSS: strips javascript: URL from href before it reaches live React', () => {
     const attrs = { props: { href: 'javascript:alert(1)', title: 'bad' } };
-    const result = extractPrimitiveProps(attrs, reactNodes());
+    const result = extractPrimitiveProps(attrs, descriptorWith());
     expect(result.href).toBe('#');
     expect(result.title).toBe('bad');
   });
@@ -81,7 +85,7 @@ describe('extractPrimitiveProps', () => {
         title: 'safe',
       },
     };
-    const result = extractPrimitiveProps(attrs, reactNodes());
+    const result = extractPrimitiveProps(attrs, descriptorWith());
     expect(result).not.toHaveProperty('dangerouslySetInnerHTML');
     expect(result.title).toBe('safe');
   });
@@ -90,7 +94,7 @@ describe('extractPrimitiveProps', () => {
     const attrs = {
       props: { onClick: 'alert(1)', onError: 'alert(2)', title: 'safe' },
     };
-    const result = extractPrimitiveProps(attrs, reactNodes());
+    const result = extractPrimitiveProps(attrs, descriptorWith());
     expect(result).not.toHaveProperty('onClick');
     expect(result).not.toHaveProperty('onError');
     expect(result.title).toBe('safe');
@@ -105,17 +109,38 @@ describe('extractPrimitiveProps', () => {
         ],
       },
     };
-    const result = extractPrimitiveProps(attrs, reactNodes());
+    const result = extractPrimitiveProps(attrs, descriptorWith());
     const items = result.items as Array<{ title: string; url: string }>;
     expect(items[0].url).toBe('#');
     expect(items[1].url).toBe('https://ok.example.com');
+  });
+
+  test('reads a prop written under its older spelling as the current name', () => {
+    const mirror = builtInComponents.find((component) => component.name === 'Mirror');
+    if (!mirror) throw new Error('no Mirror descriptor');
+    const result = extractPrimitiveProps(
+      { props: { src: 'pricing', anchor: 'plans' } },
+      { props: mirror.props, reactNodePropNames: new Set() },
+    );
+    expect(result).toEqual({ src: 'pricing', name: 'plans' });
+  });
+
+  test('XSS: sanitizes a URL prop written under an older spelling', () => {
+    const result = extractPrimitiveProps(
+      { props: { destination: 'javascript:alert(1)' } },
+      {
+        props: [{ name: 'href', type: 'string', required: false, legacyNames: ['destination'] }],
+        reactNodePropNames: new Set(),
+      },
+    );
+    expect(result).toEqual({ href: '#' });
   });
 
   test('XSS: drops style with url(javascript:…)', () => {
     const attrs = {
       props: { style: 'background: url(javascript:alert(1)); color: red' },
     };
-    const result = extractPrimitiveProps(attrs, reactNodes());
+    const result = extractPrimitiveProps(attrs, descriptorWith());
     expect(result.style).toBe('');
   });
 });
@@ -143,6 +168,99 @@ describe('getElementJsxAttrs', () => {
 
   test('returns null when kind is absent', () => {
     expect(getElementJsxAttrs({ props: {} })).toBeNull();
+  });
+});
+
+function componentMeta(componentName: string) {
+  const meta = builtInComponents.find((component) => component.name === componentName);
+  if (!meta) throw new Error(`no built-in component named ${componentName}`);
+  return meta;
+}
+
+function authoredElement(componentName: string, authored: Record<string, string>) {
+  const attrs = getElementJsxAttrs({
+    kind: 'element',
+    componentName,
+    attributes: Object.entries(authored).map(([name, value]) => ({
+      type: 'mdxJsxAttribute',
+      name,
+      value,
+    })),
+    props: { ...authored },
+    sourceRaw: '',
+    sourceDirty: false,
+  });
+  if (!attrs) throw new Error('expected element attrs');
+  return attrs;
+}
+
+function serializedAttributes(componentName: string, attrs: Record<string, unknown>) {
+  const out = componentMeta(componentName).serialize(
+    { attrs } as never,
+    {
+      all: () => [],
+    } as never,
+  ) as unknown as { attributes: Array<{ name: string; value: unknown }> };
+  return out.attributes.map((attribute) => [attribute.name, attribute.value]);
+}
+
+describe('attrsWithChangedProp', () => {
+  test('editing the name of a Mirror written with `anchor` writes `name` and drops `anchor`', () => {
+    const next = attrsWithChangedProp(
+      authoredElement('Mirror', { src: 'pricing', anchor: 'plans' }),
+      componentMeta('Mirror'),
+      'name',
+      'faq',
+    );
+    expect(next.sourceDirty).toBe(true);
+    expect(serializedAttributes('Mirror', next)).toEqual([
+      ['src', 'pricing'],
+      ['name', 'faq'],
+    ]);
+  });
+
+  test('editing the name of a MirrorSource written with `id` writes `name` and drops `id`', () => {
+    const next = attrsWithChangedProp(
+      authoredElement('MirrorSource', { id: 'plans' }),
+      componentMeta('MirrorSource'),
+      'name',
+      'plans',
+    );
+    expect(serializedAttributes('MirrorSource', next)).toEqual([['name', 'plans']]);
+  });
+
+  test('editing another prop keeps an older spelling as authored', () => {
+    const next = attrsWithChangedProp(
+      authoredElement('Mirror', { src: 'pricing', anchor: 'plans' }),
+      componentMeta('Mirror'),
+      'src',
+      'billing',
+    );
+    expect(serializedAttributes('Mirror', next)).toEqual([
+      ['src', 'billing'],
+      ['anchor', 'plans'],
+    ]);
+  });
+
+  test('clearing a prop removes its attribute', () => {
+    const next = attrsWithChangedProp(
+      authoredElement('Callout', { type: 'note', title: 'Heads up' }),
+      componentMeta('Callout'),
+      'title',
+      undefined,
+    );
+    expect(serializedAttributes('Callout', next)).toEqual([['type', 'note']]);
+  });
+
+  test('changing an image src forgets the URL the image was authored with', () => {
+    const authored = authoredElement('CommonMarkImage', { src: 'chart.png', alt: 'Chart' });
+    const next = attrsWithChangedProp(
+      { ...authored, props: { ...authored.props, sourceUrl: 'chart.png' } },
+      componentMeta('CommonMarkImage'),
+      'src',
+      'other.png',
+    );
+    expect(next.props).toEqual({ src: 'other.png', alt: 'Chart' });
   });
 });
 

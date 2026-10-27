@@ -94,8 +94,8 @@ msgstr "(detached)"
 msgid "(inline)"
 msgstr "(inline)"
 
-msgid "(no id)"
-msgstr "(no id)"
+msgid "(no name)"
+msgstr "(no name)"
 
 msgid "(opens in new tab)"
 msgstr "(opens in new tab)"
@@ -892,11 +892,11 @@ msgstr "<0>{cliCommand}</0> won't run in external terminals until you add it lat
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 
-msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
-msgstr "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
+msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
+msgstr "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 
-msgid "<0>Mirror anchor not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
-msgstr "<0>Mirror anchor not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
+msgid "<0>Mirror name not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
+msgstr "<0>Mirror name not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
@@ -3792,6 +3792,9 @@ msgstr "Document statistics"
 msgid "Document structure"
 msgstr "Document structure"
 
+msgid "Document suggestions"
+msgstr "Document suggestions"
+
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 
@@ -6294,6 +6297,9 @@ msgstr "Mirror source <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "Mirror source <0>api-spec</0>"
 
+msgid "Mirror source names"
+msgstr "Mirror source names"
+
 msgid "Missing"
 msgstr "Missing"
 
@@ -6920,6 +6926,12 @@ msgstr "No matching repositories."
 
 msgid "No matching worktrees or branches."
 msgstr "No matching worktrees or branches."
+
+msgid "No Mirror Source block in {docName} matches the text in this field. Clear it to see them all."
+msgstr "No Mirror Source block in {docName} matches the text in this field. Clear it to see them all."
+
+msgid "No Mirror Source blocks in {docName}"
+msgstr "No Mirror Source blocks in {docName}"
 
 msgid "No Outgoing"
 msgstr "No Outgoing"

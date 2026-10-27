@@ -94,8 +94,8 @@ msgstr "(odłączony)"
 msgid "(inline)"
 msgstr "(osadzone)"
 
-msgid "(no id)"
-msgstr "(bez id)"
+msgid "(no name)"
+msgstr "(bez nazwy)"
 
 msgid "(opens in new tab)"
 msgstr "(otwiera się w nowej karcie)"
@@ -892,11 +892,11 @@ msgstr "<0>{cliCommand}</0> nie będzie działać w zewnętrznych terminalach, d
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> nie może zostać scalony tutaj. Wybierz wersję do zachowania."
 
-msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
-msgstr "<0>Odbicie — wybierz źródło.</0> Ustaw <1>src</1> + <2>anchor</2> w panelu właściwości tak, aby wskazywały na <3><MirrorSource></3> w innym miejscu."
+msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
+msgstr "<0>Odbicie — wybierz źródło.</0> Ustaw <1>src</1> + <2>name</2> w panelu właściwości tak, aby wskazywały na <3><MirrorSource></3> w innym miejscu."
 
-msgid "<0>Mirror anchor not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
-msgstr "<0>Nie znaleziono kotwicy odbicia.</0> Brak <1>{mirrorSourceTag}</1> w <2>{src}</2>."
+msgid "<0>Mirror name not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
+msgstr "<0>Nie znaleziono nazwy odbicia.</0> Brak <1>{mirrorSourceTag}</1> w <2>{src}</2>."
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>Usunięto źródło odbicia.</0> Dokument <1>{src}</1> nie jest już dostępny."
@@ -3792,6 +3792,9 @@ msgstr "Statystyki dokumentu"
 msgid "Document structure"
 msgstr "Struktura dokumentu"
 
+msgid "Document suggestions"
+msgstr "Podpowiedzi dokumentów"
+
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "Opisz architekturę tego repozytorium: utwórz stronę przeglądową prowadzącą do osobnej strony każdego głównego modułu, opisującą jego obowiązki i punkty wejścia."
 
@@ -6294,6 +6297,9 @@ msgstr "Źródło lustra <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "Źródło lustra <0>api-spec</0>"
 
+msgid "Mirror source names"
+msgstr "Nazwy źródeł lustra"
+
 msgid "Missing"
 msgstr "Brakujące"
 
@@ -6920,6 +6926,12 @@ msgstr "Brak pasujących repozytoriów."
 
 msgid "No matching worktrees or branches."
 msgstr "Brak pasujących worktrees ani gałęzi."
+
+msgid "No Mirror Source block in {docName} matches the text in this field. Clear it to see them all."
+msgstr "Żaden blok źródła lustra w {docName} nie pasuje do tekstu w tym polu. Wyczyść je, aby zobaczyć wszystkie."
+
+msgid "No Mirror Source blocks in {docName}"
+msgstr "Brak bloków źródła lustra w {docName}"
 
 msgid "No Outgoing"
 msgstr "Brak wychodzących"

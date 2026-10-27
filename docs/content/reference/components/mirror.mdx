@@ -7,15 +7,15 @@ keywords: "mirror, sync, synced, transclude, embed, reference, shared block"
 ## Example
 
 <ComponentPreview>
-  <MirrorPreview src="specs/architecture" anchor="overview-diagram">
-    This body renders live from wherever the `<MirrorSource id="overview-diagram">`
-    with a matching id lives — edits there ripple here without a copy step.
+  <MirrorPreview src="specs/architecture" name="overview-diagram">
+    This body renders live from wherever the `<MirrorSource name="overview-diagram">`
+    with a matching name lives — edits there ripple here without a copy step.
   </MirrorPreview>
 </ComponentPreview>
 
 ````text
 ```mdx
-<Mirror src="specs/architecture" anchor="overview-diagram" />
+<Mirror src="specs/architecture" name="overview-diagram" />
 ```
 ````
 
@@ -28,8 +28,8 @@ keywords: "mirror, sync, synced, transclude, embed, reference, shared block"
     type: "string",
     required: true,
   },
-  "anchor": {
-    description: "Id of the \\`<MirrorSource>\\` block within the source doc.",
+  "name": {
+    description: "Name of the \\`<MirrorSource>\\` block in the source doc. Also read as \\`anchor\\`; write \\`name\\` instead.",
     type: "string",
     required: true,
   },
@@ -38,25 +38,25 @@ keywords: "mirror, sync, synced, transclude, embed, reference, shared block"
 
 ## Also: `<MirrorSource>`
 
-Mark a block as the source of truth for content that appears in multiple docs. Wrap any block content; `<Mirror src="…" anchor="<id>">` references render this verbatim read-only at every call-site. Edit here, propagate everywhere.
+Mark a block as the source of truth for content that appears in multiple docs. Wrap any block content; `<Mirror src="…" name="…">` references render this verbatim read-only at every call-site. Edit here, propagate everywhere.
 
 <ComponentPreview>
-  <MirrorSourcePreview id="overview-diagram">
+  <MirrorSourcePreview name="overview-diagram">
     The canonical content this block owns. Every `<Mirror>` that references
-    this id anywhere in the project reads from here.
+    this name anywhere in the project reads from here.
   </MirrorSourcePreview>
 </ComponentPreview>
 
 ```mdx
-<MirrorSource id="demo-1">
-  Authoritative content lives inside this block — edits here propagate to every `<Mirror>` that references this id.
+<MirrorSource name="overview-diagram">
+  Authoritative content lives inside this block — edits here propagate to every `<Mirror>` that references this name.
 </MirrorSource>
 ```
 
 <TypeTable
   type={{
-  "id": {
-    description: "Stable id agents and authors use to reference this block from \\`<Mirror>\\` elsewhere.",
+  "name": {
+    description: "Stable name a \\`<Mirror>\\` uses to reference this block. Also read as \\`id\\`; write \\`name\\` instead.",
     type: "string",
     required: true,
   },
@@ -73,3 +73,5 @@ _Also matches:_ `mirror`, `sync`, `synced`, `transclude`, `embed`, `reference`, 
 ## Author it
 
 Type `/mirror` in the editor to insert it from the slash menu, or write the tag directly in source mode. The Properties panel on the right of the editor exposes every prop above as a form field once the block is selected.
+
+A Mirror Source inserted from the slash menu takes its name from the nearest heading above it, as a slug of at most 40 characters cut at a word: `## Pricing Plans` gives `pricing-plans`. With no heading above it the name is `source`, and `-1`, `-2` and so on are added when another Mirror Source in the doc already has that name. In a Mirror's Properties panel, `src` suggests documents and `name` suggests the Mirror Source names in the chosen document.

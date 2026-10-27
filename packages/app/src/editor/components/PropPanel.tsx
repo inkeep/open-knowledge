@@ -19,11 +19,14 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { ColorPickerInput } from '@/editor/components/ColorPickerInput.tsx';
+import { DocumentAutocomplete } from '@/editor/components/DocumentAutocomplete.tsx';
 import { IconPickerInput } from '@/editor/components/IconPickerInput.tsx';
+import { MirrorSourceAutocomplete } from '@/editor/components/MirrorSourceAutocomplete.tsx';
 import { SrcAutocomplete } from '@/editor/components/SrcAutocomplete.tsx';
 import { UploadFailedError, UploadRejectedError } from '@/editor/image-upload/upload-failure.ts';
 import { uploadFile } from '@/editor/image-upload/upload-file.ts';
 import type { JsxComponentDescriptor } from '@/editor/registry/types.ts';
+import { authoredText } from '@/editor/utils/authored-text.ts';
 import { getAutoFocusedPropName, humanizePropName } from '@/editor/utils/editor-strings.ts';
 import {
   cssLengthValidationMessage,
@@ -118,6 +121,7 @@ export function PropPanel({ descriptor, values, onChange, onDismiss }: PropPanel
           key={propDef.name}
           propDef={propDef}
           value={values[propDef.name]}
+          values={values}
           onChange={(v) => onChange(propDef.name, v)}
           onDismiss={onDismiss}
           isAutoFocused={propDef.name === autoFocusedPropName}
@@ -153,6 +157,7 @@ export function PropPanel({ descriptor, values, onChange, onDismiss }: PropPanel
                   key={propDef.name}
                   propDef={propDef}
                   value={values[propDef.name]}
+                  values={values}
                   onChange={(v) => onChange(propDef.name, v)}
                   onDismiss={onDismiss}
                   isAutoFocused={propDef.name === autoFocusedPropName}
@@ -173,12 +178,14 @@ function assertUnreachable(x: never): never {
 function PropControl({
   propDef,
   value,
+  values,
   onChange,
   onDismiss,
   isAutoFocused,
 }: {
   propDef: PropDef;
   value: unknown;
+  values: Record<string, unknown>;
   onChange: (value: unknown) => void;
   onDismiss?: () => void;
   isAutoFocused: boolean;
@@ -199,6 +206,7 @@ function PropControl({
       const accept = propDef.accept;
       const showUpload = accept !== undefined && accept.length > 0;
       const treatEmptyAsUndefined = !propDef.required && propDef.defaultValue === undefined;
+      const stringValue = authoredText(value);
 
       if (propDef.language) {
         const labelId = `${stringId}-label`;
@@ -210,7 +218,7 @@ function PropControl({
             <CodeMirrorPropInput
               id={stringId}
               ariaLabelledBy={labelId}
-              value={(value as string) ?? ''}
+              value={stringValue}
               language={propDef.language}
               onChange={(next) => {
                 if (next === '' && treatEmptyAsUndefined) {
@@ -226,7 +234,6 @@ function PropControl({
       }
 
       if (propDef.iconPicker) {
-        const currentIconValue = (value as string) ?? '';
         return (
           <div className="flex flex-col gap-1">
             <label htmlFor={stringId} className="text-xs text-muted-foreground">
@@ -234,7 +241,7 @@ function PropControl({
             </label>
             <IconPickerInput
               id={stringId}
-              value={currentIconValue}
+              value={stringValue}
               onChange={(next) => {
                 if (next === '' && treatEmptyAsUndefined) {
                   onChange(undefined);
@@ -249,7 +256,6 @@ function PropControl({
       }
 
       if (propDef.colorPicker) {
-        const currentColorValue = (value as string) ?? '';
         return (
           <div className="flex flex-col gap-1">
             <label htmlFor={stringId} className="text-xs text-muted-foreground">
@@ -257,7 +263,7 @@ function PropControl({
             </label>
             <ColorPickerInput
               id={stringId}
-              value={currentColorValue}
+              value={stringValue}
               onChange={(next) => {
                 if (next === '' && treatEmptyAsUndefined) {
                   onChange(undefined);
@@ -271,9 +277,51 @@ function PropControl({
         );
       }
 
+      const emitString = (next: string) => {
+        onChange(next === '' && treatEmptyAsUndefined ? undefined : next);
+      };
+
+      if (propDef.documentPicker) {
+        return (
+          <div className="flex flex-col gap-1">
+            <label htmlFor={stringId} className="text-xs text-muted-foreground">
+              {humanizePropName(propDef.name)}
+            </label>
+            <DocumentAutocomplete
+              id={stringId}
+              value={stringValue}
+              onChange={emitString}
+              onSubmit={onDismiss}
+              autoFocus={isAutoFocused}
+              dataPropAutofocus={isAutoFocused ? '' : undefined}
+              className="h-7 text-sm"
+            />
+          </div>
+        );
+      }
+
+      if (propDef.mirrorSourcePicker !== undefined) {
+        return (
+          <div className="flex flex-col gap-1">
+            <label htmlFor={stringId} className="text-xs text-muted-foreground">
+              {humanizePropName(propDef.name)}
+            </label>
+            <MirrorSourceAutocomplete
+              id={stringId}
+              docName={authoredText(values[propDef.mirrorSourcePicker])}
+              value={stringValue}
+              onChange={emitString}
+              onSubmit={onDismiss}
+              autoFocus={isAutoFocused}
+              dataPropAutofocus={isAutoFocused ? '' : undefined}
+              className="h-7 text-sm"
+            />
+          </div>
+        );
+      }
+
       if (propDef.cssLengthInput) {
-        const currentCssLength = (value as string) ?? '';
-        const cssValidation = validateCssLength(currentCssLength);
+        const cssValidation = validateCssLength(stringValue);
         const cssError = cssValidation.valid ? null : cssLengthValidationMessage(cssValidation);
         return (
           <div className="flex flex-col gap-1">
@@ -283,7 +331,7 @@ function PropControl({
             <Input
               id={stringId}
               type="text"
-              value={currentCssLength}
+              value={stringValue}
               placeholder="100px, 50%, 26rem, auto"
               onChange={(e) => {
                 const raw = e.target.value;
@@ -316,14 +364,13 @@ function PropControl({
       }
 
       const mediaKind = accept !== undefined ? mediaKindForAccept(accept) : undefined;
-      const currentStringValue = (value as string) ?? '';
       const mediaValidation =
-        mediaKind !== undefined ? validateMediaUrl(currentStringValue, mediaKind) : null;
+        mediaKind !== undefined ? validateMediaUrl(stringValue, mediaKind) : null;
       const mediaErrorMessage =
         mediaValidation !== null &&
         !mediaValidation.valid &&
         mediaKind !== undefined &&
-        currentStringValue.trim().length > 0
+        stringValue.trim().length > 0
           ? mediaUrlValidationMessage(mediaValidation, mediaKind)
           : null;
       const mediaPlaceholder = mediaKind !== undefined ? mediaUrlPlaceholder(mediaKind) : undefined;
@@ -337,7 +384,7 @@ function PropControl({
             {accept !== undefined ? (
               <SrcAutocomplete
                 id={stringId}
-                value={currentStringValue}
+                value={stringValue}
                 onChange={(raw) => {
                   if (raw === '' && treatEmptyAsUndefined) {
                     onChange(undefined);
@@ -358,7 +405,7 @@ function PropControl({
               <Input
                 id={stringId}
                 type="text"
-                value={currentStringValue}
+                value={stringValue}
                 placeholder={mediaPlaceholder}
                 onChange={(e) => {
                   const raw = e.target.value;

@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { PropDef } from '@inkeep/open-knowledge-core';
-import { builtInComponents } from '@inkeep/open-knowledge-core';
+import { builtInComponents, propDescription } from '@inkeep/open-knowledge-core';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.resolve(HERE, '../content/reference/components');
@@ -33,6 +33,11 @@ const COMPOSITION_CHILDREN: Partial<Record<string, string>> = {
 };
 
 const COMPOSITION_CHILD_NAMES = new Set(Object.values(COMPOSITION_CHILDREN));
+
+const AUTHORING_NOTES: Partial<Record<string, string>> = {
+  Mirror:
+    "A Mirror Source inserted from the slash menu takes its name from the nearest heading above it, as a slug of at most 40 characters cut at a word: `## Pricing Plans` gives `pricing-plans`. With no heading above it the name is `source`, and `-1`, `-2` and so on are added when another Mirror Source in the doc already has that name. In a Mirror's Properties panel, `src` suggests documents and `name` suggests the Mirror Source names in the chosen document.",
+};
 
 const CANONICAL_SYNTAX: Partial<Record<string, { language: string; code: string }>> = {
   Callout: {
@@ -73,7 +78,7 @@ $$`,
   },
   Mirror: {
     language: 'mdx',
-    code: `<Mirror src="specs/architecture" anchor="overview-diagram" />`,
+    code: `<Mirror src="specs/architecture" name="overview-diagram" />`,
   },
 };
 
@@ -117,7 +122,8 @@ function renderTypeTable(props: PropDef[]): string {
   if (visible.length === 0) return '_No public props._';
   const entries = visible
     .map((p) => {
-      const description = p.description ? escapeMdx(p.description) : '';
+      const text = propDescription(p);
+      const description = text ? escapeMdx(text) : '';
       const type = typeLabel(p);
       const defaultLine =
         'defaultValue' in p && p.defaultValue !== undefined
@@ -174,6 +180,7 @@ function renderExample(meta: (typeof builtInComponents)[number]): string {
 
 const PLACEHOLDER_OVERRIDES: Partial<Record<string, string>> = {
   'Excalidraw.src': 'diagrams/board.excalidraw',
+  'MirrorSource.name': 'overview-diagram',
 };
 
 const GENERIC_PLACEHOLDERS: Record<string, string> = {
@@ -284,15 +291,15 @@ const PREVIEWS: Partial<Record<string, string>> = {
   />
 </ComponentPreview>`,
   Mirror: `<ComponentPreview>
-  <MirrorPreview src="specs/architecture" anchor="overview-diagram">
-    This body renders live from wherever the \`<MirrorSource id="overview-diagram">\`
-    with a matching id lives — edits there ripple here without a copy step.
+  <MirrorPreview src="specs/architecture" name="overview-diagram">
+    This body renders live from wherever the \`<MirrorSource name="overview-diagram">\`
+    with a matching name lives — edits there ripple here without a copy step.
   </MirrorPreview>
 </ComponentPreview>`,
   MirrorSource: `<ComponentPreview>
-  <MirrorSourcePreview id="overview-diagram">
+  <MirrorSourcePreview name="overview-diagram">
     The canonical content this block owns. Every \`<Mirror>\` that references
-    this id anywhere in the project reads from here.
+    this name anywhere in the project reads from here.
   </MirrorSourcePreview>
 </ComponentPreview>`,
 };
@@ -331,6 +338,9 @@ function renderPage(
   const canonical = CANONICAL_SYNTAX[meta.name];
   const codeSample = canonical ? renderCodeSample(canonical) : `\`\`\`mdx\n${example}\n\`\`\``;
 
+  const authoringNote = AUTHORING_NOTES[meta.name];
+  const authoringNoteBlock = authoringNote ? `\n${authoringNote}\n` : '';
+
   return `---
 title: ${JSON.stringify(title)}
 description: ${JSON.stringify(frontmatterDescription)}${keywords ? `\nkeywords: ${JSON.stringify(keywords)}` : ''}
@@ -347,7 +357,7 @@ ${propsTable}
 ${childBlock}${searchTermsLine}## Author it
 
 Type \`/${(meta.searchTerms?.[0] ?? meta.name).toLowerCase()}\` in the editor to insert it from the slash menu, or write the tag directly in source mode. The Properties panel on the right of the editor exposes every prop above as a form field once the block is selected.
-`;
+${authoringNoteBlock}`;
 }
 
 function renderChildSection(child: (typeof builtInComponents)[number]): string {

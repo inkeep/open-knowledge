@@ -94,8 +94,8 @@ msgstr "(desanexado)"
 msgid "(inline)"
 msgstr "(em linha)"
 
-msgid "(no id)"
-msgstr "(sem id)"
+msgid "(no name)"
+msgstr "(sem nome)"
 
 msgid "(opens in new tab)"
 msgstr "(abre em uma nova aba)"
@@ -888,11 +888,11 @@ msgstr "<0>{cliCommand}</0> não funcionará em terminais externos até que voc�
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> não pode ser mesclado aqui. Escolha a versão que quer manter."
 
-msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
-msgstr "<0>Espelho — escolha uma fonte.</0> Defina <1>src</1> + <2>anchor</2> no painel de propriedades para apontar para um <3><MirrorSource></3> em outro lugar."
+msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
+msgstr "<0>Espelho — escolha uma fonte.</0> Defina <1>src</1> + <2>name</2> no painel de propriedades para apontar para um <3><MirrorSource></3> em outro lugar."
 
-msgid "<0>Mirror anchor not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
-msgstr "<0>Âncora do espelho não encontrada.</0> Não existe nenhum <1>{mirrorSourceTag}</1> em <2>{src}</2>."
+msgid "<0>Mirror name not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
+msgstr "<0>Nome do espelho não encontrado.</0> Não existe nenhum <1>{mirrorSourceTag}</1> em <2>{src}</2>."
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>Fonte do espelho removida.</0> O documento <1>{src}</1> não está mais disponível."
@@ -3788,6 +3788,9 @@ msgstr "Estatísticas do documento"
 msgid "Document structure"
 msgstr "Estrutura do documento"
 
+msgid "Document suggestions"
+msgstr "Sugestões de documentos"
+
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "Documente a arquitetura deste repositório: crie uma página geral que aponte para uma página por módulo principal descrevendo suas responsabilidades e seus pontos de entrada."
 
@@ -6290,6 +6293,9 @@ msgstr "Fonte do espelho <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "Fonte do espelho <0>api-spec</0>"
 
+msgid "Mirror source names"
+msgstr "Nomes das fontes do espelho"
+
 msgid "Missing"
 msgstr "Ausente"
 
@@ -6916,6 +6922,12 @@ msgstr "Nenhum repositório corresponde."
 
 msgid "No matching worktrees or branches."
 msgstr "Nenhum worktree ou ramo corresponde."
+
+msgid "No Mirror Source block in {docName} matches the text in this field. Clear it to see them all."
+msgstr "Nenhum bloco de fonte do espelho em {docName} corresponde ao texto deste campo. Limpe-o para ver todos."
+
+msgid "No Mirror Source blocks in {docName}"
+msgstr "Nenhum bloco de fonte do espelho em {docName}"
 
 msgid "No Outgoing"
 msgstr "Sem saída"

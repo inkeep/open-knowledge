@@ -127,6 +127,49 @@ test.each(['cover', 'property'] as const)(
   },
 );
 
+describe('PropPanel — a string prop written with a non-text value', () => {
+  const cases: [string, PropDef, unknown, string][] = [
+    [
+      'a valueless media src as an empty field',
+      { name: 'src', type: 'string', required: true, accept: ALLOWED_IMAGE_MIME_TYPES },
+      true,
+      '',
+    ],
+    [
+      'a numeric media src as its text',
+      { name: 'src', type: 'string', required: true, accept: ALLOWED_IMAGE_MIME_TYPES },
+      42,
+      '42',
+    ],
+    [
+      'a numeric CSS length as its text',
+      { name: 'width', type: 'string', required: false, cssLengthInput: true },
+      300,
+      '300',
+    ],
+    [
+      'a numeric plain string as its text',
+      { name: 'title', type: 'string', required: false },
+      2024,
+      '2024',
+    ],
+  ];
+
+  test.each(cases)('shows %s instead of failing', (_case, prop, value, shown) => {
+    stubAssetPaths.clear();
+    const { container } = render(
+      <PropPanel
+        descriptor={makeDescriptor([prop])}
+        values={{ [prop.name]: value }}
+        onChange={() => {}}
+      />,
+    );
+    expect((container.querySelector(`input#prop-${prop.name}`) as HTMLInputElement).value).toBe(
+      shown,
+    );
+  });
+});
+
 describe('PropPanel — Enter on a single-line string input dismisses', () => {
   test('Enter on a plain string Input (no autocomplete) calls onDismiss', () => {
     const onDismiss = vi.fn(() => {});

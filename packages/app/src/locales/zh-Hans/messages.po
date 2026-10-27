@@ -94,8 +94,8 @@ msgstr "（游离状态）"
 msgid "(inline)"
 msgstr "（内联）"
 
-msgid "(no id)"
-msgstr "（无 id）"
+msgid "(no name)"
+msgstr "（无名称）"
 
 msgid "(opens in new tab)"
 msgstr "（在新标签页中打开）"
@@ -892,11 +892,11 @@ msgstr "<0>{cliCommand}</0> 在你稍后从“文件”菜单添加之前，无�
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> 无法在这里合并。请选择要保留的版本。"
 
-msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
-msgstr "<0>镜像——请选择一个来源。</0>在属性面板中设置 <1>src</1> + <2>anchor</2>，指向别处的 <3><MirrorSource></3>。"
+msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
+msgstr "<0>镜像——请选择一个来源。</0>在属性面板中设置 <1>src</1> + <2>name</2>，指向别处的 <3><MirrorSource></3>。"
 
-msgid "<0>Mirror anchor not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
-msgstr "<0>找不到镜像锚点。</0><2>{src}</2> 中不存在 <1>{mirrorSourceTag}</1>。"
+msgid "<0>Mirror name not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
+msgstr "<0>找不到镜像名称。</0><2>{src}</2> 中不存在 <1>{mirrorSourceTag}</1>。"
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>镜像来源已被移除。</0>文档 <1>{src}</1> 已不可用。"
@@ -3792,6 +3792,9 @@ msgstr "文档统计"
 msgid "Document structure"
 msgstr "文件结构"
 
+msgid "Document suggestions"
+msgstr "文档建议"
+
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "记录这个仓库的架构：创建一页总览，链接到每个主要模块的页面，说明各自的职责和入口。"
 
@@ -6294,6 +6297,9 @@ msgstr "镜像来源 <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "镜像来源 <0>api-spec</0>"
 
+msgid "Mirror source names"
+msgstr "镜像来源名称"
+
 msgid "Missing"
 msgstr "缺失"
 
@@ -6920,6 +6926,12 @@ msgstr "没有匹配的仓库。"
 
 msgid "No matching worktrees or branches."
 msgstr "没有匹配的 worktree 或分支。"
+
+msgid "No Mirror Source block in {docName} matches the text in this field. Clear it to see them all."
+msgstr "{docName} 中没有与此字段文本匹配的镜像来源块。清空此字段即可查看全部。"
+
+msgid "No Mirror Source blocks in {docName}"
+msgstr "{docName} 中没有镜像来源块"
 
 msgid "No Outgoing"
 msgstr "无出链"

@@ -94,8 +94,8 @@ msgstr "(अलग किया हुआ)"
 msgid "(inline)"
 msgstr "(इनलाइन)"
 
-msgid "(no id)"
-msgstr "(कोई id नहीं)"
+msgid "(no name)"
+msgstr "(कोई नाम नहीं)"
 
 msgid "(opens in new tab)"
 msgstr "(नए टैब में खुलता है)"
@@ -888,11 +888,11 @@ msgstr "<0>{cliCommand}</0> तब तक बाहरी टर्मिनल 
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> को यहाँ मर्ज नहीं किया जा सकता। रखने के लिए संस्करण चुनें।"
 
-msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
-msgstr "<0>मिरर — एक स्रोत चुनें।</0> कहीं और मौजूद किसी <3><MirrorSource></3> की ओर इंगित करने के लिए प्रॉपर्टी पैनल से <1>src</1> + <2>anchor</2> सेट करें।"
+msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
+msgstr "<0>मिरर — एक स्रोत चुनें।</0> कहीं और मौजूद किसी <3><MirrorSource></3> की ओर इंगित करने के लिए प्रॉपर्टी पैनल से <1>src</1> + <2>name</2> सेट करें।"
 
-msgid "<0>Mirror anchor not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
-msgstr "<0>मिरर एंकर नहीं मिला।</0> <2>{src}</2> में कोई <1>{mirrorSourceTag}</1> मौजूद नहीं है।"
+msgid "<0>Mirror name not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
+msgstr "<0>मिरर का नाम नहीं मिला।</0> <2>{src}</2> में कोई <1>{mirrorSourceTag}</1> मौजूद नहीं है।"
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>मिरर स्रोत हटा दिया गया।</0> दस्तावेज़ <1>{src}</1> अब उपलब्ध नहीं है।"
@@ -3788,6 +3788,9 @@ msgstr "दस्तावेज़ आँकड़े"
 msgid "Document structure"
 msgstr "दस्तावेज़ संरचना"
 
+msgid "Document suggestions"
+msgstr "दस्तावेज़ सुझाव"
+
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "इस रिपॉज़िटरी की संरचना का दस्तावेज़ीकरण करें: एक सिंहावलोकन पेज बनाएँ जो हर प्रमुख मॉड्यूल के पेज से जुड़ता हो और उसकी ज़िम्मेदारियाँ तथा प्रवेश बिंदु बताता हो।"
 
@@ -6290,6 +6293,9 @@ msgstr "मिरर स्रोत <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "मिरर स्रोत <0>api-spec</0>"
 
+msgid "Mirror source names"
+msgstr "मिरर स्रोतों के नाम"
+
 msgid "Missing"
 msgstr "अनुपस्थित"
 
@@ -6916,6 +6922,12 @@ msgstr "कोई मेल खाती रिपॉज़िटरी नह�
 
 msgid "No matching worktrees or branches."
 msgstr "कोई मेल खाता वर्कट्री या ब्रांच नहीं।"
+
+msgid "No Mirror Source block in {docName} matches the text in this field. Clear it to see them all."
+msgstr "{docName} में इस फ़ील्ड के टेक्स्ट से मेल खाने वाला कोई मिरर स्रोत ब्लॉक नहीं है। सभी देखने के लिए इसे खाली करें।"
+
+msgid "No Mirror Source blocks in {docName}"
+msgstr "{docName} में कोई मिरर स्रोत ब्लॉक नहीं है"
 
 msgid "No Outgoing"
 msgstr "कोई जाने वाला नहीं"

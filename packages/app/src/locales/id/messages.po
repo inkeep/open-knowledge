@@ -94,8 +94,8 @@ msgstr "(terlepas)"
 msgid "(inline)"
 msgstr "(sebaris)"
 
-msgid "(no id)"
-msgstr "(tanpa id)"
+msgid "(no name)"
+msgstr "(tanpa nama)"
 
 msgid "(opens in new tab)"
 msgstr "(terbuka di tab baru)"
@@ -888,11 +888,11 @@ msgstr "<0>{cliCommand}</0> tidak akan berjalan di terminal eksternal sampai And
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> tidak bisa digabungkan di sini. Pilih versi yang ingin disimpan."
 
-msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
-msgstr "<0>Cermin — pilih sebuah sumber.</0> Atur <1>src</1> + <2>anchor</2> lewat panel properti agar mengarah ke <3><MirrorSource></3> di tempat lain."
+msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
+msgstr "<0>Cermin — pilih sebuah sumber.</0> Atur <1>src</1> + <2>name</2> lewat panel properti agar mengarah ke <3><MirrorSource></3> di tempat lain."
 
-msgid "<0>Mirror anchor not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
-msgstr "<0>Jangkar cermin tidak ditemukan.</0> Tidak ada <1>{mirrorSourceTag}</1> di <2>{src}</2>."
+msgid "<0>Mirror name not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
+msgstr "<0>Nama cermin tidak ditemukan.</0> Tidak ada <1>{mirrorSourceTag}</1> di <2>{src}</2>."
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>Sumber cermin dihapus.</0> Dokumen <1>{src}</1> sudah tidak tersedia."
@@ -3788,6 +3788,9 @@ msgstr "Statistik dokumen"
 msgid "Document structure"
 msgstr "Struktur dokumen"
 
+msgid "Document suggestions"
+msgstr "Saran dokumen"
+
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "Dokumentasikan arsitektur repo ini: buat halaman ikhtisar yang menaut ke satu halaman per modul utama yang menjelaskan tanggung jawab dan titik masuknya."
 
@@ -6290,6 +6293,9 @@ msgstr "Sumber cermin <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "Sumber cermin <0>api-spec</0>"
 
+msgid "Mirror source names"
+msgstr "Nama sumber cermin"
+
 msgid "Missing"
 msgstr "Hilang"
 
@@ -6916,6 +6922,12 @@ msgstr "Tidak ada repositori yang cocok."
 
 msgid "No matching worktrees or branches."
 msgstr "Tidak ada worktree atau cabang yang cocok."
+
+msgid "No Mirror Source block in {docName} matches the text in this field. Clear it to see them all."
+msgstr "Tidak ada blok sumber cermin di {docName} yang cocok dengan teks di kolom ini. Kosongkan untuk melihat semuanya."
+
+msgid "No Mirror Source blocks in {docName}"
+msgstr "Tidak ada blok sumber cermin di {docName}"
 
 msgid "No Outgoing"
 msgstr "Tidak Ada Keluar"

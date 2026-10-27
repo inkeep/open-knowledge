@@ -94,8 +94,8 @@ msgstr "(منفصل)"
 msgid "(inline)"
 msgstr "(مضمَّن)"
 
-msgid "(no id)"
-msgstr "(بدون معرّف)"
+msgid "(no name)"
+msgstr "(بدون اسم)"
 
 msgid "(opens in new tab)"
 msgstr "(يفتح في تبويب جديد)"
@@ -892,11 +892,11 @@ msgstr "<0>{cliCommand}</0> لن يعمل في الوحدات الطرفية ا�
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "تعذّر دمج <0>{filePath}</0> هنا. اختر النسخة التي تريد الاحتفاظ بها."
 
-msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
-msgstr "<0>مرآة — اختر مصدرًا.</0> اضبط <1>src</1> + <2>anchor</2> من لوحة الخصائص للإشارة إلى <3><MirrorSource></3> في مكان آخر."
+msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
+msgstr "<0>مرآة — اختر مصدرًا.</0> اضبط <1>src</1> + <2>name</2> من لوحة الخصائص للإشارة إلى <3><MirrorSource></3> في مكان آخر."
 
-msgid "<0>Mirror anchor not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
-msgstr "<0>لم يُعثر على مرساة المرآة.</0> لا يوجد <1>{mirrorSourceTag}</1> في <2>{src}</2>."
+msgid "<0>Mirror name not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
+msgstr "<0>لم يُعثر على اسم المرآة.</0> لا يوجد <1>{mirrorSourceTag}</1> في <2>{src}</2>."
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>تمت إزالة مصدر المرآة.</0> لم يعد المستند <1>{src}</1> متاحًا."
@@ -3792,6 +3792,9 @@ msgstr "إحصاءات المستند"
 msgid "Document structure"
 msgstr "هيكل الوثيقة"
 
+msgid "Document suggestions"
+msgstr "اقتراحات المستندات"
+
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "وثّق بنية هذا المستودع: أنشئ صفحة نظرة عامة ترتبط بصفحة لكل وحدة رئيسية تصف مسؤولياتها ونقاط دخولها."
 
@@ -6294,6 +6297,9 @@ msgstr "مصدر المرآة <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "مصدر المرآة <0>api-spec</0>"
 
+msgid "Mirror source names"
+msgstr "أسماء مصادر المرآة"
+
 msgid "Missing"
 msgstr "مفقود"
 
@@ -6920,6 +6926,12 @@ msgstr "لا توجد مستودعات مطابقة."
 
 msgid "No matching worktrees or branches."
 msgstr "لا توجد أشجار عمل أو فروع مطابقة."
+
+msgid "No Mirror Source block in {docName} matches the text in this field. Clear it to see them all."
+msgstr "لا توجد كتلة مصدر مرآة في {docName} تطابق النص في هذا الحقل. أفرغه لعرضها كلها."
+
+msgid "No Mirror Source blocks in {docName}"
+msgstr "لا توجد كتل مصدر المرآة في {docName}"
 
 msgid "No Outgoing"
 msgstr "لا روابط صادرة"
