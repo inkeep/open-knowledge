@@ -31,7 +31,7 @@
     "smoke:mock-update": "OK_UPDATER_FORCE_DEV=1 node scripts/smoke-mock-update.mjs",
     "instances": "node scripts/launch-instances.mjs",
     "lint": "biome check . && oxlint --max-warnings 0 .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
@@ -65,7 +65,7 @@
     "electron-builder": "^26.16.1",
     "electron-vite": "^6.0.0-beta.1",
     "ts-morph": "^28.0.0",
-    "typescript": "~7.0.2",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "vite": "^8.0.0"
   }
 }

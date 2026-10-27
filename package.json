@@ -53,8 +53,8 @@
     "changeset": "changeset",
     "version": "changeset version",
     "release": "changeset publish",
-    "typecheck:lint-plugins": "tsc --noEmit -p lint-plugins/ok-rules/tsconfig.json",
-    "typecheck:no-net-connect": "tsc --noEmit -p test-support/tsconfig.no-net-connect.json"
+    "typecheck:lint-plugins": "tsrs --noEmit -p lint-plugins/ok-rules/tsconfig.json",
+    "typecheck:no-net-connect": "tsrs --noEmit -p test-support/tsconfig.no-net-connect.json"
   },
   "lint-staged": {
     "packages/**/*.{ts,tsx,js,jsx,json,md}": [
@@ -88,6 +88,7 @@
     "oxlint-tsgolint": "^7.0.2001",
     "smol-toml": "^1.6.1",
     "ts-morph": "^28.0.0",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "tsx": "^4.20.0",
     "turbo": "^2.11.5",
     "typescript": "~6.0.3",

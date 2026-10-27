@@ -32,8 +32,9 @@ function programFiles(): string[] {
   if (run.error) throw run.error;
   if (run.status !== 0) {
     throw new Error(
-      `${TSC} exited ${run.status} on ${TSCONFIG}; its diagnostics (stdout) follow, and the ` +
-        `typecheck cell reports the same program:\n${run.stdout}${run.stderr}`,
+      `${TSC} exited ${run.status} on ${TSCONFIG}; its diagnostics (stdout) follow. The typecheck ` +
+        `cell runs tsrs, and this test lists the program with tsc because both resolve the same ` +
+        `first-party files:\n${run.stdout}${run.stderr}`,
     );
   }
   return run.stdout

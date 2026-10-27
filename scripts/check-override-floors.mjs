@@ -25,7 +25,7 @@ export function parseOverrideBlockLines(yamlText) {
   return out;
 }
 
-const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+export const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 export function parseExactOverrides(yamlText) {
   const out = new Map();

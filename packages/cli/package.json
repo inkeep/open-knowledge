@@ -51,7 +51,7 @@
     "build": "pnpm run build:cli && pnpm run build:assets",
     "test": "vitest run",
     "test:e2e:cli": "vitest run --config vitest.e2e.config.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --noEmit",
     "check:dts": "node scripts/check-published-dts.mjs",
     "verify:package": "node scripts/verify-package-surface.mjs",
     "prepublishOnly": "bash ../../scripts/check-notices-clean.sh && pnpm run build && pnpm run check:dts && pnpm run verify:package"
@@ -92,6 +92,7 @@
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
     "tsdown": "^0.22.14",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "~7.0.2"
   }
 }

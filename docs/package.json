@@ -11,7 +11,7 @@
     "start": "next start --port 3010",
     "test": "vitest run src && pnpm run test:real-source",
     "test:real-source": "vitest run --config vitest.real-source.config.mts",
-    "typecheck": "next typegen && fumadocs-mdx && tsc --noEmit",
+    "typecheck": "next typegen && fumadocs-mdx && tsrs --noEmit",
     "validate-link": "node --import tsx scripts/validate-link.ts",
     "generate:og-wordmark": "node --import tsx scripts/generate-og-wordmark.ts",
     "generate:brand-assets": "node --import tsx scripts/generate-brand-assets.ts",
@@ -66,6 +66,7 @@
     "sharp": "^0.35.3",
     "tailwind-scrollbar": "^4.0.2",
     "tailwindcss": "^4",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "~7.0.2"
   }
 }

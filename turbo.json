@@ -71,9 +71,11 @@
       "dependsOn": ["^types", "build"]
     },
     "typecheck": {
+      "env": ["TSRS_BINARY"],
       "dependsOn": ["^types", "//#typecheck:no-net-connect", "//#typecheck:lint-plugins"]
     },
     "//#typecheck:lint-plugins": {
+      "env": ["TSRS_BINARY"],
       "inputs": [
         "lint-plugins/ok-rules/**/*.ts",
         "lint-plugins/ok-rules/tsconfig.json",
@@ -82,6 +84,7 @@
       ]
     },
     "//#typecheck:no-net-connect": {
+      "env": ["TSRS_BINARY"],
       "inputs": [
         "test-support/*.ts",
         "test-support/*.mts",
@@ -104,6 +107,7 @@
       ]
     },
     "@inkeep/open-knowledge-core#check:dts": {
+      "env": ["TSRS_BINARY"],
       "dependsOn": ["build"],
       "inputs": ["tsconfig.json", "tsconfig.check.json", "tests/contract/subpath-types/consumer.ts"]
     },

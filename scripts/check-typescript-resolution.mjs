@@ -5,11 +5,77 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import { expandPackagePattern, parsePackagePatterns } from './check-override-floors.mjs';
+import {
+  EXACT_VERSION,
+  expandPackagePattern,
+  parsePackagePatterns,
+} from './check-override-floors.mjs';
 import { readJsoncOrError } from './read-jsonc.mjs';
 
 export const GATE_LINE = '7.0';
 export const SHIM_LINE = '6.0';
+export const TSRS_LINE = '7.1';
+
+const RUNS_TSRS = /(^|[\s&|;(])(?:[^\s&|;()]*\/)?tsrs(\s|$)/;
+
+export function tsrsSupportsPlatform(optionalDependencies, platform, arch) {
+  const binaries = Object.keys(optionalDependencies ?? {}).filter((name) =>
+    name.startsWith('@tsrs/'),
+  );
+  if (binaries.length === 0) return null;
+  const key = `@tsrs/${platform}-${arch}`;
+  return binaries.some((name) => name === key || name.startsWith(`${key}-`));
+}
+
+export function checkTsrsPinsAgree(members) {
+  const pinned = members.filter(
+    ({ scripts, tsrsDeclared }) =>
+      tsrsDeclared &&
+      EXACT_VERSION.test(tsrsDeclared) &&
+      Object.values(scripts ?? {}).some((body) => RUNS_TSRS.test(String(body))),
+  );
+  const versions = new Set(pinned.map(({ tsrsDeclared }) => tsrsDeclared));
+  if (versions.size <= 1) return [];
+  const listed = pinned.map(({ name, tsrsDeclared }) => `${name}@${tsrsDeclared}`).join(', ');
+  return [
+    `packages that run \`tsrs\` pin ${versions.size} different exact versions (${listed}). Every typecheck gate must run one compiler build, so pin the same version everywhere.`,
+  ];
+}
+
+export function checkTsrs({
+  name,
+  dir,
+  scripts,
+  tsrsDeclared,
+  tsrsResolved,
+  tsrsBinVersion,
+  tsrsPlatformSupported = null,
+}) {
+  const runners = Object.entries(scripts ?? {}).filter(([, body]) => RUNS_TSRS.test(String(body)));
+  if (runners.length === 0) return [];
+  const where = `${name} (${dir})`;
+  const listed = runners.map(([script]) => `\`${script}\``).join(', ');
+  if (!tsrsDeclared) {
+    return [
+      `${where} runs \`tsrs\` in ${listed} without declaring tsrs. The binary then resolves by walking up to the workspace root, so this gate checks on whatever tsrs another package happens to install.`,
+    ];
+  }
+  if (!EXACT_VERSION.test(tsrsDeclared)) {
+    return [
+      `${where} declares tsrs ${tsrsDeclared}, not an exact version. tsrs ships TypeScript dev builds, so a range lets an install move the type checker to a different compiler build without a manifest edit.`,
+    ];
+  }
+  if (tsrsResolved !== tsrsDeclared) {
+    return [`${where} declares tsrs ${tsrsDeclared} but resolves ${tsrsResolved ?? 'nothing'}.`];
+  }
+  if (tsrsPlatformSupported === false) return [];
+  if (versionLine(tsrsBinVersion) !== TSRS_LINE) {
+    return [
+      `${where} runs a \`tsrs\` reporting TypeScript ${tsrsBinVersion ?? 'nothing'}, not ${TSRS_LINE}.x.`,
+    ];
+  }
+  return [];
+}
 
 const VERSION_LINE = /^(\d+\.\d+)\./;
 
@@ -79,7 +145,7 @@ export function checkConditions({ baseConditions, declarationBuild }) {
     baseConditions[0] !== SOURCE_CONDITION
   ) {
     violations.push(
-      `the base tsconfig declares customConditions ${JSON.stringify(baseConditions ?? null)}, not ["${SOURCE_CONDITION}"]. That condition is what makes a leaf typecheck resolve a sibling to its src rather than to a dist that may not exist yet; dropping it turns every per-package \`tsc --noEmit\` into a build-first command without any of them changing.`,
+      `the base tsconfig declares customConditions ${JSON.stringify(baseConditions ?? null)}, not ["${SOURCE_CONDITION}"]. That condition is what makes a leaf typecheck resolve a sibling to its src rather than to a dist that may not exist yet; dropping it turns every per-package \`tsrs --noEmit\` typecheck into a build-first command without any of them changing.`,
     );
   }
   for (const [file, conditions] of declarationBuild.configs) {
@@ -490,10 +556,13 @@ export function collectViolations(
   emitConfigs,
   sourceSites,
   tsconfigSites = [],
+  rootMember = null,
 ) {
   return [
     ...checkRoot(root),
     ...members.flatMap((member) => checkMember(member)),
+    ...[...(rootMember ? [rootMember] : []), ...members].flatMap((member) => checkTsrs(member)),
+    ...checkTsrsPinsAgree([...(rootMember ? [rootMember] : []), ...members]),
     ...(conditions ? checkConditions(conditions) : []),
     ...checkTsconfigConditions(
       tsconfigSites,
@@ -512,12 +581,12 @@ function readJson(file) {
   }
 }
 
-function binVersionOf(dir) {
+function binVersionOf(dir, program = 'tsc') {
   const bin = path.join(
     dir,
     'node_modules',
     '.bin',
-    process.platform === 'win32' ? 'tsc.cmd' : 'tsc',
+    process.platform === 'win32' ? `${program}.cmd` : program,
   );
   if (!fs.existsSync(bin)) return null;
   try {
@@ -676,6 +745,22 @@ export function probeMember(dir, readManifest = readJson) {
       readJson(path.join(dir, 'node_modules', 'typescript', 'package.json'))?.version ?? null,
     binVersion: declaredRange ? binVersionOf(dir) : null,
     scripts: manifest.scripts ?? null,
+    ...probeTsrs(dir, manifest),
+  };
+}
+
+export function probeTsrs(dir, manifest) {
+  const tsrsDeclared = manifest?.devDependencies?.tsrs ?? manifest?.dependencies?.tsrs ?? null;
+  const resolved = readJson(path.join(dir, 'node_modules', 'tsrs', 'package.json'));
+  const tsrsPlatformSupported = resolved
+    ? tsrsSupportsPlatform(resolved.optionalDependencies, process.platform, process.arch)
+    : null;
+  return {
+    tsrsDeclared,
+    tsrsResolved: resolved?.version ?? null,
+    tsrsPlatformSupported,
+    tsrsBinVersion:
+      tsrsDeclared && tsrsPlatformSupported !== false ? binVersionOf(dir, 'tsrs') : null,
   };
 }
 
@@ -697,6 +782,12 @@ export function memberDirs(root, yamlText, onUnparsed, onEmptyPattern) {
   return [...new Set(dirs)].sort();
 }
 
+function tsrsBinNote(onTsrs) {
+  return onTsrs.some((member) => member.tsrsPlatformSupported === false)
+    ? `whose ${TSRS_LINE}.x binary line is not checked on ${process.platform}-${process.arch}, where tsrs ships no binary`
+    : `reporting ${TSRS_LINE}.x`;
+}
+
 export function evaluate({
   root,
   rootSource = null,
@@ -708,6 +799,7 @@ export function evaluate({
   emitConfigs,
   sourceSites,
   tsconfigs = { files: [], sites: [] },
+  rootMember = null,
 }) {
   const violations = collectViolations(
     rootProbe,
@@ -716,6 +808,10 @@ export function evaluate({
     emitConfigs,
     sourceSites,
     tsconfigs.sites,
+    rootMember,
+  );
+  const onTsrs = [...(rootMember ? [rootMember] : []), ...members].filter(
+    (member) => member.tsrsDeclared,
   );
   if (violations.length === 0) {
     return {
@@ -723,7 +819,7 @@ export function evaluate({
       violations,
       err: [],
       out: [
-        `check-typescript-resolution: OK at ${root}${rootSource === null ? '' : ` [from ${rootSource}]`} (root tsc ${rootProbe.binVersion} over a ${rootProbe.shimVersion} tsserver shim; ${gated.length} of ${members.length} workspace packages declare typescript and all run ${GATE_LINE}.x; base customConditions ["${SOURCE_CONDITION}"] with every one of the ${declarationBuild.configs.length} packages that publish an emitted declaration resetting it, and every one of the ${emitConfigs.length} tsdown configs among them emitting declarations through that reset config, per entry (${unbundleCensus(emitConfigs)}); ${sourceSites.length} packages declare an \`exports\` field and each resolves through the source condition first, or not at all, exactly as its publication status requires; of the ${tsconfigs.files.length} tsconfig files under the root, customConditions appears only in the base ${BASE_TSCONFIG} and in ${RESET_TSCONFIGS.join(' or ')} configs that reset it)`,
+        `check-typescript-resolution: OK at ${root}${rootSource === null ? '' : ` [from ${rootSource}]`} (root tsc ${rootProbe.binVersion} over a ${rootProbe.shimVersion} tsserver shim; ${gated.length} of ${members.length} workspace packages declare typescript and all resolve ${GATE_LINE}.x for builds and the API; ${onTsrs.length} packages, the root included, type-check on an exact tsrs pin ${tsrsBinNote(onTsrs)}; base customConditions ["${SOURCE_CONDITION}"] with every one of the ${declarationBuild.configs.length} packages that publish an emitted declaration resetting it, and every one of the ${emitConfigs.length} tsdown configs among them emitting declarations through that reset config, per entry (${unbundleCensus(emitConfigs)}); ${sourceSites.length} packages declare an \`exports\` field and each resolves through the source condition first, or not at all, exactly as its publication status requires; of the ${tsconfigs.files.length} tsconfig files under the root, customConditions appears only in the base ${BASE_TSCONFIG} and in ${RESET_TSCONFIGS.join(' or ')} configs that reset it)`,
       ],
     };
   }
@@ -734,7 +830,7 @@ export function evaluate({
     err: [
       'check-typescript-resolution: the declaration and compiler contract this workspace declares does not hold.\n',
       ...violations.map((violation) => `  ${violation}`),
-      `\nA compiler-version violation is usually a stale install: run \`pnpm install\` from ${root}, and declare typescript in any package that was added rather than letting resolution walk up to the root shim. A customConditions violation is a tsconfig edit, and the remedy differs by which one fired: the base tsconfig must declare \`customConditions: ["@inkeep/source"]\` so leaf typechecks resolve siblings from source; each declaration build config must extend that base and reset \`customConditions: []\` so the published surface resolves from built declarations instead; a declaration build config that is missing entirely must be added; and every other tsconfig under the root must carry no customConditions key of its own, since a child replaces the base array rather than adding to it. A dts violation is a tsdown edit: bind \`dts\` to \`{ tsconfig: 'tsconfig.build.json' }\` so the declaration emit runs under the reset config rather than the base. Do not answer a base-tsconfig violation by setting \`[]\` there, which is the opposite of what it asks.`,
+      `\nA compiler-version violation is usually a stale install: run \`pnpm install\` from ${root}, and declare typescript in any package that was added rather than letting resolution walk up to the root shim. A tsrs violation asks for the same exact tsrs version in every package whose scripts run \`tsrs\`: declare it with \`pnpm add -D -E tsrs@<version>\` in that package, then run \`pnpm install\`; a new tsrs release on another TypeScript line also needs TSRS_LINE raised in this script. A customConditions violation is a tsconfig edit, and the remedy differs by which one fired: the base tsconfig must declare \`customConditions: ["@inkeep/source"]\` so leaf typechecks resolve siblings from source; each declaration build config must extend that base and reset \`customConditions: []\` so the published surface resolves from built declarations instead; a declaration build config that is missing entirely must be added; and every other tsconfig under the root must carry no customConditions key of its own, since a child replaces the base array rather than adding to it. A dts violation is a tsdown edit: bind \`dts\` to \`{ tsconfig: 'tsconfig.build.json' }\` so the declaration emit runs under the reset config rather than the base. Do not answer a base-tsconfig violation by setting \`[]\` there, which is the opposite of what it asks.`,
     ],
   };
 }
@@ -835,6 +931,7 @@ function main() {
     emitConfigs,
     sourceSites,
     tsconfigs: { files: listed.files, sites: declared.sites },
+    rootMember: probeMember(root),
   });
   for (const line of out) console.log(line);
   for (const line of err) console.error(line);

@@ -12,6 +12,8 @@ import {
   checkRoot,
   checkSourceCondition,
   checkTsconfigConditions,
+  checkTsrs,
+  checkTsrsPinsAgree,
   collectViolations,
   declarationBuildConfigs,
   declarationEmitConfigs,
@@ -27,6 +29,8 @@ import {
   SHIM_LINE,
   SOURCE_CONDITION,
   sourceConditionSites,
+  TSRS_LINE,
+  tsrsSupportsPlatform,
   staleNonTscListing,
   tsconfigConditions,
   tsconfigFiles,
@@ -118,6 +122,136 @@ describe('checkRoot', () => {
 
   it('reports the wrong-line shim once rather than also reporting its tsserver', () => {
     expect(checkRoot({ ...healthyRoot, shimVersion: '7.0.2', tsserverBytes: 0 })).toHaveLength(1);
+  });
+});
+
+const tsrsMember = (over = {}) => ({
+  name: '@inkeep/open-knowledge-core',
+  dir: '/ok/packages/core',
+  scripts: { typecheck: 'tsrs --noEmit' },
+  tsrsDeclared: '0.18.0-ts7.1.0-dev.20260929',
+  tsrsResolved: '0.18.0-ts7.1.0-dev.20260929',
+  tsrsBinVersion: '7.1.0-dev.20260930.4',
+  ...over,
+});
+
+describe('checkTsrs', () => {
+  it('accepts a package that pins, resolves and runs tsrs on its TypeScript line', () => {
+    expect(checkTsrs(tsrsMember())).toEqual([]);
+  });
+
+  it('ignores a package whose scripts do not run tsrs', () => {
+    expect(
+      checkTsrs(tsrsMember({ scripts: { typecheck: 'tsc --noEmit' }, tsrsDeclared: null })),
+    ).toEqual([]);
+  });
+
+  it('does not match a lookalike that merely starts with tsrs', () => {
+    expect(
+      checkTsrs(tsrsMember({ scripts: { typecheck: 'tsrs-bench run' }, tsrsDeclared: null })),
+    ).toEqual([]);
+  });
+
+  it('catches a package that runs tsrs without declaring it', () => {
+    const violations = checkTsrs(
+      tsrsMember({ scripts: { 'typecheck:x': 'node_modules/.bin/tsrs -p x' }, tsrsDeclared: null }),
+    );
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain('runs `tsrs` in `typecheck:x` without declaring tsrs');
+  });
+
+  it('rejects a range once, naming the manifest rather than the install', () => {
+    expect(checkTsrs(tsrsMember({ tsrsDeclared: '^0.18.0-ts7.1.0-dev.20260929' }))).toEqual([
+      expect.stringContaining('not an exact version'),
+    ]);
+  });
+
+  it('catches a stale install that resolves another tsrs build than the pin', () => {
+    expect(checkTsrs(tsrsMember({ tsrsResolved: '0.17.0-ts7.1.0-dev.20260901' }))).toEqual([
+      expect.stringContaining('but resolves 0.17.0-ts7.1.0-dev.20260901'),
+    ]);
+  });
+
+  it('catches a pin that resolved to nothing at all', () => {
+    expect(checkTsrs(tsrsMember({ tsrsResolved: null }))[0]).toContain('resolves nothing');
+  });
+
+  it('leaves the binary line unchecked on a platform tsrs ships no binary for', () => {
+    expect(
+      checkTsrs(tsrsMember({ tsrsPlatformSupported: false, tsrsBinVersion: null })),
+    ).toEqual([]);
+  });
+
+  it('still checks the pin on a platform tsrs ships no binary for', () => {
+    expect(
+      checkTsrs(
+        tsrsMember({ tsrsPlatformSupported: false, tsrsDeclared: '^0.18.0-ts7.1.0-dev.20260929' }),
+      ),
+    ).toEqual([expect.stringContaining('not an exact version')]);
+  });
+
+  it('catches a bin on another TypeScript line, or one that cannot run here', () => {
+    expect(checkTsrs(tsrsMember({ tsrsBinVersion: '7.2.0-dev.1' }))[0]).toContain(
+      `not ${TSRS_LINE}.x`,
+    );
+    expect(checkTsrs(tsrsMember({ tsrsBinVersion: null }))[0]).toContain('reporting TypeScript nothing');
+  });
+});
+
+describe('checkTsrsPinsAgree', () => {
+  it('accepts packages that all pin the same exact build', () => {
+    expect(
+      checkTsrsPinsAgree([tsrsMember(), tsrsMember({ name: '@inkeep/open-knowledge-server' })]),
+    ).toEqual([]);
+  });
+
+  it('rejects packages that pin different exact builds, naming each', () => {
+    const [violation, ...rest] = checkTsrsPinsAgree([
+      tsrsMember(),
+      tsrsMember({ name: '@inkeep/open-knowledge-server', tsrsDeclared: '0.19.0-ts7.1.0-dev.20261020' }),
+    ]);
+    expect(rest).toEqual([]);
+    expect(violation).toContain('2 different exact versions');
+    expect(violation).toContain('@inkeep/open-knowledge-core@0.18.0-ts7.1.0-dev.20260929');
+    expect(violation).toContain('@inkeep/open-knowledge-server@0.19.0-ts7.1.0-dev.20261020');
+  });
+
+  it('leaves a range pin to checkTsrs, and ignores a package that does not run tsrs', () => {
+    expect(
+      checkTsrsPinsAgree([
+        tsrsMember(),
+        tsrsMember({ name: 'a', tsrsDeclared: '^0.19.0-ts7.1.0-dev.20261020' }),
+        tsrsMember({ name: 'b', tsrsDeclared: '0.19.0', scripts: { typecheck: 'tsc --noEmit' } }),
+      ]),
+    ).toEqual([]);
+  });
+});
+
+describe('tsrsSupportsPlatform', () => {
+  const published = {
+    '@tsrs/darwin-arm64': '0.18.0',
+    '@tsrs/linux-x64-gnu': '0.18.0',
+    '@tsrs/linux-x64-musl': '0.18.0',
+    '@tsrs/linux-arm64-gnu': '0.18.0',
+  };
+
+  it('finds the binary for an exact or libc-suffixed platform name', () => {
+    expect(tsrsSupportsPlatform(published, 'darwin', 'arm64')).toBe(true);
+    expect(tsrsSupportsPlatform(published, 'linux', 'x64')).toBe(true);
+  });
+
+  it('reports no binary for Windows or an Intel Mac', () => {
+    expect(tsrsSupportsPlatform(published, 'win32', 'x64')).toBe(false);
+    expect(tsrsSupportsPlatform(published, 'darwin', 'x64')).toBe(false);
+  });
+
+  it('does not match a platform that only shares a prefix', () => {
+    expect(tsrsSupportsPlatform({ '@tsrs/linux-x64gnu': '0.18.0' }, 'linux', 'x64')).toBe(false);
+  });
+
+  it('cannot say when the package lists no tsrs binaries', () => {
+    expect(tsrsSupportsPlatform({}, 'linux', 'x64')).toBeNull();
+    expect(tsrsSupportsPlatform(undefined, 'linux', 'x64')).toBeNull();
   });
 });
 
@@ -622,6 +756,47 @@ describe('evaluate wires every probe into the verdict', () => {
 
   it('counts the tsconfigs it walked in the OK line', () => {
     expect(evaluate(healthy).out.join(' ')).toContain('of the 3 tsconfig files under the root');
+  });
+
+  const rangePinned = {
+    name: 'open-knowledge',
+    dir: '/ok',
+    scripts: { 'typecheck:lint-plugins': 'tsrs --noEmit -p lint-plugins/ok-rules/tsconfig.json' },
+    tsrsDeclared: '^0.18.0-ts7.1.0-dev.20260929',
+    tsrsResolved: '0.18.0-ts7.1.0-dev.20260929',
+    tsrsBinVersion: '7.1.0-dev.20260930.4',
+  };
+
+  it('fails a range-pinned tsrs on the root package', () => {
+    const result = evaluate({ ...healthy, rootMember: rangePinned });
+
+    expect(result.code).toBe(1);
+    expect(result.violations).toEqual([expect.stringContaining('open-knowledge (/ok) declares tsrs')]);
+  });
+
+  it('fails a root and a workspace package that pin different tsrs builds', () => {
+    const member = {
+      ...healthy.members[0],
+      ...rangePinned,
+      name: '@inkeep/open-knowledge-core',
+      tsrsDeclared: '0.19.0-ts7.1.0-dev.20261020',
+      tsrsResolved: '0.19.0-ts7.1.0-dev.20261020',
+    };
+    const root = { ...rangePinned, tsrsDeclared: '0.18.0-ts7.1.0-dev.20260929' };
+    const result = evaluate({ ...healthy, members: [member], rootMember: root });
+
+    expect(result.code).toBe(1);
+    expect(result.violations).toEqual([expect.stringContaining('2 different exact versions')]);
+  });
+
+  it('fails a range-pinned tsrs on a workspace package', () => {
+    const member = { ...healthy.members[0], ...rangePinned, name: '@inkeep/open-knowledge-core' };
+    const result = evaluate({ ...healthy, members: [member] });
+
+    expect(result.code).toBe(1);
+    expect(result.violations).toEqual([
+      expect.stringContaining('@inkeep/open-knowledge-core (/ok) declares tsrs'),
+    ]);
   });
 
   it('fails when a leaf tsconfig declares customConditions of its own', () => {
