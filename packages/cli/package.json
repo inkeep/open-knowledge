@@ -76,7 +76,7 @@
     "yaml": "^2.7.1",
     "yazl": "^3.3.1",
     "yjs": "^13.6.30",
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   },
   "optionalDependencies": {
     "@parcel/watcher": "^2.5.6"

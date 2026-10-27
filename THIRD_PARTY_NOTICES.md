@@ -6005,7 +6005,7 @@ Homepage: https://github.com/sindresorhus/yoctocolors
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
-### `zod@4.4.3`
+### `zod@4.6.7`
 Homepage: https://zod.dev
 
 Copyright (c) 2025 Colin McDonnell

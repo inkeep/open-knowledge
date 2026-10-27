@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { z } from 'zod';
 import {
   BacklinkCountsSuccessSchema,
   BacklinkEntrySchema,
@@ -752,5 +753,14 @@ describe('LinkGraphSuccessSchema', () => {
         links: [{ source: 'doc:a', target: 'ext:https://example.com' }],
       }).success,
     ).toBe(true);
+  });
+});
+
+describe('hot list schemas under zod/compile', () => {
+  test.each([
+    ['DocumentListSuccessSchema', DocumentListSuccessSchema],
+    ['LinkGraphSuccessSchema', LinkGraphSuccessSchema],
+  ])('%s compiles as a whole schema in strict mode', (_name, schema) => {
+    expect(() => z.compile(schema, { strict: true })).not.toThrow();
   });
 });

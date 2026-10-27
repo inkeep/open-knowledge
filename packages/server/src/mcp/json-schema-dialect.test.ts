@@ -24,6 +24,38 @@ function buildServer(): McpServer {
   return server;
 }
 
+function buildNullableServer(): McpServer {
+  const server = new McpServer({ name: 'json-schema-dialect-test', version: '0.0.0' });
+  server.registerTool(
+    'nullable_like',
+    {
+      description: 'Nullable fields at the top level, inside an object and inside an array item.',
+      inputSchema: { cursor: z.string().nullable() },
+      outputSchema: {
+        label: z.string().nullable(),
+        nested: z.object({ count: z.number().nullable() }),
+        items: z.array(z.string().nullable()),
+      },
+    },
+    async () => ({
+      content: [{ type: 'text' as const, text: 'ok' }],
+      structuredContent: { label: null, nested: { count: null }, items: [null] },
+    }),
+  );
+  return server;
+}
+
+function typeArrayPaths(node: unknown, path = ''): string[] {
+  if (typeof node !== 'object' || node === null) return [];
+  if (Array.isArray(node))
+    return node.flatMap((entry, index) => typeArrayPaths(entry, `${path}[${index}]`));
+  return Object.entries(node).flatMap(([key, value]) =>
+    key === 'type' && Array.isArray(value)
+      ? [path]
+      : typeArrayPaths(value, path ? `${path}.${key}` : key),
+  );
+}
+
 async function listToolsOverWire(server: McpServer) {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: 'test-client', version: '0.0.0' });
@@ -50,7 +82,7 @@ describe('installJsonSchemaDialect', () => {
     expect(tools[0]?.outputSchema?.$schema).toBe(JSON_SCHEMA_DIALECT_2020_12);
   });
 
-  test('leaves the rest of the schema untouched', async () => {
+  test('leaves a schema with no type arrays unchanged apart from $schema', async () => {
     const before = (await listToolsOverWire(buildServer())).tools[0];
     const server = buildServer();
     installJsonSchemaDialect(server);
@@ -62,6 +94,37 @@ describe('installJsonSchemaDialect', () => {
     };
     expect(strip(after?.inputSchema)).toEqual(strip(before?.inputSchema));
     expect(strip(after?.outputSchema)).toEqual(strip(before?.outputSchema));
+  });
+
+  test('the SDK serves nullable fields as type arrays on Zod 4.6, which the split guards', async () => {
+    const { tools } = await listToolsOverWire(buildNullableServer());
+    expect(typeArrayPaths(tools[0]?.inputSchema)).not.toEqual([]);
+    expect(typeArrayPaths(tools[0]?.outputSchema)).not.toEqual([]);
+  });
+
+  test('serves every nullable field as anyOf of bare types, nested ones included', async () => {
+    const server = buildNullableServer();
+    installJsonSchemaDialect(server);
+
+    const { tools } = await listToolsOverWire(server);
+    const input = tools[0]?.inputSchema as { properties: Record<string, unknown> };
+    const output = tools[0]?.outputSchema as {
+      properties: {
+        label: unknown;
+        nested: { properties: { count: unknown } };
+        items: { items: unknown };
+      };
+    };
+    expect(typeArrayPaths(input)).toEqual([]);
+    expect(typeArrayPaths(output)).toEqual([]);
+    expect(input.properties.cursor).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+    expect(output.properties.label).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+    expect(output.properties.nested.properties.count).toEqual({
+      anyOf: [{ type: 'number' }, { type: 'null' }],
+    });
+    expect(output.properties.items.items).toEqual({
+      anyOf: [{ type: 'string' }, { type: 'null' }],
+    });
   });
 
   test('is idempotent', async () => {

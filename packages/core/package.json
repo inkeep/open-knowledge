@@ -915,7 +915,7 @@
     "vfile-message": "^4.0.3",
     "yaml": "^2.7.1",
     "yjs": "^13.6.30",
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   },
   "scripts": {
     "build": "node scripts/build-output.mjs build",

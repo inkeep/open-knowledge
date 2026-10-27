@@ -16,4 +16,6 @@ if (helperOperation === 'get') {
 if (helperOperation !== null) {
   process.exit(await handleCredentialUpdate(helperOperation, process.stdin));
 }
+
+await import('zod/compile');
 await import('./cli.ts');

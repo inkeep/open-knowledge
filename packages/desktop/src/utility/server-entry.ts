@@ -114,6 +114,10 @@ export interface SetupUtilityDeps {
   readInitCounters?: () => UtilityInitCounters;
 }
 
+function afterZodCompile<T>(load: () => Promise<T>): Promise<T> {
+  return import('zod/compile').then(load);
+}
+
 function readOwnInitCounters(): UtilityInitCounters {
   const cpu = process.cpuUsage();
   return {
@@ -231,8 +235,8 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
       markInitPhase('init-received');
       const [server, cli, serverNamespace] = await Promise.all([
         deps.importServer(),
-        import('@inkeep/open-knowledge'),
-        import('@inkeep/open-knowledge-server'),
+        afterZodCompile(() => import('@inkeep/open-knowledge')),
+        afterZodCompile(() => import('@inkeep/open-knowledge-server')),
       ]);
       markInitPhase('imports-resolved');
       cli.registerWindowsProcessStartReader(serverNamespace.getLogger('process-start'));
@@ -447,9 +451,9 @@ export async function resolveDesktopServerRuntime(projectDir: string): Promise<{
   serverRuntime: ServerRuntimeConfig;
 }> {
   const [{ loadConfig }, { resolveServerRuntimeConfig }, { ConfigSchema }] = await Promise.all([
-    import('@inkeep/open-knowledge'),
-    import('@inkeep/open-knowledge-core'),
-    import('@inkeep/open-knowledge-server'),
+    afterZodCompile(() => import('@inkeep/open-knowledge')),
+    afterZodCompile(() => import('@inkeep/open-knowledge-core')),
+    afterZodCompile(() => import('@inkeep/open-knowledge-server')),
   ]);
   let config: Config;
   let configValid: boolean;
@@ -481,7 +485,9 @@ async function defaultPrepareBootEnvironment(
   onPhase?: (phase: UtilityInitPhase) => void,
 ): Promise<PreparedBootEnvironment> {
   const projectDir = ipcOpts.projectDir ?? ipcOpts.contentDir;
-  const { ensureProjectGit, initContent } = await import('@inkeep/open-knowledge-server');
+  const { ensureProjectGit, initContent } = await afterZodCompile(
+    () => import('@inkeep/open-knowledge-server'),
+  );
 
   const degradedHints: string[] = [];
   if (ipcOpts.didEnsureGit !== true) {
@@ -543,7 +549,7 @@ if ((process as NodeJS.Process & { parentPort?: unknown }).parentPort) {
   setupUtility({
     parentPort: (process as NodeJS.Process & { parentPort: SetupUtilityDeps['parentPort'] })
       .parentPort,
-    importServer: () => import('@inkeep/open-knowledge-server'),
+    importServer: () => afterZodCompile(() => import('@inkeep/open-knowledge-server')),
     exit: (code) => process.exit(code),
     parentPid: process.ppid,
     killProbe: (pid, signal) => {

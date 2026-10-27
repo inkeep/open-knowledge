@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { z } from 'zod';
 import {
   CreateFolderRequestSchema,
   CreateFolderSuccessSchema,
@@ -362,5 +363,11 @@ describe('RollbackSuccessSchema', () => {
         summary: { value: 'Restored to abc' },
       }).success,
     ).toBe(true);
+  });
+});
+
+describe('PagesSuccessSchema under zod/compile', () => {
+  test('compiles as a whole schema in strict mode', () => {
+    expect(() => z.compile(PagesSuccessSchema, { strict: true })).not.toThrow();
   });
 });
