@@ -4,7 +4,15 @@ import { GitHubIcon } from '@/components/icons/github';
 import { XIcon } from '@/components/icons/x';
 import { InkeepLogo } from '@/components/inkeep-logo';
 import { BRAND_ROUTE } from '@/lib/brand-assets';
-import { CHANGELOG_ROUTE, DISCORD_URL, GITHUB_URL, X_URL } from '@/lib/site';
+import {
+  CHANGELOG_ROUTE,
+  DISCORD_URL,
+  GITHUB_URL,
+  LEGAL_ROUTE,
+  PRIVACY_POLICY_ROUTE,
+  TERMS_OF_SERVICE_ROUTE,
+  X_URL,
+} from '@/lib/site';
 import { DotTexture } from './dot-texture';
 
 const socialLinks = [
@@ -14,14 +22,11 @@ const socialLinks = [
 ];
 
 const legalLinks = [
-  { href: CHANGELOG_ROUTE, label: 'Changelog', external: false },
-  { href: BRAND_ROUTE, label: 'Brand', external: false },
-  {
-    href: 'https://inkeep.com/policies/terms-of-service',
-    label: 'Terms of Service',
-    external: true,
-  },
-  { href: 'https://inkeep.com/policies/privacy', label: 'Privacy', external: true },
+  { href: CHANGELOG_ROUTE, label: 'Changelog' },
+  { href: BRAND_ROUTE, label: 'Brand' },
+  { href: LEGAL_ROUTE, label: 'Legal' },
+  { href: TERMS_OF_SERVICE_ROUTE, label: 'Terms of Service' },
+  { href: PRIVACY_POLICY_ROUTE, label: 'Privacy' },
 ];
 
 export function SiteFooter() {
@@ -53,14 +58,12 @@ export function SiteFooter() {
           <span>Made by</span>
           <InkeepLogo className="w-20" />
         </Link>
-        <div className="flex items-center justify-center gap-6 text-sm text-slide-muted min-[24rem]:justify-end">
-          {legalLinks.map(({ href, label, external }) => (
+        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-slide-muted min-[24rem]:justify-end">
+          {legalLinks.map(({ href, label }) => (
             <Link
               key={href}
               href={href}
-              target={external ? '_blank' : undefined}
-              rel={external ? 'noreferrer' : undefined}
-              className="rounded-sm outline-none transition-colors hover:text-slide-text focus-visible:ring-2 focus-visible:ring-slide-accent focus-visible:ring-offset-2"
+              className="whitespace-nowrap rounded-sm outline-none transition-colors hover:text-slide-text focus-visible:ring-2 focus-visible:ring-slide-accent focus-visible:ring-offset-2"
             >
               {label}
             </Link>
