@@ -79,7 +79,7 @@ Shell scripts are declared in scope by `no-comments.config.jsonc`, but the sweep
 ## Public Mirror Rules
 
 - This repo is generated from an allowlist. Do not rely on hidden source-only folders being present.
-- Maintainers review public PRs that are small fixes or link an accepted issue; others may be closed without review (see the Pull requests section of `CONTRIBUTING.md`). A detailed issue is the preferred contribution. Accepted changes sync back here automatically. A PR may close rather than show as merged; that is expected for this mirror.
+- Do not open pull requests here. Report bugs, feature requests and translation corrections as detailed issues using `CONTRIBUTING.md`. Maintainers publish changes through the mirror; its sync pull requests are automation.
 - Top-level public docs such as `README.md`, `CONTRIBUTING.md`, and `AGENTS.md` are overlay files. Keep them public-safe and standalone.
 - Do not add secrets, private customer context, internal-only specs, local paths, or generated debug artifacts.
 - Keep dependency updates paired with `pnpm-lock.yaml`. Run `pnpm run notices` when third-party notices may change.

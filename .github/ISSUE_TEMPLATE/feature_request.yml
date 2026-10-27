@@ -31,7 +31,7 @@ body:
     id: code-pointers
     attributes:
       label: Relevant code
-      description: Files, functions or links to lines you think are involved, with the change described in words. Please don't paste a full patch. If you want to write the change yourself, say so here and wait for a maintainer to accept the issue (a `help wanted` label or an explicit go-ahead for a pull request).
+      description: Files, functions or links to lines you think are involved, with the change described in words. Please don't paste a full patch or open a pull request.
     validations:
       required: false
   - type: dropdown

@@ -33,13 +33,11 @@ const OTHER_SECRETS = [
   'LINUX_REPO_R2_SECRET_ACCESS_KEY',
   'OK_RELEASE_BRIDGE_APP_ID',
   'OK_RELEASE_BRIDGE_APP_PRIVATE_KEY',
-  'OSS_SYNC_APP_ID',
-  'OSS_SYNC_APP_PRIVATE_KEY',
   'SLACK_RELEASES_WEBHOOK_URL',
   'SLACK_WEBHOOK_URL',
 ];
 const SIGNING_ENVIRONMENT = 'release-signing';
-const OTHER_ENVIRONMENTS = ['inkeep-oss-sync'];
+const OTHER_ENVIRONMENTS = [];
 const MAIN_ONLY = "${{ github.ref == 'refs/heads/main' && 'release-signing' || '' }}";
 const EXPECTED = {
   'desktop-build-win-linux.yml#build-windows': MAIN_ONLY,
@@ -165,6 +163,21 @@ describe('release-signing environment', () => {
     ],
     ['an unclassified secret', withJob(step('${{ secrets.NEW_SIGNING_KEY }}')), 'classify it'],
     [
+      'a retired import app ID',
+      withJob(step('${{ secrets.OSS_SYNC_APP_ID }}')),
+      'reads secret OSS_SYNC_APP_ID',
+    ],
+    [
+      'a retired import private key',
+      withJob(step('${{ secrets.OSS_SYNC_APP_PRIVATE_KEY }}')),
+      'reads secret OSS_SYNC_APP_PRIVATE_KEY',
+    ],
+    [
+      'a retired import environment',
+      withJob({ environment: 'inkeep-oss-sync', steps: [] }),
+      'not in OTHER_ENVIRONMENTS',
+    ],
+    [
       'a computed environment name',
       withJob({ environment: '${{ vars.SIGNING_ENV }}', steps: [] }),
       'computes its environment name',
@@ -187,7 +200,6 @@ describe('release-signing environment', () => {
     ['GITHUB_TOKEN in another casing', withJob(step('${{ Secrets.github_token }}'))],
     ['a classified non-signing secret', withJob(step("${{ secrets['SLACK_WEBHOOK_URL'] }}"))],
     ['a property named secrets on another context', withJob(step('${{ inputs.secrets }}'))],
-    ['an allowlisted environment', withJob({ environment: 'inkeep-oss-sync', steps: [] })],
   ])('a fabricated job using %s keeps the contract', (_form, entries) => {
     expect(contractProblems(entries)).toEqual([]);
   });

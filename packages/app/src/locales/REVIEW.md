@@ -13,8 +13,7 @@ have not had is a reader — someone who reads the language telling us the words
 backwards: the people who could tell us a translation was wrong were the same people who could
 never encounter it, because it was not offered to them. So the eleven ship, they ship labelled as
 machine-translated where that is what they are, and corrections come back through
-[the translation page](https://openknowledge.ai/docs/contribute/translations) as ordinary pull
-requests.
+[the translation page](https://openknowledge.ai/docs/contribute/translations) as detailed issues.
 
 What that does not do is let us claim they are reviewed. The table below is the whole of that
 claim, and most rows say `unreviewed` for as long as that is true.
@@ -129,8 +128,8 @@ review than the packet. The packet exists so that not being able to do it is not
 
 ### 2. Send it out
 
-Community translation runs through public pull requests against `inkeep/open-knowledge`. Attach
-the packet, or paste it into the issue or PR thread. Ask for what the packet asks for: a list of
+Community translation feedback goes through detailed issues in `inkeep/open-knowledge`. Attach
+the packet, or paste it into the issue thread. Ask for what the packet asks for: a list of
 numbered strings to change, and what they should say.
 
 ### 3. Land what comes back

@@ -1,11 +1,10 @@
 # Contributing to OpenKnowledge
 
-Thanks for helping. The most useful thing you can send us is a detailed issue, not a pull request.
+Thanks for helping. We do not accept pull requests. Please [file a detailed issue](https://github.com/inkeep/open-knowledge/issues/new/choose) so we can understand the problem and consider it for our work.
 
 - **Found a bug or have an idea?** [Open an issue](https://github.com/inkeep/open-knowledge/issues/new/choose). This is the main way to contribute; see [Write an issue we can build from](#write-an-issue-we-can-build-from).
 - **Question or setup help?** Ask in [Discord](https://discord.gg/VRKk2EaGHN).
 - **Read a language other than English?** Most of our interface translations are machine-translated and have never been read by a native speaker, and we ship them anyway rather than hide them from the people who could fix them. Correcting one is the most useful thing you can do for it — see [Translate the interface](https://openknowledge.ai/docs/contribute/translations).
-- **Want to write the code yourself?** Read [Pull requests](#pull-requests) before you start.
 
 ## Why issues come first
 
@@ -18,15 +17,14 @@ Use the bug report or feature request form. The issues we can act on fastest:
 - **Start with the problem, not the solution.** Say what you were doing, what happened, and why it matters to you.
 - **For a bug,** give steps that reproduce it, your version and platform, and any logs or screenshots.
 - **For a feature,** describe what you would see if it worked. That tells us when it is done.
-- **Point at the code if you found it.** A file, a function or a link to a line helps. Describe the fix in words.
-- **Don't paste a full patch.** Describe the fix in words. If you want to write it yourself, say so in the issue; once a maintainer accepts it (see [Pull requests](#pull-requests)), open a pull request so the change comes with the [Contributor License Agreement](./CLA.md).
+- **Point at the code if you found it.** A file, a function or a link to a line helps.
+- **Describe a proposed fix in words.** Please do not paste a full patch or open a pull request.
 
-When a fix ships, we close your issue, and our release automation usually comments on it with the version the fix shipped in.
+Filing an issue does not commit us to building the change. When a fix ships, we close your issue, and our release automation usually comments on it with the version the fix shipped in.
 
 ## How credit works
 
-- **Code contributors** are people whose pull requests we accept. The commit that lands credits you as a co-author, which makes you a contributor to this repository. Code contributions require the CLA.
-- **Issue authors** are credited on the issue itself, which stays linked to the problem you found and is closed when we fix it. Filing an issue does not make you a code contributor, and it does not require the CLA.
+Issue authors are credited on the issue itself, which stays linked to the problem they found. Filing an issue does not require a Contributor License Agreement. Earlier code contributions keep their existing attribution.
 
 ## Development setup
 
@@ -102,25 +100,7 @@ If lint stops you, the diagnostic names the class of comment, the fix, and links
 
 ## Pull requests
 
-We still accept pull requests, on these terms:
-
-- **Small fixes are welcome any time:** typos, broken links, documentation corrections and translation fixes.
-- **Anything larger needs an accepted issue first.** Open the issue and wait for a maintainer to label it `help wanted` or say in the thread that we would take a pull request. Link that issue in your PR description.
-- **A pull request without an accepted issue may be closed without review.** If the idea is good, we track it as an issue and build it ourselves.
-- **You are responsible for every line.** AI-assisted code is fine when you understand it, have run it, and can answer questions about it. We close pull requests that read as unreviewed AI output.
-
-First-time contributors are asked to sign our [Contributor License Agreement](./CLA.md) — a bot comments a one-click signing link on your PR (Inkeep employees are exempt automatically). Please follow the checklist in our [Pull Request Template](./.github/PULL_REQUEST_TEMPLATE.md):
-
-- Keep PRs focused and small enough to review.
-- Add tests — or a clear manual-verification note — for behavior changes.
-- Write no code comments outside the allowlist above — `pnpm run lint` fails on the rest.
-- Add a changeset by running `pnpm run changeset` if your pull request changes user-facing or programmatic behavior. Open Knowledge is pre-1.0, so a breaking change rides as `minor` and a `major` changeset is rejected — reaching 1.0.0 is a team decision, not one a single changeset makes.
-- Run `pnpm run check` and `pnpm run check:drift:guards` and confirm both pass.
-- Commit `pnpm-lock.yaml` when dependencies change, and run `pnpm run notices` to refresh `THIRD_PARTY_NOTICES.md` if third-party packages changed.
-- Never include secrets, credentials, customer data, or local machine paths.
-- Enable **Allow edits from maintainers** so reviewers can push fixes to your branch.
-
-A maintainer reviews pull requests that are small fixes or link an accepted issue; if you don't hear back within a few business days, a friendly nudge on the thread is welcome. Accepted changes land on `main` with your authorship preserved (your PR may show as closed rather than merged).
+We do not accept pull requests, including small fixes and translation changes. Please use the [issue forms](https://github.com/inkeep/open-knowledge/issues/new/choose) and the guidance above instead.
 
 ## License
 

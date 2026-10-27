@@ -123,8 +123,7 @@ the `{ts,tsx,mjs}` paths it names. In the public repository none of that lane ex
 commit-time lane replaces it: the mirror ships the rule but not the sweep, the codemod or the hook,
 and it ships no `.husky/` directory either, so `prepare` returns without installing a git hook and
 the `lint-staged` block the mirrored `package.json` still carries is never invoked. There the rule
-is reached by running `pnpm run lint` — or `pnpm run check`, which begins with it — and by the
-monorepo-side gate a bridged pull request reaches.
+is reached by running `pnpm run lint` or `pnpm run check`, which begins with it.
 
 Where the hook fails open for a reason the author can act on — for instance a scope config it
 cannot read, a valve that suppressed a deny, or an evaluator that threw or crashed — it
@@ -532,9 +531,8 @@ The matcher is hand-rolled for the same reason the two lexers are, and the reaso
 rather than a preference: `scope.mjs` sits inside the write-time hook's import closure, which
 `scripts/no-comments-hook.test.mjs` pins to `node:` built-ins and this directory's own modules, so
 nothing it reaches may import an installed package. Like the hook itself, that test is
-upstream-only and no mirrored test replaces it, so on a public clone the constraint is a rule
-without a gate: adding an installed dependency here reds nothing locally and surfaces only when
-the change is bridged back. The named analog is `picomatch` — zero runtime
+upstream-only and no mirrored test replaces it, so a public clone has no local test for this
+constraint; maintainers validate it upstream. The named analog is `picomatch` — zero runtime
 dependencies, `makeRe(glob)` returning a `RegExp` — already resolved in this workspace's lockfile,
 so availability is not what rules it out. It is also the referent the refusals measure against:
 where `expandBraces` says "the reference expanders", the expanders are `picomatch` and

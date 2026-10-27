@@ -1,3 +1,5 @@
+> Historical agreement for earlier code contributions. OpenKnowledge no longer accepts pull requests; please [file a detailed issue](./CONTRIBUTING.md#write-an-issue-we-can-build-from). This agreement is retained as a record, and no signature is requested for issues.
+
 > Based on the Apache Individual Contributor License Agreement (ICLA) V2.2, with Inkeep, Inc. as the grantee. It is a copyright and patent **license**, not an assignment, so you keep full ownership of your contributions. The license-grant and representation clauses (sections 1 to 8) are the verbatim Apache text; the Foundation's nonprofit-specific covenant and the paper contact-form fields are omitted.
 
 # Inkeep Individual Contributor License Agreement
@@ -25,7 +27,3 @@ You accept and agree to the following terms and conditions for Your present and 
 **7.** Should You wish to submit work that is not Your original creation, You may submit it to Inkeep separately from any Contribution, identifying the complete details of its source and of any license or other restriction (including, but not limited to, related patents, trademarks, and license agreements) of which You are personally aware, and conspicuously marking the work as "Submitted on behalf of a third-party: [named here]".
 
 **8.** You agree to notify Inkeep of any facts or circumstances of which You become aware that would make these representations inaccurate in any respect.
-
----
-
-**How to sign.** Open a pull request on the public repository. The CLA-assistant bot will comment with a link to sign this Agreement — a one-time, roughly 30-second authenticated click recorded against your GitHub identity that covers all of your future contributions. Inkeep employees and project bots are allowlisted and are not prompted.
