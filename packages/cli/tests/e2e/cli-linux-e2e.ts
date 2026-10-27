@@ -1,5 +1,6 @@
 import { type ChildProcess, execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -15,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { getMachineId } from '@inkeep/open-knowledge-server';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, onTestFinished, test } from 'vitest';
 import {
   legacyServerLock,
   lockWrittenBeforeProcessStarted,
@@ -23,6 +24,10 @@ import {
   startOwnedProcess,
   stopOwnedProcess,
 } from '../../../../test-support/owned-process.test-helper.ts';
+import {
+  type CommandResult,
+  spawnUnderOwnerLifeline,
+} from '../../../../test-support/owner-lifeline.ts';
 import { installPackedCli } from './packed-install.test-helper';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -63,10 +68,17 @@ function progressOf(acquisition: Acquisition, status: string) {
   return acquisition?.progress.get(status) ?? new Set<string>();
 }
 
+interface CliRunResult {
+  status: number | null;
+  signal: NodeJS.Signals | null;
+  stdout: string;
+  stderr: string;
+}
+
 function runOk(
   args: string[],
   opts: { cwd?: string; timeoutMs?: number; env?: NodeJS.ProcessEnv } = {},
-): { status: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string } {
+): CliRunResult {
   const r = spawnSync(NODE, [H.cliPath, ...args], {
     cwd: opts.cwd ?? H.contentDir,
     timeout: opts.timeoutMs ?? 30_000,
@@ -123,6 +135,106 @@ function readLockPort(): number | null {
   } catch {
     return null;
   }
+}
+
+const SERVER_INFO_RECORD = /^\[\d{2}:\d{2}:\d{2}\] INFO \((?:project-git|skills)\): /m;
+
+function outputOf(result: CliRunResult): string {
+  return `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`;
+}
+
+function isolatedCliRunner(prefix: string) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+  const fakeHome = join(root, 'home');
+  const gitHome = join(root, 'git-home');
+  let ownedRun: ReturnType<typeof spawnUnderOwnerLifeline> | undefined;
+  let outputClosed: Promise<void> = Promise.resolve();
+  let commandResult: Promise<CommandResult | null> = Promise.resolve(null);
+  onTestFinished(async () => {
+    if (
+      ownedRun !== undefined &&
+      ownedRun.child.exitCode === null &&
+      ownedRun.child.signalCode === null &&
+      !ownedRun.child.stdin.destroyed
+    ) {
+      ownedRun.child.stdin.end();
+    }
+    await outputClosed;
+    await commandResult;
+    rmSync(root, { recursive: true, force: true });
+  });
+  mkdirSync(fakeHome, { recursive: true });
+  mkdirSync(gitHome, { recursive: true });
+  const fixtureGitEnv: NodeJS.ProcessEnv = {
+    ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_'))),
+    HOME: gitHome,
+    GIT_CONFIG_GLOBAL: '/dev/null',
+    GIT_CONFIG_SYSTEM: '/dev/null',
+    GIT_CONFIG_NOSYSTEM: '1',
+  };
+  const fixtureGit = (args: string[], cwd = root) => {
+    execFileSync('git', args, { cwd, env: fixtureGitEnv, stdio: 'ignore' });
+  };
+  const ghShim = join(root, 'gh');
+  writeFileSync(ghShim, '#!/bin/sh\nprintf token-for-e2e\n', 'utf8');
+  chmodSync(ghShim, 0o755);
+  mkdirSync(join(fakeHome, '.ok'), { recursive: true });
+  writeFileSync(
+    join(fakeHome, '.ok', 'skill-state.yml'),
+    'schema: 1\nbundles:\n  open-knowledge-discovery:\n    enabled: true\n    decidedAt: 2026-01-01T00:00:00.000Z\n',
+    'utf8',
+  );
+
+  const runCli = async (
+    args: string[],
+    cwd: string,
+    scenarioEnv: NodeJS.ProcessEnv = {},
+  ): Promise<CliRunResult> => {
+    const owned = spawnUnderOwnerLifeline(NODE, [H.cliPath, '--log-level', 'info', ...args], {
+      cwd,
+      env: {
+        ...Object.fromEntries(
+          Object.entries(fixtureGitEnv).filter(([key]) => !key.startsWith('GIT_')),
+        ),
+        HOME: fakeHome,
+        XDG_CONFIG_HOME: join(fakeHome, '.config'),
+        PATH: `${root}:${fixtureGitEnv.PATH ?? ''}`,
+        DBUS_SESSION_BUS_ADDRESS: '',
+        XDG_RUNTIME_DIR: '',
+        DO_NOT_TRACK: '1',
+        LOG_LEVEL: 'info',
+        OK_CONSOLE_LEVEL: 'info',
+        GIT_CONFIG_NOSYSTEM: '1',
+        ...scenarioEnv,
+      },
+    });
+    ownedRun = owned;
+    let stdout = '';
+    let stderr = '';
+    owned.child.stdout.setEncoding('utf8').on('data', (chunk) => {
+      stdout += chunk;
+    });
+    owned.child.stderr.setEncoding('utf8').on('data', (chunk) => {
+      stderr += chunk;
+    });
+    outputClosed = new Promise<void>((resolve, reject) => {
+      owned.child.once('error', reject);
+      owned.child.once('close', () => resolve());
+    });
+    commandResult = owned.commandResult;
+    await outputClosed;
+    const command = await commandResult;
+    const result: CliRunResult = {
+      status: command?.code ?? null,
+      signal: command?.signal ?? null,
+      stdout,
+      stderr,
+    };
+    expect(result.status, `signal=${result.signal}\n${outputOf(result)}`).toBe(0);
+    return result;
+  };
+
+  return { root, fixtureGit, runCli };
 }
 
 beforeAll(async () => {
@@ -219,6 +331,61 @@ describe(`CLI Linux e2e (${SUT_MODE} SUT)`, () => {
     const r = runOk(['init', '--no-mcp'], { timeoutMs: 60_000 });
     expect(r.status).toBe(0);
     expect(existsSync(join(H.contentDir, '.ok'))).toBe(true);
+  });
+
+  test('2c. ok clone --json keeps fresh clone stdout parseable as JSONL', async () => {
+    const isolated = isolatedCliRunner('ok-clone-jsonl-fresh-');
+    const run = join(isolated.root, 'run');
+    mkdirSync(run, { recursive: true });
+    isolated.fixtureGit(['init', '-q']);
+    isolated.fixtureGit(['config', 'maintenance.auto', 'false']);
+    isolated.fixtureGit(['config', 'user.email', 'e2e@ok.test']);
+    isolated.fixtureGit(['config', 'user.name', 'OK E2E']);
+
+    const source = join(isolated.root, 'source');
+    const bare = join(isolated.root, 'remote.git');
+    const cloneUrl = 'https://127.0.0.1/owner/repo';
+    mkdirSync(source, { recursive: true });
+    isolated.fixtureGit(['init', '-q', '--initial-branch=main'], source);
+    isolated.fixtureGit(['config', 'maintenance.auto', 'false'], source);
+    isolated.fixtureGit(['config', 'user.email', 'e2e@ok.test'], source);
+    isolated.fixtureGit(['config', 'user.name', 'OK E2E'], source);
+    writeFileSync(join(source, 'README.md'), '# Clone fixture\n', 'utf8');
+    isolated.fixtureGit(['add', 'README.md'], source);
+    isolated.fixtureGit(['commit', '-q', '-m', 'fixture'], source);
+    isolated.fixtureGit(['-c', 'maintenance.auto=false', 'clone', '-q', '--bare', source, bare]);
+    isolated.fixtureGit(['config', 'maintenance.auto', 'false'], bare);
+
+    const result = await isolated.runCli(['clone', cloneUrl, '../clone', '--json'], run, {
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: `url.file://${bare}.insteadOf`,
+      GIT_CONFIG_VALUE_0: cloneUrl,
+    });
+
+    expect(result.stderr, outputOf(result)).toMatch(SERVER_INFO_RECORD);
+    const lines = result.stdout.endsWith('\n')
+      ? result.stdout.slice(0, -1).split('\n')
+      : result.stdout.split('\n');
+    expect(lines.length).toBeGreaterThan(0);
+    for (const [index, line] of lines.entries()) {
+      expect(
+        () => JSON.parse(line),
+        `stdout line ${index + 1}: ${line}\n${outputOf(result)}`,
+      ).not.toThrow();
+    }
+  });
+
+  test('2d. ok init --no-mcp --json keeps stdout parseable as JSON', async () => {
+    const isolated = isolatedCliRunner('ok-init-json-');
+
+    const result = await isolated.runCli(['init', '--no-mcp', '--json'], isolated.root);
+
+    expect(result.stderr, outputOf(result)).toMatch(SERVER_INFO_RECORD);
+    let report: { projectRoot?: string } | undefined;
+    expect(() => {
+      report = JSON.parse(result.stdout) as { projectRoot?: string };
+    }, outputOf(result)).not.toThrow();
+    expect(report?.projectRoot).toBe(isolated.root);
   });
 
   test('3. ok start boots, writes server.lock with a port, and serves HTTP', async () => {

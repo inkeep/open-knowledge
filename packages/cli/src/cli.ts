@@ -19,7 +19,12 @@ import {
   formatIgnoredCommittedKey,
   humanFormat,
 } from '@inkeep/open-knowledge-core';
-import { type Config, ConfigSchema, trustSystemCertificates } from '@inkeep/open-knowledge-server';
+import {
+  type Config,
+  ConfigSchema,
+  loggerFactory,
+  trustSystemCertificates,
+} from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { getCliLogger, initCliLogger } from './cli-logger.ts';
 import { auditCommand } from './commands/audit.ts';
@@ -77,7 +82,7 @@ program
   )
   .option('--no-color', 'Disable color output')
   .option('--color', 'Force color output')
-  .hook('preAction', (thisCommand) => {
+  .hook('preAction', (thisCommand, actionCommand) => {
     const opts = thisCommand.opts();
     const cwd = opts.cwd as string | undefined;
     if (cwd !== undefined) {
@@ -88,6 +93,12 @@ program
       const level = String(program.opts().logLevel);
       process.env.LOG_LEVEL = level;
       process.env.OK_CONSOLE_LEVEL = level;
+    }
+
+    const actionOpts = actionCommand.opts<{ json?: boolean }>();
+    const actionName = actionCommand.name();
+    if ((actionName === 'clone' || actionName === 'init') && actionOpts.json === true) {
+      loggerFactory.configure({ pinoConfig: { consoleDestination: 2 } });
     }
 
     const subcommandName = thisCommand.args?.[0];
