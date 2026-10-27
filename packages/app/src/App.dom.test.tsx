@@ -3,9 +3,9 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
+  clearHashWithoutNavigation,
   hashFromDocName,
   pushHashWithoutNavigation,
-  replaceHashWithoutNavigation,
 } from '@/lib/doc-hash';
 import { matchesKeyboardShortcut, type ShortcutEventLike } from '@/lib/keyboard-shortcuts';
 import {
@@ -717,8 +717,8 @@ describe('App runtime wiring', () => {
       );
     });
 
-    pushHashWithoutNavigation('#/page-b');
-    pushHashWithoutNavigation('#/page-c');
+    pushHashWithoutNavigation('#/page-b', 'permanent');
+    pushHashWithoutNavigation('#/page-c', 'permanent');
     openTargetTransitionMock.mockClear();
 
     window.history.back();
@@ -789,8 +789,8 @@ describe('App runtime wiring', () => {
       );
     });
 
-    pushHashWithoutNavigation('#/page-b');
-    pushHashWithoutNavigation('#/page-c');
+    pushHashWithoutNavigation('#/page-b', 'permanent');
+    pushHashWithoutNavigation('#/page-c', 'permanent');
     openTargetTransitionMock.mockClear();
 
     window.history.back();
@@ -843,8 +843,8 @@ describe('App runtime wiring', () => {
       );
     });
 
-    pushHashWithoutNavigation('#/page-b');
-    pushHashWithoutNavigation('#/page-c');
+    pushHashWithoutNavigation('#/page-b', 'permanent');
+    pushHashWithoutNavigation('#/page-c', 'permanent');
     loading = true;
     view.rerender(<App />);
     openTargetTransitionMock.mockClear();
@@ -909,6 +909,43 @@ describe('App runtime wiring', () => {
     });
   });
 
+  test('keeps a sidebar preview disposition while the active workspace publication lags', async () => {
+    activeTarget = { kind: 'doc', target: 'page-a', docName: 'page-a' };
+    openTabs = ['page-a'];
+    setHash('#/page-a');
+    const view = renderApp();
+
+    await Promise.resolve();
+    openTargetTransitionMock.mockClear();
+
+    pushHashWithoutNavigation('#/page-b', 'preview');
+    openTabs = ['page-a', 'page-b'];
+    view.rerender(<App />);
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        { kind: 'doc', target: 'page-b', docName: 'page-b' },
+        expect.objectContaining({ disposition: 'preview' }),
+      );
+    });
+  });
+
+  test('opens a stored preview hash entry as a permanent tab while preview tabs are disabled', async () => {
+    mergedConfig = { editor: { previewTabs: false } };
+    activeTarget = { kind: 'doc', target: 'page-a', docName: 'page-a' };
+    openTabs = ['page-a', 'page-b'];
+    setHash('#/page-a');
+    pushHashWithoutNavigation('#/page-b', 'preview');
+    renderApp();
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        { kind: 'doc', target: 'page-b', docName: 'page-b' },
+        expect.objectContaining({ disposition: 'permanent' }),
+      );
+    });
+  });
+
   async function renderOnPageA() {
     setHash('#/page-a');
     renderApp();
@@ -957,7 +994,7 @@ describe('App runtime wiring', () => {
 
     window.location.hash = '#install-claude-desktop';
     await waitFor(() => expect(window.location.hash).toBe('#install-claude-desktop'));
-    replaceHashWithoutNavigation('');
+    clearHashWithoutNavigation();
     window.location.hash = '#/page-b';
 
     await waitFor(() => {
@@ -970,11 +1007,11 @@ describe('App runtime wiring', () => {
 
   test('the first Back after the install dialog closes is a deliberate open', async () => {
     await renderOnPageA();
-    pushHashWithoutNavigation('#/page-b');
+    pushHashWithoutNavigation('#/page-b', 'permanent');
 
     window.location.hash = '#install-claude-desktop';
     await waitFor(() => expect(window.location.hash).toBe('#install-claude-desktop'));
-    replaceHashWithoutNavigation('');
+    clearHashWithoutNavigation();
     window.history.back();
 
     await waitFor(() => {

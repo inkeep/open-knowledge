@@ -10,6 +10,7 @@ import {
   transitionEditorWorkspace,
 } from '@/editor/editor-panes';
 import { tabIdForNavigationTarget } from '@/editor/editor-tabs';
+import { previewOpenDisposition } from '@/editor/preview-open-disposition';
 import {
   hashFromDocName,
   hashFromSkillPreview,
@@ -92,21 +93,15 @@ function applyOpen(target: ResolvedNavigationTarget, options: OpenOptions = {}) 
 }
 
 function clickDocRow(docName: string, previewTabsEnabled: boolean) {
-  applyOpen(
-    { kind: 'doc', target: docName, docName },
-    {
-      disposition: previewTabsEnabled ? 'preview' : 'permanent',
-      consumeActiveNewTab: true,
-    },
-  );
-  pushHashWithoutNavigation(hashFromDocName(docName));
+  const disposition = previewOpenDisposition(previewTabsEnabled);
+  applyOpen({ kind: 'doc', target: docName, docName }, { disposition, consumeActiveNewTab: true });
+  pushHashWithoutNavigation(hashFromDocName(docName), disposition);
 }
 
 function clickSkillPreviewRow(preview: SkillPreviewHashTarget, previewTabsEnabled: boolean) {
-  applyOpen(previewTarget(preview), {
-    tabBehavior: previewTabsEnabled ? 'replace-active' : 'append',
-  });
-  pushHashWithoutNavigation(hashFromSkillPreview(preview));
+  const disposition = previewOpenDisposition(previewTabsEnabled);
+  applyOpen(previewTarget(preview), { disposition });
+  pushHashWithoutNavigation(hashFromSkillPreview(preview), disposition);
 }
 
 let pages = new Set<string>();

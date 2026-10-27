@@ -13,11 +13,12 @@ export function useOpenSkillForEdit(): (
     const res = await editExternalSkill({ name, home });
     if (!res.ok) return res;
     const docName = opts?.rel ? externalSkillFileLiveDocName(name, opts.rel) : res.docName;
+    const disposition = opts?.replaceActive ? 'preview' : 'permanent';
     openTarget(
       { kind: 'doc', target: docName, docName },
-      opts?.replaceActive ? { tabBehavior: 'replace-active' } : undefined,
+      opts?.replaceActive ? { tabBehavior: 'replace-active', disposition } : { disposition },
     );
-    replaceHashWithoutNavigation(hashFromDocName(docName));
+    replaceHashWithoutNavigation(hashFromDocName(docName), disposition);
     return { ok: true, docName };
   };
 }

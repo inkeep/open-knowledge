@@ -65,12 +65,13 @@ import { ConfigProvider, useConfigContext } from '@/lib/config-provider';
 import { createPageRequest, nextUntitledDocName, openCreatedPage } from '@/lib/create-page-request';
 import {
   assetPathFromHash,
+  clearHashWithoutNavigation,
   docNameFromHash,
   hashFromDocName,
   isContentRootHash,
   isManagedHashHistoryState,
   markCurrentHashHistoryEntry,
-  replaceHashWithoutNavigation,
+  readManagedHashHistoryEntry,
   skillFileFromHash,
   skillPreviewFromHash,
   skillsFromHash,
@@ -224,7 +225,7 @@ function NavigationHandler() {
       window.location.hash !== '' &&
       !isAuxiliaryDialogHash(window.location.hash)
     ) {
-      replaceHashWithoutNavigation('');
+      clearHashWithoutNavigation();
     }
   }, []);
 
@@ -274,9 +275,10 @@ function NavigationHandler() {
         }
         openTargetTransition(target, {
           deliberate,
-          disposition: isHistoryTraversal
-            ? previewOpenDisposition(previewTabsEnabled)
-            : 'permanent',
+          disposition:
+            isHistoryTraversal || !previewTabsEnabled
+              ? previewOpenDisposition(previewTabsEnabled)
+              : (readManagedHashHistoryEntry(window.history.state)?.disposition ?? 'permanent'),
           consumeActiveNewTab: true,
         });
       };
@@ -417,7 +419,7 @@ function InstallInClaudeDesktopTrigger() {
   function handleOpenChange(next: boolean) {
     setOpen(next);
     if (!next && window.location.hash === INSTALL_DIALOG_HASH) {
-      replaceHashWithoutNavigation('');
+      clearHashWithoutNavigation();
     }
   }
 

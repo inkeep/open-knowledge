@@ -1,5 +1,6 @@
 import { MANAGED_ARTIFACT_SCOPES } from '@inkeep/open-knowledge-core/constants/cc1';
 import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
+import type { TabOpenDisposition } from '@/editor/editor-panes';
 
 function isSkillScope(value: string): value is SkillScope {
   return (MANAGED_ARTIFACT_SCOPES as readonly string[]).includes(value);
@@ -66,10 +67,24 @@ function decodeHashForComparison(hash: string): string {
 }
 
 const MANAGED_HASH_HISTORY_STATE_KEY = '__okHashHistoryEntry';
+const MANAGED_HASH_HISTORY_DISPOSITION_KEY = '__okHashHistoryDisposition';
 
-function managedHashHistoryState(state: unknown): Record<string, unknown> {
+export interface ManagedHashHistoryEntry {
+  disposition: TabOpenDisposition;
+}
+
+function managedHashHistoryState(
+  state: unknown,
+  entry?: ManagedHashHistoryEntry,
+): Record<string, unknown> {
   const preservedState = typeof state === 'object' && state !== null ? state : {};
-  return { ...preservedState, [MANAGED_HASH_HISTORY_STATE_KEY]: true };
+  const unmanagedState = { ...(preservedState as Record<string, unknown>) };
+  delete unmanagedState[MANAGED_HASH_HISTORY_DISPOSITION_KEY];
+  return {
+    ...unmanagedState,
+    [MANAGED_HASH_HISTORY_STATE_KEY]: true,
+    ...(entry ? { [MANAGED_HASH_HISTORY_DISPOSITION_KEY]: entry.disposition } : {}),
+  };
 }
 
 export function isManagedHashHistoryState(state: unknown): boolean {
@@ -80,25 +95,40 @@ export function isManagedHashHistoryState(state: unknown): boolean {
   );
 }
 
+export function readManagedHashHistoryEntry(state: unknown): ManagedHashHistoryEntry | null {
+  if (!isManagedHashHistoryState(state)) return null;
+  const disposition = (state as Record<string, unknown>)[MANAGED_HASH_HISTORY_DISPOSITION_KEY];
+  if (disposition !== 'preview' && disposition !== 'permanent') return null;
+  return { disposition };
+}
+
 export function markCurrentHashHistoryEntry(): void {
   if (isManagedHashHistoryState(window.history.state)) return;
   window.history.replaceState(managedHashHistoryState(window.history.state), '');
 }
 
-export function replaceHashWithoutNavigation(hash: string): void {
+function replaceManagedHashEntry(hash: string, entry?: ManagedHashHistoryEntry): void {
   const { pathname, search } = window.location;
   window.history.replaceState(
-    managedHashHistoryState(window.history.state),
+    managedHashHistoryState(window.history.state, entry),
     '',
     `${pathname}${search}${hash}`,
   );
 }
 
-export function pushHashWithoutNavigation(hash: string): void {
+export function replaceHashWithoutNavigation(hash: string, disposition: TabOpenDisposition): void {
+  replaceManagedHashEntry(hash, { disposition });
+}
+
+export function clearHashWithoutNavigation(): void {
+  replaceManagedHashEntry('');
+}
+
+export function pushHashWithoutNavigation(hash: string, disposition: TabOpenDisposition): void {
   if (isSameHash(window.location.hash, hash)) return;
   const { pathname, search } = window.location;
   window.history.pushState(
-    managedHashHistoryState(window.history.state),
+    managedHashHistoryState(window.history.state, { disposition }),
     '',
     `${pathname}${search}${hash}`,
   );

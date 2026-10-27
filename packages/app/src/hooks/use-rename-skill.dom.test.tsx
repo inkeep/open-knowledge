@@ -1,5 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
+import { readManagedHashHistoryEntry } from '@/lib/doc-hash';
 
 const openTarget = vi.fn();
 const closeDocument = vi.fn();
@@ -90,5 +91,26 @@ describe('useRenameSkill busy-mark bracketing', () => {
       );
     });
     expect(whenSkillsListContains).toHaveBeenCalledWith('project', 'new-name');
+  });
+
+  test('retargeting the active skill keeps the replacement navigation preview', async () => {
+    openTarget.mockReset();
+    window.history.replaceState(null, '', '/app#/old-name');
+    moveSkill.mockResolvedValue({ ok: true, committed: false, to: '.claude/skills/new-name' });
+    const { result } = renderHook(() => useRenameSkill());
+
+    await result.current({ scope: 'project', name: 'old-name' }, 'new-name');
+
+    expect(openTarget).toHaveBeenCalledWith(
+      {
+        kind: 'doc',
+        target: '.claude/skills/new-name/SKILL',
+        docName: '.claude/skills/new-name/SKILL',
+      },
+      { tabBehavior: 'replace-active', disposition: 'preview' },
+    );
+    expect(readManagedHashHistoryEntry(window.history.state)).toEqual(
+      expect.objectContaining({ disposition: 'preview' }),
+    );
   });
 });

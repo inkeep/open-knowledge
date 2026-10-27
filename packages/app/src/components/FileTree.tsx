@@ -815,8 +815,9 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
   const showOnlyMarkdownFiles = merged?.appearance?.sidebar?.showOnlyMarkdownFiles ?? false;
   const showOkFolders = merged?.appearance?.sidebar?.showOkFolders ?? false;
   const previewTabsEnabled = merged?.editor?.previewTabs ?? true;
+  const previewDisposition = previewOpenDisposition(previewTabsEnabled);
   const previewOpenOptions = {
-    disposition: previewOpenDisposition(previewTabsEnabled),
+    disposition: previewDisposition,
     consumeActiveNewTab: true,
   } satisfies OpenTargetOptions;
   const couldNotReachServerTitle = t`Could not reach server`;
@@ -879,14 +880,14 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       if (target.registerPage) addPage(target.docName);
       const resolved = navigationTargetForDocument(target.docName, target.size);
       openTarget(resolved, previewOpenOptions);
-      pushHashWithoutNavigation(hashFromDocName(target.docName));
+      pushHashWithoutNavigation(hashFromDocName(target.docName), previewDisposition);
       if (resolved.kind === 'doc') editorDocName = resolved.docName;
     } else if (target.kind === 'folder') {
       openTarget(
         { kind: 'folder', target: target.folderPath, folderPath: target.folderPath },
         previewOpenOptions,
       );
-      pushHashWithoutNavigation(hashFromFolderPath(target.folderPath));
+      pushHashWithoutNavigation(hashFromFolderPath(target.folderPath), previewDisposition);
     } else {
       const currentEntries = target.entries ?? documentsRef.current;
       const entry = currentEntries.find(
@@ -902,7 +903,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
         },
         previewOpenOptions,
       );
-      pushHashWithoutNavigation(hashFromAssetPath(target.assetPath));
+      pushHashWithoutNavigation(hashFromAssetPath(target.assetPath), previewDisposition);
     }
     notifySidebarFileSelected(editorDocName);
   }
@@ -928,7 +929,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
         },
         previewOpenOptions,
       );
-      pushHashWithoutNavigation(action.hash);
+      pushHashWithoutNavigation(action.hash, previewDisposition);
       notifySidebarFileSelected();
       return 'non-doc';
     }
@@ -945,7 +946,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     });
     if (okTarget?.kind === 'asset') {
       openTarget(okTarget, previewOpenOptions);
-      pushHashWithoutNavigation(hashFromAssetPath(okTarget.assetPath));
+      pushHashWithoutNavigation(hashFromAssetPath(okTarget.assetPath), previewDisposition);
       notifySidebarFileSelected();
       return 'non-doc';
     }

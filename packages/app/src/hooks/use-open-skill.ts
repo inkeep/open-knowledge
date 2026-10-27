@@ -3,6 +3,7 @@ import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
 import { t } from '@lingui/core/macro';
 import { toast } from 'sonner';
 import { useDocumentContext } from '@/editor/DocumentContext';
+import type { TabOpenDisposition } from '@/editor/editor-panes';
 import { useSkills, whenSkillsListContains } from '@/hooks/use-skills';
 import {
   hashFromDocName,
@@ -36,13 +37,11 @@ export function useOpenSkill(): (
         beginSkillWrite(scope, name);
         void whenSkillsListContains(scope, name).then(() => endSkillWrite(scope, name));
       }
-      openTarget(
-        { kind: 'doc', target: docName, docName },
-        opts?.replaceActive ? { tabBehavior: 'replace-active' } : undefined,
-      );
+      const disposition: TabOpenDisposition = opts?.replaceActive ? 'preview' : 'permanent';
+      openTarget({ kind: 'doc', target: docName, docName }, { disposition });
       const hash = hashFromDocName(docName);
-      if (opts?.replaceHistory) replaceHashWithoutNavigation(hash);
-      else pushHashWithoutNavigation(hash);
+      if (opts?.replaceHistory) replaceHashWithoutNavigation(hash, disposition);
+      else pushHashWithoutNavigation(hash, disposition);
     };
     const entry =
       skillsState.status === 'ready'

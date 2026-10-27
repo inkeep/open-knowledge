@@ -14,5 +14,5 @@ export function openSidebarDropPayload(
 ): void {
   const navigation = navigationForSidebarDragPayload(payload);
   openTarget(navigation.target, { disposition: 'permanent', consumeActiveNewTab });
-  pushHashWithoutNavigation(navigation.hash);
+  pushHashWithoutNavigation(navigation.hash, 'permanent');
 }

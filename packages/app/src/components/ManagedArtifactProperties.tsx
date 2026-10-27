@@ -69,8 +69,8 @@ export function useManagedArtifactRetarget(): (
     if (fromDocName === toDocName) return;
     const dest = { kind: 'doc', target: toDocName, docName: toDocName } as const;
     if (activeDocName === fromDocName || opts?.sourceWasActive === true) {
-      openTarget(dest, { tabBehavior: 'replace-active' });
-      replaceHashWithoutNavigation(hashFromDocName(toDocName));
+      openTarget(dest, { tabBehavior: 'replace-active', disposition: 'preview' });
+      replaceHashWithoutNavigation(hashFromDocName(toDocName), 'preview');
     } else if (openTabs.some((id) => docNameForTabId(id) === fromDocName)) {
       openTarget(dest);
       closeDocument(fromDocName);
