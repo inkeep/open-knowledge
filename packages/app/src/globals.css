@@ -624,22 +624,31 @@ body[style*="pointer-events: none"] .corner-card-column .floating-card-surface {
   animation-delay: 60ms;
 }
 
-/* Reduced motion — keep opacity/color transition for comprehension, remove movement.
-   Static terracotta left accent bar fades in and out, no transform, no background tint. */
+/* Reduced motion — keep a color fade for comprehension, remove movement.
+   Static terracotta left accent bar fades in, no transform, no background tint.
+   The fade is an animation, not a transition: these blocks keep `transition`
+   for the `.ok-chunk-wrapper` content-visibility deferral, and a `transition`
+   here would replace it while the flash lasts. */
+@keyframes ok-agent-flash-bar {
+  from {
+    box-shadow: none;
+  }
+  to {
+    box-shadow: inset 3px 0 0 var(--color-agent);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   [data-agent-flash-state="editing"][data-agent-flash-position="append"]
     .ProseMirror
     > *:nth-last-child(-n + 3 of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)) {
-    animation: none;
+    animation: ok-agent-flash-bar 2s ease forwards;
     box-shadow: inset 3px 0 0 var(--color-agent);
-    transition: box-shadow 2s ease;
   }
   [data-agent-flash-state="editing"][data-agent-flash-position="prepend"]
     .ProseMirror
     > *:nth-child(-n + 3) {
-    animation: none;
+    animation: ok-agent-flash-bar 2s ease forwards;
     box-shadow: inset 3px 0 0 var(--color-agent);
-    transition: box-shadow 2s ease;
   }
 }
 
@@ -5933,17 +5942,21 @@ html [data-editor-file-list-slot] [data-slot="sidebar-inner"] {
   }
 }
 
-.dark
-  [data-agent-flash-state="editing"][data-agent-flash-position="append"]
-  .ProseMirror
-  > *:nth-last-child(-n + 3 of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)) {
-  animation-name: agent-flash-dark;
-}
-.dark
-  [data-agent-flash-state="editing"][data-agent-flash-position="prepend"]
-  .ProseMirror
-  > *:nth-child(-n + 3) {
-  animation-name: agent-flash-dark;
+/* Full motion only: under reduced motion the agent flash is the accent-bar
+   fade in both themes. */
+@media (prefers-reduced-motion: no-preference) {
+  .dark
+    [data-agent-flash-state="editing"][data-agent-flash-position="append"]
+    .ProseMirror
+    > *:nth-last-child(-n + 3 of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)) {
+    animation-name: agent-flash-dark;
+  }
+  .dark
+    [data-agent-flash-state="editing"][data-agent-flash-position="prepend"]
+    .ProseMirror
+    > *:nth-child(-n + 3) {
+    animation-name: agent-flash-dark;
+  }
 }
 
 .dark [data-presence-badge="agent"][data-presence-mode="editing"] {
@@ -6401,19 +6414,41 @@ html [data-editor-file-list-slot] [data-slot="sidebar-inner"] {
    result and reading a caret out of it.
 
    What actually protects this site is the selection pin: a click places the
-   caret in the block, and cv:auto keeps a selection-containing element
-   relevant to the user, so the clicked wrapper cannot acquire the lock that
-   would make the CHECK reachable. That is Chromium behavior, not ours, and it
-   is pinned by `tests/stress/cv-auto-paint-lock-click.e2e.ts` — which fails if
-   a future Chromium drops it.
+   caret in the block, so the clicked wrapper cannot acquire the lock that
+   would make the CHECK reachable. Two things hold the pin. Chromium keeps a
+   selection-containing cv:auto element relevant to the user, and the
+   `data-ok-selection-block` rule below makes the wrapper that holds the caret
+   `visible`. `tests/stress/cv-auto-paint-lock-click.e2e.ts` pins the clicked
+   wrapper staying unlocked, so it fails only if both are lost.
 
    Do not replace `auto` with `hidden` here without the same deferred-lock +
    visibility pair `.ok-mode-hidden` carries — an undeferred paint lock over
    hit-testable editor content trips Blink's display-lock CHECK (see the
-   `.ok-mode-hidden` comment above). */
+   `.ok-mode-hidden` comment above).
+
+   Chromium's pin does not cover typing into a block made in the same frame
+   as its caret. Enter creates a new wrapper and moves the caret into it; the
+   wrapper locks at its first style recalc and unlocks only at the next
+   rendering update. A key typed before that update is inserted without
+   layout, so Chromium leaves the caret before the typed character and keeps
+   the placeholder `<br>`. The decoration therefore marks the top-level block
+   holding each selection end with `data-ok-selection-block`, which stays
+   `visible`. A block the caret leaves takes `auto` back through the
+   `.ok-mode-hidden` deferring transition, because a caret that moves back in
+   during the same frame (ArrowUp right after Enter) would otherwise land at
+   the start of a locked line. Any other rule that sets `transition` on a
+   top-level block replaces this deferral, which is why the reduced-motion
+   agent flash fades with an animation. Pinned by
+   `tests/stress/new-block-caret.e2e.ts`. */
 .ProseMirror .ok-chunk-wrapper {
   content-visibility: auto;
   contain-intrinsic-size: 0 var(--ok-cv-h, 80px);
+  transition: content-visibility 0s 32ms allow-discrete;
+}
+
+.ProseMirror .ok-chunk-wrapper[data-ok-selection-block] {
+  content-visibility: visible;
+  transition: none;
 }
 
 /* Code-block wrapper needs an unclipped paint area — the block's chrome

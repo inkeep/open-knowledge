@@ -12,6 +12,10 @@ export const chunkWrapperDecorationKey = new PluginKey('chunkWrapperDecoration')
 
 export const OK_CHUNK_WRAPPER_CLASS = 'ok-chunk-wrapper';
 
+const CHUNK_WRAPPER_ATTRS = { class: OK_CHUNK_WRAPPER_CLASS };
+
+const SELECTION_BLOCK_ATTRS = { ...CHUNK_WRAPPER_ATTRS, 'data-ok-selection-block': '' };
+
 let firstEmitFired = false;
 
 export function __resetFirstEmitForTesting(): void {
@@ -35,15 +39,15 @@ export function chunkWrapperDecorationPlugin(): Plugin {
     key: chunkWrapperDecorationKey,
     props: {
       decorations(state) {
+        const selectionStartIndex = state.selection.$from.index(0);
+        const selectionEndIndex = state.selection.$to.index(0);
         const decos: Decoration[] = [];
-        state.doc.forEach((node, pos) => {
+        state.doc.forEach((node, pos, index) => {
           if (node.isInline) return;
           if (node.type.name === 'jsxComponent') return;
-          decos.push(
-            Decoration.node(pos, pos + node.nodeSize, {
-              class: OK_CHUNK_WRAPPER_CLASS,
-            }),
-          );
+          const holdsSelection = index === selectionStartIndex || index === selectionEndIndex;
+          const attrs = holdsSelection ? SELECTION_BLOCK_ATTRS : CHUNK_WRAPPER_ATTRS;
+          decos.push(Decoration.node(pos, pos + node.nodeSize, attrs));
         });
         if (decos.length === 0) return null;
         if (!firstEmitFired) {

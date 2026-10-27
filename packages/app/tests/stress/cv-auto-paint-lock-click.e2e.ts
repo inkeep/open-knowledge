@@ -218,11 +218,11 @@ test('PRD-8158: a clicked .ok-chunk-wrapper stays out of the cv:auto paint lock'
   ).toBeGreaterThan(0);
   expect(
     after.events.filter((e) => e.marker === targetMarker && e.skipped).length,
-    `the clicked block "${targetMarker}" entered a cv:auto paint lock. Chromium no longer keeps a ` +
-      'selection-containing element relevant, which is the property that currently keeps this site ' +
-      "safe: a click's hit test resolves to a descendant, and a wrapper that can lock afterwards " +
-      'reopens the display-lock CHECK. Harden .ok-chunk-wrapper with the same deferral trio ' +
-      '.ok-mode-hidden carries.',
+    `the clicked block "${targetMarker}" entered a cv:auto paint lock. Neither Chromium's selection ` +
+      'pin nor the data-ok-selection-block rule in globals.css kept the selection-containing wrapper ' +
+      "relevant: a click's hit test resolves to a descendant, and a wrapper that can lock afterwards " +
+      'reopens the display-lock CHECK. Restore the data-ok-selection-block rule, or harden ' +
+      '.ok-chunk-wrapper with the same deferral trio .ok-mode-hidden carries.',
   ).toBe(0);
 });
 
