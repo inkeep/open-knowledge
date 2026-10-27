@@ -11,10 +11,7 @@ async function flushMicrotasks(): Promise<void> {
 
 function makeHandler(opts: { platform: NodeJS.Platform }) {
   let openUrlListener: ((event: { preventDefault: () => void }, url: string) => void) | null = null;
-  let resolveReady!: () => void;
-  const ready = new Promise<void>((res) => {
-    resolveReady = res;
-  });
+  const { promise: ready, resolve: resolveReady } = Promise.withResolvers<void>();
   const scheduled: Array<() => void> = [];
 
   const control = registerProtocolHandler({

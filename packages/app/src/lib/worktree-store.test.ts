@@ -69,9 +69,9 @@ describe('createWorktreeStore', () => {
     const fetchModel = vi.fn(() => {
       call += 1;
       if (call === 1) {
-        return new Promise<WorktreeSelectorModel>((r) => {
-          resolveFirst = r;
-        });
+        const { promise, resolve } = Promise.withResolvers<WorktreeSelectorModel>();
+        resolveFirst = resolve;
+        return promise;
       }
       return Promise.resolve(model('/repo-after-create'));
     });
@@ -173,9 +173,9 @@ describe('createWorktreeStore', () => {
     const fetchModel = vi.fn(() => {
       call += 1;
       if (call === 1) {
-        return new Promise<WorktreeSelectorModel>((r) => {
-          resolveFirst = r;
-        });
+        const { promise, resolve } = Promise.withResolvers<WorktreeSelectorModel>();
+        resolveFirst = resolve;
+        return promise;
       }
       return Promise.resolve(model('/repo-revalidated'));
     });

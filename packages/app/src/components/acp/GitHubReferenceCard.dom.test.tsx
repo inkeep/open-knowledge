@@ -83,12 +83,11 @@ describe('GitHub links in agent messages', () => {
 
   test('leaving the link before the card loads never opens it later', async () => {
     let release: (res: Response) => void = () => {};
-    const fetchMock = vi.fn(
-      () =>
-        new Promise<Response>((resolve) => {
-          release = resolve;
-        }),
-    );
+    const fetchMock = vi.fn(() => {
+      const { promise, resolve } = Promise.withResolvers<Response>();
+      release = resolve;
+      return promise;
+    });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     render(<AgentMarkdown text="https://github.com/inkeep/agents/pull/77" />);
     const link = screen.getByRole('link');

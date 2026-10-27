@@ -214,10 +214,11 @@ describe('SavedThemesTiles', () => {
 
   test('warns when the saved-theme scan returns an incomplete list', async () => {
     let resolveScan: ((response: Response) => void) | undefined;
-    globalThis.fetch = async () =>
-      new Promise<Response>((resolve) => {
-        resolveScan = resolve;
-      });
+    globalThis.fetch = () => {
+      const { promise, resolve } = Promise.withResolvers<Response>();
+      resolveScan = resolve;
+      return promise;
+    };
 
     await renderTiles();
     const status = screen.getByRole('status');

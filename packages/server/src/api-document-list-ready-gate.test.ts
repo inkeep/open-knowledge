@@ -45,10 +45,7 @@ describe('handleDocumentList ready gating', () => {
       writeFileSync(join(tmp, 'notes.md'), '# Notes\n', 'utf-8');
 
       const fileIndex = new Map<string, FileIndexEntry>();
-      let resolveReady!: () => void;
-      const ready = new Promise<void>((res) => {
-        resolveReady = res;
-      });
+      const { promise: ready, resolve: resolveReady } = Promise.withResolvers<void>();
 
       const hocuspocus = new Hocuspocus({ quiet: true });
       const ext = createApiExtension({

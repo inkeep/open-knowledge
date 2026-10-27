@@ -156,10 +156,7 @@ describe('handleSlidesOpen', () => {
   it('joins an in-flight open instead of spawning a rival server for the same deck', async () => {
     const registry = createSlidesDeckRegistry();
     let spawns = 0;
-    let releaseProbe: (() => void) | undefined;
-    const gate = new Promise<void>((resolve) => {
-      releaseProbe = resolve;
-    });
+    const { promise: gate, resolve: releaseProbe } = Promise.withResolvers<void>();
     const startDeps: StartSlidevDeps = {
       findFreePort: () => Promise.resolve(5300),
       spawnSlidev: () => {
@@ -188,7 +185,7 @@ describe('handleSlidesOpen', () => {
 
     const first = handleSlidesOpen(DECK, deps);
     const second = handleSlidesOpen(DECK, deps);
-    releaseProbe?.();
+    releaseProbe();
     const results = await Promise.all([first, second]);
 
     expect(results).toEqual([
@@ -356,10 +353,7 @@ describe('handleSlidesOpen', () => {
 
   it('records one open attempt — not two — when a second activation joins the in-flight open', async () => {
     const registry = createSlidesDeckRegistry();
-    let releaseProbe: (() => void) | undefined;
-    const gate = new Promise<void>((resolve) => {
-      releaseProbe = resolve;
-    });
+    const { promise: gate, resolve: releaseProbe } = Promise.withResolvers<void>();
     const startDeps: StartSlidevDeps = {
       findFreePort: () => Promise.resolve(5300),
       spawnSlidev: () => fakeSlidevProcess(),
@@ -384,7 +378,7 @@ describe('handleSlidesOpen', () => {
 
     const first = handleSlidesOpen(DECK, deps);
     const second = handleSlidesOpen(DECK, deps);
-    releaseProbe?.();
+    releaseProbe();
     await Promise.all([first, second]);
 
     expect(attempts).toEqual([{ kind: 'open', ok: true }]);

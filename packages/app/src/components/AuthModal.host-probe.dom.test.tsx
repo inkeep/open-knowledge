@@ -124,12 +124,11 @@ describe('AuthModal host probe refusal', () => {
     vi.useFakeTimers();
     try {
       let answer: ((status: AuthQueryStatus) => void) | undefined;
-      const onOpenChange = renderModal(
-        () =>
-          new Promise<AuthQueryStatus>((resolve) => {
-            answer = resolve;
-          }),
-      );
+      const onOpenChange = renderModal(() => {
+        const { promise, resolve } = Promise.withResolvers<AuthQueryStatus>();
+        answer = resolve;
+        return promise;
+      });
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(9_999);
@@ -163,12 +162,11 @@ describe('AuthModal host probe refusal', () => {
     vi.useFakeTimers();
     try {
       let answer: ((status: AuthQueryStatus) => void) | undefined;
-      renderModal(
-        () =>
-          new Promise<AuthQueryStatus>((resolve) => {
-            answer = resolve;
-          }),
-      );
+      renderModal(() => {
+        const { promise, resolve } = Promise.withResolvers<AuthQueryStatus>();
+        answer = resolve;
+        return promise;
+      });
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(10_000);

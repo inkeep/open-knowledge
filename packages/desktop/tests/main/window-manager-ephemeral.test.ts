@@ -490,12 +490,11 @@ describe('createEphemeralWindow', () => {
     env.deps.createWindow = (opts) => {
       env.createWindowOpts.push(opts);
       const w = makeWindow();
-      w.loadFile = vi.fn(
-        () =>
-          new Promise<void>((resolve) => {
-            releaseLoad = resolve;
-          }),
-      ) as typeof w.loadFile;
+      w.loadFile = vi.fn(() => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        releaseLoad = resolve;
+        return promise;
+      });
       env.windows.push(w);
       return w;
     };

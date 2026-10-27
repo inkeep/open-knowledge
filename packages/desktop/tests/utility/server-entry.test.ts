@@ -1404,14 +1404,8 @@ function startUtilityWhoseBootPreparationWaits(env: MockEnv): {
   reachedBootPreparation: Promise<void>;
   finishBootPreparation: () => void;
 } {
-  let enterBootPreparation!: () => void;
-  let finishBootPreparation!: () => void;
-  const entered = new Promise<void>((resolve) => {
-    enterBootPreparation = resolve;
-  });
-  const finished = new Promise<void>((resolve) => {
-    finishBootPreparation = resolve;
-  });
+  const { promise: entered, resolve: enterBootPreparation } = Promise.withResolvers<void>();
+  const { promise: finished, resolve: finishBootPreparation } = Promise.withResolvers<void>();
   const bootServer = vi.fn(() =>
     Promise.resolve({
       port: 51289,
@@ -1478,10 +1472,7 @@ describe('setupUtility honours a shutdown that arrives before its init reaches b
 
 function startUtilityWhoseServerStartWaits(env: MockEnv) {
   const destroy = vi.fn(() => Promise.resolve());
-  let enterServerStart!: () => void;
-  const reachedServerStart = new Promise<void>((resolve) => {
-    enterServerStart = resolve;
-  });
+  const { promise: reachedServerStart, resolve: enterServerStart } = Promise.withResolvers<void>();
   let settleServerStart!: (failure?: Error) => void;
   const serverStarted = new Promise<void>((resolve, reject) => {
     settleServerStart = (failure) => (failure === undefined ? resolve() : reject(failure));
@@ -1558,12 +1549,11 @@ describe('setupUtility repeated shutdown', () => {
   test('a second shutdown resolves only after the first has finished draining the server', async () => {
     const env = buildEnv();
     let finishDestroy!: () => void;
-    const destroy = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          finishDestroy = resolve;
-        }),
-    );
+    const destroy = vi.fn(() => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      finishDestroy = resolve;
+      return promise;
+    });
     const handle = setupUtility({
       parentPort: env.parentPort,
       importServer: () =>

@@ -63,14 +63,8 @@ async function supervisorWithGatedLaunch(): Promise<GatedSupervisor> {
   const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'ok-lease-acquire-failure-')));
   scratchDirs.push(scratch);
   const launcher = contractServerLauncher();
-  let markStarted: () => void = () => {};
-  const launchStarted = new Promise<void>((resolve) => {
-    markStarted = resolve;
-  });
-  let openGate: (launch: boolean) => void = () => {};
-  const gate = new Promise<boolean>((resolve) => {
-    openGate = resolve;
-  });
+  const { promise: launchStarted, resolve: markStarted } = Promise.withResolvers<void>();
+  const { promise: gate, resolve: openGate } = Promise.withResolvers<boolean>();
   openGates.push(openGate);
   const launch: LaunchOwnedServer = async (slot, env) => {
     markStarted();
@@ -152,14 +146,10 @@ describe('a worker whose lease request fails', () => {
   test('a supervisor that does not answer before the setup deadline leaves the worker on its own server, and the server it launches afterwards is discarded rather than held for that worker', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     const rig = await supervisorWithGatedLaunch();
-    let finishUse: () => void = () => {};
-    const useMayFinish = new Promise<void>((resolve) => {
-      finishUse = resolve;
-    });
-    let markOffered: (lease: ServerLease | undefined) => void = () => {};
-    const offered = new Promise<ServerLease | undefined>((resolve) => {
-      markOffered = resolve;
-    });
+    const { promise: useMayFinish, resolve: finishUse } = Promise.withResolvers<void>();
+    const { promise: offered, resolve: markOffered } = Promise.withResolvers<
+      ServerLease | undefined
+    >();
 
     const fixtureFailure = failureOf(
       leaseThroughWorkerFixture(rig.endpoint.socketPath, async (lease) => {

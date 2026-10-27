@@ -5,10 +5,7 @@ describe('createSingleFlight (PRD-6972 FR2)', () => {
   test('N concurrent identical keys run fn exactly once and share one result', async () => {
     const sf = createSingleFlight<number>();
     let calls = 0;
-    let resolveWalk: (v: number) => void = () => {};
-    const gate = new Promise<number>((r) => {
-      resolveWalk = r;
-    });
+    const { promise: gate, resolve: resolveWalk } = Promise.withResolvers<number>();
     const fn = () => {
       calls += 1;
       return gate;

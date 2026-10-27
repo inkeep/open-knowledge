@@ -36,10 +36,7 @@ export async function gotoWhileLoadProgresses(
   let failed = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
-  let refuse: (reason: Error) => void = () => {};
-  const stalled = new Promise<never>((_, reject) => {
-    refuse = reject;
-  });
+  const { promise: stalled, reject: refuse } = Promise.withResolvers<never>();
   const progressSoFar = (): string => {
     const named = [...outstanding]
       .slice(0, OUTSTANDING_URLS_NAMED_ON_STALL)

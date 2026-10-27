@@ -86,14 +86,6 @@ const noneDetectedPayload: OkMcpWiringShowPayload = {
   globalSkills: [{ ...DISCOVERY_SKILL, paths: [] }],
 };
 
-function deferredResult() {
-  let resolve!: (result: OkMcpWiringResult) => void;
-  const promise = new Promise<OkMcpWiringResult>((nextResolve) => {
-    resolve = nextResolve;
-  });
-  return { promise, resolve };
-}
-
 interface RecordedConfirm {
   editorIds: readonly string[];
   pathInstall: boolean | undefined;
@@ -508,8 +500,8 @@ describe('McpConsentDialog AI-tools decision', () => {
   });
 
   test('failed Continue resets busy state, reports the error, and allows retry', async () => {
-    const first = deferredResult();
-    const second = deferredResult();
+    const first = Promise.withResolvers<OkMcpWiringResult>();
+    const second = Promise.withResolvers<OkMcpWiringResult>();
     const outcomes = [first, second];
     const harness = makeHarness({
       confirmResult: async () => outcomes.shift()?.promise ?? { ok: true },
@@ -699,7 +691,7 @@ describe('McpConsentDialog dismissal', () => {
   });
 
   test('failed skip resets busy state and reports the error', async () => {
-    const first = deferredResult();
+    const first = Promise.withResolvers<OkMcpWiringResult>();
     const harness = makeHarness({ skipResult: async () => first.promise });
     await renderDialog(harness);
 
@@ -854,7 +846,7 @@ describe('McpConsentDialog surface by origin', () => {
   });
 
   test('no dismiss surface can fire while a request is in flight', async () => {
-    const pending = deferredResult();
+    const pending = Promise.withResolvers<OkMcpWiringResult>();
     const harness = await renderDialog(
       makeHarness({
         snapshot: { ...payload, origin: 'reconfigure' },
@@ -881,7 +873,7 @@ describe('McpConsentDialog surface by origin', () => {
   });
 
   test('the close X is visibly inert while a request is in flight', async () => {
-    const pending = deferredResult();
+    const pending = Promise.withResolvers<OkMcpWiringResult>();
     await renderDialog(
       makeHarness({
         snapshot: { ...payload, origin: 'reconfigure' },

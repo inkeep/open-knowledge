@@ -54,10 +54,11 @@ interface FakeApp {
 function makeFakeApp(opts?: { isPackaged?: boolean }): FakeApp {
   const listeners = new Map<AppEvent, AppListener>();
   let resolveReadyFn: (() => void) | null = null;
-  const whenReady = () =>
-    new Promise<void>((resolve) => {
-      resolveReadyFn = resolve;
-    });
+  const whenReady = () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    resolveReadyFn = resolve;
+    return promise;
+  };
   const on = vi.fn((event: AppEvent, cb: AppListener) => {
     listeners.set(event, cb);
   });
@@ -1965,16 +1966,12 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     env.readyWindow = { id: 'ready' };
     let resolveA: (s: CandidateSelection) => void = () => {};
     let resolveB: (s: CandidateSelection) => void = () => {};
-    const resolveShareTarget = vi.fn(
-      (share: ShareUrlPayload): Promise<CandidateSelection> =>
-        share.repo === 'repo-a'
-          ? new Promise<CandidateSelection>((r) => {
-              resolveA = r;
-            })
-          : new Promise<CandidateSelection>((r) => {
-              resolveB = r;
-            }),
-    );
+    const resolveShareTarget = vi.fn((share: ShareUrlPayload): Promise<CandidateSelection> => {
+      const { promise, resolve } = Promise.withResolvers<CandidateSelection>();
+      if (share.repo === 'repo-a') resolveA = resolve;
+      else resolveB = resolve;
+      return promise;
+    });
 
     registerProtocolHandler({
       app: env.app,

@@ -48,6 +48,7 @@ export default defineConfig({
   plugins: ['unicorn', 'typescript', 'oxc', 'react', 'jsx-a11y'],
   jsPlugins: [
     { name: 'eslint-js', specifier: 'oxlint-plugin-eslint' },
+    { name: 'unicorn-js', specifier: 'eslint-plugin-unicorn' },
     NO_COMMENTS_PLUGIN,
     OK_RULES_PLUGIN,
   ],
@@ -95,6 +96,7 @@ export default defineConfig({
       },
     ],
     'eslint-js/no-restricted-syntax': ['error', ...restrictedSyntax],
+    'unicorn-js/prefer-promise-with-resolvers': 'error',
     'react/jsx-curly-brace-presence': [
       'error',
       { children: 'never', props: 'never', propElementValues: 'ignore' },

@@ -134,10 +134,7 @@ test.describe('PageListProvider refresh lifetime', () => {
     await openScratchDocument(page, api, suffix);
 
     let handlerEntries = 0;
-    let releaseHeldRequests: () => void = () => undefined;
-    const held = new Promise<void>((resolve) => {
-      releaseHeldRequests = resolve;
-    });
+    const { promise: held, resolve: releaseHeldRequests } = Promise.withResolvers<void>();
     await page.route(PAGES_ROUTE, async (route) => {
       handlerEntries += 1;
       await Promise.race([
@@ -261,10 +258,7 @@ test.describe('PageListProvider refresh lifetime', () => {
     await openScratchDocument(page, api, suffix);
 
     let handlerEntries = 0;
-    let releaseHeldRequests: () => void = () => undefined;
-    const held = new Promise<void>((resolve) => {
-      releaseHeldRequests = resolve;
-    });
+    const { promise: held, resolve: releaseHeldRequests } = Promise.withResolvers<void>();
     await page.route(DOCUMENTS_ROUTE, async (route) => {
       handlerEntries += 1;
       await Promise.race([

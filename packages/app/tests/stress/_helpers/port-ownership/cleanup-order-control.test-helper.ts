@@ -31,10 +31,7 @@ export async function runCleanupOrderControl(
   const ordering = await createCleanupOrder(outputDir, 'control');
   const participants: Participant[] = [];
   const dismissed = new Set<ChildProcess>();
-  let reject: (error: Error) => void = () => {};
-  const interrupted = new Promise<never>((_, fail) => {
-    reject = fail;
-  });
+  const { promise: interrupted, reject } = Promise.withResolvers<never>();
   const interrupt = (child: ChildProcess, error: Error) => {
     if (!dismissed.has(child)) reject(error);
   };

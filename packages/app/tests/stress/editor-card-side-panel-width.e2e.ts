@@ -2397,10 +2397,7 @@ test('Links page creation cannot be activated twice while its delayed request is
   const target = `editor-card-double-created-${test.info().workerIndex}`;
   await api.seedDocs([{ name: source, markdown: `# Source\n\n[[${target}]]` }]);
   let createRequests = 0;
-  let releaseCreate: () => void = () => {};
-  const createHeld = new Promise<void>((resolve) => {
-    releaseCreate = resolve;
-  });
+  const { promise: createHeld, resolve: releaseCreate } = Promise.withResolvers<void>();
   await page.route('**/api/create-page', async (route) => {
     createRequests += 1;
     await createHeld;

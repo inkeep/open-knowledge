@@ -157,12 +157,11 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
   let parentPollHandle: { unref?: () => void; clear: () => void } | null = null;
   let initInFlight: Promise<void> | null = null;
   let shutdownInFlight: Promise<void> | null = null;
-  let resolveReady!: (msg: UtilityReadyMessage) => void;
-  let rejectReady!: (err: Error) => void;
-  const readyPromise = new Promise<UtilityReadyMessage>((resolve, reject) => {
-    resolveReady = resolve;
-    rejectReady = reject;
-  });
+  const {
+    promise: readyPromise,
+    resolve: resolveReady,
+    reject: rejectReady,
+  } = Promise.withResolvers<UtilityReadyMessage>();
 
   function startParentPoll() {
     const pollMs = deps.parentPollMs ?? 5000;

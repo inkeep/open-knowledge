@@ -472,10 +472,7 @@ describe('ensureBinaryInstalled', () => {
     const first = buildBinaryTarball(firstSource, 'first');
     const second = buildBinaryTarball(secondSource, 'second');
     let arrivals = 0;
-    let releaseCommit!: () => void;
-    const commitGate = new Promise<void>((resolve) => {
-      releaseCommit = resolve;
-    });
+    const { promise: commitGate, resolve: releaseCommit } = Promise.withResolvers<void>();
     const beforeCommit = async () => {
       arrivals += 1;
       if (arrivals === 2) releaseCommit();

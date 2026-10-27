@@ -212,12 +212,14 @@ describe('startBundleReplaceWatcher', () => {
   test('second tick while dialog is still pending does NOT fire a second prompt', async () => {
     const fx = makeFixtures();
     let resolveDialog: ((v: { response: number; checkboxChecked: boolean }) => void) | null = null;
-    fx.showMessageBox = vi.fn(
-      () =>
-        new Promise<{ response: number; checkboxChecked: boolean }>((r) => {
-          resolveDialog = r;
-        }),
-    );
+    fx.showMessageBox = vi.fn(() => {
+      const { promise, resolve } = Promise.withResolvers<{
+        response: number;
+        checkboxChecked: boolean;
+      }>();
+      resolveDialog = resolve;
+      return promise;
+    });
     startBundleReplaceWatcher({
       infoPlistPath: '/x/Info.plist',
       getCurrentVersion: () => '0.4.1',
@@ -273,12 +275,14 @@ describe('startBundleReplaceWatcher', () => {
   test('stop() while dialog is pending, then dialog rejection: does NOT re-arm', async () => {
     const fx = makeFixtures();
     let rejectDialog: ((err: Error) => void) | null = null;
-    fx.showMessageBox = vi.fn(
-      () =>
-        new Promise<{ response: number; checkboxChecked: boolean }>((_, r) => {
-          rejectDialog = r;
-        }),
-    );
+    fx.showMessageBox = vi.fn(() => {
+      const { promise, reject } = Promise.withResolvers<{
+        response: number;
+        checkboxChecked: boolean;
+      }>();
+      rejectDialog = reject;
+      return promise;
+    });
     const handle = startBundleReplaceWatcher({
       infoPlistPath: '/x/Info.plist',
       getCurrentVersion: () => '0.4.1',
@@ -308,12 +312,14 @@ describe('startBundleReplaceWatcher', () => {
   test('stop() during a pending dialog suppresses relaunch+quit on user response', async () => {
     const fx = makeFixtures();
     let resolveDialog: ((v: { response: number; checkboxChecked: boolean }) => void) | null = null;
-    fx.showMessageBox = vi.fn(
-      () =>
-        new Promise<{ response: number; checkboxChecked: boolean }>((r) => {
-          resolveDialog = r;
-        }),
-    );
+    fx.showMessageBox = vi.fn(() => {
+      const { promise, resolve } = Promise.withResolvers<{
+        response: number;
+        checkboxChecked: boolean;
+      }>();
+      resolveDialog = resolve;
+      return promise;
+    });
     const handle = startBundleReplaceWatcher({
       infoPlistPath: '/x/Info.plist',
       getCurrentVersion: () => '0.4.1',

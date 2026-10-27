@@ -234,12 +234,11 @@ describe('NavigatorApp launcher runtime behavior', () => {
   test('shows the "Opening…" overlay while a project open is in flight, then clears it', async () => {
     const bridge = createBridge();
     let resolveOpen: (() => void) | undefined;
-    bridge.project.open = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveOpen = resolve;
-        }),
-    );
+    bridge.project.open = vi.fn(() => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      resolveOpen = resolve;
+      return promise;
+    });
     await renderNavigator(bridge);
 
     expect(screen.queryByTestId('nav-opening-overlay')).toBeNull();

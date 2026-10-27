@@ -441,10 +441,7 @@ async function watchContent(
 }
 
 function deferred(): { promise: Promise<void>; release: () => void } {
-  let release!: () => void;
-  const promise = new Promise<void>((resolve) => {
-    release = resolve;
-  });
+  const { promise, resolve: release } = Promise.withResolvers<void>();
   releaseLatches.push(release);
   return { promise, release };
 }
@@ -3740,10 +3737,7 @@ test('alias-only recovery publishes a local-targets stateless frame from the rea
     expect(systemDoc).toBeDefined();
     if (!systemDoc) throw new Error('system document unavailable');
     const originalBroadcast = systemDoc.broadcastStateless.bind(systemDoc);
-    let resolveFrame!: () => void;
-    const frame = new Promise<void>((resolve) => {
-      resolveFrame = resolve;
-    });
+    const { promise: frame, resolve: resolveFrame } = Promise.withResolvers<void>();
     let observingNotice = false;
     const outbound = vi.spyOn(systemDoc, 'broadcastStateless').mockImplementation((payload) => {
       const result = originalBroadcast(payload);
@@ -3861,10 +3855,7 @@ test('overlapping content and HEAD notices settle the owned Git branch and alias
     expect(await inventoryAuditBroken(server.port, 'linked.md')).toBe(true);
     const broadcaster = server.serverInstance.cc1Broadcaster;
     const originalEmit = broadcaster.emitBranchSwitched.bind(broadcaster);
-    let resolveBranch!: (branch: string) => void;
-    const branchSettled = new Promise<string>((resolve) => {
-      resolveBranch = resolve;
-    });
+    const { promise: branchSettled, resolve: resolveBranch } = Promise.withResolvers<string>();
     vi.spyOn(broadcaster, 'emitBranchSwitched').mockImplementation((branch) => {
       originalEmit(branch);
       resolveBranch(branch);

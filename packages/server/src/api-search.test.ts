@@ -850,10 +850,7 @@ describe('GET /api/search — cold-start readiness', () => {
       writeFileSync(join(dir, 'architecture/overview.md'), '# System Overview\n', 'utf-8');
       const fileIndex = buildFileIndex(dir);
 
-      let resolveReady: () => void = () => {};
-      const ready = new Promise<void>((resolve) => {
-        resolveReady = resolve;
-      });
+      const { promise: ready, resolve: resolveReady } = Promise.withResolvers<void>();
       const ext = createApiExtension({
         hocuspocus: {} as unknown as Parameters<typeof createApiExtension>[0]['hocuspocus'],
         sessionManager: {} as unknown as Parameters<typeof createApiExtension>[0]['sessionManager'],
@@ -893,10 +890,7 @@ describe('GET /api/search — cold-start readiness', () => {
       writeFileSync(join(dir, 'guide.md'), '# Guide\n', 'utf-8');
       const fileIndex = buildFileIndex(dir);
 
-      let rejectReady: (err: Error) => void = () => {};
-      const ready = new Promise<void>((_resolve, reject) => {
-        rejectReady = reject;
-      });
+      const { promise: ready, reject: rejectReady } = Promise.withResolvers<void>();
       ready.catch(() => {});
       const ext = createApiExtension({
         hocuspocus: {} as unknown as Parameters<typeof createApiExtension>[0]['hocuspocus'],

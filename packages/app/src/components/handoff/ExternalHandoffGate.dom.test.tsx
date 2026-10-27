@@ -63,16 +63,6 @@ function unavailableResult(): ApplyAgentConnectionsResult {
   };
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((next, fail) => {
-    resolve = next;
-    reject = fail;
-  });
-  return { promise, resolve, reject };
-}
-
 function GateHarness({
   rawDispatch,
   target = 'claude-code',
@@ -251,7 +241,7 @@ describe('ExternalHandoffGate', () => {
 
   test('a fast readiness check completes without showing a delayed checking status', async () => {
     vi.useFakeTimers();
-    const read = deferred<ApplyAgentConnectionsResult>();
+    const read = Promise.withResolvers<ApplyAgentConnectionsResult>();
     const applyConnections = vi.fn(() => read.promise);
     const rawDispatch = vi.fn(async () => ({ ok: true as const }));
     const onOutcome = vi.fn();
@@ -269,7 +259,7 @@ describe('ExternalHandoffGate', () => {
 
   test('a slow readiness check exposes a perceivable status after a short delay', async () => {
     vi.useFakeTimers();
-    const read = deferred<ApplyAgentConnectionsResult>();
+    const read = Promise.withResolvers<ApplyAgentConnectionsResult>();
     const applyConnections = vi.fn(() => read.promise);
     const rawDispatch = vi.fn(async () => ({ ok: true as const }));
     renderGate(applyConnections, <GateHarness rawDispatch={rawDispatch} />);
@@ -288,7 +278,7 @@ describe('ExternalHandoffGate', () => {
   test('a stalled readiness read fails open within a bounded time and warns before dispatch', async () => {
     vi.useFakeTimers();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const read = deferred<ApplyAgentConnectionsResult>();
+    const read = Promise.withResolvers<ApplyAgentConnectionsResult>();
     const applyConnections = vi.fn(() => read.promise);
     const rawDispatch = vi.fn(async () => ({ ok: true as const }));
     const onOutcome = vi.fn();
@@ -620,7 +610,7 @@ describe('ExternalHandoffGate', () => {
   });
 
   test('closing setup restores focus to the stable picker trigger', async () => {
-    const read = deferred<ApplyAgentConnectionsResult>();
+    const read = Promise.withResolvers<ApplyAgentConnectionsResult>();
     const applyConnections = vi.fn(() => read.promise);
     const rawDispatch = vi.fn(async () => ({ ok: true as const }));
     renderGate(applyConnections, <DismissingPickerHarness rawDispatch={rawDispatch} />);
@@ -637,7 +627,7 @@ describe('ExternalHandoffGate', () => {
   });
 
   test('closing setup uses the caller focus fallback after the initiating item unmounts', async () => {
-    const read = deferred<ApplyAgentConnectionsResult>();
+    const read = Promise.withResolvers<ApplyAgentConnectionsResult>();
     const applyConnections = vi.fn(() => read.promise);
     const rawDispatch = vi.fn(async () => ({ ok: true as const }));
     renderGate(applyConnections, <UnmountingPickerHarness rawDispatch={rawDispatch} />);
@@ -829,8 +819,8 @@ describe('ExternalHandoffGate', () => {
   });
 
   test('a newer request supersedes an older readiness check', async () => {
-    const first = deferred<ApplyAgentConnectionsResult>();
-    const second = deferred<ApplyAgentConnectionsResult>();
+    const first = Promise.withResolvers<ApplyAgentConnectionsResult>();
+    const second = Promise.withResolvers<ApplyAgentConnectionsResult>();
     const applyConnections = vi
       .fn<() => Promise<ApplyAgentConnectionsResult>>()
       .mockReturnValueOnce(first.promise)
@@ -868,7 +858,7 @@ describe('ExternalHandoffGate', () => {
   test('a superseded stalled read cannot later bypass readiness or launch its destination', async () => {
     vi.useFakeTimers();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const first = deferred<ApplyAgentConnectionsResult>();
+    const first = Promise.withResolvers<ApplyAgentConnectionsResult>();
     const applyConnections = vi
       .fn<() => Promise<ApplyAgentConnectionsResult>>()
       .mockReturnValueOnce(first.promise)
@@ -897,7 +887,7 @@ describe('ExternalHandoffGate', () => {
 
   test('a rejected stale check does not warn about bypassing readiness', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const first = deferred<ApplyAgentConnectionsResult>();
+    const first = Promise.withResolvers<ApplyAgentConnectionsResult>();
     const applyConnections = vi
       .fn<() => Promise<ApplyAgentConnectionsResult>>()
       .mockReturnValueOnce(first.promise)
@@ -928,7 +918,7 @@ describe('ExternalHandoffGate', () => {
   });
 
   test('a newer request supersedes an in-flight setup save', async () => {
-    const save = deferred<ApplyAgentConnectionsResult>();
+    const save = Promise.withResolvers<ApplyAgentConnectionsResult>();
     const applyConnections = vi
       .fn<() => Promise<ApplyAgentConnectionsResult>>()
       .mockResolvedValueOnce(result(terminalAgentSnapshot()))

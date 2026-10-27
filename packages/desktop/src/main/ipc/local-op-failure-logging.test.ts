@@ -22,10 +22,7 @@ function pushController<E>(
   registry: StreamEntry<E>[],
   onEvent: (event: E) => void,
 ): { done: Promise<void>; cancel: () => void } {
-  let resolveDone: () => void = () => {};
-  const done = new Promise<void>((resolve) => {
-    resolveDone = resolve;
-  });
+  const { promise: done, resolve: resolveDone } = Promise.withResolvers<void>();
   registry.push({ resolve: resolveDone, onEvent });
   return { done, cancel: () => {} };
 }

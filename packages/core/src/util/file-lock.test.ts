@@ -98,10 +98,7 @@ describe('withFileLock — stale-lock recovery', () => {
 
 describe('withFileLock — timeout', () => {
   test('rejects with FileLockTimeoutError when the lock is held past timeoutMs', async () => {
-    let release!: () => void;
-    const releaseSignal = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: releaseSignal, resolve: release } = Promise.withResolvers<void>();
 
     const heldPromise = withFileLock(lockPath, async () => {
       await releaseSignal;
@@ -120,10 +117,7 @@ describe('withFileLock — timeout', () => {
   });
 
   test('FileLockTimeoutError carries lockPath and timeoutMs', async () => {
-    let release!: () => void;
-    const releaseSignal = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: releaseSignal, resolve: release } = Promise.withResolvers<void>();
 
     const heldPromise = withFileLock(lockPath, async () => {
       await releaseSignal;

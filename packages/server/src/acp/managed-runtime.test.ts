@@ -196,10 +196,7 @@ describe('ensureManagedRuntime', () => {
     const first = buildTarball(firstStage, 'node-vFIRST', ['bin/node', 'bin/npx'], 'first');
     const second = buildTarball(secondStage, 'node-vSECOND', ['bin/node', 'bin/npx'], 'second');
     let arrivals = 0;
-    let releaseCommit!: () => void;
-    const commitGate = new Promise<void>((resolve) => {
-      releaseCommit = resolve;
-    });
+    const { promise: commitGate, resolve: releaseCommit } = Promise.withResolvers<void>();
     const beforeCommit = async () => {
       arrivals += 1;
       if (arrivals === 2) releaseCommit();

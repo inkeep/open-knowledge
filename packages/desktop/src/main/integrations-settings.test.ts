@@ -562,9 +562,9 @@ describe('ok:integrations:dispatch — gates and serialization', () => {
     let releaseFirst: () => void = () => {};
     path.install = async () => {
       order.push('install-start');
-      await new Promise<void>((resolve) => {
-        releaseFirst = resolve;
-      });
+      const { promise, resolve } = Promise.withResolvers<void>();
+      releaseFirst = resolve;
+      await promise;
       order.push('install-end');
       return { ok: true };
     };
@@ -599,9 +599,9 @@ describe('ok:integrations:dispatch — gates and serialization', () => {
     let releaseInstall: () => void = () => {};
     path.install = async () => {
       order.push('toggle-start');
-      await new Promise<void>((resolve) => {
-        releaseInstall = resolve;
-      });
+      const { promise, resolve } = Promise.withResolvers<void>();
+      releaseInstall = resolve;
+      await promise;
       order.push('toggle-end');
       return { ok: true };
     };

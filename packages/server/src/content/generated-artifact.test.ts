@@ -172,9 +172,9 @@ describe('writeGeneratedArtifact', () => {
     const { env, rec } = harness();
     let release!: () => void;
     env.writeDisk = async () => {
-      await new Promise<void>((resolve) => {
-        release = resolve;
-      });
+      const { promise, resolve } = Promise.withResolvers<void>();
+      release = resolve;
+      await promise;
       rec.disk.push({ absPath: WRITE.absPath, markdown: WRITE.markdown });
     };
 

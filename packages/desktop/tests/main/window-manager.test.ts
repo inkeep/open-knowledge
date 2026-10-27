@@ -751,10 +751,11 @@ describe('WindowManager', () => {
 
     test('starts no project server for an open still in progress when the drain begins', async () => {
       let finishClean: (() => void) | undefined;
-      env.deps.runClean = () =>
-        new Promise<void>((resolveClean) => {
-          finishClean = resolveClean;
-        });
+      env.deps.runClean = () => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        finishClean = resolve;
+        return promise;
+      };
       const wm = new WindowManager(env.deps);
       const openFailure = wm
         .createProjectWindow({ projectPath: '/tmp/quit-drain-pending-open' })
@@ -876,12 +877,11 @@ describe('WindowManager', () => {
     env.deps.createWindow = (opts) => {
       env.createWindowOpts.push(opts);
       const w = makeWindow();
-      w.loadFile = vi.fn(
-        () =>
-          new Promise<void>((resolve) => {
-            releaseLoad = resolve;
-          }),
-      ) as typeof w.loadFile;
+      w.loadFile = vi.fn(() => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        releaseLoad = resolve;
+        return promise;
+      });
       env.windows.push(w);
       return w;
     };
@@ -909,12 +909,11 @@ describe('WindowManager', () => {
     env.deps.createWindow = (opts) => {
       env.createWindowOpts.push(opts);
       const w = makeWindow();
-      w.loadFile = vi.fn(
-        () =>
-          new Promise<void>((_resolve, reject) => {
-            rejectLoad = reject;
-          }),
-      ) as typeof w.loadFile;
+      w.loadFile = vi.fn(() => {
+        const { promise, reject } = Promise.withResolvers<void>();
+        rejectLoad = reject;
+        return promise;
+      });
       env.windows.push(w);
       return w;
     };
@@ -1508,12 +1507,11 @@ describe('WindowManager', () => {
       env.deps.createWindow = (opts) => {
         env.createWindowOpts.push(opts);
         const w = makeWindow();
-        w.loadFile = vi.fn(
-          () =>
-            new Promise<void>((resolve) => {
-              releaseLoad = resolve;
-            }),
-        ) as typeof w.loadFile;
+        w.loadFile = vi.fn(() => {
+          const { promise, resolve } = Promise.withResolvers<void>();
+          releaseLoad = resolve;
+          return promise;
+        });
         env.windows.push(w);
         return w;
       };
@@ -2266,10 +2264,10 @@ describe('WindowManager', () => {
       let resolveSpawn: (() => void) | undefined;
       let rejectSpawn: ((err: Error) => void) | undefined;
       env.deps.spawnDetachedServer = async () => {
-        await new Promise<void>((resolve, reject) => {
-          resolveSpawn = resolve;
-          rejectSpawn = reject;
-        });
+        const { promise, resolve, reject } = Promise.withResolvers<void>();
+        resolveSpawn = resolve;
+        rejectSpawn = reject;
+        await promise;
         spawned = true;
         return heldChild(env.deps, 6666);
       };

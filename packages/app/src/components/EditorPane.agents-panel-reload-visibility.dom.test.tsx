@@ -251,20 +251,6 @@ function readPersistedAgentsPanelLevel(): boolean | undefined {
   return readWebDockSessionOrder('agents')?.agentPanelVisible;
 }
 
-function deferredDockState(): {
-  promise: Promise<DockStatePayload>;
-  resolve: (state: DockStatePayload) => void;
-  reject: (reason: unknown) => void;
-} {
-  let resolve!: (state: DockStatePayload) => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<DockStatePayload>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-
 function installDesktopBridge(
   getDockState: () => Promise<DockStatePayload>,
   hooks: { onViewMenuStateChanged?: (state: Record<string, unknown>) => void } = {},
@@ -420,7 +406,7 @@ describe('EditorPane agents-panel reload visibility', () => {
   });
 
   test('desktop: a roster snapshot landing while the dock restore is pending does not reveal the closed panel', async () => {
-    const pendingDockState = deferredDockState();
+    const pendingDockState = Promise.withResolvers<DockStatePayload>();
     installDesktopBridge(() => pendingDockState.promise);
 
     await renderPane(6);
@@ -442,7 +428,7 @@ describe('EditorPane agents-panel reload visibility', () => {
   });
 
   test('desktop: a live thread arriving while the dock restore is pending reveals the panel once the restore settles', async () => {
-    const pendingDockState = deferredDockState();
+    const pendingDockState = Promise.withResolvers<DockStatePayload>();
     installDesktopBridge(() => pendingDockState.promise);
 
     await renderPane(6);
@@ -526,7 +512,7 @@ describe('EditorPane agents-panel reload visibility', () => {
   });
 
   test('desktop: a header show during a pending dock restore reads closed first and survives settlement', async () => {
-    const pendingDockState = deferredDockState();
+    const pendingDockState = Promise.withResolvers<DockStatePayload>();
     const viewMenuStates: Array<Record<string, unknown>> = [];
     installDesktopBridge(() => pendingDockState.promise, {
       onViewMenuStateChanged: (state) => viewMenuStates.push(state),
@@ -561,7 +547,7 @@ describe('EditorPane agents-panel reload visibility', () => {
   });
 
   test('desktop: a toggle during a pending dock restore survives settlement with the toggled level', async () => {
-    const pendingDockState = deferredDockState();
+    const pendingDockState = Promise.withResolvers<DockStatePayload>();
     const viewMenuStates: Array<Record<string, unknown>> = [];
     installDesktopBridge(() => pendingDockState.promise, {
       onViewMenuStateChanged: (state) => viewMenuStates.push(state),
@@ -588,7 +574,7 @@ describe('EditorPane agents-panel reload visibility', () => {
   });
 
   test('desktop: a live thread after the dock restore settles reveals the persisted-closed panel', async () => {
-    const pendingDockState = deferredDockState();
+    const pendingDockState = Promise.withResolvers<DockStatePayload>();
     installDesktopBridge(() => pendingDockState.promise);
 
     await renderPane(6);
@@ -633,7 +619,7 @@ describe('EditorPane agents-panel reload visibility', () => {
   test('desktop: a hung dock-state restore force-settles at the deadline, warns, writes nothing, and a thread arriving afterwards still reveals the panel', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const hungDockState = deferredDockState();
+    const hungDockState = Promise.withResolvers<DockStatePayload>();
     const viewMenuStates: Array<Record<string, unknown>> = [];
     installDesktopBridge(() => hungDockState.promise, {
       onViewMenuStateChanged: (state) => viewMenuStates.push(state),
@@ -713,7 +699,7 @@ describe('EditorPane agents-panel reload visibility', () => {
 
   test('desktop: a failed dock-state restore settles without writing the un-restored defaults', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const failingDockState = deferredDockState();
+    const failingDockState = Promise.withResolvers<DockStatePayload>();
     const viewMenuStates: Array<Record<string, unknown>> = [];
     installDesktopBridge(() => failingDockState.promise, {
       onViewMenuStateChanged: (state) => viewMenuStates.push(state),
@@ -769,7 +755,7 @@ describe('EditorPane agents-panel reload visibility', () => {
   test('desktop: a panel opened and closed before an ABANDONED settle publishes the closed level, and the untouched terminal level stays withheld', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const hungDockState = deferredDockState();
+    const hungDockState = Promise.withResolvers<DockStatePayload>();
     const viewMenuStates: Array<Record<string, unknown>> = [];
     installDesktopBridge(() => hungDockState.promise, {
       onViewMenuStateChanged: (state) => viewMenuStates.push(state),
@@ -819,7 +805,7 @@ describe('EditorPane agents-panel reload visibility', () => {
 
   test('desktop: a panel opened and closed before a REJECTED read publishes the closed level too', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const failingDockState = deferredDockState();
+    const failingDockState = Promise.withResolvers<DockStatePayload>();
     const viewMenuStates: Array<Record<string, unknown>> = [];
     installDesktopBridge(() => failingDockState.promise, {
       onViewMenuStateChanged: (state) => viewMenuStates.push(state),
@@ -866,7 +852,7 @@ describe('EditorPane agents-panel reload visibility', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const hungDockState = deferredDockState();
+    const hungDockState = Promise.withResolvers<DockStatePayload>();
     const viewMenuStates: Array<Record<string, unknown>> = [];
     installDesktopBridge(() => hungDockState.promise, {
       onViewMenuStateChanged: (state) => viewMenuStates.push(state),
@@ -924,7 +910,7 @@ describe('EditorPane agents-panel reload visibility', () => {
   test('desktop: a toggle during a pending dock restore survives the force-settle deadline with the toggled level', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const hungDockState = deferredDockState();
+    const hungDockState = Promise.withResolvers<DockStatePayload>();
     const viewMenuStates: Array<Record<string, unknown>> = [];
     installDesktopBridge(() => hungDockState.promise, {
       onViewMenuStateChanged: (state) => viewMenuStates.push(state),
@@ -970,7 +956,7 @@ describe('EditorPane agents-panel reload visibility', () => {
 
   test('desktop: a toggle during a pending dock restore survives a restore rejection with the toggled level', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const failingDockState = deferredDockState();
+    const failingDockState = Promise.withResolvers<DockStatePayload>();
     const viewMenuStates: Array<Record<string, unknown>> = [];
     installDesktopBridge(() => failingDockState.promise, {
       onViewMenuStateChanged: (state) => viewMenuStates.push(state),
@@ -1015,7 +1001,7 @@ describe('EditorPane agents-panel reload visibility', () => {
   test('desktop: a terminal toggle during a pending dock restore survives the force-settle deadline with the toggled level', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const hungDockState = deferredDockState();
+    const hungDockState = Promise.withResolvers<DockStatePayload>();
     const viewMenuStates: Array<Record<string, unknown>> = [];
     installDesktopBridge(() => hungDockState.promise, {
       onViewMenuStateChanged: (state) => viewMenuStates.push(state),
@@ -1060,7 +1046,7 @@ describe('EditorPane agents-panel reload visibility', () => {
   test('desktop: an on-time dock restore clears the deadline so no late bound-exceeded warn fires', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const deferred = deferredDockState();
+    const deferred = Promise.withResolvers<DockStatePayload>();
     installDesktopBridge(() => deferred.promise);
 
     try {

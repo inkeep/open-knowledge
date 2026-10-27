@@ -775,9 +775,9 @@ describe('SavedThemesProvider', () => {
       const method = init?.method ?? 'GET';
       methods.push(method);
       if (method === 'PUT') {
-        return new Promise<Response>((resolve) => {
-          resolveUpdate = resolve;
-        });
+        const { promise, resolve } = Promise.withResolvers<Response>();
+        resolveUpdate = resolve;
+        return promise;
       }
       if (method === 'DELETE') {
         return Response.json(

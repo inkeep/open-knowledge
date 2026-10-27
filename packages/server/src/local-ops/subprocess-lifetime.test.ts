@@ -46,10 +46,7 @@ interface OwnedRun {
 async function openReleaseChannel(): Promise<ReleaseChannel> {
   const held = new Set<{ socket: Socket; closed: Promise<void> }>();
   let releasing = false;
-  let connect!: (descendant: Descendant) => void;
-  const descendant = new Promise<Descendant>((resolve) => {
-    connect = resolve;
-  });
+  const { promise: descendant, resolve: connect } = Promise.withResolvers<Descendant>();
   const server = createServer((socket) => {
     let open = true;
     const closed = new Promise<void>((resolve) => {

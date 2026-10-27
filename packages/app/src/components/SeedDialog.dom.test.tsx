@@ -197,9 +197,9 @@ describe('SeedDialog runtime behavior', () => {
     let resolveKnowledgeBasePlan: ((result: OkSeedPlanResult) => void) | null = null;
     planImpl = (options) => {
       if (options.packId === 'knowledge-base') {
-        return new Promise((resolve) => {
-          resolveKnowledgeBasePlan = resolve;
-        });
+        const { promise, resolve } = Promise.withResolvers<OkSeedPlanResult>();
+        resolveKnowledgeBasePlan = resolve;
+        return promise;
       }
       return Promise.resolve({ ok: true, plan: plainNotesPlan });
     };

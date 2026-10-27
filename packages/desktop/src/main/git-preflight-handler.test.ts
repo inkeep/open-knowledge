@@ -597,12 +597,11 @@ describe('ensureGitAvailable', () => {
       });
     });
     let answer: (value: { response: number }) => void = () => {};
-    const showMessageBox = vi.fn(
-      () =>
-        new Promise<{ response: number }>((resolve) => {
-          answer = resolve;
-        }),
-    );
+    const showMessageBox = vi.fn(() => {
+      const { promise, resolve } = Promise.withResolvers<{ response: number }>();
+      answer = resolve;
+      return promise;
+    });
     const warn = vi.fn((_msg: string, _obj?: unknown) => {});
     const info = vi.fn((_msg: string, _obj?: unknown) => {});
 

@@ -255,10 +255,7 @@ describe('TerminalGate', () => {
 
   test('the lazy-chunk Suspense fallback shows the same starting notice (PRD-8313)', async () => {
     vi.resetModules();
-    let releasePanel: () => void = () => {};
-    const panelGate = new Promise<void>((resolve) => {
-      releasePanel = resolve;
-    });
+    const { promise: panelGate, resolve: releasePanel } = Promise.withResolvers<void>();
     vi.doMock('./TerminalPanel', async () => {
       await panelGate;
       return { TerminalPanel: () => <span data-testid="terminal-panel" /> };

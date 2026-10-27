@@ -56,10 +56,7 @@ export async function createCleanupOrder(
   const removers = new Set<number>();
   let runner: number | undefined;
   let server: number | undefined;
-  let readyResolve: ((error?: Error) => void) | undefined;
-  const ready = new Promise<Error | undefined>((resolve) => {
-    readyResolve = resolve;
-  });
+  const { promise: ready, resolve: readyResolve } = Promise.withResolvers<Error | undefined>();
   const key = (phase: string, pid: number | undefined) => `${phase}:${pid}`;
   const has = (phase: string, pid: number | undefined) => seen.has(key(phase, pid));
   const advanced = (pid: number | undefined) =>
@@ -73,7 +70,7 @@ export async function createCleanupOrder(
     events.push({ phase: `ack:${phase}`, pid: Number(pid) });
   }
   function advance() {
-    if (runner !== undefined && server !== undefined) readyResolve?.();
+    if (runner !== undefined && server !== undefined) readyResolve(undefined);
     if (removers.size > 0 || advanced(runner)) release('before-record', server);
     if ([...removers].some((pid) => has('before-error', pid)) || advanced(runner)) {
       release('after-record', server);
@@ -103,7 +100,7 @@ export async function createCleanupOrder(
       const [phase, rawPid] = buffer.trim().split('\t');
       const pid = Number(rawPid);
       if (!phase || !Number.isInteger(pid) || pid <= 1) {
-        readyResolve?.(new Error('invalid cleanup ordering participant'));
+        readyResolve(new Error('invalid cleanup ordering participant'));
         socket.destroy();
         return;
       }
@@ -134,7 +131,7 @@ export async function createCleanupOrder(
         ended.add(actor);
         events.push({ phase: 'exit', pid: actor });
         if (runner === undefined || server === undefined) {
-          readyResolve?.(
+          readyResolve(
             new Error('cleanup ordering participant exited before registration completed'),
           );
         }

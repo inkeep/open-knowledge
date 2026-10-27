@@ -136,13 +136,14 @@ function makeRow(overrides: Partial<OkBugReportListRow> & { id: string }): OkBug
 }
 
 function deferredSend() {
-  let resolve: (result: OkBugReportSendResult) => void = () => {};
+  let resolveSend: (result: OkBugReportSendResult) => void = () => {};
   return {
-    send: () =>
-      new Promise<OkBugReportSendResult>((r) => {
-        resolve = r;
-      }),
-    finish: (result: OkBugReportSendResult) => resolve(result),
+    send: () => {
+      const { promise, resolve } = Promise.withResolvers<OkBugReportSendResult>();
+      resolveSend = resolve;
+      return promise;
+    },
+    finish: (result: OkBugReportSendResult) => resolveSend(result),
   };
 }
 

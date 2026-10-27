@@ -230,10 +230,8 @@ describe('SlidesToolbarControls — activation', () => {
     );
     try {
       const user = userEvent.setup();
-      let resolveOpen: ((result: OkSlidesOpenResult) => void) | undefined;
-      const pendingOpen = new Promise<OkSlidesOpenResult>((resolve) => {
-        resolveOpen = resolve;
-      });
+      const { promise: pendingOpen, resolve: resolveOpen } =
+        Promise.withResolvers<OkSlidesOpenResult>();
       const { openSpy } = installBridge({
         status: () => Promise.resolve({ kind: 'status', available: true, source: 'global' }),
         open: () => pendingOpen,
@@ -251,7 +249,7 @@ describe('SlidesToolbarControls — activation', () => {
         duration: Number.POSITIVE_INFINITY,
       });
 
-      resolveOpen?.({ kind: 'open', ok: true });
+      resolveOpen({ kind: 'open', ok: true });
       await waitFor(() => expect(action.getAttribute('aria-busy')).toBe('false'));
       expect(toastDismissSpy).toHaveBeenCalledWith('slides-opening');
     } finally {

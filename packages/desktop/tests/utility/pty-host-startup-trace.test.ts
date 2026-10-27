@@ -384,14 +384,8 @@ test('a failing harness scenario snapshots its live session before releasing it'
 test('a hard timeout snapshots the live session of the scenario still in flight', async () => {
   vi.mocked(execFileSync).mockReturnValue(`${SHELL}\r\n`);
   const scenario = harnessScenario('shell still starting');
-  let proceed = () => {};
-  const blocked = new Promise<void>((resolve) => {
-    proceed = resolve;
-  });
-  let started = () => {};
-  const inFlight = new Promise<void>((resolve) => {
-    started = resolve;
-  });
+  const { promise: blocked, resolve: proceed } = Promise.withResolvers<void>();
+  const { promise: inFlight, resolve: started } = Promise.withResolvers<void>();
   const running = scenario.runner.run('shell still starting', async () => {
     scenario.openSession().output(PROLOGUE);
     started();

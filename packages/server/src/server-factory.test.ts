@@ -472,12 +472,11 @@ describe('createServer() — derived-index branch lifecycle', () => {
     let rejectBegin!: (error: Error) => void;
     const beginBranch = vi
       .spyOn(DerivedDocumentIndex.prototype, 'beginBranchSwitch')
-      .mockImplementationOnce(
-        () =>
-          new Promise<never>((_resolve, reject) => {
-            rejectBegin = reject;
-          }),
-      );
+      .mockImplementationOnce(() => {
+        const { promise, reject } = Promise.withResolvers<never>();
+        rejectBegin = reject;
+        return promise;
+      });
     const abort = vi.spyOn(DerivedDocumentIndex.prototype, 'abortBranchSwitch');
 
     await git.checkout('feature');
@@ -1619,10 +1618,7 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     await server.ready;
     const coordinator = beginStartup.mock.instances[0] as DerivedDocumentIndex;
     beginStartup.mockRestore();
-    let releaseTagClose!: () => void;
-    const tagCloseReleased = new Promise<void>((resolve) => {
-      releaseTagClose = resolve;
-    });
+    const { promise: tagCloseReleased, resolve: releaseTagClose } = Promise.withResolvers<void>();
     let tagCloseEntered = false;
     const tagCloseImplementation = TagIndex.prototype.close;
     const tagClose = vi.spyOn(TagIndex.prototype, 'close').mockImplementation(async function (
@@ -4524,14 +4520,8 @@ describe('createServer() — generated index wiring', () => {
   test('server readiness settles before the boot index sweep starts planning', async () => {
     writeDoc('existing.md', 'Existing at boot', 'note');
 
-    let enterPlanning!: () => void;
-    const planningEntered = new Promise<void>((resolve) => {
-      enterPlanning = resolve;
-    });
-    let releasePlanning!: () => void;
-    const planningBarrier = new Promise<void>((resolve) => {
-      releasePlanning = resolve;
-    });
+    const { promise: planningEntered, resolve: enterPlanning } = Promise.withResolvers<void>();
+    const { promise: planningBarrier, resolve: releasePlanning } = Promise.withResolvers<void>();
     let readySettled = false;
 
     const activeServer = await startServerWithIndexHooks({
@@ -4588,14 +4578,9 @@ describe('createServer() — generated index wiring', () => {
     const rootMtime = statSync(indexPath()).mtimeMs;
     const betaMtime = statSync(indexPathAt('beta')).mtimeMs;
 
-    let firstWriteFinished!: () => void;
-    const firstWrite = new Promise<void>((resolve) => {
-      firstWriteFinished = resolve;
-    });
-    let releaseFirstWrite!: () => void;
-    const firstWriteBarrier = new Promise<void>((resolve) => {
-      releaseFirstWrite = resolve;
-    });
+    const { promise: firstWrite, resolve: firstWriteFinished } = Promise.withResolvers<void>();
+    const { promise: firstWriteBarrier, resolve: releaseFirstWrite } =
+      Promise.withResolvers<void>();
     let paused = false;
 
     const activeServer = await startServerWithIndexHooks({
@@ -4640,22 +4625,11 @@ describe('createServer() — generated index wiring', () => {
   test('boot sweep readiness waits for live requests coalesced behind it', async () => {
     writeDoc('anchor.md', 'Anchor', 'note');
 
-    let firstPassEntered!: () => void;
-    const firstPassStarted = new Promise<void>((resolve) => {
-      firstPassEntered = resolve;
-    });
-    let releaseFirstPass!: () => void;
-    const firstPassBarrier = new Promise<void>((resolve) => {
-      releaseFirstPass = resolve;
-    });
-    let coordinatorIdle!: () => void;
-    const coordinatorSettled = new Promise<void>((resolve) => {
-      coordinatorIdle = resolve;
-    });
-    let blockedKickObserved!: () => void;
-    const followupDeferredBySingleFlight = new Promise<void>((resolve) => {
-      blockedKickObserved = resolve;
-    });
+    const { promise: firstPassStarted, resolve: firstPassEntered } = Promise.withResolvers<void>();
+    const { promise: firstPassBarrier, resolve: releaseFirstPass } = Promise.withResolvers<void>();
+    const { promise: coordinatorSettled, resolve: coordinatorIdle } = Promise.withResolvers<void>();
+    const { promise: followupDeferredBySingleFlight, resolve: blockedKickObserved } =
+      Promise.withResolvers<void>();
     let passCount = 0;
 
     const activeServer = await startServerWithIndexHooks({
@@ -4701,18 +4675,9 @@ describe('createServer() — generated index wiring', () => {
   test('destroy cancels and drains an in-flight generated-index write', async () => {
     writeDoc('deep/note.md', 'Deep note', 'note');
 
-    let writePaused!: () => void;
-    const firstWritePaused = new Promise<void>((resolve) => {
-      writePaused = resolve;
-    });
-    let releaseWrite!: () => void;
-    const writeBarrier = new Promise<void>((resolve) => {
-      releaseWrite = resolve;
-    });
-    let abortObserved!: () => void;
-    const regenerationAborted = new Promise<void>((resolve) => {
-      abortObserved = resolve;
-    });
+    const { promise: firstWritePaused, resolve: writePaused } = Promise.withResolvers<void>();
+    const { promise: writeBarrier, resolve: releaseWrite } = Promise.withResolvers<void>();
+    const { promise: regenerationAborted, resolve: abortObserved } = Promise.withResolvers<void>();
     let blocked = false;
 
     const activeServer = await startServerWithIndexHooks({

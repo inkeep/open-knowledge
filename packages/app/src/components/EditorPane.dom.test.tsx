@@ -1125,12 +1125,11 @@ describe('EditorPane session-panel wiring', () => {
   test('desktop: a late project-state restore cannot override a user-owned per-install layout', async () => {
     localStorage.setItem('ok-terminal-placement-v1', 'right');
     let resolveDockState: ((state: DockStateResult) => void) | undefined;
-    const desk = makeOkDesktopStub(
-      () =>
-        new Promise<DockStateResult>((resolve) => {
-          resolveDockState = resolve;
-        }),
-    );
+    const desk = makeOkDesktopStub(() => {
+      const { promise, resolve } = Promise.withResolvers<DockStateResult>();
+      resolveDockState = resolve;
+      return promise;
+    });
     (window as { okDesktop?: unknown }).okDesktop = desk.stub;
     const { EditorPane } = await import('./EditorPane');
     render(<EditorPane />);
@@ -2385,13 +2384,14 @@ describe('EditorPane pane visibility for the header', () => {
         query === '(width < 48rem)' ? narrowQuery : originalMatchMedia(query),
     });
     let resolveConfig: (response: Response) => void = () => {};
-    globalThis.fetch = vi.fn((input: RequestInfo | URL) =>
-      String(input) === '/api/config'
-        ? new Promise<Response>((resolve) => {
-            resolveConfig = resolve;
-          })
-        : Promise.resolve(new Response(null, { status: 404 })),
-    );
+    globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+      if (String(input) !== '/api/config') {
+        return Promise.resolve(new Response(null, { status: 404 }));
+      }
+      const { promise, resolve } = Promise.withResolvers<Response>();
+      resolveConfig = resolve;
+      return promise;
+    });
     const key = narrowWorkspaceSessionKey('/tmp/project', 'web');
     sessionStorage.setItem(key, JSON.stringify({ version: 1, selected: null }));
 
@@ -2476,12 +2476,11 @@ describe('EditorPane saves and restores whether the editor is shown', () => {
 
   test('desktop: a saved hidden editor that lands after the settle bound still comes back hidden', async () => {
     let release: (value: DockStateResult) => void = () => {};
-    const desk = makeOkDesktopStub(
-      () =>
-        new Promise<DockStateResult>((resolve) => {
-          release = resolve;
-        }),
-    );
+    const desk = makeOkDesktopStub(() => {
+      const { promise, resolve } = Promise.withResolvers<DockStateResult>();
+      release = resolve;
+      return promise;
+    });
     (window as { okDesktop?: unknown }).okDesktop = desk.stub;
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
@@ -2511,12 +2510,11 @@ describe('EditorPane saves and restores whether the editor is shown', () => {
 
   async function renderPastTheSettleBound() {
     let release: (value: DockStateResult) => void = () => {};
-    const desk = makeOkDesktopStub(
-      () =>
-        new Promise<DockStateResult>((resolve) => {
-          release = resolve;
-        }),
-    );
+    const desk = makeOkDesktopStub(() => {
+      const { promise, resolve } = Promise.withResolvers<DockStateResult>();
+      release = resolve;
+      return promise;
+    });
     (window as { okDesktop?: unknown }).okDesktop = desk.stub;
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
@@ -2615,12 +2613,11 @@ describe('EditorPane saves and restores whether the editor is shown', () => {
 
   test('desktop: the editor stays shown through the restore wait, and an open during the wait keeps it shown', async () => {
     let release: (value: DockStateResult) => void = () => {};
-    const desk = makeOkDesktopStub(
-      () =>
-        new Promise<DockStateResult>((resolve) => {
-          release = resolve;
-        }),
-    );
+    const desk = makeOkDesktopStub(() => {
+      const { promise, resolve } = Promise.withResolvers<DockStateResult>();
+      release = resolve;
+      return promise;
+    });
     (window as { okDesktop?: unknown }).okDesktop = desk.stub;
     await renderEditorPane();
     expect(editorVisibleAttr()).toBe('true');
@@ -2683,12 +2680,11 @@ describe('EditorPane saves and restores whether the editor is shown', () => {
 
   test('desktop: a document opened during the restore wait keeps a saved-hidden editor shown', async () => {
     let release: (value: DockStateResult) => void = () => {};
-    const desk = makeOkDesktopStub(
-      () =>
-        new Promise<DockStateResult>((resolve) => {
-          release = resolve;
-        }),
-    );
+    const desk = makeOkDesktopStub(() => {
+      const { promise, resolve } = Promise.withResolvers<DockStateResult>();
+      release = resolve;
+      return promise;
+    });
     (window as { okDesktop?: unknown }).okDesktop = desk.stub;
     await renderEditorPane();
 

@@ -108,10 +108,7 @@ describe('createSlidesDeckRegistry', () => {
 
   it('clears immediately but waits for every process signal', async () => {
     const registry = createSlidesDeckRegistry();
-    let release: (() => void) | undefined;
-    const pendingSignal = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: pendingSignal, resolve: release } = Promise.withResolvers<void>();
     const { deck } = fakeDeck('/decks/a.md', 3001);
     deck.process.signal = () => pendingSignal;
     registry.register(deck);
@@ -124,7 +121,7 @@ describe('createSlidesDeckRegistry', () => {
     await Promise.resolve();
     expect(settled).toBe(false);
 
-    release?.();
+    release();
     await drain;
     expect(settled).toBe(true);
   });

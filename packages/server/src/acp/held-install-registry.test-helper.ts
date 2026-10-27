@@ -229,10 +229,7 @@ export async function withHeldInstallRegistry(
 
     const openers: Array<() => void> = [];
     const gate = (): { open: () => void; opened: Promise<void> } => {
-      let open = (): void => {};
-      const opened = new Promise<void>((resolve) => {
-        open = resolve;
-      });
+      const { promise: opened, resolve: open } = Promise.withResolvers<void>();
       openers.push(open);
       return { open, opened };
     };

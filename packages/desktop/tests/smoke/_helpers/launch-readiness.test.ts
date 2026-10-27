@@ -2772,12 +2772,11 @@ describe('the cap bounds the wait itself, not only the gaps between polls', () =
       pollMs: 1,
       now: () => 0,
       readLog: () => snapshot({ lineCount: 3, lastEvent: 'desktop.startup.serverSpawned' }),
-      startDeadline: () => ({
-        expired: new Promise<void>((resolve) => {
-          reachDeadline = resolve;
-        }),
-        cancel: () => {},
-      }),
+      startDeadline: () => {
+        const { promise: expired, resolve } = Promise.withResolvers<void>();
+        reachDeadline = resolve;
+        return { expired, cancel: () => {} };
+      },
     }).then(
       (value) => ({ resolvedWith: value }),
       (error: unknown) => ({ rejectedWith: (error as Error).message }),
@@ -2853,12 +2852,11 @@ describe('the cap bounds the wait itself, not only the gaps between polls', () =
           setTimeout(resolve, 0);
         }),
       readLog: () => snapshot({ lineCount: 3, lastEvent: 'desktop.startup.serverSpawned' }),
-      startDeadline: () => ({
-        expired: new Promise<void>((resolve) => {
-          reachDeadline = resolve;
-        }),
-        cancel: () => {},
-      }),
+      startDeadline: () => {
+        const { promise: expired, resolve } = Promise.withResolvers<void>();
+        reachDeadline = resolve;
+        return { expired, cancel: () => {} };
+      },
     }).catch((e: unknown) => e);
     const message = (error as Error).message;
     expect(probes).toBe(1);

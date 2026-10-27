@@ -769,9 +769,7 @@ describe('FileTree duplicate action runtime behavior', () => {
 
   test('duplicate busy guard suppresses overlapping duplicate requests', async () => {
     let releaseDuplicate: () => void = () => {};
-    duplicateGate = new Promise<void>((resolve) => {
-      releaseDuplicate = resolve;
-    });
+    ({ promise: duplicateGate, resolve: releaseDuplicate } = Promise.withResolvers<void>());
     const user = userEvent.setup();
     renderFileTree();
 
@@ -1005,9 +1003,7 @@ describe('FileTree duplicate action runtime behavior', () => {
 
   test('Delete does not open confirmation while another file-tree action is busy', async () => {
     let releaseDuplicate: () => void = () => {};
-    duplicateGate = new Promise<void>((resolve) => {
-      releaseDuplicate = resolve;
-    });
+    ({ promise: duplicateGate, resolve: releaseDuplicate } = Promise.withResolvers<void>());
     const user = userEvent.setup();
     renderFileTree();
 
@@ -1035,9 +1031,7 @@ describe('FileTree duplicate action runtime behavior', () => {
 
   test('the tree reports busy while a file-tree action is in flight and idle once it settles', async () => {
     let releaseDuplicate: () => void = () => {};
-    duplicateGate = new Promise<void>((resolve) => {
-      releaseDuplicate = resolve;
-    });
+    ({ promise: duplicateGate, resolve: releaseDuplicate } = Promise.withResolvers<void>());
     const user = userEvent.setup();
     renderFileTree();
 

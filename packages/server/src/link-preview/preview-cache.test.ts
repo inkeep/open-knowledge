@@ -129,10 +129,7 @@ describe('LinkPreviewCache', () => {
   test('coalesces concurrent identical lookups into a single compute (single-flight)', async () => {
     const cache = makeCache();
     await cache.init();
-    let resolveGate!: (o: LinkPreviewOutcome) => void;
-    const gate = new Promise<LinkPreviewOutcome>((resolve) => {
-      resolveGate = resolve;
-    });
+    const { promise: gate, resolve: resolveGate } = Promise.withResolvers<LinkPreviewOutcome>();
     let calls = 0;
     const compute = () => {
       calls += 1;

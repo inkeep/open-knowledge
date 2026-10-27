@@ -297,9 +297,9 @@ describe('createProbeCoordinator — throttle, dedup, subscribe, cancel', () => 
     const handle = createProbeCoordinator({
       probe: () => {
         callCount += 1;
-        return new Promise<SchemeStates>((resolve) => {
-          resolveProbe = resolve;
-        });
+        const { promise, resolve } = Promise.withResolvers<SchemeStates>();
+        resolveProbe = resolve;
+        return promise;
       },
       isElectronHost: () => true,
       now: () => 0,
@@ -369,10 +369,11 @@ describe('createProbeCoordinator — throttle, dedup, subscribe, cancel', () => 
     const received: Array<Record<string, unknown>> = [];
     let resolveProbe: ((v: SchemeStates) => void) | null = null;
     const handle = createProbeCoordinator({
-      probe: () =>
-        new Promise<SchemeStates>((r) => {
-          resolveProbe = r;
-        }),
+      probe: () => {
+        const { promise, resolve } = Promise.withResolvers<SchemeStates>();
+        resolveProbe = resolve;
+        return promise;
+      },
       isElectronHost: () => true,
       now: () => 0,
     });

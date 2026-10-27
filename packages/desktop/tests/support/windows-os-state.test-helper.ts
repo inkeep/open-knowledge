@@ -434,10 +434,7 @@ export function startWindowsOsState(options: WindowsOsStateOptions): WindowsOsCo
       });
     workerValue = unavailable('worker-request-deadline');
   }
-  let resolveResult: (result: PtyOsObservation) => void = () => undefined;
-  const result = new Promise<PtyOsObservation>((resolve) => {
-    resolveResult = resolve;
-  });
+  const { promise: result, resolve: resolveResult } = Promise.withResolvers<PtyOsObservation>();
   const requestTermination = (reason: TerminationReason): void => {
     if (terminationReason !== null) return;
     terminationReason = reason;

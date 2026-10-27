@@ -97,17 +97,9 @@ test.each([
       context: {},
     } as never);
 
-    let entered = () => {};
-    let release = () => {};
-    const reachedCommit = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    commitGate.next = {
-      entered,
-      release: new Promise<void>((resolve) => {
-        release = resolve;
-      }),
-    };
+    const { promise: reachedCommit, resolve: entered } = Promise.withResolvers<void>();
+    const { promise: released, resolve: release } = Promise.withResolvers<void>();
+    commitGate.next = { entered, release: released };
 
     recordContributor('notes', EARLIER.id, EARLIER.name, EARLIER.id);
     replaceBody(document, 'first edit');

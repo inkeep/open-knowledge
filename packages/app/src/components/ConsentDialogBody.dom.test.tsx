@@ -47,10 +47,7 @@ function statusBridge(
 }
 
 function deferredStatusBridge(detectedEditorIds: string[]) {
-  let release!: () => void;
-  const gate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
+  const { promise: gate, resolve: release } = Promise.withResolvers<void>();
   const status = {
     available: true,
     editors: detectedEditorIds.map((id) => ({ id, state: 'installed' })),

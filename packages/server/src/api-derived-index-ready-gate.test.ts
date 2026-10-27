@@ -147,14 +147,9 @@ describe('derived-index API readiness gate', () => {
       join(sourceSkillDir, 'SKILL.md'),
       '---\nname: old-skill\ndescription: Use when testing moves.\n---\n\n# Old skill\n',
     );
-    let releaseProjection!: () => void;
-    const projectionBarrier = new Promise<void>((resolve) => {
-      releaseProjection = resolve;
-    });
-    let projectionStarted!: () => void;
-    const started = new Promise<void>((resolve) => {
-      projectionStarted = resolve;
-    });
+    const { promise: projectionBarrier, resolve: releaseProjection } =
+      Promise.withResolvers<void>();
+    const { promise: started, resolve: projectionStarted } = Promise.withResolvers<void>();
     const recordDirectMutations = vi.fn(async () => {
       projectionStarted();
       await projectionBarrier;

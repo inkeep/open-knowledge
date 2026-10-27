@@ -57,14 +57,6 @@ async function releaseHeldFrames(queued: FrameRequestCallback[]): Promise<void> 
   );
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => {
-    resolve = r;
-  });
-  return { promise, resolve };
-}
-
 describe('captureBugReport', () => {
   let stopPointerTracking: (() => void) | undefined;
 
@@ -125,8 +117,8 @@ describe('captureBugReport', () => {
   });
 
   test('overlapping launcher-borne captures keep launchers hidden until the last one settles', async () => {
-    const first = deferred<OkBugReportScreenshot>();
-    const second = deferred<OkBugReportScreenshot>();
+    const first = Promise.withResolvers<OkBugReportScreenshot>();
+    const second = Promise.withResolvers<OkBugReportScreenshot>();
     const queue = [first.promise, second.promise];
     const log = installCapture(() => queue.shift() ?? Promise.resolve(null));
     const capturing = () => document.documentElement.hasAttribute('data-bug-report-capturing');
@@ -238,7 +230,7 @@ describe('captureBugReport', () => {
     stopPointerTracking = installPointerPositionTracker();
     movePointerTo(140, 200);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const pending = deferred<OkBugReportScreenshot>();
+    const pending = Promise.withResolvers<OkBugReportScreenshot>();
     const log = installCapture(() => pending.promise);
 
     const result = await captureBugReport(LAUNCHER_FREE);
@@ -308,7 +300,7 @@ describe('createBugReportController', () => {
   }
 
   test('start captures, runs the dismissal, then opens with the result', async () => {
-    const pending = deferred<OkBugReportScreenshot>();
+    const pending = Promise.withResolvers<OkBugReportScreenshot>();
     installCapture(() => pending.promise);
     const { controller, captures } = controllerWithLog();
     const order: string[] = [];
@@ -338,8 +330,8 @@ describe('createBugReportController', () => {
   });
 
   test('close drops a result that lands afterwards and leaves the next start free to run', async () => {
-    const first = deferred<OkBugReportScreenshot>();
-    const second = deferred<OkBugReportScreenshot>();
+    const first = Promise.withResolvers<OkBugReportScreenshot>();
+    const second = Promise.withResolvers<OkBugReportScreenshot>();
     const queue = [first.promise, second.promise];
     installCapture(() => queue.shift() ?? Promise.resolve(null));
     const { controller, captures } = controllerWithLog();

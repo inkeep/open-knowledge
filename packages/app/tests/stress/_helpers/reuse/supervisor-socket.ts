@@ -100,10 +100,7 @@ export async function serveSupervisor(
 ): Promise<SupervisorEndpoint> {
   await claimSocketPath(socketPath);
   const connections = new Set<Socket>();
-  let resolveClosed: (outcome: EndpointClosed) => void = () => {};
-  const closed = new Promise<EndpointClosed>((resolve) => {
-    resolveClosed = resolve;
-  });
+  const { promise: closed, resolve: resolveClosed } = Promise.withResolvers<EndpointClosed>();
   let closing: Promise<void> | undefined;
 
   const server = createServer((socket) => {

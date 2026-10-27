@@ -231,10 +231,7 @@ vi.mock('../support/windows-os-state.test-helper.ts', async (importOriginal) => 
 });
 
 function createScenario(queryMode: QueryMode, options: ScenarioOptions = {}) {
-  let resolveQuerySpawned: () => void = () => undefined;
-  const querySpawned = new Promise<void>((resolve) => {
-    resolveQuerySpawned = resolve;
-  });
+  const { promise: querySpawned, resolve: resolveQuerySpawned } = Promise.withResolvers<void>();
   scenario = {
     queryMode,
     directCli: options.directCli ?? false,

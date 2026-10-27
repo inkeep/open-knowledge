@@ -36,10 +36,8 @@ function parcelOperation(): 'subscribe' | 'unsubscribe' | 'other' | null {
 }
 
 const messageListeners: Array<(event: { data: unknown }) => void> = [];
-let resolveShutdownReceived!: () => void;
-const shutdownReceived = new Promise<void>((resolve) => {
-  resolveShutdownReceived = resolve;
-});
+const { promise: shutdownReceived, resolve: resolveShutdownReceived } =
+  Promise.withResolvers<void>();
 
 function deliverFromParent(data: unknown): void {
   if ((data as { type?: unknown }).type === 'shutdown') {

@@ -47,14 +47,6 @@ const reconcileLocalRenameMock = vi.fn(async () => {});
 const reconcileLocalRemovalMock = vi.fn(async () => {});
 const dispatchHandoffMock = vi.fn(async () => ({ ok: true as const }));
 
-function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-  return { promise, resolve };
-}
-
 const INITIAL_DOCUMENTS: FileEntry[] = [
   {
     kind: 'document',
@@ -491,7 +483,7 @@ describe('FileTree post-rename Pierre/React store reconciliation', () => {
   });
 
   test('waits for local rename reconciliation before adding the destination page or resetting the tree', async () => {
-    const reconciliation = deferred();
+    const reconciliation = Promise.withResolvers<void>();
     reconcileLocalRenameMock.mockImplementation(() => reconciliation.promise);
     render(<FileTree />);
 

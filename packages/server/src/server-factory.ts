@@ -1302,12 +1302,11 @@ export function createServer(options: ServerOptions): ServerInstance {
   let forceUnloadDocument!: (document: Document, isCurrent?: () => boolean) => Promise<void>;
   let defaultShouldUnloadDocument!: (document: Document) => boolean;
 
-  let resolveReady!: () => void;
-  let rejectReady!: (err: unknown) => void;
-  const ready = new Promise<void>((res, rej) => {
-    resolveReady = res;
-    rejectReady = rej;
-  });
+  const {
+    promise: ready,
+    resolve: resolveReady,
+    reject: rejectReady,
+  } = Promise.withResolvers<void>();
   let readyForNotices = false;
   void ready.then(
     () => {
@@ -1353,10 +1352,8 @@ export function createServer(options: ServerOptions): ServerInstance {
   });
   const offlineRemovalsReconciled = Promise.withResolvers<void>();
 
-  let resolveBranchScopeAligned!: () => void;
-  const branchScopeAligned = new Promise<void>((res) => {
-    resolveBranchScopeAligned = res;
-  });
+  const { promise: branchScopeAligned, resolve: resolveBranchScopeAligned } =
+    Promise.withResolvers<void>();
 
   const BRANCH_SCOPE_GATE_TIMEOUT_MS = 10_000;
 
@@ -1410,10 +1407,8 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   let generatedIndexSweepSettled = false;
   let generatedIndexBootSweepCount = 0;
-  let resolveGeneratedIndexSweep!: (result: GeneratedIndexSweepResult) => void;
-  const generatedIndexSweepReady = new Promise<GeneratedIndexSweepResult>((resolve) => {
-    resolveGeneratedIndexSweep = resolve;
-  });
+  const { promise: generatedIndexSweepReady, resolve: resolveGeneratedIndexSweep } =
+    Promise.withResolvers<GeneratedIndexSweepResult>();
 
   function settleGeneratedIndexSweep(result: GeneratedIndexSweepResult): void {
     if (generatedIndexSweepSettled) return;

@@ -539,12 +539,14 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     let resolveInventory:
       | ((result: { ok: false; reason: 'enumeration-failed' }) => void)
       | undefined;
-    bridge.worktree.inventory.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveInventory = resolve;
-        }),
-    );
+    bridge.worktree.inventory.mockImplementation(() => {
+      const { promise, resolve } = Promise.withResolvers<{
+        ok: false;
+        reason: 'enumeration-failed';
+      }>();
+      resolveInventory = resolve;
+      return promise;
+    });
     renderMenu({ bridge, recents: [main('/repo', '/repo/.git')] });
     fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
     expect(await screen.findByText('Loading worktrees…')).not.toBeNull();

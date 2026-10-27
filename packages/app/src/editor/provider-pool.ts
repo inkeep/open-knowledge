@@ -231,10 +231,7 @@ export class ProviderPool {
   private tabIdentity: { principalId: string; tabSessionId: string } | null = null;
   private serverRestartRecoveryState: ServerRestartRecoveryState = IDLE_SERVER_RESTART_RECOVERY;
   private cachedServerInstanceId: string | null = null;
-  private pendingServerInstanceKnown: {
-    promise: Promise<string>;
-    resolve: (id: string) => void;
-  } | null = null;
+  private pendingServerInstanceKnown: PromiseWithResolvers<string> | null = null;
   private recoveryMismatchStaleClaim: string | undefined;
   private readonly handledStaleClaims = new Set<string>();
   private readonly bufferedUpdates = new Map<string, BufferedReplayUpdate>();
@@ -320,12 +317,8 @@ export class ProviderPool {
     if (this.pendingServerInstanceKnown !== null) {
       return this.pendingServerInstanceKnown.promise;
     }
-    let resolve!: (id: string) => void;
-    const promise = new Promise<string>((res) => {
-      resolve = res;
-    });
-    this.pendingServerInstanceKnown = { promise, resolve };
-    return promise;
+    this.pendingServerInstanceKnown = Promise.withResolvers<string>();
+    return this.pendingServerInstanceKnown.promise;
   }
 
   private buildPersistence(
@@ -1772,12 +1765,11 @@ export class ProviderPool {
     if (inFlight !== undefined) {
       return inFlight;
     }
-    let resolveWork: () => void = () => {};
-    let rejectWork: (err: unknown) => void = () => {};
-    const work = new Promise<void>((resolve, reject) => {
-      resolveWork = resolve;
-      rejectWork = reject;
-    });
+    const {
+      promise: work,
+      resolve: resolveWork,
+      reject: rejectWork,
+    } = Promise.withResolvers<void>();
     this.pendingClears.set(docName, work);
     const finalize = () => {
       if (this.pendingClears.get(docName) === work) {

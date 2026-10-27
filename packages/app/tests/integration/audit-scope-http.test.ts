@@ -130,9 +130,7 @@ function resultText(result: Awaited<ReturnType<typeof client.callTool>>): string
 describe('scope parity through HTTP and registered MCP tools', () => {
   test('concurrent physical and extensionless paths share one real audit flight', async () => {
     let release: () => void = () => {};
-    auditGate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    ({ promise: auditGate, resolve: release } = Promise.withResolvers<void>());
     observedFlights.length = 0;
     executedFlights = 0;
     const requests = [

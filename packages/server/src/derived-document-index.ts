@@ -135,21 +135,8 @@ export interface DerivedDocumentIndexOptions {
   onRecoveredFileTarget?: (relativePath: string, exists: boolean) => void;
 }
 
-interface Deferred {
-  promise: Promise<void>;
-  resolve: () => void;
-}
-
 interface BranchTransition extends DerivedDocumentIndexBranchTransition {
-  barrier: Deferred;
-}
-
-function createDeferred(): Deferred {
-  let resolve!: () => void;
-  const promise = new Promise<void>((settle) => {
-    resolve = settle;
-  });
-  return { promise, resolve };
+  barrier: PromiseWithResolvers<void>;
 }
 
 class DerivedDocumentIndexClosedError extends Error {
@@ -190,8 +177,8 @@ export class DerivedDocumentIndex
   private readonly getLocalTargetInventory: () => WatcherLocalTargetInventory | null;
   private readonly signalChannel: (channel: DerivedDocumentRelationChannel) => void;
   private readonly onRecoveredFileTarget?: (relativePath: string, exists: boolean) => void;
-  private readonly startupAdmission = createDeferred();
-  private readonly readyBarrier = createDeferred();
+  private readonly startupAdmission = Promise.withResolvers<void>();
+  private readonly readyBarrier = Promise.withResolvers<void>();
   private tail: Promise<void> = Promise.resolve();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private localTargetRebuildRetryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -327,7 +314,7 @@ export class DerivedDocumentIndex
     if (this.branchTransition) {
       throw new Error(`Derived document index branch switch already active`);
     }
-    const transition: BranchTransition = { branch, barrier: createDeferred() };
+    const transition: BranchTransition = { branch, barrier: Promise.withResolvers<void>() };
     this.liveUpdateToken++;
     this.branchTransition = transition;
     this.cancelScheduledSave();

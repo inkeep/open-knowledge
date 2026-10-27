@@ -36,20 +36,6 @@ function nextAgent(): { source: 'registry'; id: string } {
   return { source: 'registry', id: `agent-${agentSeq}` };
 }
 
-function deferred<T>(): {
-  promise: Promise<T>;
-  resolve: (v: T) => void;
-  reject: (e: unknown) => void;
-} {
-  let resolve!: (v: T) => void;
-  let reject!: (e: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-
 function startedThread(threadId: string, agentName = 'Claude Agent') {
   return { threadId, agent: { source: 'registry', id: 'claude-acp', name: agentName } };
 }
@@ -71,7 +57,7 @@ beforeEach(() => {
 describe('launchAgentThread dedup guard', () => {
   test('a second launch for the same agent while one is in flight is dropped, not duplicated', async () => {
     const agent = nextAgent();
-    const first = deferred<{ threadId: string }>();
+    const first = Promise.withResolvers<{ threadId: string }>();
     createThread.mockReturnValueOnce(first.promise);
 
     const inFlight = launchAgentThread(agent, 'first prompt', null, null);
@@ -85,7 +71,7 @@ describe('launchAgentThread dedup guard', () => {
   });
 
   test('a different agent is never blocked by the first one', async () => {
-    const held = deferred<{ threadId: string }>();
+    const held = Promise.withResolvers<{ threadId: string }>();
     createThread.mockReturnValue(held.promise);
     const first = launchAgentThread(nextAgent(), 'prompt', null, null);
     const other = launchAgentThread(nextAgent(), 'prompt', null, null);

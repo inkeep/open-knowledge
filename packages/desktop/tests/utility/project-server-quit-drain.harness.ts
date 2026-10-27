@@ -136,10 +136,7 @@ const wm = new WindowManager({
 });
 
 let quitDrainSettled = false;
-let resolveQuitProceeds!: () => void;
-const quitProceeds = new Promise<void>((resolve) => {
-  resolveQuitProceeds = resolve;
-});
+const { promise: quitProceeds, resolve: resolveQuitProceeds } = Promise.withResolvers<void>();
 const runQuitDrain = createTerminalQuitDrain({
   defer: (callback) => setImmediate(callback),
   drain: async () => {

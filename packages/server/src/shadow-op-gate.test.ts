@@ -1,21 +1,13 @@
 import { describe, expect, test } from 'vitest';
 import { releaseShadowOpGate, ShadowOpGate, shadowOpGateFor } from './shadow-op-gate.ts';
 
-function deferred(): { promise: Promise<void>; resolve: () => void } {
-  let resolve!: () => void;
-  const promise = new Promise<void>((r) => {
-    resolve = r;
-  });
-  return { promise, resolve };
-}
-
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 describe('ShadowOpGate (forced interleavings, deterministic)', () => {
   test('mutators run concurrently with each other', async () => {
     const gate = new ShadowOpGate();
-    const a = deferred();
-    const b = deferred();
+    const a = Promise.withResolvers<void>();
+    const b = Promise.withResolvers<void>();
     let aStarted = false;
     let bStarted = false;
     const pa = gate.withMutator(async () => {
@@ -38,7 +30,7 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
 
   test('exclusive waits for an in-flight mutator to drain before running', async () => {
     const gate = new ShadowOpGate();
-    const hold = deferred();
+    const hold = Promise.withResolvers<void>();
     let gcRan = false;
     const mutator = gate.withMutator(() => hold.promise);
     await tick();
@@ -56,7 +48,7 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
 
   test('mutators queue while exclusive holds, run after release', async () => {
     const gate = new ShadowOpGate();
-    const gcHold = deferred();
+    const gcHold = Promise.withResolvers<void>();
     let mutatorRan = false;
     const gc = gate.withExclusive(() => gcHold.promise);
     await tick();
@@ -74,7 +66,7 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
 
   test('new top-level mutator is not blocked by a waiting (not holding) exclusive', async () => {
     const gate = new ShadowOpGate();
-    const mutatorHold = deferred();
+    const mutatorHold = Promise.withResolvers<void>();
     const firstMutator = gate.withMutator(() => mutatorHold.promise);
     await tick();
     let gcRan = false;
@@ -96,7 +88,7 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
 
   test('nested mutator holds never deadlock against a waiting exclusive', async () => {
     const gate = new ShadowOpGate();
-    const outerHold = deferred();
+    const outerHold = Promise.withResolvers<void>();
     let innerRan = false;
     const outer = gate.withMutator(async () => {
       await outerHold.promise;
@@ -120,7 +112,7 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
 
   test('exclusives serialize against each other', async () => {
     const gate = new ShadowOpGate();
-    const firstHold = deferred();
+    const firstHold = Promise.withResolvers<void>();
     const order: string[] = [];
     const first = gate.withExclusive(async () => {
       order.push('first-start');
@@ -140,8 +132,8 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
 
   test('two exclusives queued behind one mutator still serialize', async () => {
     const gate = new ShadowOpGate();
-    const mutatorHold = deferred();
-    const firstHold = deferred();
+    const mutatorHold = Promise.withResolvers<void>();
+    const firstHold = Promise.withResolvers<void>();
     const order: string[] = [];
     const mutator = gate.withMutator(() => mutatorHold.promise);
     await tick();
@@ -206,8 +198,8 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
 
   test('drain waits for the last of several concurrent mutators', async () => {
     const gate = new ShadowOpGate();
-    const a = deferred();
-    const b = deferred();
+    const a = Promise.withResolvers<void>();
+    const b = Promise.withResolvers<void>();
     const pa = gate.withMutator(() => a.promise);
     const pb = gate.withMutator(() => b.promise);
     await tick();
@@ -233,7 +225,7 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
 
   test('drain does not acquire the gate — a later mutator still runs freely', async () => {
     const gate = new ShadowOpGate();
-    const held = deferred();
+    const held = Promise.withResolvers<void>();
     const first = gate.withMutator(() => held.promise);
     await tick();
 

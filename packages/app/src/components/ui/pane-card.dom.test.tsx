@@ -135,10 +135,7 @@ describe('PaneCard', () => {
   });
 
   test('a suspending child reaches the boundary outside the card, so the card owns no Suspense', () => {
-    let resolve: (() => void) | null = null;
-    const gate = new Promise<void>((done) => {
-      resolve = done;
-    });
+    const { promise: gate, resolve } = Promise.withResolvers<void>();
     function Suspending() {
       throw gate;
     }
@@ -152,7 +149,7 @@ describe('PaneCard', () => {
 
     expect(screen.getByTestId('outer-fallback')).toBeTruthy();
     expect(document.querySelector('[data-slot="pane-card"]')).toBeNull();
-    resolve?.();
+    resolve();
   });
 
   test('a throwing child reaches the boundary outside the card, so the card owns no error boundary', () => {

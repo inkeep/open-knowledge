@@ -97,10 +97,7 @@ describe('agent writes during a git branch switch', () => {
   test.runIf(process.platform !== 'win32')(
     'a patch sent while the switch settles is held, then written to the new branch',
     async () => {
-      let releaseSettle: () => void = () => {};
-      const settleHeld = new Promise<void>((resolve) => {
-        releaseSettle = resolve;
-      });
+      const { promise: settleHeld, resolve: releaseSettle } = Promise.withResolvers<void>();
       const settleBranchFromDisk = DerivedDocumentIndex.prototype.settleBranchFromDisk;
       const settleSpy = vi
         .spyOn(DerivedDocumentIndex.prototype, 'settleBranchFromDisk')

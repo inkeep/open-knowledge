@@ -87,14 +87,8 @@ interface Gate {
 }
 
 function gate(): Gate {
-  let markReached: () => void = () => {};
-  const reached = new Promise<void>((resolve) => {
-    markReached = resolve;
-  });
-  let open: () => void = () => {};
-  const opened = new Promise<void>((resolve) => {
-    open = resolve;
-  });
+  const { promise: reached, resolve: markReached } = Promise.withResolvers<void>();
+  const { promise: opened, resolve: open } = Promise.withResolvers<void>();
   openGates.push(open);
   return { reached, opened, open, markReached };
 }

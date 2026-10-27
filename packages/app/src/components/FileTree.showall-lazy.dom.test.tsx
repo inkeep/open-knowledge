@@ -565,10 +565,7 @@ describe('FileTree showAll lazy root seed', () => {
   });
 
   test('paints the first NDJSON chunk before the stream completes (incremental seed)', async () => {
-    let releaseRest: () => void = () => {};
-    const gate = new Promise<void>((resolve) => {
-      releaseRest = resolve;
-    });
+    const { promise: gate, resolve: releaseRest } = Promise.withResolvers<void>();
     const encoder = new TextEncoder();
     showAllResponseFactory = () =>
       new Response(
@@ -602,10 +599,7 @@ describe('FileTree showAll lazy root seed', () => {
   });
 
   test('a first chunk of only hidden entries does not clear the skeleton (no empty-state flash)', async () => {
-    let releaseVisible: () => void = () => {};
-    const gate = new Promise<void>((resolve) => {
-      releaseVisible = resolve;
-    });
+    const { promise: gate, resolve: releaseVisible } = Promise.withResolvers<void>();
     const encoder = new TextEncoder();
     showAllResponseFactory = () =>
       new Response(

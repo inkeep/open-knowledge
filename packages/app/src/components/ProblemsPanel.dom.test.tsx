@@ -1048,10 +1048,11 @@ describe('ProblemsPanel — project scope', () => {
 
   test('a pending audit shows the loading skeleton with the refresh disabled', async () => {
     let resolveAudit: (value: ValidationAuditResponse | null) => void = () => {};
-    runLintAuditImpl = () =>
-      new Promise((resolve) => {
-        resolveAudit = resolve;
-      });
+    runLintAuditImpl = () => {
+      const { promise, resolve } = Promise.withResolvers<ValidationAuditResponse | null>();
+      resolveAudit = resolve;
+      return promise;
+    };
     render(<ProblemsPanel docName="notes" diagnostics={[]} />);
 
     fireEvent.click(screen.getByTestId('panel-scope-project'));
@@ -1290,10 +1291,7 @@ describe('ProblemsPanel — project scope', () => {
           { file: 'c.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
         ],
       });
-    let releaseFirst: (() => void) | undefined;
-    const firstInFlight = new Promise<void>((resolve) => {
-      releaseFirst = resolve;
-    });
+    const { promise: firstInFlight, resolve: releaseFirst } = Promise.withResolvers<void>();
     fixLintDocImpl = async (docName: string) => {
       if (docName === 'a') await firstInFlight;
       return { ok: true as const, status: 200, problemType: null, errorDetail: null };
@@ -1306,7 +1304,7 @@ describe('ProblemsPanel — project scope', () => {
     fireEvent.click(screen.getByTestId('problems-auto-fix'));
     const stop = await screen.findByTestId('problems-cancel-fix');
     fireEvent.click(stop);
-    releaseFirst?.();
+    releaseFirst();
 
     await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1));
     expect(fixLintDocCalls).toEqual(['a']);
@@ -1329,10 +1327,7 @@ describe('ProblemsPanel — project scope', () => {
           { file: 'c.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
         ],
       });
-    let releaseFirst: (() => void) | undefined;
-    const firstInFlight = new Promise<void>((resolve) => {
-      releaseFirst = resolve;
-    });
+    const { promise: firstInFlight, resolve: releaseFirst } = Promise.withResolvers<void>();
     fixLintDocImpl = async (docName: string) => {
       if (docName === 'a') await firstInFlight;
       return { ok: true as const, status: 200, problemType: null, errorDetail: null };
@@ -1345,7 +1340,7 @@ describe('ProblemsPanel — project scope', () => {
     fireEvent.click(screen.getByTestId('problems-auto-fix'));
     await screen.findByTestId('problems-cancel-fix');
     view.unmount();
-    releaseFirst?.();
+    releaseFirst();
 
     await waitFor(() => expect(fixLintDocCalls).toEqual(['a', 'b', 'c']));
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledTimes(1));
@@ -1365,10 +1360,7 @@ describe('ProblemsPanel — project scope', () => {
           { file: 'b.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
         ],
       });
-    let releaseFirst: (() => void) | undefined;
-    const firstInFlight = new Promise<void>((resolve) => {
-      releaseFirst = resolve;
-    });
+    const { promise: firstInFlight, resolve: releaseFirst } = Promise.withResolvers<void>();
     fixLintDocImpl = async (docName: string) => {
       if (docName === 'a') await firstInFlight;
       return { ok: true as const, status: 200, problemType: null, errorDetail: null };
@@ -1380,7 +1372,7 @@ describe('ProblemsPanel — project scope', () => {
 
     fireEvent.click(screen.getByTestId('problems-auto-fix'));
     fireEvent.click(await screen.findByTestId('problems-cancel-fix'));
-    releaseFirst?.();
+    releaseFirst();
     await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1));
     expect(fixLintDocCalls).toEqual(['a']);
 
@@ -1536,9 +1528,9 @@ describe('ProblemsPanel — project scope', () => {
       auditResult({ files: [{ file: 'a.md', diagnostics: [diag({ fixes: [fixableEdit] })] }] });
     let releaseFix: (() => void) | undefined;
     fixLintDocImpl = async () => {
-      await new Promise<void>((resolve) => {
-        releaseFix = resolve;
-      });
+      const { promise, resolve } = Promise.withResolvers<void>();
+      releaseFix = resolve;
+      await promise;
       return { ok: true };
     };
     render(<ProblemsPanel docName="notes" diagnostics={[]} onFixWithAi={vi.fn(() => {})} />);

@@ -64,10 +64,11 @@ describe('gracefulTerminate', () => {
     let releaseSignal: (() => void) | undefined;
     let polled = false;
     const termination = gracefulTerminate({
-      sendSignal: () =>
-        new Promise<void>((resolve) => {
-          releaseSignal = resolve;
-        }),
+      sendSignal: () => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        releaseSignal = resolve;
+        return promise;
+      },
       isAlive: () => {
         polled = true;
         return false;

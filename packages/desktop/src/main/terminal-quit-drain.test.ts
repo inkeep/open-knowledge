@@ -1,19 +1,9 @@
 import { describe, expect, test, vi } from 'vitest';
 import { createTerminalQuitDrain } from './terminal-quit-drain.ts';
 
-function deferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
-  return { promise, reject, resolve };
-}
-
 describe('createTerminalQuitDrain', () => {
   test('defers quit re-entry until after the terminal drain and native event turn', async () => {
-    const drain = deferred<void>();
+    const drain = Promise.withResolvers<void>();
     const deferredCallbacks: Array<() => void> = [];
     const resumeQuit = vi.fn();
     const onWillQuit = createTerminalQuitDrain({
@@ -42,7 +32,7 @@ describe('createTerminalQuitDrain', () => {
   });
 
   test('coalesces repeated will-quit events while the drain is pending', () => {
-    const drain = deferred<void>();
+    const drain = Promise.withResolvers<void>();
     const drainTerminals = vi.fn(() => drain.promise);
     const onWillQuit = createTerminalQuitDrain({
       defer: vi.fn(),
@@ -60,7 +50,7 @@ describe('createTerminalQuitDrain', () => {
   });
 
   test('resumes quit after a rejected best-effort drain', async () => {
-    const drain = deferred<void>();
+    const drain = Promise.withResolvers<void>();
     const deferredCallbacks: Array<() => void> = [];
     const resumeQuit = vi.fn();
     const onWillQuit = createTerminalQuitDrain({

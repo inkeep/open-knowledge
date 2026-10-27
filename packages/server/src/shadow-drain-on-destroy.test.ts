@@ -39,10 +39,7 @@ describe('createServer() — shadow mutator drain on destroy', () => {
   let warmupStarted: Promise<{ promise: Promise<string> }>;
 
   function deferred(): { promise: Promise<void>; resolve: () => void } {
-    let resolve!: () => void;
-    const promise = new Promise<void>((r) => {
-      resolve = r;
-    });
+    const { promise, resolve } = Promise.withResolvers<void>();
     heldReleases.push(resolve);
     return { promise, resolve };
   }

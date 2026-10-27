@@ -29,20 +29,7 @@ interface Rig {
   index: DerivedDocumentIndex;
 }
 
-interface Deferred {
-  promise: Promise<void>;
-  resolve: () => void;
-}
-
 const cleanups: Array<() => Promise<void>> = [];
-
-function createDeferred(): Deferred {
-  let resolve!: () => void;
-  const promise = new Promise<void>((settle) => {
-    resolve = settle;
-  });
-  return { promise, resolve };
-}
 
 function createRig(
   getLocalTargetInventory?: () => WatcherLocalTargetInventory | null,
@@ -496,8 +483,8 @@ describe('DerivedDocumentIndex', () => {
   test('refreshContentScope gates later mutations and queries until both replacements settle', async () => {
     const rig = createRig();
     await settleStartup(rig);
-    const backlinksReplacement = createDeferred();
-    const tagsReplacement = createDeferred();
+    const backlinksReplacement = Promise.withResolvers<void>();
+    const tagsReplacement = Promise.withResolvers<void>();
     vi.spyOn(BacklinkIndex.prototype, 'reconcileWithDisk').mockImplementationOnce(() =>
       backlinksReplacement.promise.then(() => ({
         added: 0,
@@ -883,7 +870,7 @@ describe('DerivedDocumentIndex', () => {
   test('repeated close calls wait for the same dependency drain', async () => {
     const rig = createRig();
     await settleStartup(rig);
-    const tagClose = createDeferred();
+    const tagClose = Promise.withResolvers<void>();
     const closeTagIndex = vi
       .spyOn(TagIndex.prototype, 'close')
       .mockReturnValueOnce(tagClose.promise);
@@ -906,7 +893,7 @@ describe('DerivedDocumentIndex', () => {
 
   test('close rejects an already-admitted queued disk mutation before it can arm a timer', async () => {
     vi.useFakeTimers();
-    const deferredSave = createDeferred();
+    const deferredSave = Promise.withResolvers<void>();
     const backlinkSave = vi.spyOn(BacklinkIndex.prototype, 'saveToDisk');
     const tagSave = vi.spyOn(TagIndex.prototype, 'saveToDisk');
     const indexLog = getLogger('derived-document-index');
@@ -945,7 +932,7 @@ describe('DerivedDocumentIndex', () => {
 
   test('close drains a debounced save already enqueued behind in-flight work', async () => {
     vi.useFakeTimers();
-    const deferredSave = createDeferred();
+    const deferredSave = Promise.withResolvers<void>();
     const backlinkSave = vi.spyOn(BacklinkIndex.prototype, 'saveToDisk');
     const rig = createRig();
     await settleStartup(rig);

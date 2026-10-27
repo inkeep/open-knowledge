@@ -30,20 +30,6 @@ function captureGateLines(): () => Array<[string, unknown]> {
   return () => [...lines];
 }
 
-function stalled<T>(): {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-  reject: (error: Error) => void;
-} {
-  let resolve!: (value: T) => void;
-  let reject!: (error: Error) => void;
-  const promise = new Promise<T>((onResolve, onReject) => {
-    resolve = onResolve;
-    reject = onReject;
-  });
-  return { promise, resolve, reject };
-}
-
 describe('write advisory gate', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -68,7 +54,7 @@ describe('write advisory gate', () => {
 
   test('answers with the fallback at the deadline while the advisory is still waiting', async () => {
     const gate = createWriteAdvisoryGate({ deadlineMs: 1_000 });
-    const slow = stalled<string>();
+    const slow = Promise.withResolvers<string>();
     let settled: string | undefined;
 
     void gate
@@ -108,7 +94,7 @@ describe('write advisory gate', () => {
   test('logs an advisory failure that arrives after the deadline with its kind and error', async () => {
     const warn = vi.spyOn(getLogger('write-advisory'), 'warn');
     const gate = createWriteAdvisoryGate({ deadlineMs: 1_000 });
-    const failing = stalled<string>();
+    const failing = Promise.withResolvers<string>();
     const first = gate.run(
       'lint-links',
       () => failing.promise,
@@ -128,7 +114,7 @@ describe('write advisory gate', () => {
   });
 
   async function closeFor(gate: WriteAdvisoryGate, closedMs: number): Promise<void> {
-    const slow = stalled<string>();
+    const slow = Promise.withResolvers<string>();
     const deferred = gate.run(
       'orphan-hints',
       () => slow.promise,
@@ -144,7 +130,7 @@ describe('write advisory gate', () => {
   test('logs the gate reopening with how long it was closed and how many advisories it skipped', async () => {
     const gateLines = captureGateLines();
     const gate = createWriteAdvisoryGate({ deadlineMs: 1_000 });
-    const slow = stalled<string>();
+    const slow = Promise.withResolvers<string>();
     const first = gate.run(
       'link-check',
       () => slow.promise,
@@ -184,7 +170,7 @@ describe('write advisory gate', () => {
   test('a gate that never reopens logs its closing once and no reopening', async () => {
     const gateLines = captureGateLines();
     const gate = createWriteAdvisoryGate({ deadlineMs: 1_000 });
-    const stuck = stalled<string>();
+    const stuck = Promise.withResolvers<string>();
     const first = gate.run(
       'orphan-hints',
       () => stuck.promise,
@@ -252,7 +238,7 @@ describe('write advisory gate', () => {
 
   test('skips new advisories without starting them while an earlier one is overdue, then resumes', async () => {
     const gate = createWriteAdvisoryGate({ deadlineMs: 1_000 });
-    const slow = stalled<string>();
+    const slow = Promise.withResolvers<string>();
     const first = gate.run(
       'link-check',
       () => slow.promise,
@@ -274,8 +260,8 @@ describe('write advisory gate', () => {
 
   test('stays closed until every overdue advisory has settled', async () => {
     const gate = createWriteAdvisoryGate({ deadlineMs: 1_000 });
-    const first = stalled<string>();
-    const second = stalled<string>();
+    const first = Promise.withResolvers<string>();
+    const second = Promise.withResolvers<string>();
     const firstRun = gate.run(
       'link-check',
       () => first.promise,
@@ -306,7 +292,7 @@ describe('write advisory gate', () => {
 
   test('an overdue advisory that later fails also reopens the gate', async () => {
     const gate = createWriteAdvisoryGate({ deadlineMs: 1_000 });
-    const failing = stalled<string>();
+    const failing = Promise.withResolvers<string>();
     const first = gate.run(
       'link-check',
       () => failing.promise,

@@ -163,14 +163,6 @@ function clearBridge() {
   }
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => {
-    resolve = r;
-  });
-  return { promise, resolve };
-}
-
 async function renderDialog(
   props: {
     systemWide?: boolean;
@@ -374,7 +366,7 @@ describe('ReportBugDialog', () => {
   });
 
   test('Send hands the reviewed zip to the background send manager and closes the dialog', async () => {
-    const send = deferred<OkBugReportSendResult>();
+    const send = Promise.withResolvers<OkBugReportSendResult>();
     const log = installBridge({ send: () => send.promise });
     const { closeCalls } = await renderDialog({}, { statefulOpen: true });
     await createReport('upload me');

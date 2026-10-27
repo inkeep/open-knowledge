@@ -2558,13 +2558,13 @@ describe('US-004: D20 mount-promise cancellation wired into evict', () => {
     const origYield = scheduler.yield.bind(scheduler);
     let stallResolve: (() => void) | null = null;
     let yieldCallCount = 0;
-    scheduler.yield = (() => {
+    scheduler.yield = () => {
       yieldCallCount++;
       if (yieldCallCount === 1) return Promise.resolve();
-      return new Promise<void>((res) => {
-        stallResolve = res;
-      });
-    }) as typeof scheduler.yield;
+      const { promise, resolve } = Promise.withResolvers<void>();
+      stallResolve = resolve;
+      return promise;
+    };
 
     try {
       const pending = mountTiptapEditorPromise({

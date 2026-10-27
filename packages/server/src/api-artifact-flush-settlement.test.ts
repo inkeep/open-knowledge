@@ -19,14 +19,8 @@ test('test flush waits for accepted artifact attribution before acknowledging se
   let server: BootedServer | undefined;
   let gated = false;
   let released = false;
-  let release!: () => void;
-  let entered!: () => void;
-  const gate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const started = new Promise<void>((resolve) => {
-    entered = resolve;
-  });
+  const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+  const { promise: started, resolve: entered } = Promise.withResolvers<void>();
   const gitFlushes: boolean[] = [];
   const create = persistence.createPersistenceExtension;
   vi.spyOn(persistence, 'createPersistenceExtension').mockImplementation((...args) => {
@@ -64,10 +58,7 @@ test('test flush waits for accepted artifact attribution before acknowledging se
     expect(write.status, write.body).toBe(200);
     await started;
     expect(__formatContributorsForTests()).toContain('templates/.ok/templates/example');
-    let received!: () => void;
-    const requestReceived = new Promise<void>((resolve) => {
-      received = resolve;
-    });
+    const { promise: requestReceived, resolve: received } = Promise.withResolvers<void>();
     server.httpServer.prependListener('request', (req) => {
       if (req.url === '/api/test-flush-git') received();
     });
@@ -100,18 +91,9 @@ test('shared settlement joins the separate skill-file attribution flush', async 
   );
   let server: BootedServer | undefined;
   let tracked = false;
-  let release!: () => void;
-  let commitEntered!: () => void;
-  let joinEntered!: () => void;
-  const commitGate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const commitStarted = new Promise<void>((resolve) => {
-    commitEntered = resolve;
-  });
-  const joinStarted = new Promise<void>((resolve) => {
-    joinEntered = resolve;
-  });
+  const { promise: commitGate, resolve: release } = Promise.withResolvers<void>();
+  const { promise: commitStarted, resolve: commitEntered } = Promise.withResolvers<void>();
+  const { promise: joinStarted, resolve: joinEntered } = Promise.withResolvers<void>();
   let joinCompleted = false;
   const commit = shadowRepo.commitWipFromTree;
   vi.spyOn(shadowRepo, 'commitWipFromTree').mockImplementation(async (...args) => {

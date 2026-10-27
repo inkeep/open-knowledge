@@ -123,24 +123,21 @@ export function acquireWorkerServer(
   let releaseCompleted = false;
   let transportFailure: Error | undefined;
   const nativeEmit = proc.emit.bind(proc);
-  let resolveStopped: () => void;
-  let rejectStopped: (error: Error) => void;
-  const stopped = new Promise<void>((resolve, reject) => {
-    resolveStopped = resolve;
-    rejectStopped = reject;
-  });
-  let resolveReleased: () => void;
-  let rejectReleased: (error: Error) => void;
-  const released = new Promise<void>((resolve, reject) => {
-    resolveReleased = resolve;
-    rejectReleased = reject;
-  });
-  let resolveExited: () => void;
-  let rejectExited: (error: Error) => void;
-  const exited = new Promise<void>((resolve, reject) => {
-    resolveExited = resolve;
-    rejectExited = reject;
-  });
+  const {
+    promise: stopped,
+    resolve: resolveStopped,
+    reject: rejectStopped,
+  } = Promise.withResolvers<void>();
+  const {
+    promise: released,
+    resolve: resolveReleased,
+    reject: rejectReleased,
+  } = Promise.withResolvers<void>();
+  const {
+    promise: exited,
+    resolve: resolveExited,
+    reject: rejectExited,
+  } = Promise.withResolvers<void>();
   void stopped.catch(() => undefined);
   void released.catch(() => undefined);
   void exited.catch(() => undefined);

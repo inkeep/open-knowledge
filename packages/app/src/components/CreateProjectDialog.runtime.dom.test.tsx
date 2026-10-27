@@ -807,12 +807,11 @@ describe('CreateProjectDialog runtime wiring', () => {
   test('while createNew is in-flight the busy guard blocks dialog dismissal until it settles', async () => {
     const stub = makeBridge();
     let releaseCreate: () => void = () => {};
-    stub.setCreateNewImpl(
-      () =>
-        new Promise<void>((resolve) => {
-          releaseCreate = resolve;
-        }),
-    );
+    stub.setCreateNewImpl(() => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      releaseCreate = resolve;
+      return promise;
+    });
     const { onOpenChange } = await renderDialog(stub);
     await waitForLocationHydrate();
 

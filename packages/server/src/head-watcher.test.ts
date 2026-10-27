@@ -163,10 +163,7 @@ describe('startHeadWatcher batch serialization', () => {
     git('branch second');
 
     let dispatch!: (rawPath: string) => void;
-    let releaseFirst!: () => void;
-    const firstCanSettle = new Promise<void>((resolve) => {
-      releaseFirst = resolve;
-    });
+    const { promise: firstCanSettle, resolve: releaseFirst } = Promise.withResolvers<void>();
     const branches: Array<string | null> = [];
     let activeCallbacks = 0;
     let maxActiveCallbacks = 0;

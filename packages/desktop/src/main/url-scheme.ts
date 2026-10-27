@@ -465,15 +465,11 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
   let urlLaunchOwnsWindow = false;
 
   let settled = false;
-  let settleResolve: (() => void) | null = null;
-  const settlePromise = new Promise<void>((res) => {
-    settleResolve = res;
-  });
+  const { promise: settlePromise, resolve: settleResolve } = Promise.withResolvers<void>();
   const settleNow = (): void => {
     if (settled) return;
     settled = true;
-    settleResolve?.();
-    settleResolve = null;
+    settleResolve();
   };
 
   if (deps.app.isPackaged) {

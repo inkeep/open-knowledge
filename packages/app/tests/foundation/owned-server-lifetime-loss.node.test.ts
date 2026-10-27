@@ -64,13 +64,7 @@ describe('an owned server whose lifetime is lost while it launches', () => {
   test('a lifetime lost before the server answers fails the launch with that loss and releases the server, even when the server answers afterwards', async () => {
     const tmp = scratchTmpdir();
     harness.proc = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null });
-    let resolveReadiness!: (value: unknown) => void;
-    harness.readiness = {
-      promise: new Promise((resolve) => {
-        resolveReadiness = resolve;
-      }),
-      resolve: (value) => resolveReadiness(value),
-    };
+    harness.readiness = Promise.withResolvers();
 
     const outcome = launchOwnedWorkerServer({
       label: LABEL,
