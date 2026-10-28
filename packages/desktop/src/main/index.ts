@@ -6603,6 +6603,9 @@ function bootPrimaryInstance(): void {
         evaluateSchemaCompatibility,
         installLocalhostCorsInjector,
         installEmbedRefererRewriter,
+        publishAppState: (state) => {
+          appState = state;
+        },
         registerIpcHandlers,
         setNativeThemeSource: (source) => {
           nativeTheme.themeSource = source;
@@ -6613,7 +6616,6 @@ function bootPrimaryInstance(): void {
         appVersion: app.getVersion(),
         maxSupportedSchemaVersion: MAX_SUPPORTED_SCHEMA_VERSION,
       });
-      appState = result.appState;
 
       if (process.platform !== 'darwin') {
         nativeTheme.on('updated', fanOutChromeColors);

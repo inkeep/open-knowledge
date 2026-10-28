@@ -640,6 +640,7 @@ function makeOkDesktopStub(
 ) {
   const menuHandlers: Array<(action: string) => void> = [];
   const viewMenuPushes: Array<{
+    editorVisible?: boolean;
     terminalVisible?: boolean;
     agentPanelVisible?: boolean;
     canViewInSource?: boolean;
@@ -662,6 +663,7 @@ function makeOkDesktopStub(
       },
       editor: {
         notifyViewMenuStateChanged(state: {
+          editorVisible?: boolean;
           terminalVisible?: boolean;
           agentPanelVisible?: boolean;
           canViewInSource?: boolean;
@@ -2630,6 +2632,34 @@ describe('EditorPane saves and restores whether the editor is shown', () => {
     });
 
     expect(editorVisibleAttr()).toBe('true');
+  });
+
+  test('desktop: an explicit hide during restore publishes before settlement', async () => {
+    let release: (value: DockStateResult) => void = () => {};
+    const desk = makeOkDesktopStub(() => {
+      const { promise, resolve } = Promise.withResolvers<DockStateResult>();
+      release = resolve;
+      return promise;
+    });
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+    await renderEditorPane();
+
+    act(() => desk.dispatchMenuAction('toggle-editor'));
+    expect(editorVisibleAttr()).toBe('false');
+    expect(desk.viewMenuPushes).toContainEqual({
+      editorVisible: false,
+      wideIntent: { editorVisible: false },
+    });
+
+    await act(async () => {
+      release({ terminalVisible: false, agentPanelVisible: false, editorVisible: true });
+    });
+    expect(editorVisibleAttr()).toBe('false');
+    const editorPushes = desk.viewMenuPushes.filter((push) => 'editorVisible' in push);
+    expect(editorPushes.at(-1)).toEqual({
+      editorVisible: false,
+      wideIntent: { editorVisible: false },
+    });
   });
 
   test('desktop: a deep link that opens a document before the editor pane mounts keeps a saved-hidden editor shown', async () => {

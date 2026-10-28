@@ -14,6 +14,7 @@ interface BootstrapDeps {
   ) => SchemaCompatibilityResult;
   installLocalhostCorsInjector: () => void;
   installEmbedRefererRewriter: () => void;
+  publishAppState: (state: AppState) => void;
   registerIpcHandlers: () => void;
   setNativeThemeSource: (source: OkThemeSource) => void;
   refreshApplicationMenu: () => void;
@@ -24,7 +25,6 @@ interface BootstrapDeps {
 }
 
 interface BootstrapResult {
-  appState: AppState;
   pendingSchemaIncompatibility: SchemaIncompatibilityDiagnostic | null;
 }
 
@@ -45,6 +45,7 @@ export async function runBootstrap(deps: BootstrapDeps): Promise<BootstrapResult
   deps.installLocalhostCorsInjector();
   deps.installEmbedRefererRewriter();
 
+  deps.publishAppState(appState);
   deps.registerIpcHandlers();
 
   deps.setNativeThemeSource('system');
@@ -52,5 +53,5 @@ export async function runBootstrap(deps: BootstrapDeps): Promise<BootstrapResult
   deps.refreshApplicationMenu();
   deps.installDockIcon();
 
-  return { appState, pendingSchemaIncompatibility };
+  return { pendingSchemaIncompatibility };
 }

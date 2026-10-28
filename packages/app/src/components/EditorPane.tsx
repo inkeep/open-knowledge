@@ -1134,8 +1134,8 @@ export function EditorPane() {
   useEffect(() => {
     if (window.okDesktop == null || !editorToggleable) return;
     noteRestoreVisibilityLevel(editorRestoreGateRef, editorShown);
-    if (!dockRestoreSettled) return;
-    if (!consumeRestoreVisibilityGate(editorRestoreGateRef)) return;
+    if (!dockRestoreSettled && !editorChosenSinceMountRef.current) return;
+    if (dockRestoreSettled && !consumeRestoreVisibilityGate(editorRestoreGateRef)) return;
     window.okDesktop.editor.notifyViewMenuStateChanged({
       editorVisible: effectiveEditorVisible,
       wideIntent: { editorVisible: editorShown },
