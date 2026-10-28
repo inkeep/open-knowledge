@@ -241,7 +241,14 @@ export function FolderOverview({ folderPath }: { folderPath: string }) {
                           ) : (
                             <File className="size-4 shrink-0 text-muted-foreground" />
                           )}
-                          <span className="truncate">{entry.title}</span>
+                          <span className="flex min-w-0 flex-col">
+                            <span className="truncate">{entry.title}</span>
+                            {entry.fileName && (
+                              <span className="truncate text-xs text-muted-foreground">
+                                {entry.fileName}
+                              </span>
+                            )}
+                          </span>
                         </a>
                       </TableCell>
                       <TableCell className="text-muted-foreground">

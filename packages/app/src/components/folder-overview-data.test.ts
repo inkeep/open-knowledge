@@ -30,12 +30,13 @@ describe('buildFolderOverviewData', () => {
 
     expect(data.children).toEqual([
       { kind: 'folder', path: 'reports/q2', name: 'q2', title: 'q2' },
-      { kind: 'folder', path: 'reports/q1', name: 'q1', title: 'Quarter One' },
+      { kind: 'folder', path: 'reports/q1', name: 'q1', title: 'Quarter One', fileName: 'q1' },
       {
         kind: 'file',
         path: 'reports/monthly',
         name: 'monthly',
         title: 'Monthly Review',
+        fileName: 'monthly.md',
         size: 150,
         modified: '2026-04-11T00:00:00Z',
       },
@@ -44,6 +45,7 @@ describe('buildFolderOverviewData', () => {
         path: 'reports/index',
         name: 'index',
         title: 'Reports',
+        fileName: 'index.md',
         size: 100,
         modified: '2026-04-10T00:00:00Z',
       },
@@ -52,6 +54,7 @@ describe('buildFolderOverviewData', () => {
         path: 'reports/weekly',
         name: 'weekly',
         title: 'Weekly Review',
+        fileName: 'weekly.md',
         size: 200,
         modified: '2026-04-12T00:00:00Z',
       },
@@ -67,6 +70,29 @@ describe('buildFolderOverviewData', () => {
     });
 
     expect(data.children[0]).toMatchObject({ kind: 'file', title: 'readme' });
+  });
+
+  test('file name takes the extension the listing reports', () => {
+    const data = buildFolderOverviewData('docs', {
+      pages: new Set(['docs/guide']),
+      pageTitles: new Map([['docs/guide', 'Getting started']]),
+      pageMeta: new Map([['docs/guide', { size: 1, modified: '', docExt: '.mdx' }]]),
+      folderPaths: new Set(),
+    });
+
+    expect(data.children[0]).toMatchObject({ title: 'Getting started', fileName: 'guide.mdx' });
+  });
+
+  test('no file name when the title already is the full file name', () => {
+    const data = buildFolderOverviewData('docs', {
+      pages: new Set(['docs/notes']),
+      pageTitles: new Map([['docs/notes', 'Notes.md']]),
+      pageMeta: new Map(),
+      folderPaths: new Set(),
+    });
+
+    expect(data.children[0]).toMatchObject({ title: 'Notes.md' });
+    expect(data.children[0]?.fileName).toBeUndefined();
   });
 
   test('content-root (empty folderPath) lists only top-level children', () => {
