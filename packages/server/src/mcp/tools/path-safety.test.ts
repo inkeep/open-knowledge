@@ -1,6 +1,7 @@
 import { win32 } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { escapesRoot, resolveWithinRoot } from './path-safety.ts';
+import { escapesRoot } from '../../path-utils.ts';
+import { resolveWithinRoot } from './path-safety.ts';
 
 describe('resolveWithinRoot — accepts inputs contained in root', () => {
   test('plain relative path', () => {
@@ -124,7 +125,7 @@ describe('escapesRoot — win32 separators (PRD-8341)', () => {
     'refuses win32 absolute %s',
     (candidate) => {
       const rel = win32.relative(root, win32.resolve(root, candidate));
-      expect(escapesRoot(rel) || win32.isAbsolute(rel)).toBe(true);
+      expect(escapesRoot(rel, win32)).toBe(true);
     },
   );
 

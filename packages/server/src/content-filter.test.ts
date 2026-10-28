@@ -1494,6 +1494,81 @@ describe('ContentFilter', () => {
       expect(filter.isDirExcluded('tutorials')).toBe(false);
     });
 
+    test.each([
+      ['sync', createContentFilter],
+      ['async', createContentFilterAsync],
+    ] as const)(
+      '%s factory applies project ignore files to a contentDir whose name starts with two dots',
+      async (_name, create) => {
+        const contentDir = join(projectDir, '..notes');
+        mkdirSync(contentDir);
+        writeFileSync(join(projectDir, '.gitignore'), 'secret.md\n');
+        writeFileSync(join(projectDir, '.okignore'), 'hidden.md\n');
+        writeFileSync(join(contentDir, 'secret.md'), '# Secret');
+        writeFileSync(join(contentDir, 'hidden.md'), '# Hidden');
+        writeFileSync(join(contentDir, 'open.md'), '# Open');
+        mkdirSync(join(contentDir, 'sub'));
+        writeFileSync(join(contentDir, 'sub', '.gitignore'), 'draft.md\n');
+        writeFileSync(join(contentDir, 'sub', 'draft.md'), '# Draft');
+        writeFileSync(join(contentDir, 'sub', 'kept.md'), '# Kept');
+
+        const filter = await create({ projectDir, contentDir });
+
+        expect(filter.isExcluded('secret.md')).toBe(true);
+        expect(filter.isExcluded('hidden.md')).toBe(true);
+        expect(filter.isExcluded('open.md')).toBe(false);
+        expect(filter.isExcluded('sub/draft.md')).toBe(true);
+        expect(filter.isExcluded('sub/kept.md')).toBe(false);
+      },
+    );
+
+    test.each([
+      ['sync', createContentFilter],
+      ['async', createContentFilterAsync],
+    ] as const)(
+      '%s factory builds when the project holds a directory named only with dots',
+      async (_name, create) => {
+        mkdirSync(join(projectDir, '...'));
+        writeFileSync(join(projectDir, '...', '.gitignore'), 'draft.md\n');
+        writeFileSync(join(projectDir, '...', 'note.md'), '# Note');
+        writeFileSync(join(projectDir, 'open.md'), '# Open');
+
+        const building = Promise.resolve().then(() =>
+          create({ projectDir, contentDir: projectDir }),
+        );
+        await expect(building).resolves.toBeDefined();
+        const filter = await building;
+
+        expect(filter.isExcluded('open.md')).toBe(false);
+        expect(filter.isPathIgnored('.../note.md')).toBe(false);
+        const showAll = { bypassFilters: true, respectOkignore: true } as const;
+        expect(filter.isDirExcluded('...', showAll)).toBe(false);
+        expect(filter.isExcluded('.../note.md', showAll)).toBe(false);
+      },
+    );
+
+    test.each([
+      ['sync', createContentFilter],
+      ['async', createContentFilterAsync],
+    ] as const)(
+      '%s factory builds when the contentDir is named only with dots',
+      async (_name, create) => {
+        const contentDir = join(projectDir, '...');
+        mkdirSync(join(contentDir, 'sub'), { recursive: true });
+        writeFileSync(join(projectDir, '.okignore'), 'hidden.md\n');
+        writeFileSync(join(contentDir, 'note.md'), '# Note');
+        writeFileSync(join(contentDir, 'sub', 'nested.md'), '# Nested');
+
+        const building = Promise.resolve().then(() => create({ projectDir, contentDir }));
+        await expect(building).resolves.toBeDefined();
+        const filter = await building;
+
+        expect(filter.isExcluded('note.md')).toBe(false);
+        expect(filter.isExcluded('sub/nested.md')).toBe(false);
+        expect(filter.isDirExcluded('sub')).toBe(false);
+      },
+    );
+
     test('handles contentDir completely outside projectDir (dotdot relative path)', async () => {
       const externalContentDir = await mkdtemp(join(tmpdir(), 'content-filter-external-'));
       try {

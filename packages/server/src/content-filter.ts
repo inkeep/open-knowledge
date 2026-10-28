@@ -21,7 +21,7 @@ import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
 import { isProjectRoot } from './fs/find-project-root.ts';
 import { getLogger } from './logger.ts';
 import { incrementInPlaceSkillRescanFailures } from './metrics.ts';
-import { toPosix } from './path-utils.ts';
+import { escapesRoot, toPosix } from './path-utils.ts';
 import { withSpan } from './telemetry.ts';
 
 const log = getLogger('content-filter');
@@ -72,6 +72,16 @@ const OK_ALWAYS_SKIP_CHILDREN = new Set(['worktrees', 'local']);
 
 function isBuiltinSkipDirName(name: string): boolean {
   return BUILTIN_SKIP_DIRS.has(name) || ALWAYS_SKIP_DIRS.has(name.toLowerCase());
+}
+
+const LEADING_DOTS_ONLY_SEGMENT = /^\.+(?:\/|$)/;
+
+function hasDotsOnlyLeadingSegment(projectRelPath: string): boolean {
+  return LEADING_DOTS_ONLY_SEGMENT.test(projectRelPath);
+}
+
+function isOutsideIgnoreScope(projectRelPath: string): boolean {
+  return escapesRoot(projectRelPath) || hasDotsOnlyLeadingSegment(projectRelPath);
 }
 
 type AttachmentFolderSegment = (candidate: string) => boolean;
@@ -696,7 +706,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
   );
 
   const contentRelPrefix = toPosix(relative(projectDir, contentDir));
-  const contentOutsideProject = contentRelPrefix.startsWith('..');
+  const contentOutsideProject = isOutsideIgnoreScope(contentRelPrefix);
 
   let ig: Ignore;
   let okignoreIg: Ignore;
@@ -800,7 +810,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       syncScope?.pathBase === 'project' || !contentRelPrefix
         ? relativePath
         : `${contentRelPrefix}/${relativePath}`;
-    if (projectRelPath.startsWith('..')) return false;
+    if (hasDotsOnlyLeadingSegment(projectRelPath)) return false;
     return ig.ignores(projectRelPath);
   }
 
@@ -816,6 +826,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
   function isOkIgnored(relativePath: string): boolean {
     if (contentOutsideProject) return false;
     const projectRelPath = contentRelPrefix ? `${contentRelPrefix}/${relativePath}` : relativePath;
+    if (hasDotsOnlyLeadingSegment(projectRelPath)) return false;
     return okignoreIg.ignores(projectRelPath);
   }
 
@@ -1254,7 +1265,7 @@ function loadNestedIgnoreFiles(
     const dirPath = join(dir, entry.name);
     const relToProject = toPosix(relative(projectDir, dirPath));
 
-    if (relToProject.startsWith('..')) continue;
+    if (isOutsideIgnoreScope(relToProject)) continue;
 
     if (ig.ignores(relToProject) || ig.ignores(`${relToProject}/`)) continue;
 
@@ -1308,7 +1319,7 @@ async function initContentDirStateAsync(
 
       if (!contentOutsideProject) {
         const relToProject = toPosix(relative(projectDir, dirPath));
-        if (relToProject.startsWith('..')) continue;
+        if (isOutsideIgnoreScope(relToProject)) continue;
         if (ig.ignores(relToProject) || ig.ignores(`${relToProject}/`)) continue;
 
         for (const name of IGNORE_FILE_NAMES) {
@@ -1361,7 +1372,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
   );
 
   const contentRelPrefix = toPosix(relative(projectDir, contentDir));
-  const contentOutsideProject = contentRelPrefix.startsWith('..');
+  const contentOutsideProject = isOutsideIgnoreScope(contentRelPrefix);
 
   let ig = ignore();
   let okignoreIg = ignore();
@@ -1384,7 +1395,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       syncScope?.pathBase === 'project' || !contentRelPrefix
         ? relativePath
         : `${contentRelPrefix}/${relativePath}`;
-    if (projectRelPath.startsWith('..')) return false;
+    if (hasDotsOnlyLeadingSegment(projectRelPath)) return false;
     return ig.ignores(projectRelPath);
   }
 
@@ -1400,6 +1411,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
   function isOkIgnored(relativePath: string): boolean {
     if (contentOutsideProject) return false;
     const projectRelPath = contentRelPrefix ? `${contentRelPrefix}/${relativePath}` : relativePath;
+    if (hasDotsOnlyLeadingSegment(projectRelPath)) return false;
     return okignoreIg.ignores(projectRelPath);
   }
 
