@@ -879,13 +879,61 @@ async function writeInstallFailureMarker(
   });
 }
 
-export async function ensureBinaryInstalled(
+interface InFlightBinaryInstall {
+  result: Promise<string>;
+  downloading: boolean;
+  downloadStartListeners: Array<() => void>;
+}
+
+const inFlightBinaryInstalls = new Map<string, InFlightBinaryInstall>();
+
+export function ensureBinaryInstalled(
   id: string,
   version: string,
   target: RegistryBinaryTarget,
   cacheDir: string,
   log: PinoLogger,
   opts: EnsureBinaryInstallOptions = {},
+): Promise<string> {
+  const key = JSON.stringify([
+    resolve(cacheDir),
+    id,
+    version,
+    target.archive,
+    target.cmd,
+    target.sha256 ?? null,
+  ]);
+  const running = inFlightBinaryInstalls.get(key);
+  if (running !== undefined) {
+    if (opts.onDownloadStart !== undefined) {
+      if (running.downloading) opts.onDownloadStart();
+      else running.downloadStartListeners.push(opts.onDownloadStart);
+    }
+    return running.result;
+  }
+  const entry: InFlightBinaryInstall = {
+    result: Promise.resolve(''),
+    downloading: false,
+    downloadStartListeners: opts.onDownloadStart === undefined ? [] : [opts.onDownloadStart],
+  };
+  entry.result = installBinary(id, version, target, cacheDir, log, {
+    ...opts,
+    onDownloadStart: () => {
+      entry.downloading = true;
+      for (const notify of entry.downloadStartListeners) notify();
+    },
+  }).finally(() => inFlightBinaryInstalls.delete(key));
+  inFlightBinaryInstalls.set(key, entry);
+  return entry.result;
+}
+
+async function installBinary(
+  id: string,
+  version: string,
+  target: RegistryBinaryTarget,
+  cacheDir: string,
+  log: PinoLogger,
+  opts: EnsureBinaryInstallOptions,
 ): Promise<string> {
   const versionDir = join(cacheDir, sanitizeSegment(id), sanitizeSegment(version));
   const markerPath = installFailureMarkerPath(dirname(versionDir), version);
@@ -906,10 +954,19 @@ export async function ensureBinaryInstalled(
         log.info({ id, version, archive: target.archive }, '[acp-launch] downloading agent binary');
         const isZip = /\.zip$/i.test(new URL(target.archive).pathname);
         const archivePath = join(stagingDir, isZip ? 'archive.zip' : 'archive.tar.gz');
+        const downloadStartedAt = Date.now();
         const sha = await downloadToFileWithSha(target.archive, archivePath, {
-          signal: AbortSignal.timeout(120_000),
           fetchImpl: opts.fetchImpl,
+          onRetry: ({ attempt, receivedBytes, totalBytes, resumeFromBytes, error }) =>
+            log.warn(
+              { id, version, attempt, receivedBytes, totalBytes, resumeFromBytes, err: error },
+              '[acp-launch] agent binary download interrupted, retrying',
+            ),
         });
+        log.info(
+          { id, version, elapsedMs: Date.now() - downloadStartedAt },
+          '[acp-launch] agent binary downloaded',
+        );
         if (target.sha256 !== undefined) {
           if (sha !== target.sha256.toLowerCase()) {
             throw new Error(`archive checksum mismatch: expected ${target.sha256}, got ${sha}`);

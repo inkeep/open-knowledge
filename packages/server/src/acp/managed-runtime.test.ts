@@ -309,6 +309,33 @@ describe('ensureManagedRuntime', () => {
     expect(await findManagedRuntime('node', root)).toBeNull();
   });
 
+  test('stops the archive download when the checksum list cannot be fetched', async () => {
+    const root = tmp();
+    let archiveSignal: AbortSignal | undefined;
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).includes('SHASUMS256') || String(url).endsWith('.sha256')) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return new Response('missing', { status: 404 });
+      }
+      archiveSignal = init?.signal ?? undefined;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(64));
+          init?.signal?.addEventListener('abort', () => controller.error(init.signal?.reason));
+        },
+      });
+      return new Response(body, { status: 200, headers: { 'content-length': '1048576' } });
+    }) as unknown as typeof fetch;
+
+    const error = await ensureManagedRuntime('node', log, { root, fetchImpl }).catch(
+      (err: unknown) => err,
+    );
+
+    expect(error).toBeInstanceOf(RuntimeInstallError);
+    expect((error as Error).message).toMatch(/HTTP 404/);
+    expect(archiveSignal?.aborted).toBe(true);
+  });
+
   test('preserves the underlying failure as the error cause', async () => {
     const root = tmp();
     const failure = new Error('network unreachable');

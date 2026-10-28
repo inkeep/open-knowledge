@@ -274,14 +274,39 @@ export async function ensureManagedRuntime(
           { kind, version: versionOf(kind), url: spec.archiveUrl },
           '[managed-runtime] downloading runtime',
         );
-        const [actualSha, checksums] = await Promise.all([
+        const paired = new AbortController();
+        const signal =
+          opts.signal === undefined ? paired.signal : AbortSignal.any([opts.signal, paired.signal]);
+        const abortPair = (error: unknown): never => {
+          paired.abort(error);
+          throw error;
+        };
+        const [download, checksumFetch] = await Promise.allSettled([
           downloadToFileWithSha(spec.archiveUrl, archivePath, {
-            signal: opts.signal,
+            signal,
             onProgress: opts.onProgress,
+            onRetry: ({ attempt, receivedBytes, totalBytes, resumeFromBytes, error }) =>
+              log.warn(
+                {
+                  kind,
+                  version: versionOf(kind),
+                  attempt,
+                  receivedBytes,
+                  totalBytes,
+                  resumeFromBytes,
+                  err: error,
+                },
+                '[managed-runtime] runtime download interrupted, retrying',
+              ),
             fetchImpl: opts.fetchImpl,
-          }),
-          fetchText(spec.checksumUrl, { signal: opts.signal, fetchImpl: opts.fetchImpl }),
+          }).catch(abortPair),
+          fetchText(spec.checksumUrl, { signal, fetchImpl: opts.fetchImpl }).catch(abortPair),
         ]);
+        if (download.status === 'rejected' || checksumFetch.status === 'rejected') {
+          throw paired.signal.reason;
+        }
+        const actualSha = download.value;
+        const checksums = checksumFetch.value;
         const expectedSha = shaForFile(checksums, spec.archiveName);
         if (expectedSha === null) {
           throw new RuntimeInstallError(`no published checksum for ${spec.archiveName}`);
