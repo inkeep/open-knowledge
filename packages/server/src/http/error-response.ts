@@ -8,6 +8,7 @@ import {
   StreamingProblemEventSchema,
   stripPathspecMagic,
 } from '@inkeep/open-knowledge-core';
+import { SkillDestinationPolicyError } from '@inkeep/open-knowledge-core/skills-catalog';
 import type { Counter } from '@opentelemetry/api';
 import { PrivateStateSymlinkError, SymlinkEscapeError } from '../fs-safety.ts';
 import { getLogger } from '../logger.ts';
@@ -74,6 +75,12 @@ export function errorResponse(
   title: string,
   options: ErrorResponseOptions = {},
 ): void {
+  if (options.cause instanceof SkillDestinationPolicyError) {
+    status = 400;
+    type = 'urn:ok:error:invalid-request';
+    title = 'Website source requires explicit trust.';
+    options = { ...options, detail: options.cause.message };
+  }
   if (
     status === 500 &&
     options.cause instanceof SymlinkEscapeError &&

@@ -293,6 +293,7 @@ import {
   StructuralDiskReadError,
 } from './persistence-staleness-watchdog.ts';
 import { loadPrincipal } from './principal.ts';
+import { createPrivateSkillTrustAdmission } from './private-skill-trust-admission.ts';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';
 import { type ReconcileOutcome, reconcile } from './reconciliation.ts';
 import { reconcileRecoveredFileTarget } from './recovered-file-target.ts';
@@ -2612,6 +2613,14 @@ export function createServer(options: ServerOptions): ServerInstance {
       },
     };
     hocuspocus.configuration.extensions.push(configDocAdmissionGuard);
+    hocuspocus.configuration.extensions.push(
+      createPrivateSkillTrustAdmission((rejectionClass) =>
+        logAuthRejection('config-doc-admission-denied', CONFIG_DOC_NAME_USER, {
+          check: 'private-skill-trust',
+          rejectionClass,
+        }),
+      ),
+    );
 
     const removalRedirectGuard: Extension & { __kind: 'removal-redirect-guard' } = {
       __kind: 'removal-redirect-guard',

@@ -53,6 +53,7 @@ export {
   withFileLock,
   withFileLockSync,
 } from './util/file-lock.ts';
+export { classifyHost, isPublicUnicastIp } from './util/ip-classifier.ts';
 export {
   isProjectLogsKey,
   okProjectLogsDir,

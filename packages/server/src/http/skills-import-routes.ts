@@ -22,6 +22,7 @@ import {
   readSkillDirMeta,
   readWellKnownIndex,
   resolveSkillsShImportSource,
+  SkillDestinationPolicyError,
   SkillFetchError,
   type SourceSpec,
   type WellKnownIndex,
@@ -356,12 +357,16 @@ export function createSkillsImportRoutes(deps: SkillsImportRouteDeps): ApiRouteG
               perSkill = one.cleanup;
               upstreamSkill = requested;
             } catch (e) {
+              const notFound =
+                e instanceof SkillFetchError && !(e instanceof SkillDestinationPolicyError);
               results.push({
                 requested,
-                status: e instanceof SkillFetchError ? 'not-found' : 'failed',
+                status: notFound ? 'not-found' : 'failed',
                 warnings: [],
                 warningCodes: [],
-                ...(e instanceof SkillFetchError ? {} : { error: String(e) }),
+                ...(notFound
+                  ? {}
+                  : { error: e instanceof SkillDestinationPolicyError ? e.message : String(e) }),
               });
               continue;
             }

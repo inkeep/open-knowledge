@@ -6,6 +6,7 @@ export {
   fetchSourceListing,
   parseSkillsShSource,
   parseSource,
+  SkillDestinationPolicyError,
   SkillFetchError,
   SkillSubpathNotFoundError,
   type SkillsShSourceRef,

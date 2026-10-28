@@ -6,7 +6,8 @@ import {
   SKILL_IMPORT_MAX_FILE_BYTES,
   SKILL_IMPORT_MAX_TOTAL_BYTES,
 } from '../import-limits.ts';
-import { SkillFetchError } from './errors.ts';
+import { SkillDestinationPolicyError, SkillFetchError } from './errors.ts';
+import { fetchWebsiteSkill } from './website-fetch.ts';
 
 const INDEX_CANDIDATES = [
   '/.well-known/agent-skills/index.json',
@@ -51,7 +52,7 @@ export interface WellKnownSkillSummary {
 const MAX_REDIRECTS = 5;
 
 async function fetchWithinOrigin(
-  fetchImpl: typeof fetch,
+  fetchImpl: typeof fetchWebsiteSkill,
   url: string,
   origin: string,
   init: RequestInit,
@@ -60,6 +61,7 @@ async function fetchWithinOrigin(
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const response = await fetchImpl(current, { ...init, redirect: 'manual' });
     if (response.status < 300 || response.status >= 400) return response;
+    await response.body?.cancel();
 
     const location = response.headers.get('location');
     if (location === null || location === '') {
@@ -170,7 +172,7 @@ async function readBoundedBody(
 
 async function readIndex(
   origin: string,
-  fetchImpl: typeof fetch,
+  fetchImpl: typeof fetchWebsiteSkill,
   timeoutMs: number,
 ): Promise<{ basePath: string; skills: LegacySkillEntry[] }> {
   const failures: string[] = [];
@@ -204,6 +206,7 @@ async function readIndex(
       }
       return { basePath: indexPath.slice(0, -'/index.json'.length), skills };
     } catch (error) {
+      if (error instanceof SkillDestinationPolicyError) throw error;
       failures.push(`${indexPath}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -223,8 +226,7 @@ export async function readWellKnownIndex(
   opts: WellKnownFetchOptions = {},
 ): Promise<WellKnownIndex> {
   const origin = normalizedOrigin(rawOrigin);
-  const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
-  if (!fetchImpl) throw new SkillFetchError('No fetch implementation available.');
+  const fetchImpl = opts.fetchImpl ?? fetchWebsiteSkill;
   return readIndex(origin, fetchImpl, opts.timeoutMs ?? 15_000);
 }
 
@@ -236,8 +238,7 @@ export async function fetchWellKnownSkill(
     throw new SkillFetchError(`Invalid website skill name: ${spec.skill}`);
   }
   const origin = normalizedOrigin(spec.origin);
-  const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
-  if (!fetchImpl) throw new SkillFetchError('No fetch implementation available.');
+  const fetchImpl = opts.fetchImpl ?? fetchWebsiteSkill;
   const timeoutMs = opts.timeoutMs ?? 15_000;
   const { basePath, skills } = opts.index ?? (await readIndex(origin, fetchImpl, timeoutMs));
   const entry = skills.find((candidate) => candidate.name === spec.skill);

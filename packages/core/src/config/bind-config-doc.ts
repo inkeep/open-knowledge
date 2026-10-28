@@ -4,6 +4,7 @@ import type { ConfigValidationError, WriteScope } from './errors.ts';
 import { validateGitHostPatch } from './git-host-config.ts';
 import type { Err, Ok, Result } from './result.ts';
 import { type Config, type ConfigPatch, ConfigSchema } from './schema.ts';
+import { validateSkillSourcePatch } from './skill-source-config.ts';
 import { addConfigSpanEvent, withConfigSpanSync } from './telemetry.ts';
 import { validatePatchScopes } from './validate-patch-scopes.ts';
 import { applyPatchToDocument, toConfigIssue } from './yaml-patch.ts';
@@ -154,6 +155,8 @@ function bindConfigDocInner(
     }
     const hostViolation = validateGitHostPatch(patch);
     if (hostViolation !== null) return err(hostViolation);
+    const skillSourceViolation = validateSkillSourcePatch(patch);
+    if (skillSourceViolation !== null) return err(skillSourceViolation);
 
     const currentContent = ytext.toString();
     let doc = parseDocument(currentContent);

@@ -57,6 +57,26 @@ Skills already in your AI tools' folders show up in the dock on their own. Open 
 A skill can include scripts that run on your machine. Read what it does and use sources you trust. OpenKnowledge does not run a skill's scripts during import.
 </Callout>
 
+## Use a private website source
+
+Website skill downloads require public network addresses by default. To use a trusted website on a private network, add its exact HTTPS origin to the **user** config at `~/.ok/global.yml` (`~/.ok-beta/global.yml` for Beta):
+
+```yaml
+skills:
+  trustedPrivateOrigins:
+    - https://skills.example.com
+```
+
+Use the canonical origin: a lowercase hostname and no explicit default `:443` port. Include a nondefault port if the source needs one, such as `https://skills.example.com:8443`. Do not include credentials, a trailing slash, path, wildcard, query, or fragment. Trust applies only to that exact origin, not its subdomains or other ports. Project configuration and catalog entries cannot grant this permission.
+
+The website still needs a trusted HTTPS certificate matching its hostname. Removing an origin from the list blocks subsequent private-network requests without restarting OpenKnowledge.
+
+Add approvals by editing this user file on the computer or inside the container running OpenKnowledge. There is no Settings control for this list. Collaboration sessions, including remote browser sessions, may remove approvals and change unrelated settings, but cannot add approvals.
+
+Invalid entries are ignored individually and reported by `ok config validate`; other valid approvals remain active. A malformed user config cannot grant private-network access.
+
+Unapproved sources use direct connections to public unicast addresses. Private, reserved, and translated addresses such as NAT64 are blocked. Proxy-only networks may also need explicit origin approval. Approved sources keep the runtime's configured proxy routing; approval does not disable certificate or hostname verification.
+
 ## Keep it up to date
 
 An imported skill remembers where it came from.

@@ -21,6 +21,7 @@ import {
 import { EffectiveAutolinkEntrySchema } from './autolinks-config.ts';
 import { fieldRegistry } from './field-registry.ts';
 import { EffectiveGitHostEntrySchema } from './git-host-config.ts';
+import { EffectiveTrustedPrivateOriginSchema } from './skill-source-config.ts';
 
 function base16SlotFields() {
   return Object.fromEntries(
@@ -715,6 +716,22 @@ export const ConfigSchema = z.looseObject({
         .default(null),
     })
     .default({ mode: null, enabled: null, default: null }),
+  skills: z
+    .looseObject({
+      trustedPrivateOrigins: z
+        .array(EffectiveTrustedPrivateOriginSchema)
+        .register(fieldRegistry, {
+          scope: 'user',
+          agentSettable: false,
+          reload: 'live',
+          defaultScope: 'user',
+          description:
+            'Canonical HTTPS origins allowed to serve website skills from private network addresses. Empty by default: website skills require public addresses. Set only in user global.yml, never project configuration or acquisition requests. Use a lowercase hostname and omit credentials, default port 443, trailing slash, path, query, fragment and wildcards. Include nondefault ports when required. Invalid entries are ignored with located config diagnostics; valid siblings remain approved. TLS certificate and hostname checks still apply.',
+        })
+        .default([])
+        .catch([]),
+    })
+    .default({ trustedPrivateOrigins: [] }),
   git: z
     .looseObject({
       hosts: z
