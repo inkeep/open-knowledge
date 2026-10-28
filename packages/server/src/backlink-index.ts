@@ -2158,7 +2158,7 @@ export class BacklinkIndex {
       ...serializeState(state),
       ...(mtimes ? { mtimes: Object.fromEntries(mtimes) } : {}),
     };
-    await atomicWriteFile(filePath, JSON.stringify(data, null, 2), { fs: tracedAtomicFs });
+    await atomicWriteFile(filePath, JSON.stringify(data), { fs: tracedAtomicFs });
   }
 
   async loadFromDisk(branch = this.activeBranch): Promise<boolean> {

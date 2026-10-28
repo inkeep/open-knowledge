@@ -76,6 +76,152 @@ afterEach(async () => {
 });
 
 describe('DerivedDocumentIndex', () => {
+  test('normal cache saves stay bounded during sustained edits and flush latest state on close', async () => {
+    vi.useFakeTimers();
+    const backlinkSave = vi.spyOn(BacklinkIndex.prototype, 'saveToDisk');
+    const tagSave = vi.spyOn(TagIndex.prototype, 'saveToDisk');
+    const rig = createRig();
+    await settleStartup(rig);
+    backlinkSave.mockClear();
+    tagSave.mockClear();
+
+    for (let i = 0; i < 75; i++) {
+      const markdown = `See [[target-${i}]]. #stable\n`;
+      writeDoc(rig, 'source.md', markdown);
+      switch (i % 4) {
+        case 0:
+          await rig.index.recordDirectDocument('source', markdown);
+          break;
+        case 1:
+          await rig.index.recordDiskUpsert('source', markdown);
+          break;
+        case 2:
+          await rig.index.recordDurableStore('source', markdown);
+          break;
+        case 3:
+          await rig.index.recordLinkRewrite('source', markdown);
+          break;
+      }
+      expect(await rig.index.getBacklinks(`target-${i}`)).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1000);
+      await rig.index.getIndexedDocNames();
+    }
+
+    expect(backlinkSave).toHaveBeenCalledTimes(3);
+    expect(tagSave).toHaveBeenCalledTimes(3);
+    const warm = new BacklinkIndex(rig);
+    expect(await warm.loadFromDisk()).toBe(true);
+    expect(warm.getBacklinks('target-59')).toHaveLength(1);
+    expect(warm.getBacklinks('target-74')).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(15_000);
+    await rig.index.getIndexedDocNames();
+    expect(backlinkSave).toHaveBeenCalledTimes(4);
+    const quiet = new BacklinkIndex(rig);
+    expect(await quiet.loadFromDisk()).toBe(true);
+    expect(quiet.getBacklinks('target-74')).toHaveLength(1);
+
+    writeDoc(rig, 'late.md', '#late-tag\n');
+    await rig.index.recordDiskUpsert('late', '#late-tag\n');
+    writeDoc(rig, 'source.md', 'See [[close-target]]. #stable\n');
+    await rig.index.recordDurableStore('source', 'See [[close-target]]. #stable\n');
+    await rig.index.close();
+    expect(backlinkSave).toHaveBeenCalledTimes(5);
+    expect(tagSave).toHaveBeenCalledTimes(5);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(backlinkSave).toHaveBeenCalledTimes(5);
+    expect(tagSave).toHaveBeenCalledTimes(5);
+
+    const closed = new BacklinkIndex(rig);
+    expect(await closed.loadFromDisk()).toBe(true);
+    expect(closed.getBacklinks('close-target')).toHaveLength(1);
+    expect(closed.getBacklinks('target-74')).toEqual([]);
+    const tags = new TagIndex(rig);
+    expect(await tags.loadFromDisk()).toBe(true);
+    expect(tags.getDocsForTagWithMatches('late-tag')).toEqual([
+      { docName: 'late', matchingTags: ['late-tag'] },
+    ]);
+    await tags.close();
+  });
+
+  test('a queued cache save checks the minimum interval when it actually executes', async () => {
+    vi.useFakeTimers();
+    const originalSave = BacklinkIndex.prototype.saveToDisk;
+    const backlinkSave = vi.spyOn(BacklinkIndex.prototype, 'saveToDisk');
+    const rig = createRig();
+    await settleStartup(rig);
+    backlinkSave.mockClear();
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    backlinkSave.mockImplementationOnce(async function (this: BacklinkIndex, branch) {
+      started.resolve();
+      await release.promise;
+      await originalSave.call(this, branch);
+    });
+
+    writeDoc(rig, 'source.md', 'See [[queued-target]].\n');
+    await rig.index.recordDiskUpsert('source', 'See [[queued-target]].\n');
+    const running = rig.index.recordDirectDocument('running', '# Running\n');
+    await started.promise;
+    await vi.advanceTimersByTimeAsync(5000);
+    release.resolve();
+    await running;
+    await rig.index.getIndexedDocNames();
+
+    expect(backlinkSave).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(29_999);
+    await rig.index.getIndexedDocNames();
+    expect(backlinkSave).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await rig.index.getIndexedDocNames();
+    expect(backlinkSave).toHaveBeenCalledTimes(2);
+    const cached = new BacklinkIndex(rig);
+    expect(await cached.loadFromDisk()).toBe(true);
+    expect(cached.getBacklinks('queued-target')).toHaveLength(1);
+  });
+
+  test('a queued throttled save cannot rearm an old-branch timer during a switch', async () => {
+    vi.useFakeTimers();
+    const originalSave = BacklinkIndex.prototype.saveToDisk;
+    const backlinkSave = vi.spyOn(BacklinkIndex.prototype, 'saveToDisk');
+    const tagSave = vi.spyOn(TagIndex.prototype, 'saveToDisk');
+    const rig = createRig();
+    await settleStartup(rig);
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    backlinkSave.mockImplementationOnce(async function (this: BacklinkIndex, branch) {
+      started.resolve();
+      await release.promise;
+      await originalSave.call(this, branch);
+    });
+
+    writeDoc(rig, 'old.md', 'See [[old-target]].\n');
+    await rig.index.recordDiskUpsert('old', 'See [[old-target]].\n');
+    const running = rig.index.recordDirectDocument('running', '# Running\n');
+    await started.promise;
+    await vi.advanceTimersByTimeAsync(2000);
+    const switching = rig.index.beginBranchSwitch('feature');
+    release.resolve();
+    await running;
+    const transition = await switching;
+    unlinkSync(join(rig.contentDir, 'old.md'));
+    writeDoc(rig, 'feature.md', 'See [[feature-target]]. #feature\n');
+    await rig.index.settleBranchFromDisk(transition);
+    backlinkSave.mockClear();
+    tagSave.mockClear();
+    await vi.advanceTimersByTimeAsync(60_000);
+    await rig.index.getIndexedDocNames();
+    expect(backlinkSave).not.toHaveBeenCalled();
+    expect(tagSave).not.toHaveBeenCalled();
+
+    const cached = new BacklinkIndex(rig);
+    expect(await cached.loadFromDisk('feature')).toBe(true);
+    expect(cached.getBacklinks('feature-target', 'feature')).toHaveLength(1);
+    expect(cached.getBacklinks('old-target', 'feature')).toEqual([]);
+    expect(await cached.loadFromDisk('main')).toBe(true);
+    expect(cached.getBacklinks('old-target', 'main')).toHaveLength(1);
+  });
+
   test('every body feeder refreshes the resolved graph with unchanged document inventory', async () => {
     const rig = createRig();
     writeDoc(rig, 'notes/beta.md', '# Beta');

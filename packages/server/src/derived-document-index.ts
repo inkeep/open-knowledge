@@ -30,7 +30,8 @@ import { TagIndex, type TagSummaryEntry } from './tag-index.ts';
 const log = getLogger('derived-document-index');
 const SLOW_STARTUP_LOG_THRESHOLD_MS = 10_000;
 
-const DERIVED_INDEX_SAVE_DEBOUNCE_MS = 2000;
+const DERIVED_INDEX_SAVE_COALESCE_MS = 2000;
+const DERIVED_INDEX_SAVE_MIN_INTERVAL_MS = 30_000;
 const LOCAL_TARGET_REBUILD_RETRY_BASE_MS = 1000;
 const LOCAL_TARGET_REBUILD_RETRY_MAX_MS = 30_000;
 const LOCAL_TARGET_FILE_EXISTENCE_SWEEP_MS = 5000;
@@ -181,6 +182,7 @@ export class DerivedDocumentIndex
   private readonly readyBarrier = Promise.withResolvers<void>();
   private tail: Promise<void> = Promise.resolve();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastNormalSaveAt: number | null = null;
   private localTargetRebuildRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly localTargetFileExistenceTimer: ReturnType<typeof setInterval>;
   private localTargetRebuildRetryAttempt = 0;
@@ -188,7 +190,7 @@ export class DerivedDocumentIndex
   private graphFileTargets: TargetNamespace<'file'> | null = null;
   private startupBranch: string | null = null;
   private graphBuiltWithoutFileOracle = false;
-  private saveTagsOnNextDebounce = false;
+  private saveTagsOnNextFlush = false;
   private branchTransition: BranchTransition | null = null;
   private startupBegun = false;
   private startupBegunAt = 0;
@@ -519,10 +521,10 @@ export class DerivedDocumentIndex
 
       if (tagsChanged) {
         this.reconcileLocalTargetInventory();
-        await this.saveBothLogOnly('direct-batch');
+        await this.saveMutationCache(true, 'direct-batch');
         this.signalAllRelations();
       } else {
-        await this.saveBacklinksLogOnly('direct-batch');
+        await this.saveMutationCache(false, 'direct-batch');
         this.signalBacklinks();
       }
     });
@@ -684,7 +686,7 @@ export class DerivedDocumentIndex
     if (this.closePromise) return this.closePromise;
     const pendingSave = this.cancelScheduledSave();
     if (pendingSave !== null) {
-      void this.enqueueInternal(() => this.saveScheduledCache(pendingSave, 'close-flush'));
+      void this.enqueueInternal(() => this.saveMutationCache(pendingSave, 'close-flush'));
     }
     this.closed = true;
     clearInterval(this.localTargetFileExistenceTimer);
@@ -949,33 +951,51 @@ export class DerivedDocumentIndex
   }
 
   private scheduleSave(includeTags = true): void {
-    const saveTags = this.saveTagsOnNextDebounce || includeTags;
-    this.cancelScheduledSave();
-    this.saveTagsOnNextDebounce = saveTags;
+    if (this.closed || this.branchTransition !== null) return;
+    this.saveTagsOnNextFlush ||= includeTags;
+    if (this.saveTimer !== null) return;
+    const delay =
+      this.lastNormalSaveAt === null
+        ? DERIVED_INDEX_SAVE_COALESCE_MS
+        : Math.max(
+            DERIVED_INDEX_SAVE_COALESCE_MS,
+            DERIVED_INDEX_SAVE_MIN_INTERVAL_MS - (performance.now() - this.lastNormalSaveAt),
+          );
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
-      const saveTags = this.saveTagsOnNextDebounce;
-      this.saveTagsOnNextDebounce = false;
-      void this.enqueueInternal(() => this.saveScheduledCache(saveTags, 'debounced')).catch(
+      const saveTags = this.saveTagsOnNextFlush;
+      this.saveTagsOnNextFlush = false;
+      void this.enqueueInternal(() => this.saveMutationCache(saveTags, 'coalesced')).catch(
         (err) => {
-          log.warn({ err }, 'Failed to enqueue debounced derived-index cache save');
+          log.warn({ err }, 'Failed to enqueue coalesced derived-index cache save');
         },
       );
-    }, DERIVED_INDEX_SAVE_DEBOUNCE_MS);
+    }, delay);
   }
 
   private cancelScheduledSave(): boolean | null {
-    const pendingSave = this.saveTimer === null ? null : this.saveTagsOnNextDebounce;
+    const pendingSave = this.saveTimer === null ? null : this.saveTagsOnNextFlush;
     if (this.saveTimer !== null) clearTimeout(this.saveTimer);
     this.saveTimer = null;
-    this.saveTagsOnNextDebounce = false;
+    this.saveTagsOnNextFlush = false;
     return pendingSave;
   }
 
-  private saveScheduledCache(includeTags: boolean, reason: string): Promise<void> {
-    return includeTags
-      ? this.saveBothLogOnly(reason)
-      : this.saveBacklinksLogOnly(`${reason}-backlinks`);
+  private async saveMutationCache(includeTags: boolean, reason: string): Promise<void> {
+    if (
+      !this.closed &&
+      this.lastNormalSaveAt !== null &&
+      performance.now() - this.lastNormalSaveAt < DERIVED_INDEX_SAVE_MIN_INTERVAL_MS
+    ) {
+      this.scheduleSave(includeTags);
+      return;
+    }
+    if (includeTags) {
+      await this.saveBothLogOnly(reason);
+    } else {
+      await this.saveBacklinksLogOnly(`${reason}-backlinks`);
+    }
+    this.lastNormalSaveAt = performance.now();
   }
 
   private releaseBranchTransition(transition: DerivedDocumentIndexBranchTransition | null): void {
