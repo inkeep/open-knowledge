@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import { createContentFilter } from './content-filter.ts';
 import type { AllFileEntries, FileIndexEntry, FolderIndexEntry } from './file-watcher.ts';
 import {
   createFileExistsOracle,
@@ -292,6 +293,58 @@ describe('createFileExistsOracle', () => {
     expect(exists('missing.txt')).toBe(false);
   });
 
+  test.each(['Applications/pom.xml', 'vendor/lib/source.java', 'build/output.txt', 'dist/app.js'])(
+    'accepts an existing file under a built-in skip directory: %s',
+    (relativePath) => {
+      const root = project();
+      mkdirSync(dirname(join(root, relativePath)), { recursive: true });
+      writeFileSync(join(root, relativePath), 'source\n');
+      const filter = createContentFilter({ projectDir: root, contentDir: root });
+      const exists = createFileExistsOracle([], root, filter);
+
+      expect(filter.isPathIgnored(relativePath)).toBe(true);
+      expect(exists(relativePath)).toBe(true);
+    },
+  );
+
+  test('retains ignore-file exclusions for the excluded-target advisory', () => {
+    const root = project();
+    writeFileSync(join(root, '.gitignore'), 'ignored-by-git/\n');
+    writeFileSync(join(root, '.okignore'), 'ignored-by-ok/\n');
+    const paths = ['ignored-by-git/source.txt', 'ignored-by-ok/source.txt'];
+    for (const path of paths) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), 'source\n');
+    }
+    const filter = createContentFilter({ projectDir: root, contentDir: root });
+    const exists = createFileExistsOracle([], root, filter);
+
+    for (const path of paths) {
+      expect(filter.isPathIgnored(path)).toBe(true);
+      expect(exists(path)).toBe(false);
+    }
+  });
+
+  test.each([
+    '.env',
+    '.env.local',
+    '.ssh/id_rsa',
+    '.aws/credentials',
+    '.git/config',
+    '.ok/config.yml',
+    '.claude/settings.json',
+    'node_modules/pkg/index.js',
+    '__system__.md',
+    '__config__/project.md',
+  ])('refuses an existing protected file: %s', (relativePath) => {
+    const root = project();
+    mkdirSync(dirname(join(root, relativePath)), { recursive: true });
+    writeFileSync(join(root, relativePath), 'protected\n');
+    const filter = createContentFilter({ projectDir: root, contentDir: root });
+
+    expect(createFileExistsOracle([], root, filter)(relativePath)).toBe(false);
+  });
+
   test('never accepts a directory as an existing file', () => {
     const exists = createFileExistsOracle([], project(), undefined);
     expect(exists('Sub')).toBe(false);
@@ -301,6 +354,7 @@ describe('createFileExistsOracle', () => {
   test('refuses an ignored path', () => {
     const exists = createFileExistsOracle([], project(), {
       isPathIgnored: (path) => path === 'Makefile',
+      isExcludedByIgnoreFiles: () => false,
     });
     expect(exists('Makefile')).toBe(false);
   });

@@ -2372,6 +2372,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
       fileExists: createLinkedFileExists(),
       folderExists: createLinkedFolderExists(),
       fileExcluded: createLinkedFileExcluded(),
+      imagePathExcluded: contentFilter?.isPathIgnored ?? null,
       resolveWikiFile: createLinkedWikiFileResolver(),
       resolveFileByBasename: createLinkedFileBasenameResolver(),
     };

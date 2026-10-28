@@ -167,13 +167,15 @@ export function createFileBasenameResolver(
 export function createFileExistsOracle(
   fileTargets: Iterable<string>,
   contentDir: string,
-  contentFilter: Pick<ContentFilter, 'isPathIgnored'> | undefined,
+  contentFilter: Pick<ContentFilter, 'isPathIgnored' | 'isExcludedByIgnoreFiles'> | undefined,
 ): (contentRootRelativePath: string) => boolean {
   const admittedFiles = asTargetNamespace('file', fileTargets);
   const canonicalContentDir = realpathSync(contentDir);
   return (contentRootRelativePath) => {
     if (admittedFiles.resolve(contentRootRelativePath) !== undefined) return true;
-    if (contentFilter?.isPathIgnored(contentRootRelativePath)) return false;
+    if (contentFilter?.isPathIgnored(contentRootRelativePath, { bypassFilters: true }))
+      return false;
+    if (contentFilter?.isExcludedByIgnoreFiles(contentRootRelativePath)) return false;
 
     const candidate = resolve(contentDir, contentRootRelativePath);
     if (!isWithinDir(candidate, contentDir)) return false;

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
@@ -25,7 +26,7 @@ interface LocalTargetEvidence {
 interface BrokenLink {
   href: string;
   resolvedTo: string | null;
-  reason: 'no-such-doc' | 'no-such-file' | 'unresolvable';
+  reason: 'no-such-doc' | 'no-such-file' | 'unresolvable' | 'excluded';
   localTarget?: LocalTargetEvidence;
 }
 
@@ -213,6 +214,136 @@ test('write validates links to any file on disk, not just docs (source-file dept
     },
   ]);
 });
+
+test.each(['write', 'edit'] as const)(
+  '%s accepts a source-file link beneath a built-in skip directory',
+  async (tool) => {
+    const session = await openMcpSession(server.port);
+    const uid = randomUUID().slice(0, 8);
+    const existing = `Applications/probe-${uid}.java`;
+    const missing = `Applications/missing-${uid}.java`;
+    const image = `dist/logo-${uid}.png`;
+    const documents = [`Applications/readme-${uid}.md`, `Applications/readme-${uid}.mdx`];
+    mkdirSync(join(server.contentDir, 'Applications'), { recursive: true });
+    writeFileSync(join(server.contentDir, existing), 'class Probe {}\n');
+    mkdirSync(join(server.contentDir, 'dist'), { recursive: true });
+    writeFileSync(join(server.contentDir, image), 'image\n');
+    for (const document of documents) {
+      writeFileSync(join(server.contentDir, document), '# Reference\n');
+    }
+    const docName = `wiki-${uid}/index`;
+    const links = [
+      `See [source](../${existing}), [missing](../${missing}) and [image file](../${image}).`,
+      ...documents.map((path) => `[document](../${path})`),
+      `![image](../${image})`,
+    ].join('\n');
+
+    if (tool === 'edit') {
+      const seeded = await callTool(
+        server.port,
+        session,
+        'write',
+        { document: { path: docName, content: '# Module\n\nPlaceholder.\n', position: 'replace' } },
+        server.contentDir,
+      );
+      expect(seeded.isError ?? false).toBe(false);
+    }
+
+    const document =
+      tool === 'write'
+        ? { path: docName, content: `# Module\n\n${links}\n`, position: 'replace' }
+        : { path: docName, find: 'Placeholder.', replace: links };
+    const result = await callTool(server.port, session, tool, { document }, server.contentDir);
+
+    expect(result.isError ?? false).toBe(false);
+    expect(docResult(result.structuredContent).brokenLinks).toEqual([
+      { href: `../${missing}`, resolvedTo: missing, reason: 'no-such-file' },
+      ...documents.map((path) => ({
+        href: `../${path}`,
+        resolvedTo: path.replace(/\.mdx?$/, ''),
+        reason: 'no-such-doc',
+      })),
+      {
+        href: `../${image}`,
+        resolvedTo: image,
+        reason: 'no-such-file',
+        localTarget: {
+          href: `../${image}`,
+          targetKind: 'file',
+          role: 'image',
+          sourceForm: 'markdown-inline',
+          resolvedTarget: image,
+          reason: 'no-such-file',
+          resolutionMethod: 'source-relative',
+        },
+      },
+    ]);
+  },
+);
+
+test.each(['write', 'edit'] as const)(
+  '%s retains excluded advisories for links and images hidden by ignore files',
+  async (tool) => {
+    const contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-link-advisory-ignored-')));
+    let ignoredServer: TestServer | undefined;
+    try {
+      mkdirSync(join(contentDir, '.ok'));
+      writeFileSync(join(contentDir, '.ok', 'config.yml'), '');
+      writeFileSync(join(contentDir, '.gitignore'), 'ignored-by-git/\n');
+      writeFileSync(join(contentDir, '.okignore'), 'ignored-by-ok/\n');
+      for (const folder of ['ignored-by-git', 'ignored-by-ok']) {
+        mkdirSync(join(contentDir, folder));
+        writeFileSync(join(contentDir, folder, 'notice.txt'), 'Notice\n');
+      }
+      ignoredServer = await createTestServer({ contentDir, debounce: 50, maxDebounce: 200 });
+      const session = await openMcpSession(ignoredServer.port);
+      const docName = `wiki-${randomUUID().slice(0, 8)}/index`;
+      const links = [
+        '[git](../ignored-by-git/notice.txt)',
+        '[ok](../ignored-by-ok/notice.txt)',
+        '![image](../ignored-by-git/notice.txt)',
+      ].join('\n');
+      if (tool === 'edit') {
+        const seeded = await callTool(
+          ignoredServer.port,
+          session,
+          'write',
+          {
+            document: { path: docName, content: '# Module\n\nPlaceholder.\n', position: 'replace' },
+          },
+          contentDir,
+        );
+        expect(seeded.isError ?? false).toBe(false);
+      }
+      const document =
+        tool === 'write'
+          ? { path: docName, content: `# Module\n\n${links}\n`, position: 'replace' }
+          : { path: docName, find: 'Placeholder.', replace: links };
+      const result = await callTool(ignoredServer.port, session, tool, { document }, contentDir);
+
+      expect(result.isError ?? false).toBe(false);
+      const broken = docResult(result.structuredContent).brokenLinks as BrokenLink[];
+      expect(
+        broken.map(({ href, reason, localTarget }) => ({
+          href,
+          reason,
+          role: localTarget?.role ?? 'link',
+        })),
+      ).toEqual([
+        { href: '../ignored-by-git/notice.txt', reason: 'excluded', role: 'link' },
+        { href: '../ignored-by-ok/notice.txt', reason: 'excluded', role: 'link' },
+        { href: '../ignored-by-git/notice.txt', reason: 'excluded', role: 'image' },
+      ]);
+    } finally {
+      try {
+        await ignoredServer?.cleanup();
+      } finally {
+        rmSync(contentDir, { recursive: true, force: true });
+      }
+    }
+  },
+  HARNESS_BOOT_TIMEOUT_MS + 30_000,
+);
 
 test('edit (body find/replace) reports a broken link introduced by the edit', async () => {
   const session = await openMcpSession(server.port);

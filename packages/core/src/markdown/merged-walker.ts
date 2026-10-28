@@ -1,4 +1,3 @@
-
 import type { Nodes, Parent, Root } from 'mdast';
 import { SKIP, visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';

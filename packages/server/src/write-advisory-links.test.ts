@@ -9,6 +9,7 @@ const NO_TARGETS: WriteAdvisoryTargets = {
   fileExists: null,
   folderExists: null,
   fileExcluded: null,
+  imagePathExcluded: null,
   resolveWikiFile: null,
   resolveFileByBasename: null,
 };
@@ -17,6 +18,7 @@ const NOTHING_TRACKED: WriteAdvisoryTargets = {
   fileExists: () => false,
   folderExists: () => false,
   fileExcluded: () => false,
+  imagePathExcluded: () => false,
   resolveWikiFile: () => undefined,
   resolveFileByBasename: () => undefined,
 };
@@ -90,6 +92,36 @@ describe('computeWriteAdvisoryLinks', () => {
           role: 'image',
           sourceForm: 'markdown-inline',
           resolvedTarget: 'logo.png',
+          reason: 'no-such-file',
+          resolutionMethod: 'source-relative',
+        },
+      },
+    ] satisfies WriteAdvisoryLink[]);
+  });
+
+  test('retains the unavailable-image warning without flagging a plain link to its existing file', () => {
+    const links = computeWriteAdvisoryLinks(
+      '[source](./dist/logo.png)\n![image](./dist/logo.png)\n',
+      'notes',
+      new Set<string>(),
+      {
+        ...NOTHING_TRACKED,
+        fileExists: fileOracle('dist/logo.png'),
+        imagePathExcluded: (path) => path === 'dist/logo.png',
+      },
+    );
+
+    expect(links).toEqual([
+      {
+        href: './dist/logo.png',
+        resolvedTo: 'dist/logo.png',
+        reason: 'no-such-file',
+        localTarget: {
+          href: './dist/logo.png',
+          targetKind: 'file',
+          role: 'image',
+          sourceForm: 'markdown-inline',
+          resolvedTarget: 'dist/logo.png',
           reason: 'no-such-file',
           resolutionMethod: 'source-relative',
         },
@@ -401,19 +433,30 @@ describe('file targets that exist but are excluded by ignore rules (PRD-8896)', 
     const links = computeWriteAdvisoryLinks('[d](./ig.png)\n', 'notes', new Set<string>(), {
       ...NOTHING_TRACKED,
       fileExcluded: null,
+      imagePathExcluded: null,
     });
     expect(links).toEqual([]);
   });
 });
 
 describe('a null capability gives the targets it judges no verdict, never missing (PRD-8896)', () => {
-  const rows: Array<[keyof WriteAdvisoryTargets, string, string[]]> = [
+  const rows: Array<[keyof WriteAdvisoryTargets, string, string[], WriteAdvisoryTargets?]> = [
     ['fileExists', 'See ![i](./i.png) and [m](./Makefile).\n', ['./Makefile', './i.png']],
     ['folderExists', 'See [dir](./assets) and [[assets]].\n', ['./assets', '[[assets]]']],
     [
       'fileExcluded',
       'See [d](./ig.png), ![e](./ig.png) and [m](./Makefile).\n',
       ['./ig.png', './Makefile', './ig.png'],
+    ],
+    [
+      'imagePathExcluded',
+      '![image](./i.png)\n',
+      ['./i.png'],
+      {
+        ...NOTHING_TRACKED,
+        fileExists: fileOracle('i.png'),
+        imagePathExcluded: (path) => path === 'i.png',
+      },
     ],
     ['resolveWikiFile', 'See ![[Images/cat.png]].\n', ['Images/cat.png']],
     ['resolveFileByBasename', 'See ![[cat.png]].\n', ['cat.png']],
@@ -423,12 +466,12 @@ describe('a null capability gives the targets it judges no verdict, never missin
     expect(rows.map(([capability]) => capability).sort()).toEqual(Object.keys(NO_TARGETS).sort());
   });
 
-  for (const [capability, md, reportedWhenNothingIsTracked] of rows) {
-    test(`${capability}: null withholds what an oracle that knows nothing would report`, () => {
+  for (const [capability, md, expectedHrefs, knownTargets = NOTHING_TRACKED] of rows) {
+    test(`${capability}: null withholds the verdict that requires it`, () => {
       const hrefs = (targets: WriteAdvisoryTargets): string[] =>
         computeWriteAdvisoryLinks(md, 'notes', new Set<string>(), targets).map((link) => link.href);
-      expect(hrefs(NOTHING_TRACKED)).toEqual(reportedWhenNothingIsTracked);
-      expect(hrefs({ ...NOTHING_TRACKED, [capability]: null })).toEqual([]);
+      expect(hrefs(knownTargets)).toEqual(expectedHrefs);
+      expect(hrefs({ ...knownTargets, [capability]: null })).toEqual([]);
     });
   }
 });
