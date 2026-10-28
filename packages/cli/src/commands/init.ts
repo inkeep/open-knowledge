@@ -1598,7 +1598,7 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
   const allSkippedMissing =
     result.editors.length > 0 && result.editors.every((e) => e.action === 'skipped-missing');
   if (result.didGitInit) {
-    lines.push(`Initialized git repo at ${cwd}/.git/ (default branch: main)`);
+    lines.push(`Initialized git repo at ${cwd}/.git/`);
   }
   if (result.rootGitignoreCreated) {
     lines.push(`Seeded .gitignore at ${cwd}/.gitignore (.DS_Store)`);

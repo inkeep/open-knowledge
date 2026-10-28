@@ -38,6 +38,7 @@ describe('branch switch with a document that became a link into private state', 
     async () => {
       const contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-branch-switch-private-')));
       cleanups.push(() => rmSync(contentDir, { recursive: true, force: true }));
+      git(contentDir, 'init --initial-branch=main');
       await ensureProjectGit(contentDir);
       configureTestGitRepository(contentDir);
       git(contentDir, 'config user.name test');

@@ -48,6 +48,7 @@ function git(cwd: string, args: string): void {
 async function openNotesTypedOnMain() {
   const contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-branch-switch-batch-')));
   cleanups.push(() => rmSync(contentDir, { recursive: true, force: true }));
+  git(contentDir, 'init --initial-branch=main');
   await ensureProjectGit(contentDir);
   configureTestGitRepository(contentDir);
   const notes = join(contentDir, 'notes.md');

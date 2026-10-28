@@ -50,6 +50,7 @@ async function bootOnMainWithFeatureBranch(): Promise<{
 }> {
   const contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-branch-switch-agent-write-')));
   cleanups.push(() => rmSync(contentDir, { recursive: true, force: true }));
+  git(contentDir, 'init --initial-branch=main');
   await ensureProjectGit(contentDir);
   configureTestGitRepository(contentDir);
   git(contentDir, 'config user.name test');

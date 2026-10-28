@@ -4,12 +4,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   __resetResolveOnPathCacheForTests,
   __seedResolveOnPathCacheForTests,
 } from './git-preflight.ts';
+import { readProjectHeadState } from './head-watcher.ts';
 import { ensureProjectGit, ProjectGitInitError } from './project-git.ts';
 
 const execFileAsync = promisify(execFile);
@@ -18,9 +19,14 @@ let tmpDir: string;
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(resolve(tmpdir(), 'ok-project-git-test-'));
+  const gitConfig = resolve(tmpDir, 'gitconfig');
+  writeFileSync(gitConfig, '[init]\n\tdefaultBranch = main\n');
+  vi.stubEnv('GIT_CONFIG_GLOBAL', gitConfig);
+  vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
 });
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await rm(tmpDir, { recursive: true, force: true });
 });
 
@@ -38,6 +44,7 @@ describe('ensureProjectGit', () => {
   });
 
   test('auto-repairs partial .git/ (directory without HEAD) preserving .git/ok/ subtree', async () => {
+    writeFileSync(resolve(tmpDir, 'gitconfig'), '[init]\n\tdefaultBranch = trunk\n');
     const projectRoot = resolve(tmpDir, 'shell-git');
     mkdirSync(projectRoot, { recursive: true });
     mkdirSync(resolve(projectRoot, '.git/ok/refs'), { recursive: true });
@@ -57,6 +64,7 @@ describe('ensureProjectGit', () => {
 
     expect(result.didInit).toBe(true);
     expect(result.repaired).toBe(true);
+    expect(readProjectHeadState(projectRoot).branch).toBe('trunk');
     expect(existsSync(resolve(projectRoot, '.git/HEAD'))).toBe(true);
 
     expect(readFileSync(resolve(projectRoot, '.git/ok/HEAD'), 'utf-8')).toBe(
@@ -95,18 +103,31 @@ describe('ensureProjectGit', () => {
     expect(existsSync(resolve(subFolder, '.git'))).toBe(false);
   });
 
-  test('runs git init --initial-branch=main when .git/ is missing', async () => {
-    const projectRoot = resolve(tmpDir, 'fresh');
-    mkdirSync(projectRoot, { recursive: true });
+  test.each(['main', 'trunk', 'team/default'])(
+    'honors init.defaultBranch=%s when .git/ is missing',
+    async (branch) => {
+      writeFileSync(resolve(tmpDir, 'gitconfig'), `[init]\n\tdefaultBranch = ${branch}\n`);
+      const projectRoot = resolve(tmpDir, 'fresh');
+      mkdirSync(projectRoot, { recursive: true });
 
-    const result = await ensureProjectGit(projectRoot);
-    configureTestGitRepository(projectRoot);
+      const result = await ensureProjectGit(projectRoot);
 
-    expect(result.didInit).toBe(true);
-    expect(existsSync(resolve(projectRoot, '.git/HEAD'))).toBe(true);
+      expect(result.didInit).toBe(true);
+      const { stdout: oid } = await execFileAsync('git', ['rev-parse', 'HEAD'], {
+        cwd: projectRoot,
+      });
+      expect(readProjectHeadState(projectRoot)).toEqual({ branch, oid: oid.trim() });
+    },
+  );
 
-    const head = readFileSync(resolve(projectRoot, '.git/HEAD'), 'utf-8');
-    expect(head).toBe('ref: refs/heads/main\n');
+  test('keeps main when init.defaultBranch is not configured', async () => {
+    writeFileSync(resolve(tmpDir, 'gitconfig'), '');
+    const projectRoot = resolve(tmpDir, 'unconfigured');
+    mkdirSync(projectRoot);
+
+    await ensureProjectGit(projectRoot);
+
+    expect(readProjectHeadState(projectRoot).branch).toBe('main');
   });
 
   test('falls back to a usable git when bare git is unavailable on PATH', async () => {
@@ -135,7 +156,7 @@ describe('ensureProjectGit', () => {
     const fakeGit = resolve(fakeBin, 'git');
     writeFileSync(
       fakeGit,
-      `#!/bin/sh\ncase "$1" in\n  --version) echo "git version 2.45.0"; exit 0 ;;\n  init)\n    # args: init --initial-branch=main <path>\n    mkdir -p "$3/.git"\n    # intentionally do not create HEAD\n    exit 0 ;;\n  *) exit 0 ;;\nesac\n`,
+      `#!/bin/sh\ncase "$1" in\n  --version) echo "git version 2.45.0"; exit 0 ;;\n  init)\n    mkdir -p "$3/.git"\n    exit 0 ;;\n  *) exit 0 ;;\nesac\n`,
       'utf-8',
     );
     await execFileAsync('chmod', ['+x', fakeGit]);
@@ -174,7 +195,8 @@ describe('ensureProjectGit — initial commit', () => {
     await expect(headResolves(projectRoot)).resolves.toBe(true);
   });
 
-  test('leaves `main` resolvable, so `git worktree add ... -- main` succeeds', async () => {
+  test('leaves the configured default branch resolvable for git worktree add', async () => {
+    writeFileSync(resolve(tmpDir, 'gitconfig'), '[init]\n\tdefaultBranch = trunk\n');
     const projectRoot = resolve(tmpDir, 'worktree-base');
     mkdirSync(projectRoot, { recursive: true });
 
@@ -183,7 +205,7 @@ describe('ensureProjectGit — initial commit', () => {
 
     const worktreePath = resolve(projectRoot, '.ok/worktrees/wt-1');
     await expect(
-      execFileAsync('git', ['worktree', 'add', '-b', 'wt-1', worktreePath, '--', 'main'], {
+      execFileAsync('git', ['worktree', 'add', '-b', 'wt-1', worktreePath, '--', 'trunk'], {
         cwd: projectRoot,
       }),
     ).resolves.toBeDefined();
@@ -192,13 +214,14 @@ describe('ensureProjectGit — initial commit', () => {
   test('backfills a root commit on a repo already stranded with an unborn HEAD', async () => {
     const projectRoot = resolve(tmpDir, 'stranded');
     mkdirSync(projectRoot, { recursive: true });
-    await execFileAsync('git', ['init', '--initial-branch=main', projectRoot]);
+    await execFileAsync('git', ['init', '--initial-branch=existing', projectRoot]);
     configureTestGitRepository(projectRoot);
     await expect(headResolves(projectRoot)).resolves.toBe(false);
 
     const result = await ensureProjectGit(projectRoot);
 
     expect(result.didInit).toBe(false);
+    expect(readProjectHeadState(projectRoot).branch).toBe('existing');
     await expect(headResolves(projectRoot)).resolves.toBe(true);
   });
 

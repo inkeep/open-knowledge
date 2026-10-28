@@ -157,7 +157,9 @@ export default {
         'src/shadow-fixture-launch.test-helper.mjs',
       ],
       project: 'src/**',
-      ignoreDependencies: ['@types/shell-quote'],
+      ignoreDependencies: [
+        '@types/shell-quote',
+      ],
     },
     'packages/cli': {
       entry: [
@@ -167,7 +169,9 @@ export default {
         'src/parse-worker.ts',
         'src/bin.ts',
       ],
-      ignoreDependencies: ['yjs'],
+      ignoreDependencies: [
+        'yjs',
+      ],
     },
     'packages/desktop': {
       entry: [
