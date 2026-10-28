@@ -20,6 +20,7 @@ import {
   contentHash,
   evictStaleTrackerEntries,
   type FileIndexEntry,
+  getWatcherDecisionRingSnapshot,
   handleRawEvents,
   isSelfRemoval,
   isSelfWrite,
@@ -29,6 +30,7 @@ import {
   registerRemoval,
   registerWrite,
   removalTracker,
+  resetWatcherDecisionDiagnostics,
   retractRemoval,
   startWatcher,
   toParcelIgnorePaths,
@@ -446,6 +448,92 @@ describe('isSelfRemoval', () => {
     );
 
     expect(later.map((event) => event.kind)).toEqual(['delete']);
+  });
+});
+
+describe('an outside write in the same batch as an own save', () => {
+  let batchDir: string;
+
+  beforeEach(async () => {
+    writeTracker.clear();
+    lastKnownHash.clear();
+    resetWatcherDecisionDiagnostics();
+    batchDir = realpathSync(await mkdtemp(resolve(tmpdir(), 'ok-merged-batch-test-')));
+  });
+
+  afterEach(async () => {
+    await rm(batchDir, { recursive: true, force: true });
+  });
+
+  test('reaches the server as an update carrying the outside bytes when the batch reads as a create', async () => {
+    const filePath = resolve(batchDir, 'merged.md');
+    const saved = '# Merged\n\nIntro paragraph.\n';
+    const outside = '# Merged\n\nIntro paragraph, edited out of band.\n';
+    writeFileSync(filePath, saved, 'utf-8');
+    registerWrite(filePath, contentHash(saved));
+    writeFileSync(filePath, outside, 'utf-8');
+
+    const dispatched: DiskEvent[] = [];
+    await handleRawEvents(
+      [{ type: 'create', path: filePath }],
+      batchDir,
+      undefined,
+      new Map(),
+      new Map(),
+      async (event) => {
+        dispatched.push(event);
+      },
+    );
+
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0]).toMatchObject({ kind: 'update', docName: 'merged', content: outside });
+    expect(
+      getWatcherDecisionRingSnapshot().filter(
+        (record) => record.decision === 'outside-write-over-own-write',
+      ),
+    ).toMatchObject([{ kind: 'create' }]);
+  });
+
+  test('stays a create when the file was deleted after the own save', async () => {
+    const filePath = resolve(batchDir, 'recreated.md');
+    const saved = '# Recreated\n\nIntro paragraph.\n';
+    const outside = '# Recreated\n\nIntro paragraph, saved again out of band.\n';
+    writeFileSync(filePath, saved, 'utf-8');
+    registerWrite(filePath, contentHash(saved));
+    unlinkSync(filePath);
+
+    const dispatched: DiskEvent[] = [];
+    const dispatch = async (event: DiskEvent) => {
+      dispatched.push(event);
+    };
+    await handleRawEvents(
+      [{ type: 'delete', path: filePath }],
+      batchDir,
+      undefined,
+      new Map(),
+      new Map(),
+      dispatch,
+    );
+    writeFileSync(filePath, outside, 'utf-8');
+    await handleRawEvents(
+      [{ type: 'create', path: filePath }],
+      batchDir,
+      undefined,
+      new Map(),
+      new Map(),
+      dispatch,
+    );
+
+    expect(dispatched.at(-1)).toMatchObject({
+      kind: 'create',
+      docName: 'recreated',
+      content: outside,
+    });
+    expect(
+      getWatcherDecisionRingSnapshot().some(
+        (record) => record.decision === 'outside-write-over-own-write',
+      ),
+    ).toBe(false);
   });
 });
 

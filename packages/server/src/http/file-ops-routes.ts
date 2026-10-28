@@ -7,7 +7,7 @@ import {
   unlinkSync,
 } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { dirname, extname, resolve, sep } from 'node:path';
+import { dirname, extname, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import {
   type AttachmentFolderUploadIssue,
@@ -42,6 +42,7 @@ import { ManagedRenameCollisionError } from '../apply-managed-rename.ts';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
 import type { ConflictAuthority } from '../conflict-authority.ts';
 import { DocInConflictError, respondDocInConflict } from '../conflict-errors.ts';
+import { registerSourceFileExtension } from '../content/file-operation-paths.ts';
 import { isReservedProjectStatePath } from '../content/managed-doc-enum.ts';
 import { applySubstitution } from '../content/substitution.ts';
 import { resolveTemplatesAvailable } from '../content/templates-resolver.ts';
@@ -51,8 +52,6 @@ import {
   getDocExtension,
   isSupportedAssetFile,
   isSupportedDocFile,
-  registerDocExtension,
-  SUPPORTED_DOC_EXTENSIONS,
   stripDocExtension,
 } from '../doc-extensions.ts';
 import { extractActorIdentity } from '../extract-actor-identity.ts';
@@ -392,44 +391,7 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
 
   function probeAndRegisterSourceFileExtension(probeContentDir: string, fromPath: string): void {
     if (!isValidRelativeContentPath(fromPath)) return;
-    const resolvedContentDir = resolve(probeContentDir);
-    if (isSupportedDocFile(fromPath)) {
-      const extensionless = stripDocExtension(fromPath);
-      for (const ext of SUPPORTED_DOC_EXTENSIONS) {
-        const candidate = resolve(resolvedContentDir, `${extensionless}${ext}`);
-        if (
-          candidate !== resolvedContentDir &&
-          !candidate.startsWith(`${resolvedContentDir}${sep}`)
-        ) {
-          continue;
-        }
-        if (existsSync(candidate)) {
-          registerDocExtension(extensionless, ext);
-        }
-      }
-      const explicitCandidate = resolve(resolvedContentDir, fromPath);
-      if (
-        explicitCandidate !== resolvedContentDir &&
-        explicitCandidate.startsWith(`${resolvedContentDir}${sep}`) &&
-        existsSync(explicitCandidate)
-      ) {
-        registerDocExtension(extensionless, extname(fromPath));
-      }
-      return;
-    }
-    for (const ext of SUPPORTED_DOC_EXTENSIONS) {
-      const candidate = resolve(resolvedContentDir, `${fromPath}${ext}`);
-      if (
-        candidate !== resolvedContentDir &&
-        !candidate.startsWith(`${resolvedContentDir}${sep}`)
-      ) {
-        continue;
-      }
-      if (existsSync(candidate)) {
-        registerDocExtension(fromPath, ext);
-        return;
-      }
-    }
+    registerSourceFileExtension(probeContentDir, fromPath);
   }
 
   function resolveExtensionlessAssetPath(assetPath: string): {
