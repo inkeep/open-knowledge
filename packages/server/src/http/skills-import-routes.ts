@@ -398,7 +398,7 @@ export function createSkillsImportRoutes(deps: SkillsImportRouteDeps): ApiRouteG
                 status: 'failed',
                 warnings: [],
                 warningCodes: [],
-                error: outcome.detail ?? outcome.title,
+                error: outcome.detail ? `${outcome.title} (${outcome.detail})` : outcome.title,
               });
               continue;
             }

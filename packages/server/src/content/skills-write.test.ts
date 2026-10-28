@@ -34,6 +34,7 @@ const fm = (name: string, description = 'Use when testing.') => ({ name, descrip
 describe('applySkillWrite', () => {
   test('creates SKILL.md with composed name+description frontmatter', () => {
     const result = applySkillWrite({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       body: '# Steps\n\nDo the thing.',
@@ -52,14 +53,21 @@ describe('applySkillWrite', () => {
   });
 
   test('second write reports created:false (overwrite)', () => {
-    applySkillWrite({ skillsRoot, name: 's', body: 'a', frontmatter: fm('s') });
-    const again = applySkillWrite({ skillsRoot, name: 's', body: 'b', frontmatter: fm('s') });
+    applySkillWrite({ boundary: root, skillsRoot, name: 's', body: 'a', frontmatter: fm('s') });
+    const again = applySkillWrite({
+      boundary: root,
+      skillsRoot,
+      name: 's',
+      body: 'b',
+      frontmatter: fm('s'),
+    });
     expect(again.ok).toBe(true);
     if (again.ok) expect(again.created).toBe(false);
   });
 
   test('rejects name != directory', () => {
     const result = applySkillWrite({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       body: 'x',
@@ -71,6 +79,7 @@ describe('applySkillWrite', () => {
 
   test('rejects XML tag in description', () => {
     const result = applySkillWrite({
+      boundary: root,
       skillsRoot,
       name: 'x',
       body: 'b',
@@ -82,7 +91,13 @@ describe('applySkillWrite', () => {
 
   test('rejects an uppercase / dotted / spaced name', () => {
     for (const bad of ['TripLog', 'trip.log', 'trip log', 'trip/log']) {
-      const result = applySkillWrite({ skillsRoot, name: bad, body: 'b', frontmatter: fm(bad) });
+      const result = applySkillWrite({
+        boundary: root,
+        skillsRoot,
+        name: bad,
+        body: 'b',
+        frontmatter: fm(bad),
+      });
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.error.code).toBe('BAD_NAME');
     }
@@ -90,6 +105,7 @@ describe('applySkillWrite', () => {
 
   test('vendor words in name warn but never block — the marketplace is full of claude-* skills', () => {
     const result = applySkillWrite({
+      boundary: root,
       skillsRoot,
       name: 'claude-helper',
       body: 'b',
@@ -103,10 +119,17 @@ describe('applySkillWrite', () => {
   });
 
   test('allows empty description (draft) and rejects over-long description', () => {
-    const empty = applySkillWrite({ skillsRoot, name: 'a', body: 'b', frontmatter: fm('a', '') });
+    const empty = applySkillWrite({
+      boundary: root,
+      skillsRoot,
+      name: 'a',
+      body: 'b',
+      frontmatter: fm('a', ''),
+    });
     expect(empty.ok).toBe(true);
 
     const long = applySkillWrite({
+      boundary: root,
       skillsRoot,
       name: 'a',
       body: 'b',
@@ -118,6 +141,7 @@ describe('applySkillWrite', () => {
 
   test('warns (not errors) on a >500-line body', () => {
     const result = applySkillWrite({
+      boundary: root,
       skillsRoot,
       name: 'big',
       body: Array.from({ length: 600 }, (_, i) => `line ${i}`).join('\n'),
@@ -132,6 +156,7 @@ describe('applySkillWrite', () => {
 
   test('two warnings on one write keep codes positionally aligned with their text', () => {
     const result = applySkillWrite({
+      boundary: root,
       skillsRoot,
       name: 'claude-helper',
       body: Array.from({ length: 600 }, (_, i) => `line ${i}`).join('\n'),
@@ -149,7 +174,7 @@ describe('applySkillWrite', () => {
 
 describe('applySkillDelete', () => {
   test('removes the whole skill dir and reports existed', () => {
-    applySkillWrite({ skillsRoot, name: 's', body: 'a', frontmatter: fm('s') });
+    applySkillWrite({ boundary: root, skillsRoot, name: 's', body: 'a', frontmatter: fm('s') });
     expect(existsSync(join(skillsRoot, 's'))).toBe(true);
     const result = applySkillDelete({ skillsRoot, name: 's' });
     expect(result.ok).toBe(true);
@@ -164,7 +189,13 @@ describe('applySkillDelete', () => {
   });
 
   test('cleans an emptied .ok/skills then .ok', () => {
-    applySkillWrite({ skillsRoot, name: 'only', body: 'a', frontmatter: fm('only') });
+    applySkillWrite({
+      boundary: root,
+      skillsRoot,
+      name: 'only',
+      body: 'a',
+      frontmatter: fm('only'),
+    });
     applySkillDelete({ skillsRoot, name: 'only' });
     expect(existsSync(skillsRoot)).toBe(false);
     expect(existsSync(join(root, '.ok'))).toBe(false);
@@ -179,7 +210,7 @@ describe('applySkillMove', () => {
   };
 
   test('renames the skill dir', async () => {
-    applySkillWrite({ skillsRoot, name: 'old', body: 'a', frontmatter: fm('old') });
+    applySkillWrite({ boundary: root, skillsRoot, name: 'old', body: 'a', frontmatter: fm('old') });
     const result = await applySkillMove({
       skillsRoot,
       fromName: 'old',
@@ -192,8 +223,8 @@ describe('applySkillMove', () => {
   });
 
   test('refuses a collision with an existing destination', async () => {
-    applySkillWrite({ skillsRoot, name: 'a', body: 'x', frontmatter: fm('a') });
-    applySkillWrite({ skillsRoot, name: 'b', body: 'y', frontmatter: fm('b') });
+    applySkillWrite({ boundary: root, skillsRoot, name: 'a', body: 'x', frontmatter: fm('a') });
+    applySkillWrite({ boundary: root, skillsRoot, name: 'b', body: 'y', frontmatter: fm('b') });
     const result = await applySkillMove({
       skillsRoot,
       fromName: 'a',
@@ -214,7 +245,13 @@ describe('applySkillMove', () => {
     expect(missing.ok).toBe(false);
     if (!missing.ok) expect(missing.error.code).toBe('SKILL_NOT_FOUND');
 
-    applySkillWrite({ skillsRoot, name: 'same', body: 'x', frontmatter: fm('same') });
+    applySkillWrite({
+      boundary: root,
+      skillsRoot,
+      name: 'same',
+      body: 'x',
+      frontmatter: fm('same'),
+    });
     const noop = await applySkillMove({
       skillsRoot,
       fromName: 'same',
@@ -228,11 +265,12 @@ describe('applySkillMove', () => {
 
 describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', () => {
   const seedSkill = (name = 'trip-log') =>
-    applySkillWrite({ skillsRoot, name, body: '# Steps', frontmatter: fm(name) });
+    applySkillWrite({ boundary: root, skillsRoot, name, body: '# Steps', frontmatter: fm(name) });
 
   test('writes a reference + a script into an existing skill (atomic, created flag)', () => {
     seedSkill();
     const ref = applySkillBundleFileWrite({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       relPath: 'references/gear.md',
@@ -248,6 +286,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     );
 
     const script = applySkillBundleFileWrite({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       relPath: 'scripts/run.sh',
@@ -257,6 +296,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     if (script.ok) expect(script.created).toBe(true);
 
     const again = applySkillBundleFileWrite({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       relPath: 'references/gear.md',
@@ -268,6 +308,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
 
   test('refuses a write into a skill that does not exist', () => {
     const r = applySkillBundleFileWrite({
+      boundary: root,
       skillsRoot,
       name: 'ghost',
       relPath: 'references/x.md',
@@ -280,6 +321,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
   test('rejects an escaping path and an over-cap file', () => {
     seedSkill();
     const escaping = applySkillBundleFileWrite({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       relPath: 'references/../../escape.md',
@@ -289,6 +331,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     if (!escaping.ok) expect(escaping.error.code).toBe('BAD_FILE_PATH');
 
     const tooLarge = applySkillBundleFileWrite({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       relPath: 'references/big.md',
@@ -303,6 +346,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     const skillDir = join(skillsRoot, 'trip-log');
 
     const rootFile = applySkillBundleFileWrite({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       relPath: 'config.json',
@@ -312,6 +356,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     expect(readFileSync(join(skillDir, 'config.json'), 'utf-8')).toBe('{"a":1}');
 
     const asset = applySkillBundleFileWrite({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       relPath: 'assets/note.txt',
@@ -321,6 +366,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
 
     const png = new Uint8Array([0x89, 0x50, 0x00, 0xff]);
     const bin = applySkillBundleFileWrite({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       relPath: 'assets/logo.png',
@@ -331,6 +377,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     expect(Array.from(readFileSync(join(skillDir, 'assets', 'logo.png')))).toEqual(Array.from(png));
 
     const skillMd = applySkillBundleFileWrite({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       relPath: 'SKILL.md',
@@ -344,6 +391,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     seedSkill();
     for (let i = 0; i < 50; i++) {
       const r = applySkillBundleFileWrite({
+        boundary: root,
         skillsRoot,
         name: 'trip-log',
         relPath: `references/r${i}.md`,
@@ -352,6 +400,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
       expect(r.ok).toBe(true);
     }
     const overflow = applySkillBundleFileWrite({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       relPath: 'references/one-too-many.md',
@@ -376,6 +425,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     const writes: string[] = [];
     for (let i = 0; i < 51; i++) {
       const r = applySkillBundleFileWrite({
+        boundary: root,
         skillsRoot,
         name: 'trip-log',
         relPath: `references/r${i}.md`,
@@ -391,6 +441,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     for (let i = 0; i < 50; i++) {
       expect(
         applySkillBundleFileWrite({
+          boundary: root,
           skillsRoot,
           name: 'trip-log',
           relPath: `references/r${i}.md`,
@@ -400,6 +451,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     }
 
     const imported = applySkillBundleFileWrite({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       relPath: 'assets/large.bin',
@@ -413,12 +465,14 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
   test('deletes a bundle file and prunes the emptied dir; no-op reports existed:false', () => {
     seedSkill();
     applySkillBundleFileWrite({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       relPath: 'references/gear.md',
       content: 'x',
     });
     const del = applySkillBundleFileDelete({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       relPath: 'references/gear.md',
@@ -429,6 +483,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     expect(existsSync(join(skillsRoot, 'trip-log', 'SKILL.md'))).toBe(true);
 
     const noop = applySkillBundleFileDelete({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       relPath: 'references/gear.md',
@@ -440,8 +495,15 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
   test('deletes a bundle FOLDER recursively, leaving the skill intact', () => {
     seedSkill();
     for (const rel of ['references/deep/a.md', 'references/deep/nested/b.md', 'references/keep.md'])
-      applySkillBundleFileWrite({ skillsRoot, name: 'trip-log', relPath: rel, content: 'x' });
+      applySkillBundleFileWrite({
+        boundary: root,
+        skillsRoot,
+        name: 'trip-log',
+        relPath: rel,
+        content: 'x',
+      });
     const del = applySkillBundleFileDelete({
+      boundary: root,
       skillsRoot,
       name: 'trip-log',
       relPath: 'references/deep',

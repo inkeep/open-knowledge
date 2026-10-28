@@ -49,6 +49,8 @@ import {
   applySkillMove,
   applySkillWrite,
   composeSkillContent,
+  skillMutationErrorStatus,
+  validateSkillMutationPath,
 } from '../content/skills-write.ts';
 import type { ContentFilter } from '../content-filter.ts';
 import type {
@@ -551,6 +553,7 @@ export function createSkillsDocumentRoutes(deps: SkillsDocumentRouteDeps): ApiRo
             return;
           }
           const wr = applySkillWrite({
+            boundary: putBase,
             skillsRoot: resolve(putBase, homeRel),
             name: body.name,
             body: typeof body.body === 'string' ? body.body : '',
@@ -560,11 +563,20 @@ export function createSkillsDocumentRoutes(deps: SkillsDocumentRouteDeps): ApiRo
             },
           });
           if (!wr.ok) {
-            errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid skill request.', {
-              handler: 'skill-put',
-              detail: wr.error.code,
-              cause: new Error(wr.error.message),
-            });
+            const status = skillMutationErrorStatus(wr.error.code);
+            errorResponse(
+              res,
+              status,
+              status === 500
+                ? 'urn:ok:error:internal-server-error'
+                : 'urn:ok:error:invalid-request',
+              wr.error.message,
+              {
+                handler: 'skill-put',
+                detail: wr.error.code,
+                cause: wr.error.cause ?? new Error(wr.error.message),
+              },
+            );
             return;
           }
           if (body.scope === 'project') {
@@ -874,6 +886,28 @@ export function createSkillsDocumentRoutes(deps: SkillsDocumentRouteDeps): ApiRo
           body.scope,
           body.fromName,
         );
+        const fromScanBase = body.scope === 'project' ? contentDir : skillsHome;
+        const sourceSkillDir = resolve(skillsRoot, body.fromName);
+        const pathCheck = validateSkillMutationPath(
+          fromScanBase,
+          sourceSkillDir,
+          resolve(sourceSkillDir, 'SKILL.md'),
+        );
+        if (!pathCheck.ok) {
+          const status = skillMutationErrorStatus(pathCheck.error.code);
+          errorResponse(
+            res,
+            status,
+            status === 500 ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request',
+            pathCheck.error.message,
+            {
+              handler: 'skill-move',
+              detail: pathCheck.error.code,
+              cause: pathCheck.error.cause,
+            },
+          );
+          return;
+        }
         const occupiedToDir = resolveSkillDirForRead(body.scope, body.toName);
         if (occupiedToDir !== null) {
           const retentionBase = skillInstallBase(body.scope);
@@ -915,7 +949,6 @@ export function createSkillsDocumentRoutes(deps: SkillsDocumentRouteDeps): ApiRo
         const priorInstall = moveBase
           ? readInstalledSkills(moveBase).skills[body.fromName]
           : undefined;
-        const fromScanBase = body.scope === 'project' ? contentDir : skillsHome;
         const renameScanEntry = (
           body.scope === 'project'
             ? scanInPlaceSkills(contentDir)
@@ -984,7 +1017,7 @@ export function createSkillsDocumentRoutes(deps: SkillsDocumentRouteDeps): ApiRo
           return;
         }
 
-        let contentEditError: { code: string; message: string } | null = null;
+        let contentEditError: { code: string; message: string; cause?: unknown } | null = null;
         const movedSkillMd = resolve(skillsRoot, body.toName, 'SKILL.md');
         let parsedBody = '';
         let parsedDescription = '';
@@ -999,6 +1032,7 @@ export function createSkillsDocumentRoutes(deps: SkillsDocumentRouteDeps): ApiRo
         const writeDescription =
           body.frontmatter !== undefined ? body.frontmatter.description : parsedDescription;
         const rewrite = applySkillWrite({
+          boundary: fromScanBase,
           skillsRoot,
           name: body.toName,
           body: writeBody,
@@ -1113,16 +1147,19 @@ export function createSkillsDocumentRoutes(deps: SkillsDocumentRouteDeps): ApiRo
         signalChannel?.('files');
 
         if (contentEditError) {
-          const isServerError = contentEditError.code === 'WRITE_ERROR';
+          const status =
+            contentEditError.code === 'WRITE_ERROR'
+              ? 500
+              : skillMutationErrorStatus(contentEditError.code);
           errorResponse(
             res,
-            isServerError ? 500 : 400,
-            isServerError ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request',
+            status,
+            status === 500 ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request',
             `Skill renamed to "${body.toName}", but updating its SKILL.md failed — its name frontmatter may not match the new directory.`,
             {
               handler: 'skill-move',
               detail: contentEditError.code,
-              cause: new Error(contentEditError.message),
+              cause: contentEditError.cause ?? new Error(contentEditError.message),
             },
           );
           return;

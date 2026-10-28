@@ -28,4 +28,12 @@ The panel appears at both scopes: **Settings → User → Skills Studio** links 
 
 Linking refuses when the two folders hold different versions of the same skill. Resolve that first, then link.
 
+## Writable linked layouts
+
+Linked skill roots remain writable when the real folder stays inside the project for project skills, or inside the home directory for global skills. A link into private repository state, such as `.git`, is not a writable skill location.
+
+Creating, importing, refreshing or renaming a skill refuses a root outside that boundary or a linked `SKILL.md` file.
+
+Supporting-file writes, renames and deletions refuse the affected path when the file itself or a parent directory inside the skill folder is a link, even when its target is inside the project. Unrelated links do not block changes to other files. Refresh applies this check to every file it would write or remove, including `SKILL.md`. Replace a blocked link with a real file or directory before changing that path. Reading linked files remains supported.
+
 For copies, relocating the source folder, and what OpenKnowledge writes where, see the [developer reference](./reference.mdx#file-layout).

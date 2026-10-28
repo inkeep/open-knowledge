@@ -646,7 +646,7 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
                     source: entry.source,
                     warnings: [],
                     warningCodes: [],
-                    error: outcome.detail ?? outcome.title,
+                    error: outcome.detail ? `${outcome.title} (${outcome.detail})` : outcome.title,
                   });
                   continue;
                 }

@@ -1,5 +1,5 @@
-import { type Dirent, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, normalize, sep } from 'node:path';
+import { type Dirent, existsSync, lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, normalize, relative, sep } from 'node:path';
 import {
   applyPatchToFm,
   containsXmlTag,
@@ -13,6 +13,7 @@ import {
 import { ATOMIC_TEMP_INFIX, atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import { stringify as stringifyYaml } from 'yaml';
 import { isSkillBundlePathWithheld } from '../content-filter.ts';
+import { resolveExistingNativeAncestor, resolveNativePath } from '../directory-root.ts';
 /*
  * STOP: every disk write in this module goes through `fs-traced.ts` so it
  * carries an `fs.*` span. A bare `node:fs` call here drops the span.
@@ -25,6 +26,9 @@ import {
   tracedUnlinkSync,
   tracedWriteFileSync,
 } from '../fs-traced.ts';
+import { errnoCode } from '../http/handler-utils.ts';
+import { symlinkReachesPrivateState } from '../incoming-symlink-guard.ts';
+import { isWithinDir } from '../path-utils.ts';
 
 const NAME_MAX = 64;
 const DESCRIPTION_MAX = 1024;
@@ -40,7 +44,7 @@ type SkillWriteResult =
       warnings: string[];
       warningCodes: SkillAuthoringWarningCode[];
     }
-  | { ok: false; error: { code: string; message: string } };
+  | { ok: false; error: { code: string; message: string; cause?: unknown } };
 
 export type SkillContentResult =
   | {
@@ -60,6 +64,7 @@ type SkillMoveResult =
   | { ok: false; error: { code: string; message: string } };
 
 interface WriteSkillInput {
+  boundary: string;
   skillsRoot: string;
   name: string;
   body: string;
@@ -134,6 +139,8 @@ export function applySkillWrite(input: WriteSkillInput): SkillWriteResult {
   const { content, warnings, warningCodes } = composed;
 
   const { skillDir, filePath } = skillPaths(input.skillsRoot, input.name);
+  const pathCheck = validateSkillMutationPath(input.boundary, skillDir, filePath);
+  if (!pathCheck.ok) return pathCheck;
 
   try {
     tracedMkdirSync(skillDir, { recursive: true });
@@ -152,7 +159,7 @@ export function applySkillWrite(input: WriteSkillInput): SkillWriteResult {
   sweepStaleTmpSiblings(filePath);
   const tmpPath = atomicTempPath(filePath);
   try {
-    tracedWriteFileSync(tmpPath, content, 'utf-8');
+    tracedWriteFileSync(tmpPath, content, { encoding: 'utf-8', flag: 'wx' });
     tracedRenameSync(tmpPath, filePath);
   } catch (err) {
     try {
@@ -225,6 +232,7 @@ export interface BundleFileWriteLimits {
 }
 
 interface BundleFileInput {
+  boundary: string;
   skillsRoot: string;
   name: string;
   relPath: string;
@@ -237,6 +245,72 @@ type BundleFileWriteResult =
 type BundleFileDeleteResult =
   | { ok: true; path: string; existed: boolean }
   | { ok: false; error: { code: string; message: string } };
+
+export function skillMutationErrorStatus(code: string): 400 | 500 {
+  return code === 'SKILL_PATH_CHECK_FAILED' ? 500 : 400;
+}
+
+export function validateSkillMutationPath(
+  boundary: string,
+  skillDir: string,
+  abs: string,
+): { ok: true } | { ok: false; error: { code: string; message: string; cause?: unknown } } {
+  if (!isAbsolute(boundary) || !isWithinDir(skillDir, boundary) || !isWithinDir(abs, skillDir)) {
+    return {
+      ok: false,
+      error: {
+        code: 'SKILL_PATH_OUTSIDE_HOME',
+        message: `Skill ${relative(boundary, skillDir)} must stay inside its project or home directory.`,
+      },
+    };
+  }
+  let component = skillDir;
+  let operation = 'resolve the project or home directory';
+  try {
+    const realBoundary = resolveNativePath(boundary);
+    operation = `resolve skill directory ${relative(boundary, skillDir)}`;
+    const { ancestor, missingSegments } = resolveExistingNativeAncestor(skillDir);
+    const realSkillDir = join(ancestor, ...missingSegments);
+    const privateState = symlinkReachesPrivateState(
+      relative(boundary, skillDir).split(sep).join('/'),
+      relative(realBoundary, realSkillDir).split(sep).join('/'),
+    );
+    if (!isWithinDir(realSkillDir, realBoundary) || privateState) {
+      return {
+        ok: false,
+        error: {
+          code: privateState ? 'SKILL_PATH_PRIVATE_STATE' : 'SKILL_PATH_OUTSIDE_HOME',
+          message: `Skill ${relative(boundary, skillDir)} resolves ${privateState ? 'into private repository state' : 'outside its project or home directory'}; replace the link with an authorized skill directory.`,
+        },
+      };
+    }
+    for (const segment of relative(skillDir, abs).split(sep)) {
+      component = join(component, segment);
+      operation = `inspect skill path ${relative(skillDir, component)}`;
+      const stat = lstatSync(component, { throwIfNoEntry: false });
+      if (stat === undefined) break;
+      if (stat.isSymbolicLink()) {
+        return {
+          ok: false,
+          error: {
+            code: 'SKILL_SYMLINK_REFUSED',
+            message: `Skill path ${relative(skillDir, component)} is a symlink; replace it with a real file or directory before changing it.`,
+          },
+        };
+      }
+    }
+  } catch (cause) {
+    return {
+      ok: false,
+      error: {
+        code: 'SKILL_PATH_CHECK_FAILED',
+        message: `Could not ${operation} (${errnoCode(cause) ?? 'unknown error'}).`,
+        cause,
+      },
+    };
+  }
+  return { ok: true };
+}
 
 function resolveBundleFileAbs(
   skillDir: string,
@@ -317,6 +391,8 @@ export function applySkillBundleFileWrite(
   const resolved = resolveBundleFileAbs(skillDir, input.relPath);
   if (!resolved.ok) return { ok: false, error: resolved.error };
   const { abs } = resolved;
+  const pathCheck = validateSkillMutationPath(input.boundary, skillDir, abs);
+  if (!pathCheck.ok) return pathCheck;
 
   const byteLength =
     typeof payload === 'string' ? Buffer.byteLength(payload, 'utf-8') : payload.length;
@@ -357,8 +433,7 @@ export function applySkillBundleFileWrite(
   sweepStaleTmpSiblings(abs);
   const tmpPath = atomicTempPath(abs);
   try {
-    if (typeof payload === 'string') tracedWriteFileSync(tmpPath, payload, 'utf-8');
-    else tracedWriteFileSync(tmpPath, payload);
+    tracedWriteFileSync(tmpPath, payload, { encoding: 'utf-8', flag: 'wx' });
     tracedRenameSync(tmpPath, abs);
   } catch (err) {
     try {
@@ -396,6 +471,10 @@ export function applySkillBundleFileRename(
   if (!from.ok) return { ok: false, error: from.error };
   const to = resolveBundleFileAbs(skillDir, input.toRelPath);
   if (!to.ok) return { ok: false, error: to.error };
+  for (const abs of [from.abs, to.abs]) {
+    const pathCheck = validateSkillMutationPath(input.boundary, skillDir, abs);
+    if (!pathCheck.ok) return pathCheck;
+  }
 
   if (!existsSync(from.abs)) {
     return {
@@ -443,6 +522,9 @@ export function applySkillBundleFileDelete(input: BundleFileInput): BundleFileDe
   const resolved = resolveBundleFileAbs(skillDir, input.relPath);
   if (!resolved.ok) return { ok: false, error: resolved.error };
   const { abs } = resolved;
+
+  const pathCheck = validateSkillMutationPath(input.boundary, skillDir, abs);
+  if (!pathCheck.ok) return pathCheck;
 
   const existed = existsSync(abs);
   if (existed) {

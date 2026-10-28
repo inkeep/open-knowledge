@@ -29,6 +29,8 @@ import {
   BUNDLE_FILE_MAX_BYTES,
   BUNDLE_MAX_FILES,
   countBundleFiles,
+  skillMutationErrorStatus,
+  validateSkillMutationPath,
 } from '../content/skills-write.ts';
 import { isSkillBundlePathWithheld } from '../content-filter.ts';
 import type {
@@ -158,13 +160,26 @@ function bundleTargetVerdict(skillDir: string, abs: string): 'admitted' | 'withh
 
 function rejectUnadmittedBundleTarget(
   res: ServerResponse,
+  boundary: string,
   skillDir: string,
   rel: string,
   handler: string,
   escapeTitle: string,
 ): boolean {
   const verdict = bundleTargetVerdict(skillDir, resolve(skillDir, rel));
-  if (verdict === 'admitted') return false;
+  if (verdict === 'admitted') {
+    const pathCheck = validateSkillMutationPath(boundary, skillDir, resolve(skillDir, rel));
+    if (pathCheck.ok) return false;
+    const status = skillMutationErrorStatus(pathCheck.error.code);
+    errorResponse(
+      res,
+      status,
+      status === 500 ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request',
+      pathCheck.error.message,
+      { handler, detail: `${rel}: ${pathCheck.error.code}`, cause: pathCheck.error.cause },
+    );
+    return true;
+  }
   errorResponse(
     res,
     400,
@@ -403,6 +418,7 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
         if (
           rejectUnadmittedBundleTarget(
             res,
+            fileBase,
             skillDirAbs,
             rel,
             'skill-file-put',
@@ -459,6 +475,7 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
           }
         } else {
           const fsResult = applySkillBundleFileWrite({
+            boundary: fileBase,
             skillsRoot: dirname(skillDirAbs),
             name: body.name,
             relPath: rel,
@@ -470,7 +487,7 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
                 ? 500
                 : fsResult.error.code === 'SKILL_NOT_FOUND'
                   ? 404
-                  : 400;
+                  : skillMutationErrorStatus(fsResult.error.code);
             errorResponse(
               res,
               status,
@@ -561,12 +578,14 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
         }
         const realDir = resolveSkillDirForRead(scope, name);
         const skillsRoot = realDir !== null ? dirname(realDir) : resolveSkillsRoot(scope);
+        const fileBase = scope === 'project' ? contentDir : skillsHome;
 
         const bundleDir = realDir ?? join(skillsRoot, name);
         const bundleAbs = resolve(bundleDir, rel);
         if (
           rejectUnadmittedBundleTarget(
             res,
+            fileBase,
             bundleDir,
             rel,
             'skill-file-delete',
@@ -591,9 +610,17 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
           if (docs.length > 0) await captureAndCloseDocuments(docs, 'deleted-upstream');
         }
 
-        const result = applySkillBundleFileDelete({ skillsRoot, name, relPath: rel });
+        const result = applySkillBundleFileDelete({
+          boundary: fileBase,
+          skillsRoot,
+          name,
+          relPath: rel,
+        });
         if (!result.ok) {
-          const status = result.error.code === 'UNLINK_FAILED' ? 500 : 400;
+          const status =
+            result.error.code === 'UNLINK_FAILED'
+              ? 500
+              : skillMutationErrorStatus(result.error.code);
           errorResponse(
             res,
             status,
@@ -685,10 +712,12 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
           return;
         }
         const skillsRoot = dirname(realDir);
+        const fileBase = body.scope === 'project' ? contentDir : skillsHome;
         if (
           [from, to].some((rel) =>
             rejectUnadmittedBundleTarget(
               res,
+              fileBase,
               realDir,
               rel,
               'skill-file-rename',
@@ -720,13 +749,17 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
         }
 
         const result = applySkillBundleFileRename({
+          boundary: fileBase,
           skillsRoot,
           name: body.name,
           relPath: from,
           toRelPath: to,
         });
         if (!result.ok) {
-          const status = result.error.code === 'RENAME_FAILED' ? 500 : 400;
+          const status =
+            result.error.code === 'RENAME_FAILED'
+              ? 500
+              : skillMutationErrorStatus(result.error.code);
           errorResponse(
             res,
             status,
