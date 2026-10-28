@@ -765,7 +765,7 @@ describe('stallLogFields', () => {
 });
 
 describe('the worker witness', () => {
-  test('a stop that arrives while the stall session is connected waits for its disconnect, and the next start waits for the exit', async () => {
+  test('a stop that arrives while the stall session is connected waits until main has released the session, and the next start waits for the exit', async () => {
     const dir = makeDir();
     const lifecycleProbeForTests = createLifecycleProbeForTests();
     const probe = new Int32Array(lifecycleProbeForTests);
@@ -799,8 +799,10 @@ describe('the worker witness', () => {
     const disconnected = markOf('sessionDisconnected');
     const stopCompleted = markOf('stopCompleted');
     const exited = markOf('workerExited');
+    const released = markOf('sessionReleased');
     expect(stopPosted).toBeGreaterThan(connected);
-    expect(disconnected).toBeGreaterThan(stopPosted);
+    expect(released).toBeGreaterThan(stopPosted);
+    expect(disconnected).toBeGreaterThan(released);
     expect(stopCompleted).toBeGreaterThan(disconnected);
     expect(exited).toBeGreaterThan(stopCompleted);
     expect(
@@ -996,15 +998,21 @@ describe('the worker witness', () => {
           session.post('Debugger.resume', () => {
             session.post('Debugger.disable', () => {
               session.disconnect();
-              clearInterval(keepAlive);
+              parentPort.postMessage('disconnected');
             });
           });
         }, 2_000);
+      });
+      parentPort.on('message', (message) => {
+        if (message !== 'exit') return;
+        clearInterval(keepAlive);
+        parentPort.close();
       });
       session.post('Debugger.enable', () => parentPort.postMessage('armed'));
       `,
       { eval: true },
     );
+    const exited = new Promise((resolve) => developerDebugger.once('exit', resolve));
     await new Promise((resolve) => {
       developerDebugger.on('message', (message) => {
         if (message === 'armed') {
@@ -1014,12 +1022,16 @@ describe('the worker witness', () => {
           debugger; // oxlint-disable-line no-debugger -- Pause the test-owned main thread.
           return;
         }
+        if (message === 'disconnected') {
+          developerDebugger.postMessage('exit');
+          return;
+        }
         resolve(message);
       });
     });
     longestMainGapMs = Math.max(longestMainGapMs, Date.now() - lastMainTickAt);
     clearInterval(mainTicks);
-    await developerDebugger.terminate();
+    await exited;
     const read = await pollFor(() => {
       const stall = watchdog.readPreviousStall();
       return stall.kind === 'record' && stall.value.outcome !== 'pending' ? stall.value : null;

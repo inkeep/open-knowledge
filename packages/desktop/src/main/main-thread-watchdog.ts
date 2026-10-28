@@ -191,6 +191,7 @@ export const LIFECYCLE_PROBE_SLOTS = {
   sessionDisconnected: 4,
   stopCompleted: 5,
   workerExited: 6,
+  sessionReleased: 7,
 } as const;
 
 type LifecycleProbeMark = Exclude<keyof typeof LIFECYCLE_PROBE_SLOTS, 'sequence'>;
@@ -239,6 +240,7 @@ let stallEpisodeCaptured = false;
 let activeSession = null;
 let sessionDisconnecting = false;
 let disconnectWaiters = [];
+let whenSessionReleased = null;
 let stopRequested = false;
 let tickTimer = null;
 
@@ -265,18 +267,17 @@ function disconnectSession(done) {
     disconnectWaiters = [];
     for (const waiter of waiters) waiter();
   };
-  try {
-    current.post('Debugger.disable', () => {
-      try {
-        current.disconnect();
-      } catch {}
-      finish();
-    });
-  } catch {
+  const disconnectThenAwaitRelease = () => {
     try {
       current.disconnect();
     } catch {}
-    finish();
+    whenSessionReleased = finish;
+    parentPort.postMessage({ type: 'session-closed' });
+  };
+  try {
+    current.post('Debugger.disable', disconnectThenAwaitRelease);
+  } catch {
+    disconnectThenAwaitRelease();
   }
 }
 
@@ -294,6 +295,12 @@ function stopWorker() {
 }
 
 parentPort.on('message', (message) => {
+  if (message === 'session-released') {
+    const released = whenSessionReleased;
+    whenSessionReleased = null;
+    if (released !== null) released();
+    return;
+  }
   if (message === 'stop') {
     stopWorker();
     return;
@@ -414,6 +421,7 @@ function requestStallSnapshot(record) {
         fail(enableErr);
         return;
       }
+      if (activeSession !== session) return;
       pauseRequested = true;
       session.post('Debugger.pause', (pauseErr) => {
         if (pauseErr) fail(pauseErr);
@@ -808,6 +816,11 @@ export function createMainThreadWatchdog(opts: {
             snapshot?: unknown;
             writeError?: unknown;
           };
+          if (type === 'session-closed') {
+            markLifecycle('sessionReleased');
+            worker.postMessage('session-released');
+            return;
+          }
           if (type === 'stall-snapshot') {
             logStallSnapshot(opts.logger, snapshot, writeError);
             return;
