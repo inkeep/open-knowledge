@@ -9762,6 +9762,9 @@ msgstr "正在登录 {agentName}…"
 msgid "Single page"
 msgstr "单页"
 
+msgid "size limit"
+msgstr "大小限制"
+
 msgid "skill \"{0}\""
 msgstr "技能“{0}”"
 
@@ -10934,6 +10937,9 @@ msgstr "这条评论针对的是整个属性"
 
 msgid "This component changed. Try again."
 msgstr "此组件已更改。请重试。"
+
+msgid "This component is too large to render."
+msgstr "此组件过大，无法显示。"
 
 msgid "This component was removed."
 msgstr "此组件已被移除。"

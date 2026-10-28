@@ -9762,6 +9762,9 @@ msgstr "جارٍ تسجيل الدخول إلى {agentName}…"
 msgid "Single page"
 msgstr "صفحة واحدة"
 
+msgid "size limit"
+msgstr "حد الحجم"
+
 msgid "skill \"{0}\""
 msgstr "المهارة «{0}»"
 
@@ -10934,6 +10937,9 @@ msgstr "هذا التعليق على الخاصية بأكملها"
 
 msgid "This component changed. Try again."
 msgstr "لقد تغيّر هذا المكوّن. حاول مرة أخرى."
+
+msgid "This component is too large to render."
+msgstr "هذا المكوّن كبير جدًا ولا يمكن عرضه."
 
 msgid "This component was removed."
 msgstr "تمت إزالة هذا المكوّن."

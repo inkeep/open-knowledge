@@ -1,4 +1,4 @@
-import { useLingui } from '@lingui/react/macro';
+import { Trans, useLingui } from '@lingui/react/macro';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import {
@@ -16,10 +16,10 @@ import { LiveDocAccessContext } from '@/editor/components/live-doc-pool';
 import { getEditorDocName } from '@/editor/extensions/doc-context';
 import { JsxComponent } from '@/editor/extensions/jsx-component';
 import {
-  extractPrimitiveProps,
   JSX_WRAPPER_CLASS,
   jsxChildrenClassName,
   jsxWrapperDataAttributes,
+  prepareJsxProps,
   reportJsxRenderFailure,
   resolveJsxRenderProps,
   resolveJsxSourceDocName,
@@ -134,7 +134,17 @@ function DiffJsxBlock({
     );
   }
 
-  const primitiveProps = extractPrimitiveProps(node.attrs, descriptor);
+  const { props: primitiveProps, error: propsError } = prepareJsxProps(node.attrs, descriptor);
+  if (propsError) {
+    return (
+      <div>
+        <div role="status" className="text-xs text-warning">
+          <Trans>This component is too large to render.</Trans>
+        </div>
+        {children}
+      </div>
+    );
+  }
   const renderProps = resolveJsxRenderProps(descriptor, primitiveProps, docName);
 
   if (

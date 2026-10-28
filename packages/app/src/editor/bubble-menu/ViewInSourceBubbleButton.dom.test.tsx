@@ -43,10 +43,10 @@ function makeEditor(
   return { editor, ydoc };
 }
 
-function renderButton(editor: Editor) {
+function renderButton(editor: Editor, getTargetPosition?: () => number | undefined) {
   return render(
     <TooltipProvider>
-      <ViewInSourceBubbleButton editor={editor} />
+      <ViewInSourceBubbleButton editor={editor} getTargetPosition={getTargetPosition} />
     </TooltipProvider>,
   );
 }
@@ -71,6 +71,46 @@ afterEach(() => {
 });
 
 describe('ViewInSourceBubbleButton', () => {
+  test('a node target at a non-first block boundary lands in that block', async () => {
+    const user = userEvent.setup();
+    const { editor } = makeEditor(DOC, 2);
+    const doc = (editor as unknown as { editorView: { state: { doc: PmNode } } }).editorView.state
+      .doc;
+    renderButton(editor, () => doc.child(0).nodeSize);
+    await user.click(screen.getByTestId('view-in-source-bubble-button'));
+    const nav = peekPendingSourceNavigation('doc-view');
+    if (nav?.kind !== 'selection-offset') throw new Error('expected a selection-offset nav');
+    expect(nav.anchor.blockIndex).toBe(1);
+  });
+
+  test.each(['click', 'keyboard'] as const)(
+    'a node-bound %s action targets its node instead of an unrelated caret',
+    async (activation) => {
+      const user = userEvent.setup();
+      const { editor } = makeEditor(DOC, 2);
+      renderButton(editor, () => 0);
+      const button = screen.getByTestId('view-in-source-bubble-button');
+      if (activation === 'click') await user.click(button);
+      else {
+        button.focus();
+        await user.keyboard('{Enter}');
+      }
+      expect(flipped).toEqual(['doc-view']);
+      const nav = peekPendingSourceNavigation('doc-view');
+      if (nav?.kind !== 'selection-offset') throw new Error('expected a selection-offset nav');
+      expect(nav.anchor.blockIndex).toBe(0);
+    },
+  );
+
+  test('does not jump to an old caret when a node target is no longer present', async () => {
+    const user = userEvent.setup();
+    const { editor } = makeEditor(DOC, 2);
+    renderButton(editor, () => undefined);
+    await user.click(screen.getByTestId('view-in-source-bubble-button'));
+    expect(flipped).toEqual([]);
+    expect(peekPendingSourceNavigation('doc-view')).toBeNull();
+  });
+
   test('renders a labelled, native-button entry', () => {
     const { editor } = makeEditor(DOC, 2);
     renderButton(editor);

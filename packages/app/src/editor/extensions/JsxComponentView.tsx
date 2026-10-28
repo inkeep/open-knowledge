@@ -6,7 +6,6 @@
 
 import { commentLeafText } from '@inkeep/open-knowledge-core/comments/leaf-text';
 import {
-  incrementJsxActionAborted,
   incrementJsxAutoConvertFailed,
   incrementJsxAutoConvertSucceeded,
   incrementJsxChromeDeleteFailed,
@@ -17,6 +16,7 @@ import {
   incrementJsxStuckDeleteFailed,
   type JsxNodeAction,
 } from '@inkeep/open-knowledge-core/metrics/parse-health';
+import { componentPropsBudgetError } from '@inkeep/open-knowledge-core/registry';
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { NodeViewProps } from '@tiptap/core';
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react';
@@ -33,7 +33,6 @@ import {
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
-import { toast } from 'sonner';
 import { emitStartComment } from '@/comments/store';
 import { Button } from '@/components/ui/button';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
@@ -44,6 +43,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '../../components/ui/popover.tsx';
+import { ViewInSourceBubbleButton } from '../bubble-menu/ViewInSourceBubbleButton.tsx';
 import { OPT_OUT_ATTR } from '../clipboard/index.ts';
 import { CodePreviewEditModal } from '../components/CodePreviewEditModal';
 import { DescriptorPlaceholder } from '../components/DescriptorPlaceholder.tsx';
@@ -74,12 +74,13 @@ import {
   autonomousFragmentEditAllowed,
   markAutonomousFragmentEdit,
 } from './autonomous-fragment-edit.ts';
+import { reportJsxActionAborted, resolveJsxActionTarget } from './jsx-node-action.ts';
 import { isSameJsxElement, resolveJsxNodeTarget } from './jsx-node-target.ts';
 import {
-  extractPrimitiveProps,
   JSX_WRAPPER_CLASS,
   jsxChildrenClassName,
   jsxWrapperDataAttributes,
+  prepareJsxProps,
   reportJsxRenderFailure,
   resolveJsxRenderProps,
   resolveJsxSourceDocName,
@@ -115,15 +116,21 @@ function ComponentErrorBoundary(props: ComponentErrorBoundaryProps) {
 }
 
 export function stableHash(value: unknown): string {
+  const budgetError = componentPropsBudgetError(value);
+  if (budgetError) throw new RangeError(budgetError);
+  return stableHashWithinBudget(value);
+}
+
+function stableHashWithinBudget(value: unknown): string {
   if (value === null || typeof value !== 'object') {
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
-    return `[${value.map(stableHash).join(',')}]`;
+    return `[${value.map(stableHashWithinBudget).join(',')}]`;
   }
   const entries = Object.entries(value as Record<string, unknown>);
   entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableHash(v)}`).join(',')}}`;
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableHashWithinBudget(v)}`).join(',')}}`;
 }
 
 interface ElementJsxAttrs extends Record<string, unknown> {
@@ -223,7 +230,7 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
   );
 
   const currentProps = (node.attrs.props as Record<string, unknown>) ?? {};
-  const primitiveProps = extractPrimitiveProps(node.attrs, descriptor);
+  const { props: primitiveProps, error: propsError } = prepareJsxProps(node.attrs, descriptor);
   const needsConfig =
     hasEditableProps &&
     descriptor.props.some((p) => {
@@ -296,30 +303,11 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
   }, [boardExpandable]);
   const resetKey = `${descriptor.name}::${stableHash(primitiveProps)}`;
 
-  const reportAbortedAction = (action: JsxNodeAction, reason: 'changed' | 'removed') => {
-    incrementJsxActionAborted(action);
-    console.warn(
-      JSON.stringify({
-        event: 'jsx-component-action-aborted',
-        action,
-        reason,
-        component: descriptor.name === '*' ? 'wildcard' : descriptor.name,
-        rawComponentName: String(node.attrs.componentName ?? '').slice(0, 200),
-      }),
-    );
-    toast.info(
-      reason === 'removed' ? t`This component was removed.` : t`This component changed. Try again.`,
-    );
-  };
-
-  const resolveActionTarget = (action: JsxNodeAction) => {
-    const target = resolveJsxNodeTarget(editor.state.doc, getPos, node);
-    if (target.kind !== 'current') {
-      reportAbortedAction(action, target.kind);
-      return null;
-    }
-    return target;
-  };
+  const actionContext = { editor, getPos, node, descriptorName: descriptor.name };
+  const reportAbortedAction = (action: JsxNodeAction, reason: 'changed' | 'removed') =>
+    reportJsxActionAborted(actionContext, action, reason);
+  const resolveActionTarget = (action: JsxNodeAction) =>
+    resolveJsxActionTarget(actionContext, action);
 
   const resolveElementActionTarget = (action: JsxNodeAction) => {
     const target = resolveJsxNodeTarget(editor.state.doc, getPos, node);
@@ -481,6 +469,27 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
           >
             {t`Delete`}
           </button>
+        </div>
+        <NodeViewContent className="component-children" />
+      </NodeViewWrapper>
+    );
+  }
+
+  if (propsError) {
+    return (
+      <NodeViewWrapper className="jsx-component-wrapper my-2" data-jsx-props-error="">
+        <div
+          className="flex flex-wrap items-center gap-2 px-2 py-1 text-xs text-warning"
+          contentEditable={false}
+          {...{ [OPT_OUT_ATTR]: 'true' }}
+        >
+          <span role="status">
+            <Trans>This component is too large to render.</Trans>
+          </span>
+          <ViewInSourceBubbleButton
+            editor={editor}
+            getTargetPosition={() => resolveActionTarget('edit-source')?.pos}
+          />
         </div>
         <NodeViewContent className="component-children" />
       </NodeViewWrapper>

@@ -55,7 +55,7 @@ import {
 } from '../bridge/structural-freshness.ts';
 import type { LinkStyle } from '../extensions/link-fidelity.ts';
 import { isValidSourceLiteralRaw } from '../extensions/source-literal-mark.ts';
-import { createRegistry, jsxAttributeValue } from '../registry/index.ts';
+import { componentPropsBudgetError, createRegistry, jsxAttributeValue } from '../registry/index.ts';
 import type { PropDef, SerializeContext } from '../registry/types.ts';
 import {
   type AuthoredJsxSourceReader,
@@ -751,6 +751,14 @@ function buildMdastToPmHandlers(
       const name = node.name ?? '';
       const descriptor = registry.getOrWildcard(name);
       const structuredAttrs = destructureAttrs(node.attributes, descriptor.props);
+      const propsError = componentPropsBudgetError(structuredAttrs);
+      if (propsError && n.rawMdxFallback) {
+        const raw = rawFromData(node.data) ?? '';
+        return n.rawMdxFallback.createAndFill(
+          { reason: propsError },
+          raw ? schema.text(raw) : null,
+        );
+      }
       if (name === 'CommonMarkImage' && typeof structuredAttrs.src === 'string') {
         const origUrl = structuredAttrs.src;
         const normalized = normalizeDocRelativeAssetUrl(origUrl, parseCtx.current.sourcePath);
@@ -802,6 +810,9 @@ function buildMdastToPmHandlers(
           .join('');
         if (bodyText) {
           structuredAttrs.children = bodyText;
+        }
+        if (componentPropsBudgetError(structuredAttrs)) {
+          return n.jsxInline.createAndFill({}, raw ? [schema.text(raw)] : null);
         }
         return n.jsxInline.createAndFill({
           componentName: inlineName,

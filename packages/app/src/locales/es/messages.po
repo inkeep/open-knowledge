@@ -9762,6 +9762,9 @@ msgstr "Iniciando sesión en {agentName}…"
 msgid "Single page"
 msgstr "Página única"
 
+msgid "size limit"
+msgstr "límite de tamaño"
+
 msgid "skill \"{0}\""
 msgstr "habilidad \"{0}\""
 
@@ -10934,6 +10937,9 @@ msgstr "Este comentario es sobre toda la propiedad"
 
 msgid "This component changed. Try again."
 msgstr "Este componente ha cambiado. Inténtalo de nuevo."
+
+msgid "This component is too large to render."
+msgstr "Este componente es demasiado grande para mostrarse."
 
 msgid "This component was removed."
 msgstr "Este componente se ha eliminado."

@@ -1,4 +1,8 @@
 export { builtInComponents } from './built-ins.ts';
+export {
+  COMPONENT_PROPS_BUDGET_ERROR,
+  componentPropsBudgetError,
+} from './component-props-budget.ts';
 export { type JsxAttributeValueSource, jsxAttributeValue } from './jsx-attribute-value.ts';
 export { propDescription, resolveLegacyProps } from './legacy-props.ts';
 

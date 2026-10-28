@@ -9762,6 +9762,9 @@ msgstr "Logowanie do {agentName}…"
 msgid "Single page"
 msgstr "Pojedyncza strona"
 
+msgid "size limit"
+msgstr "limit rozmiaru"
+
 msgid "skill \"{0}\""
 msgstr "umiejętność \"{0}\""
 
@@ -10934,6 +10937,9 @@ msgstr "Ten komentarz dotyczy całej właściwości"
 
 msgid "This component changed. Try again."
 msgstr "Ten komponent się zmienił. Spróbuj ponownie."
+
+msgid "This component is too large to render."
+msgstr "Ten komponent jest zbyt duży, aby go wyświetlić."
 
 msgid "This component was removed."
 msgstr "Ten komponent został usunięty."

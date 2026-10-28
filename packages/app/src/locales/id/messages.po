@@ -9758,6 +9758,9 @@ msgstr "Sedang masuk ke {agentName}…"
 msgid "Single page"
 msgstr "Satu halaman"
 
+msgid "size limit"
+msgstr "batas ukuran"
+
 msgid "skill \"{0}\""
 msgstr "keterampilan \"{0}\""
 
@@ -10930,6 +10933,9 @@ msgstr "Komentar ini berlaku untuk seluruh properti"
 
 msgid "This component changed. Try again."
 msgstr "Komponen ini telah berubah. Coba lagi."
+
+msgid "This component is too large to render."
+msgstr "Komponen ini terlalu besar untuk ditampilkan."
 
 msgid "This component was removed."
 msgstr "Komponen ini telah dihapus."

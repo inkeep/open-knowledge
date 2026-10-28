@@ -9762,6 +9762,9 @@ msgstr "正在登入 {agentName}…"
 msgid "Single page"
 msgstr "單頁"
 
+msgid "size limit"
+msgstr "大小限制"
+
 msgid "skill \"{0}\""
 msgstr "技能「{0}」"
 
@@ -10934,6 +10937,9 @@ msgstr "這則註解是針對整個屬性的"
 
 msgid "This component changed. Try again."
 msgstr "此元件已變更。請再試一次。"
+
+msgid "This component is too large to render."
+msgstr "此元件過大，無法顯示。"
 
 msgid "This component was removed."
 msgstr "此元件已被移除。"

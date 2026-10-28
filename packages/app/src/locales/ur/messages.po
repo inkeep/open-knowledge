@@ -9762,6 +9762,9 @@ msgstr "{agentName} میں سائن اِن کیا جا رہا ہے…"
 msgid "Single page"
 msgstr "ایک صفحہ"
 
+msgid "size limit"
+msgstr "حجم کی حد"
+
 msgid "skill \"{0}\""
 msgstr "مہارت «{0}»"
 
@@ -10934,6 +10937,9 @@ msgstr "یہ تبصرہ پوری خصوصیت پر ہے"
 
 msgid "This component changed. Try again."
 msgstr "یہ جزو تبدیل ہو گیا ہے۔ دوبارہ کوشش کریں۔"
+
+msgid "This component is too large to render."
+msgstr "یہ جزو دکھانے کے لیے بہت بڑا ہے۔"
 
 msgid "This component was removed."
 msgstr "یہ جزو ہٹا دیا گیا ہے۔"

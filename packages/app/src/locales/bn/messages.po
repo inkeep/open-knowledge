@@ -9758,6 +9758,9 @@ msgstr "{agentName}-এ সাইন ইন করা হচ্ছে…"
 msgid "Single page"
 msgstr "একটি পাতা"
 
+msgid "size limit"
+msgstr "আকারের সীমা"
+
 msgid "skill \"{0}\""
 msgstr "স্কিল \"{0}\""
 
@@ -10930,6 +10933,9 @@ msgstr "এই মন্তব্যটি পুরো প্রপার্ট
 
 msgid "This component changed. Try again."
 msgstr "এই উপাদানটি পরিবর্তিত হয়েছে। আবার চেষ্টা করুন।"
+
+msgid "This component is too large to render."
+msgstr "এই উপাদানটি দেখানোর জন্য খুব বড়।"
 
 msgid "This component was removed."
 msgstr "এই উপাদানটি সরানো হয়েছে।"

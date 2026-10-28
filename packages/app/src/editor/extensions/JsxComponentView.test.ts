@@ -265,6 +265,10 @@ describe('attrsWithChangedProp', () => {
 });
 
 describe('stableHash', () => {
+  test('rejects over-budget inputs before recursively hashing them', () => {
+    const props = { items: JSON.parse(`${'['.repeat(6000)}0${']'.repeat(6000)}`) };
+    expect(() => stableHash(props)).toThrow('rendering budget');
+  });
   test('key-order independence — primary load-bearing invariant', () => {
     expect(stableHash({ a: 1, b: 2 })).toBe(stableHash({ b: 2, a: 1 }));
     expect(stableHash({ type: 'warn', title: 'x' })).toBe(stableHash({ title: 'x', type: 'warn' }));

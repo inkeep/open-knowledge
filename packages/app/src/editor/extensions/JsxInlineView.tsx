@@ -7,10 +7,13 @@ import { useEffect, useRef, useState } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { Button } from '../../components/ui/button.tsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.tsx';
+import { ViewInSourceBubbleButton } from '../bubble-menu/ViewInSourceBubbleButton.tsx';
+import { OPT_OUT_ATTR } from '../clipboard/index.ts';
 import { PropPanel } from '../components/PropPanel.tsx';
 import { getDescriptor } from '../registry/index.ts';
 import { attrsWithChangedProp, getElementJsxAttrs, stableHash } from './JsxComponentView.tsx';
-import { extractPrimitiveProps, resolveJsxSourceDocName } from './jsx-render-contract.ts';
+import { resolveJsxActionTarget } from './jsx-node-action.ts';
+import { prepareJsxProps, resolveJsxSourceDocName } from './jsx-render-contract.ts';
 import { normalizeDocRelativeMediaRenderProps } from './media-render-props.ts';
 
 export function JsxInlineView(viewProps: NodeViewProps) {
@@ -41,11 +44,11 @@ function RegisteredInlineView({
   const [popoverOpen, setPopoverOpen] = useState(false);
   const wasSelected = useRef(false);
 
-  const primitiveProps = extractPrimitiveProps(node.attrs, descriptor);
-  const bodyText = (node.attrs.props as Record<string, unknown> | undefined)?.children;
-  if (typeof bodyText === 'string' && bodyText !== '') {
-    (primitiveProps as Record<string, unknown>).children = bodyText;
-  }
+  const { props: primitiveProps, error: propsError } = prepareJsxProps(
+    node.attrs,
+    descriptor,
+    true,
+  );
   const renderProps = normalizeDocRelativeMediaRenderProps(
     descriptor.name,
     primitiveProps,
@@ -70,6 +73,31 @@ function RegisteredInlineView({
   }, [editor, getPos]);
 
   const { children: _body, ...panelValues } = primitiveProps;
+
+  if (propsError) {
+    return (
+      <NodeViewWrapper as="span" data-jsx-inline="" data-jsx-props-error="">
+        <span
+          className="inline-flex flex-wrap items-center gap-1 text-xs text-warning"
+          contentEditable={false}
+          {...{ [OPT_OUT_ATTR]: 'true' }}
+        >
+          <span role="status">
+            <Trans>This component is too large to render.</Trans>
+          </span>
+          <ViewInSourceBubbleButton
+            editor={editor}
+            getTargetPosition={() =>
+              resolveJsxActionTarget(
+                { editor, getPos, node, descriptorName: descriptor.name },
+                'edit-source',
+              )?.pos
+            }
+          />
+        </span>
+      </NodeViewWrapper>
+    );
+  }
 
   return (
     <NodeViewWrapper

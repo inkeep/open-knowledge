@@ -9762,6 +9762,9 @@ msgstr "{agentName} 로그인 중…"
 msgid "Single page"
 msgstr "한 페이지"
 
+msgid "size limit"
+msgstr "크기 제한"
+
 msgid "skill \"{0}\""
 msgstr "스킬 \"{0}\""
 
@@ -10934,6 +10937,9 @@ msgstr "이 댓글, 속성 전체에 적용됨"
 
 msgid "This component changed. Try again."
 msgstr "이 컴포넌트가 변경되었습니다. 다시 시도하세요."
+
+msgid "This component is too large to render."
+msgstr "이 컴포넌트는 너무 커서 표시할 수 없습니다."
 
 msgid "This component was removed."
 msgstr "이 컴포넌트가 삭제되었습니다."

@@ -9762,6 +9762,9 @@ msgstr "Connexion à {agentName}…"
 msgid "Single page"
 msgstr "Page unique"
 
+msgid "size limit"
+msgstr "limite de taille"
+
 msgid "skill \"{0}\""
 msgstr "compétence « {0} »"
 
@@ -10934,6 +10937,9 @@ msgstr "Ce commentaire porte sur toute la propriété"
 
 msgid "This component changed. Try again."
 msgstr "Ce composant a changé. Réessayez."
+
+msgid "This component is too large to render."
+msgstr "Ce composant est trop volumineux pour être affiché."
 
 msgid "This component was removed."
 msgstr "Ce composant a été supprimé."
