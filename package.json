@@ -23,7 +23,7 @@
     "build:desktop": "turbo run build:desktop",
     "build:desktop:dir": "turbo run build:desktop:dir",
     "check:desktop": "turbo run lint typecheck test --filter=@inkeep/open-knowledge-desktop && pnpm run test:uncached",
-    "check:fast": "pnpm run typecheck",
+    "check:types": "pnpm run typecheck",
     "check:doc-links": "pnpm --dir docs run validate-link",
     "check:server-test-inputs": "node scripts/check-server-test-inputs.mjs",
     "check:drift": "pnpm run check:drift:guards && vitest run --config vitest.scripts.config.ts",
