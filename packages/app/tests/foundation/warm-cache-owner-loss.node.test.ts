@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   watch,
   writeFileSync,
 } from 'node:fs';
@@ -80,10 +81,12 @@ test('warm-cache chain terminates when its setup owner exits', async () => {
   const runtimeTmp = join(runDir, 'tmp');
   const eventsPath = join(runDir, 'events.jsonl');
   const cleanupPath = join(runDir, 'cleanup');
+  const guard = join(runDir, 'owner guard.cjs');
+  symlinkSync(GUARD, guard);
   mkdirSync(runtimeTmp);
   const env = {
     ...process.env,
-    NODE_OPTIONS: `--require=${GUARD}`,
+    NODE_OPTIONS: `--require=${JSON.stringify(guard)}`,
     OK_TEST_WARM_CACHE_OWNER_LOSS_CLEANUP: cleanupPath,
     OK_TEST_WARM_CACHE_OWNER_LOSS_EVENTS: eventsPath,
     OK_TEST_WARM_CACHE_OWNER_LOSS_SOURCE: SOURCE,

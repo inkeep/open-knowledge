@@ -87,7 +87,10 @@ async function buildSeedOnce(key: string): Promise<void> {
       ...process.env,
       ...request.environment,
       OK_WARM_CACHE_OWNER_PID: String(process.pid),
-      NODE_OPTIONS: appendNodeOption(process.env.NODE_OPTIONS, `--require=${OWNER_GUARD}`),
+      NODE_OPTIONS: appendNodeOption(
+        process.env.NODE_OPTIONS,
+        `--require=${JSON.stringify(OWNER_GUARD)}`,
+      ),
       OK_TEST_CONTENT_DIR: contentDir,
       OK_TEST_VITE_CACHE_DIR: buildDir,
       OK_TEST_SKIP_I18N_COMPILE: '1',

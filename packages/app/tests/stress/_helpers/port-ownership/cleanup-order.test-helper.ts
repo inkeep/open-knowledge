@@ -151,7 +151,8 @@ export async function createCleanupOrder(
     ...(nativeOrdering
       ? {
           OK_PORT_OWNERSHIP_SCHEDULE_LIBRARY: library,
-          NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require=${PRELOAD}`.trim(),
+          NODE_OPTIONS:
+            `${process.env.NODE_OPTIONS ?? ''} --require=${JSON.stringify(PRELOAD)}`.trim(),
           [process.platform === 'darwin' ? 'DYLD_INSERT_LIBRARIES' : 'LD_PRELOAD']: library,
         }
       : {}),

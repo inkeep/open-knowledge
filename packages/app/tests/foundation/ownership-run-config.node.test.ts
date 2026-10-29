@@ -17,7 +17,7 @@ describe('nested ownership Playwright config', () => {
     async ({ caller, exitCode }) => {
       const scratch = mkdtempSync(join(tmpdir(), 'ok-ownership-git-'));
       onTestFinished(() => rmSync(scratch, { recursive: true, force: true }));
-      const preload = join(scratch, 'pending-git.cjs');
+      const preload = join(scratch, 'pending git.cjs');
       const event = join(scratch, 'event.json');
       writeFileSync(
         preload,
@@ -48,7 +48,10 @@ process.stderr.write('OWNED_GIT_PRELOAD_READY\\n');
       );
       vi.stubEnv('GITHUB_ACTIONS', 'true');
       vi.stubEnv('GITHUB_EVENT_PATH', event);
-      vi.stubEnv('NODE_OPTIONS', `${process.env.NODE_OPTIONS ?? ''} --require=${preload}`.trim());
+      vi.stubEnv(
+        'NODE_OPTIONS',
+        `${process.env.NODE_OPTIONS ?? ''} --require=${JSON.stringify(preload)}`.trim(),
+      );
       const { run, scratchReleased } = await runOwnershipCase({
         file: 'tests/stress/_helpers/port-ownership/lifetime.ownership-case.ts',
         name: 'nested lifetime control reaches its test body',

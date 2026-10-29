@@ -238,6 +238,9 @@ test(
   'leaves no owner-loss record when its owner requests the release of a production-shell server',
   async () => {
     const lifetime = await acquireProductionShellLifetime();
+    await lifetime.until('the production-shell server did not log its URL', () =>
+      lifetime.serverLog().includes(`http://127.0.0.1:${lifetime.port}`) ? true : undefined,
+    );
     await new Promise<void>((resolve, reject) =>
       lifetime.child.send({ type: 'release' }, (error) =>
         error === null ? resolve() : reject(error),

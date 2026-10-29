@@ -76,7 +76,7 @@ const child = spawn(command.exe, command.args, {
     TMPDIR: workDir,
     TMP: workDir,
     TEMP: workDir,
-    NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require=${bootstrap}`.trim(),
+    NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require=${JSON.stringify(bootstrap)}`.trim(),
   },
   stdio: ['ignore', fd, fd],
 });
