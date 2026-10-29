@@ -101,7 +101,7 @@ Cadence: merging a PR with a changeset triggers a beta publish within minutes vi
 
 ## Before Finishing
 
-While iterating, run the tests for what you changed with `pnpm --dir packages/<pkg> run test`, plus `pnpm run lint` and `pnpm run typecheck`, widening to affected consumers for shared inputs. A red remains a blocker: diagnose it against the changed inputs, repair only an in-scope cause, and record an unrelated environment blocker with its log and owner. Then run:
+While iterating, run the tests for what you changed with `pnpm --dir packages/<pkg> run test`, plus `pnpm run lint` and `pnpm run typecheck`, widening to affected consumers for shared inputs. A red is yours to fix when it is in a test you added or edited or names a file you changed: fix its cause, never by retrying blindly, suppressing it, or skipping or commenting out a test. Note any other red in one line in your report, "also red on the base" or "unknown", and do not chase it. A red, yours or not, means you do not report the work as passing. Then run:
 
 ```bash
 pnpm run check
