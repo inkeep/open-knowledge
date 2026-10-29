@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { clampRgb, parse, type Rgb, rgb, wcagContrast } from 'culori';
 import { describe, expect, test } from 'vitest';
-import { findBlockBodies } from '../../scripts/chrome-resolver.ts';
+import { findBlockBodies, resolveChromeTokensFromCss } from '../../scripts/chrome-resolver.ts';
 
 const GLOBALS_CSS = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -57,6 +57,52 @@ describe('default theme status tokens', () => {
             `${status} on its 20% tint over ${surfaceName}`,
           ).toBeGreaterThanOrEqual(4.5);
         }
+      }
+    });
+  }
+});
+
+const SHADCN_FOCUS_RING_OPACITY = 0.5;
+
+describe('default theme focus ring and muted text', () => {
+  const css = readFileSync(GLOBALS_CSS, 'utf8');
+  const light = declarations(css, ':root');
+  const dark = new Map([...light, ...declarations(css, '.dark')]);
+  const chrome = resolveChromeTokensFromCss(GLOBALS_CSS);
+
+  for (const [mode, tokens, desk] of [
+    ['light', light, chrome.light],
+    ['dark', dark, chrome.dark],
+  ] as const) {
+    const surfaces: [string, Rgb][] = [
+      ...[
+        '--background',
+        '--card',
+        '--popover',
+        '--muted',
+        '--secondary',
+        '--accent',
+        '--sidebar',
+      ].map((name): [string, Rgb] => [name, color(tokens.get(name))]),
+      ['--desk', color(desk)],
+    ];
+
+    test(`${mode}: muted text reaches 4.5:1 on the default surface tokens`, () => {
+      const text = color(tokens.get('--muted-foreground'));
+      for (const [name, surface] of surfaces) {
+        expect(wcagContrast(text, surface), `--muted-foreground on ${name}`).toBeGreaterThanOrEqual(
+          4.5,
+        );
+      }
+    });
+
+    test(`${mode}: the half-opacity ring reaches 3:1 over the default surface tokens`, () => {
+      const ring = color(tokens.get('--ring'));
+      for (const [name, surface] of surfaces) {
+        expect(
+          wcagContrast(tint(surface, ring, SHADCN_FOCUS_RING_OPACITY), surface),
+          `--ring at ${SHADCN_FOCUS_RING_OPACITY} over ${name}`,
+        ).toBeGreaterThanOrEqual(3);
       }
     });
   }

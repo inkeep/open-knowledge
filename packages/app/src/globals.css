@@ -3468,7 +3468,7 @@ button:active:not(:disabled) {
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: oklch(0.545 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.49 0.21 27.518);
@@ -3481,7 +3481,7 @@ button:active:not(:disabled) {
   --identity-4: oklch(0.718 0.202 349.761);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --ring: oklch(0.26 0 0);
   /* Soft "this block is in your range" halo for JSX wrappers that the
    * browser's native text-selection paint can't reach (their chrome is
    * contentEditable=false). Top-level color token consumed by the soft-
@@ -3622,7 +3622,7 @@ button:active:not(:disabled) {
   --info: oklch(0.729 0.165 254.624);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: oklch(0.79 0 0);
   /* Dark-mode soft range halo — slightly brighter + higher alpha so the
    * 18%-on-white equivalent reads cleanly on dark backgrounds. */
   --selection-soft: oklch(0.72 0.16 259 / 0.32);
