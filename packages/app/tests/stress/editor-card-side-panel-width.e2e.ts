@@ -288,6 +288,25 @@ async function widthOf(locator: Locator): Promise<number> {
   return locator.evaluate((element) => element.getBoundingClientRect().width);
 }
 
+function storedDocPanelWidth(page: Page): Promise<string | null> {
+  return page.evaluate(() => localStorage.getItem('ok-doc-panel-width-v1'));
+}
+
+async function sidebarWidthCookie(page: Page): Promise<string | undefined> {
+  return (await page.context().cookies()).find((cookie) => cookie.name === 'sidebar_width')?.value;
+}
+
+async function expectInformationWidthRemembered(
+  page: Page,
+  information: Locator,
+  preference: string,
+): Promise<void> {
+  await expect
+    .poll(async () => Math.abs((await widthOf(information)) - Number(preference)))
+    .toBeLessThanOrEqual(WIDTH_TOLERANCE_PX);
+  expect(await storedDocPanelWidth(page)).toBe(preference);
+}
+
 function ownsItsCentre(target: Locator): Promise<boolean> {
   return target.evaluate((element) => {
     const rect = element.getBoundingClientRect();
@@ -748,9 +767,7 @@ test('resized Files and information widths survive reload and shared cover bound
 
   const rememberedFilesWidth = await widthOf(files);
   const rememberedInformationWidth = await widthOf(information);
-  const persistedFilesWidth = (await page.context().cookies()).find(
-    (cookie) => cookie.name === 'sidebar_width',
-  )?.value;
+  const persistedFilesWidth = await sidebarWidthCookie(page);
   expect(persistedFilesWidth).toBeDefined();
   const persistedFilesWidthPx = await page.evaluate((savedWidth) => {
     const parsed = /^(\d+(?:\.\d+)?)(rem|px)$/.exec(savedWidth);
@@ -761,12 +778,16 @@ test('resized Files and information widths survive reload and shared cover bound
   expect(Math.abs(persistedFilesWidthPx - rememberedFilesWidth)).toBeLessThanOrEqual(1);
   await expect
     .poll(async () => {
-      const storedWidth = await page.evaluate(() => localStorage.getItem('ok-doc-panel-width-v1'));
+      const storedWidth = await storedDocPanelWidth(page);
       return storedWidth == null
         ? Number.POSITIVE_INFINITY
-        : Math.abs(Number.parseFloat(storedWidth) - rememberedInformationWidth);
+        : Math.abs(Number(storedWidth) - rememberedInformationWidth);
     })
-    .toBeLessThanOrEqual(1);
+    .toBeLessThanOrEqual(WIDTH_TOLERANCE_PX);
+  const rememberedInformationPreference = await storedDocPanelWidth(page);
+  if (rememberedInformationPreference == null) {
+    throw new Error('the dragged information width was not remembered');
+  }
 
   await page.reload();
   await waitForActiveProviderSynced(page);
@@ -774,7 +795,8 @@ test('resized Files and information widths survive reload and shared cover bound
   await expect(filesTrigger).toHaveAttribute('aria-expanded', 'true');
   await expect(information).toBeVisible();
   await expect.poll(() => widthOf(files)).toBeCloseTo(rememberedFilesWidth, 0);
-  await expect.poll(() => widthOf(information)).toBeCloseTo(rememberedInformationWidth, 0);
+  expect(await sidebarWidthCookie(page)).toBe(persistedFilesWidth);
+  await expectInformationWidthRemembered(page, information, rememberedInformationPreference);
 
   for (const width of [1200, 1000, 800, 390]) {
     await page.setViewportSize({ width, height: 800 });
@@ -818,7 +840,8 @@ test('resized Files and information widths survive reload and shared cover bound
   await expect(filesTrigger).toHaveAttribute('aria-expanded', 'true');
   await expect(information).toBeVisible();
   await expect.poll(() => widthOf(files)).toBeCloseTo(rememberedFilesWidth, 0);
-  await expect.poll(() => widthOf(information)).toBeCloseTo(rememberedInformationWidth, 0);
+  expect(await sidebarWidthCookie(page)).toBe(persistedFilesWidth);
+  await expectInformationWidthRemembered(page, information, rememberedInformationPreference);
   for (const toggle of [filesTrigger, informationToggle]) {
     await expect
       .poll(() =>
