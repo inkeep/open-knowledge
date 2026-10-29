@@ -163,33 +163,48 @@ describe('website skill network admission', () => {
 
   test('keeps the runtime proxy dispatcher for approved origins but never for revoked origins', async () => {
     const previous = getGlobalDispatcher();
-    let tunnels = 0;
-    const server = createProxyServer();
-    server.on('connect', (_request, socket) => {
-      tunnels++;
-      socket.destroy();
-    });
-    servers.push(server);
-    await new Promise<void>((resolve, reject) => {
-      server.once('error', reject);
-      server.listen(0, '127.0.0.1', resolve);
-    });
-    const address = server.address();
-    if (address === null || typeof address === 'string') throw new Error('Expected proxy listener');
-    const origin = `https://localhost:${address.port}`;
-    const proxy = new ProxyAgent(`http://127.0.0.1:${address.port}`);
+    async function proxyListener() {
+      let tunnels = 0;
+      const server = createProxyServer();
+      server.on('connect', (_request, socket) => {
+        tunnels++;
+        socket.end('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
+      });
+      servers.push(server);
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(0, '127.0.0.1', resolve);
+      });
+      const address = server.address();
+      if (address === null || typeof address === 'string')
+        throw new Error('Expected proxy listener');
+      return {
+        port: address.port,
+        get tunnels() {
+          return tunnels;
+        },
+      };
+    }
+    const control = await proxyListener();
+    const denied = await proxyListener();
+    const origin = `https://localhost:${control.port}`;
+    const controlProxy = new ProxyAgent(`http://127.0.0.1:${control.port}`);
+    const deniedProxy = new ProxyAgent(`http://127.0.0.1:${denied.port}`);
     try {
-      setGlobalDispatcher(proxy);
+      setGlobalDispatcher(controlProxy);
       trust([origin]);
       await expect(fetchFiles(origin)).rejects.not.toBeInstanceOf(SkillDestinationPolicyError);
-      expect(tunnels).toBeGreaterThan(0);
-      const admitted = tunnels;
+      expect(control.tunnels).toBeGreaterThan(0);
       trust([]);
+      setGlobalDispatcher(deniedProxy);
       await expect(fetchFiles(origin)).rejects.toBeInstanceOf(SkillDestinationPolicyError);
-      expect(tunnels).toBe(admitted);
+      expect(denied.tunnels).toBe(0);
+      trust([origin]);
+      await expect(fetchFiles(origin)).rejects.not.toBeInstanceOf(SkillDestinationPolicyError);
+      expect(denied.tunnels).toBeGreaterThan(0);
     } finally {
       setGlobalDispatcher(previous);
-      await proxy.destroy();
+      await Promise.all([controlProxy.destroy(), deniedProxy.destroy()]);
     }
   });
 });
