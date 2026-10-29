@@ -20,11 +20,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { runningAsRoot } from '../../../../test-support/capabilities.test-helper.ts';
+import { EXCALIDRAW_COPY_SCRIPT as SCRIPT_NAME } from './copy-excalidraw-assets-concurrency.reads.ts';
 
 const execFileAsync = promisify(execFile);
 
 const APP_ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const SCRIPT_NAME = 'copy-excalidraw-assets.mjs';
 const PACKAGE_DIR = realpathSync(join(APP_ROOT, 'node_modules', '@excalidraw', 'excalidraw'));
 const SOURCE_FONTS = join(PACKAGE_DIR, 'dist', 'prod', 'fonts');
 const VENDORED_VERSION: string = JSON.parse(

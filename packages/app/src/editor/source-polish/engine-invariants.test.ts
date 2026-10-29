@@ -2,8 +2,17 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../../../test-support/test-only-source-file.mjs';
+import { SOURCE_POLISH_SCAN_ROOT } from './engine-invariants.reads';
 
-const SOURCE_POLISH_DIR = import.meta.dirname;
+const SOURCE_POLISH_DIR = join(
+  import.meta.dirname,
+  '..',
+  '..',
+  '..',
+  '..',
+  '..',
+  SOURCE_POLISH_SCAN_ROOT,
+);
 
 describe('engine invariants (D2 LOCKED primitive-set enforcement)', () => {
   const tsFiles = readdirSync(SOURCE_POLISH_DIR).filter(

@@ -11,6 +11,7 @@ import {
   SyntaxKind,
 } from 'ts-morph';
 import { beforeAll, describe, expect, test } from 'vitest';
+import { SERVER_SCAN_ROOT } from './paired-write-enforcement.reads.ts';
 
 const SANCTIONED_PRIMITIVES = new Set<string>([
   'composeAndWriteRawBody',
@@ -56,7 +57,7 @@ interface TransactCall {
   readonly fnBody: Node | undefined;
 }
 
-const SERVER_SRC_DIR = join(import.meta.dir);
+const SERVER_SRC_DIR = join(import.meta.dir, '..', '..', '..', SERVER_SCAN_ROOT);
 
 function loadServerSourceFiles(): ReadonlyArray<readonly [string, SourceFile]> {
   const project = new Project({

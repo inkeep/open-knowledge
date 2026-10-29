@@ -11,6 +11,10 @@ import {
 } from 'ts-morph';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
+import {
+  EXHAUSTIVENESS_SCAN_GLOB,
+  EXHAUSTIVENESS_SCAN_ROOTS,
+} from './exhaustiveness-coverage.reads';
 
 const PROBLEM_TYPE_LABELS: ReadonlySet<string> = new Set(ProblemTypeSchema.options);
 
@@ -51,11 +55,7 @@ const REGISTRY: readonly DuRegistration[] = [
 ];
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../..');
-const SCAN_ROOTS = [
-  join(REPO_ROOT, 'packages/core/src'),
-  join(REPO_ROOT, 'packages/server/src'),
-  join(REPO_ROOT, 'packages/app/src'),
-];
+const SCAN_ROOTS = EXHAUSTIVENESS_SCAN_ROOTS.map((root) => join(REPO_ROOT, root));
 
 function isExcludedPath(absPath: string): boolean {
   if (absPath.endsWith('.d.ts')) return true;
@@ -67,7 +67,7 @@ function isExcludedPath(absPath: string): boolean {
 
 function* enumerateSourceFiles(): Generator<string> {
   for (const root of SCAN_ROOTS) {
-    const glob = new Bun.Glob('**/*.{ts,tsx}');
+    const glob = new Bun.Glob(EXHAUSTIVENESS_SCAN_GLOB);
     for (const rel of glob.scanSync({ cwd: root })) {
       const abs = join(root, rel);
       if (isExcludedPath(abs)) continue;

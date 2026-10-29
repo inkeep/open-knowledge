@@ -13,8 +13,15 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../test-support/test-only-source-file.mjs';
 import { checkSymlinkLeaf } from './fs-safety.ts';
+import { SERVER_SCAN_ROOT } from './symlink-leaf-guard-enforcement.reads.ts';
 
-const SERVER_SRC = dirname(fileURLToPath(import.meta.url));
+const SERVER_SRC = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  '..',
+  SERVER_SCAN_ROOT,
+);
 
 const LEAF_REFERRERS: Record<string, 'guarded' | 'seed-plane' | 'path-match'> = {
   'content/folder-frontmatter-write.ts': 'guarded',

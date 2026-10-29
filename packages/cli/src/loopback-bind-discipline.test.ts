@@ -3,10 +3,11 @@ import { basename, dirname, join, relative, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../test-support/test-only-source-file.mjs';
+import { LOOPBACK_SCAN_ROOT } from './loopback-bind-discipline.reads.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, '..');
-const SCAN_ROOT = __dirname;
+const SCAN_ROOT = join(__dirname, '..', '..', '..', LOOPBACK_SCAN_ROOT);
 
 const SELF_BASENAME = basename(fileURLToPath(import.meta.url));
 

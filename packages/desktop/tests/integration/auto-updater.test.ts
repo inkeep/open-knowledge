@@ -44,6 +44,7 @@ import {
   type UpdateNoticeReplayTarget,
 } from '../../src/main/update-notice-replay.ts';
 import type { SendableWebContents } from '../../src/shared/ipc-send.ts';
+import { UPDATER_SCAN_ROOT } from './auto-updater.reads.ts';
 
 interface SendTarget {
   webContents: SendableWebContents;
@@ -5645,7 +5646,7 @@ describe('cited upstream behaviour stays tied to the pinned dependency', () => {
     };
     const pinned =
       pkg.dependencies?.['electron-updater'] ?? pkg.devDependencies?.['electron-updater'];
-    const mainDir = join(here, '../../src/main');
+    const mainDir = join(here, '..', '..', '..', '..', UPDATER_SCAN_ROOT);
     const cited = readdirSync(mainDir, { recursive: true, encoding: 'utf8' })
       .filter((entry) => entry.endsWith('.ts'))
       .flatMap((entry) => [

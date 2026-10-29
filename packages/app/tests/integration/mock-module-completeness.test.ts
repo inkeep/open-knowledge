@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { afterAll, describe, expect, test, vi } from 'vitest';
 import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
+import { MOCK_SCAN_GLOB, MOCK_SCAN_SOURCE_DIR } from './mock-module-completeness.reads';
 
 const APP_ROOT = join(import.meta.dir, '..', '..');
 
@@ -70,8 +71,8 @@ async function scanPlainTestFactories(
   packageRoot: string,
   allowlist: Record<string, string>,
 ): Promise<FactoryScan> {
-  const sourceRoot = join(packageRoot, 'src');
-  const glob = new Bun.Glob('**/*.test.{ts,tsx}');
+  const sourceRoot = join(packageRoot, MOCK_SCAN_SOURCE_DIR);
+  const glob = new Bun.Glob(MOCK_SCAN_GLOB);
   const scan: FactoryScan = { scanned: [], factories: 0, exempted: [], violations: [] };
   for await (const file of glob.scan(sourceRoot)) {
     if (file.includes('.dom.test.')) continue;
@@ -107,7 +108,10 @@ async function scanPlainTestFactories(
 }
 
 function plainTestFilesUnder(packageRoot: string): string[] {
-  return readdirSync(join(packageRoot, 'src'), { recursive: true, withFileTypes: true })
+  return readdirSync(join(packageRoot, MOCK_SCAN_SOURCE_DIR), {
+    recursive: true,
+    withFileTypes: true,
+  })
     .filter((entry) => !entry.isDirectory() && isTestOnlySourceFile(entry.name, 'vitest'))
     .map((entry) => posixRelative(packageRoot, join(entry.parentPath, entry.name)))
     .filter((rel) => !rel.includes('.dom.test.'))

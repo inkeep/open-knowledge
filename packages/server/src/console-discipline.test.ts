@@ -3,10 +3,11 @@ import { basename, dirname, join, relative, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../test-support/test-only-source-file.mjs';
+import { SERVER_SCAN_ROOT } from './console-discipline.reads.ts';
 import { toPosix } from './path-utils.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCAN_ROOT = __dirname;
+const SCAN_ROOT = join(__dirname, '..', '..', '..', SERVER_SCAN_ROOT);
 
 const SELF_BASENAME = basename(fileURLToPath(import.meta.url));
 
