@@ -1130,6 +1130,9 @@ msgstr "Akceptuj przychodzącą wersję dla konfliktu {0}"
 msgid "Accept their deletion"
 msgstr "Akceptuj ich usunięcie"
 
+msgid "Access to the saved API key timed out. Wait for the credential store operation to finish, then try again."
+msgstr "Przekroczono czas dostępu do zapisanego klucza API. Poczekaj na zakończenie operacji magazynu poświadczeń i spróbuj ponownie."
+
 msgid "Access token"
 msgstr "Token dostępowy"
 
@@ -2814,6 +2817,12 @@ msgstr "Kopiowanie"
 
 msgid "Copying..."
 msgstr "Kopiowanie..."
+
+msgid "Could not access the saved API key. Check the local credential files, then try again."
+msgstr "Nie można uzyskać dostępu do zapisanego klucza API. Sprawdź lokalne pliki poświadczeń i spróbuj ponownie."
+
+msgid "Could not access the saved API key. Unlock your system credential store or check the local credential files, then try again."
+msgstr "Nie można uzyskać dostępu do zapisanego klucza API. Odblokuj systemowy magazyn poświadczeń lub sprawdź lokalne pliki poświadczeń, a następnie spróbuj ponownie."
 
 msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
 msgstr "Nie udało się sprawdzić dowiązań symbolicznych w {shareBranch}, więc nie przełączono. Spróbuj ponownie; jeśli błąd się powtarza, sprawdź, czy Git jest zainstalowany i czy folder projektu można odczytać."
@@ -9085,6 +9094,9 @@ msgstr "Zapisano w folderze umiejętności tego projektu (np. <0>.agents/skills<
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "Zapisano w Twoim globalnym folderze umiejętności (np. <0>~/.agents/skills</0>)."
 
+msgid "Saved keys conflict. Enter a replacement key for this project and endpoint to use instead."
+msgstr "Zapisane klucze są sprzeczne. Wprowadź klucz zastępczy dla tego projektu i punktu końcowego."
+
 msgid "Saved themes couldn’t load. The last available theme list is still shown."
 msgstr "Nie udało się wczytać zapisanych motywów. Nadal wyświetlana jest ostatnia dostępna lista motywów."
 
@@ -9412,8 +9424,8 @@ msgstr "Wysłano"
 msgid "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
 msgstr "Wysłane prywatnie do zespołu OpenKnowledge wraz z Twoją notatką i wersją aplikacji. Nigdy publikowane publicznie."
 
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
-msgstr "Wysłane do <0>{endpointHost}</0> w celu osadzenia Twojej treści. Przechowywane wyłącznie na tym komputerze (w <1>{secretsPath}</1>), nigdy w projekcie."
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored outside the project."
+msgstr "Wysłane do <0>{endpointHost}</0> w celu osadzenia Twojej treści. Przechowywane poza projektem."
 
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."
 msgstr "Wysłano, ale nie udało się oznaczyć komentarzy jako wykonanych — nadal czekają na wysłanie."
@@ -10746,6 +10758,9 @@ msgstr "Zapisany token nie ma uprawnień, których ten host wymaga do wypychania
 
 msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
 msgstr "Tryb synchronizacji, od którego członkowie zespołu zaczynają przy pierwszym otwarciu tego projektu. Jest zapisywany w ustawieniach OpenKnowledge projektu, więc trafia do nich tylko wtedy, gdy Udostępnianie konfiguracji poniżej jest ustawione na Współdzielone."
+
+msgid "The system credential store is unavailable. This key is stored in a file with restricted permissions outside the project."
+msgstr "Systemowy magazyn poświadczeń jest niedostępny. Ten klucz jest przechowywany poza projektem w pliku z ograniczonymi uprawnieniami."
 
 msgid "The template's filename (without `.md`)."
 msgstr "Nazwa pliku szablonu (bez `.md`)."

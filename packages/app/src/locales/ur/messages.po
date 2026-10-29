@@ -1130,6 +1130,9 @@ msgstr "کنفلکٹ {0} کے لیے آنے والا ورژن قبول کریں"
 msgid "Accept their deletion"
 msgstr "ان کا حذف قبول کریں"
 
+msgid "Access to the saved API key timed out. Wait for the credential store operation to finish, then try again."
+msgstr "محفوظ API کلید تک رسائی کا وقت ختم ہو گیا۔ کریڈینشل اسٹور کا عمل مکمل ہونے کا انتظار کریں، پھر دوبارہ کوشش کریں۔"
+
 msgid "Access token"
 msgstr "رسائی ٹوکن"
 
@@ -2814,6 +2817,12 @@ msgstr "نقل کیا جا رہا ہے"
 
 msgid "Copying..."
 msgstr "نقل کیا جا رہا ہے..."
+
+msgid "Could not access the saved API key. Check the local credential files, then try again."
+msgstr "محفوظ API کلید تک رسائی نہیں ہو سکی۔ مقامی کریڈینشل فائلیں چیک کریں، پھر دوبارہ کوشش کریں۔"
+
+msgid "Could not access the saved API key. Unlock your system credential store or check the local credential files, then try again."
+msgstr "محفوظ API کلید تک رسائی نہیں ہو سکی۔ سسٹم کا کریڈینشل اسٹور ان لاک کریں یا مقامی کریڈینشل فائلیں چیک کریں، پھر دوبارہ کوشش کریں۔"
 
 msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
 msgstr "{shareBranch} کے سِم لنکس کی جانچ نہیں ہو سکی، اس لیے اس پر منتقل نہیں کیا گیا۔ دوبارہ کوشش کریں؛ اگر یہ بار بار ناکام ہو تو دیکھیں کہ Git انسٹال ہے اور پروجیکٹ فولڈر پڑھا جا سکتا ہے۔"
@@ -9085,6 +9094,9 @@ msgstr "اس پروجیکٹ کے مہارت فولڈر میں محفوظ (مثل
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "آپ کے عالمی مہارت فولڈر میں محفوظ (مثلاً <0>~/.agents/skills</0>)۔"
 
+msgid "Saved keys conflict. Enter a replacement key for this project and endpoint to use instead."
+msgstr "محفوظ کلیدوں میں تضاد ہے۔ اس پروجیکٹ اور اینڈ پوائنٹ کے لیے متبادل کلید درج کریں۔"
+
 msgid "Saved themes couldn’t load. The last available theme list is still shown."
 msgstr "محفوظ شدہ تھیمز لوڈ نہیں ہو سکیں۔ آخری دستیاب تھیم فہرست اب بھی دکھائی جا رہی ہے۔"
 
@@ -9412,8 +9424,8 @@ msgstr "بھیج دیا گیا"
 msgid "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
 msgstr "آپ کے نوٹ اور ایپ کے ورژن سمیت نجی طور پر OpenKnowledge ٹیم کو بھیجا جاتا ہے۔ کبھی عوامی طور پر شائع نہیں ہوتا۔"
 
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
-msgstr "آپ کا مواد ایمبیڈ کرنے کے لیے <0>{endpointHost}</0> کو بھیجا جاتا ہے۔ صرف اسی مشین پر محفوظ ہوتا ہے (<1>{secretsPath}</1> میں)، کبھی پروجیکٹ میں نہیں۔"
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored outside the project."
+msgstr "آپ کا مواد ایمبیڈ کرنے کے لیے <0>{endpointHost}</0> کو بھیجا جاتا ہے۔ پروجیکٹ سے باہر محفوظ ہوتا ہے۔"
 
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."
 msgstr "بھیج دیا گیا، مگر تبصروں کو مکمل نشان زد نہیں کیا جا سکا — وہ اب بھی بھیجنے کے منتظر ہیں۔"
@@ -10746,6 +10758,9 @@ msgstr "محفوظ ٹوکن میں وہ اجازتیں نہیں ہیں جو اس
 
 msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
 msgstr "وہ مطابقت پذیری موڈ جس سے ساتھی اس پروجیکٹ کو پہلی بار کھولنے پر شروع کرتے ہیں۔ یہ پروجیکٹ کی OpenKnowledge ترتیبات میں محفوظ ہوتا ہے، اس لیے یہ ان تک صرف تب پہنچتا ہے جب نیچے کنفیگ کا اشتراک مشترک پر سیٹ ہو۔"
+
+msgid "The system credential store is unavailable. This key is stored in a file with restricted permissions outside the project."
+msgstr "سسٹم کا کریڈینشل اسٹور دستیاب نہیں ہے۔ یہ کلید پروجیکٹ سے باہر محدود اجازتوں والی فائل میں محفوظ ہے۔"
 
 msgid "The template's filename (without `.md`)."
 msgstr "ٹیمپلیٹ کی فائل کا نام (`.md` کے بغیر)۔"

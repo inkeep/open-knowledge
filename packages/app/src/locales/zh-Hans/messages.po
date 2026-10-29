@@ -1130,6 +1130,9 @@ msgstr "对冲突 {0} 采用传入版本"
 msgid "Accept their deletion"
 msgstr "接受对方的删除"
 
+msgid "Access to the saved API key timed out. Wait for the credential store operation to finish, then try again."
+msgstr "访问已保存的 API 密钥超时。请等待凭据存储操作完成，然后重试。"
+
 msgid "Access token"
 msgstr "访问令牌"
 
@@ -2814,6 +2817,12 @@ msgstr "正在复制"
 
 msgid "Copying..."
 msgstr "正在复制…"
+
+msgid "Could not access the saved API key. Check the local credential files, then try again."
+msgstr "无法访问已保存的 API 密钥。请检查本地凭据文件，然后重试。"
+
+msgid "Could not access the saved API key. Unlock your system credential store or check the local credential files, then try again."
+msgstr "无法访问已保存的 API 密钥。请解锁系统凭据存储或检查本地凭据文件，然后重试。"
 
 msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
 msgstr "无法检查 {shareBranch} 中的符号链接，因此未切换。请重试；如果仍然失败，请确认已安装 Git 且项目文件夹可读。"
@@ -9085,6 +9094,9 @@ msgstr "保存到这个项目的技能文件夹中（例如 <0>.agents/skills</0
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "保存到你的全局技能文件夹中（例如 <0>~/.agents/skills</0>）。"
 
+msgid "Saved keys conflict. Enter a replacement key for this project and endpoint to use instead."
+msgstr "已保存的密钥发生冲突。请输入此项目和端点的替代密钥。"
+
 msgid "Saved themes couldn’t load. The last available theme list is still shown."
 msgstr "无法加载已保存的主题。仍显示上次可用的主题列表。"
 
@@ -9412,8 +9424,8 @@ msgstr "已发送"
 msgid "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
 msgstr "会连同你的备注和应用版本一起私下发送给 OpenKnowledge 团队。绝不会公开发布。"
 
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
-msgstr "会发送到 <0>{endpointHost}</0> 以生成你内容的嵌入向量。仅保存在这台电脑上（位于 <1>{secretsPath}</1>），绝不保存在项目中。"
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored outside the project."
+msgstr "会发送到 <0>{endpointHost}</0> 以生成你内容的嵌入向量。保存在项目外。"
 
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."
 msgstr "已发送，但无法把这些评论标记为已完成——它们仍在等待发送。"
@@ -10746,6 +10758,9 @@ msgstr "保存的令牌缺少这个主机推送所需的权限。"
 
 msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
 msgstr "队友第一次打开此项目时采用的同步模式。它保存在项目的 OpenKnowledge 设置中，因此只有当下方的配置共享设为已共享时才会传给他们。"
+
+msgid "The system credential store is unavailable. This key is stored in a file with restricted permissions outside the project."
+msgstr "系统凭据存储不可用。此密钥保存在项目外的文件中，文件权限受到限制。"
 
 msgid "The template's filename (without `.md`)."
 msgstr "模板的文件名（不含 `.md`）。"

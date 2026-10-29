@@ -11,6 +11,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { EmbeddingDimsMismatchError } from './embeddings/embedder.ts';
+import * as embeddingServices from './embeddings/index.ts';
 import {
   createConceptEmbedder,
   type Embedder,
@@ -23,6 +24,27 @@ import {
 import { getLogger } from './logger.ts';
 import { createServer, type ServerInstance } from './server-factory.ts';
 import { initShadowRepo } from './shadow-repo.ts';
+
+const keyring = vi.hoisted(() => new Map<string, string>());
+const keyringFailure = vi.hoisted(() => ({ read: false }));
+vi.mock('@napi-rs/keyring', () => ({
+  AsyncEntry: class {
+    private readonly id: string;
+    constructor(service: string, account: string) {
+      this.id = JSON.stringify([service, account]);
+    }
+    async getPassword() {
+      if (keyringFailure.read) throw new Error('denied sk-do-not-echo');
+      return keyring.get(this.id) ?? null;
+    }
+    async setPassword(value: string) {
+      keyring.set(this.id, value);
+    }
+    async deletePassword() {
+      return keyring.delete(this.id);
+    }
+  },
+}));
 
 const CONCEPTS = [
   { id: 'auth', terms: ['auth', 'credential', 'session token', 'login', 'secret', 'sign-in'] },
@@ -791,7 +813,8 @@ describe('createServer boot — similarityFloor config reaches core ranking', ()
 });
 
 describe('createServer boot — embeddings key set/clear handlers (Account control)', () => {
-  test('set-key writes the secrets file, status flips keyPresent, clear-key removes it', async () => {
+  test('set-key stores in keychain, status flips keyPresent, clear-key removes it', async () => {
+    keyring.clear();
     const dir = mkdtempSync(join(tmpdir(), 'ok-sem-setkey-'));
     try {
       writeFileSync(join(dir, 'note.md'), '# Note\n', 'utf-8');
@@ -833,7 +856,11 @@ describe('createServer boot — embeddings key set/clear handlers (Account contr
           key: 'sk-account-ui-key',
         })) as { keyPresent: boolean };
         expect(setRes.keyPresent).toBe(true);
-        expect(readFileSync(secretsPath, 'utf-8')).toContain('sk-account-ui-key');
+        expect([...keyring.values()]).toContain('sk-account-ui-key');
+        expect(
+          existsSync(secretsPath) &&
+            readFileSync(secretsPath, 'utf-8').includes('sk-account-ui-key'),
+        ).toBe(false);
         const afterSet = (await callViaServer(srv, 'GET', '/api/semantic-status')) as {
           ready: boolean;
         };
@@ -842,9 +869,52 @@ describe('createServer boot — embeddings key set/clear handlers (Account contr
         const after = (await callViaServer(srv, 'GET', '/api/semantic-status')) as {
           keyPresent: boolean;
           keySource: string | null;
+          keyStoredInFile: boolean;
         };
         expect(after.keyPresent).toBe(true);
         expect(after.keySource).toBe('project');
+        expect(after.keyStoredInFile).toBe(false);
+
+        await new embeddingServices.FileEmbeddingsBackend(secretsPath).setForProject(
+          dir,
+          'https://api.openai.com/v1',
+          'sk-conflicting-file-key',
+        );
+        const conflict = await callViaServer(srv, 'GET', '/api/semantic-status');
+        expect(conflict).toMatchObject({
+          keyStoreUnavailable: true,
+          keyStoreError: 'migration_conflict',
+        });
+        expect(JSON.stringify(conflict)).not.toContain('sk-conflicting-file-key');
+        const conflictProbe = await callViaServer(srv, 'POST', '/api/local-op/embeddings/test', {});
+        expect(conflictProbe).toMatchObject({
+          ok: false,
+          reason: 'credential_store',
+          keyStoreError: 'migration_conflict',
+        });
+        expect(JSON.stringify(conflictProbe)).not.toContain('sk-conflicting-file-key');
+        await callViaServer(srv, 'POST', '/api/local-op/embeddings/set-key', {
+          key: 'sk-account-ui-key',
+        });
+        expect(await callViaServer(srv, 'GET', '/api/semantic-status')).toMatchObject({
+          keyPresent: true,
+          keyStoreUnavailable: false,
+        });
+        expect(existsSync(secretsPath)).toBe(false);
+
+        keyringFailure.read = true;
+        const inaccessible = (await callViaServer(srv, 'GET', '/api/semantic-status')) as {
+          keyStoreUnavailable?: boolean;
+          keyStoreError?: string;
+          keyPresent: boolean;
+        };
+        expect(inaccessible.keyStoreUnavailable).toBe(true);
+        expect(inaccessible.keyStoreError).toBe('native_access');
+        expect(inaccessible.keyPresent).toBe(false);
+        const connection = await callViaServer(srv, 'POST', '/api/local-op/embeddings/test', {});
+        expect(connection).toMatchObject({ ok: false, reason: 'credential_store' });
+        expect(JSON.stringify([inaccessible, connection])).not.toContain('sk-do-not-echo');
+        keyringFailure.read = false;
 
         const clearRes = (await callViaServer(
           srv,
@@ -855,11 +925,31 @@ describe('createServer boot — embeddings key set/clear handlers (Account contr
           keyPresent: boolean;
         };
         expect(clearRes.keyPresent).toBe(false);
+        expect([...keyring.values()]).not.toContain('sk-account-ui-key');
         const cleared = (await callViaServer(srv, 'GET', '/api/semantic-status')) as {
           keyPresent: boolean;
         };
         expect(cleared.keyPresent).toBe(false);
+
+        await embeddingServices.createEmbeddingsSecretStore(secretsPath).clearAll();
+        const createStore = embeddingServices.createEmbeddingsSecretStore;
+        const fallback = vi
+          .spyOn(embeddingServices, 'createEmbeddingsSecretStore')
+          .mockImplementation((path) => createStore(path, undefined, async () => null));
+        try {
+          await callViaServer(srv, 'POST', '/api/local-op/embeddings/set-key', {
+            key: 'sk-file-fallback-key',
+          });
+          expect(await callViaServer(srv, 'GET', '/api/semantic-status')).toMatchObject({
+            keyPresent: true,
+            keyStoredInFile: true,
+            keyStoreUnavailable: false,
+          });
+        } finally {
+          fallback.mockRestore();
+        }
       } finally {
+        keyringFailure.read = false;
         await srv.destroy();
       }
     } finally {

@@ -5,6 +5,58 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 const CLI_PACKAGE_ROOT = import.meta.dir.replace(/\/src$/, '');
 
+test('embeddings status JSON stays parseable when the credential store rejects access', () => {
+  const home = mkdtempSync(join(tmpdir(), 'ok-embeddings-json-'));
+  try {
+    const result = Bun.spawnSync({
+      cmd: [
+        'node',
+        '--import',
+        'tsx',
+        '--conditions=development',
+        '-e',
+        `
+        const { registerHooks } = await import('node:module');
+        registerHooks({
+          resolve(specifier, context, next) {
+            return specifier === '@napi-rs/keyring'
+              ? { url: 'fixture:keyring', format: 'module', shortCircuit: true }
+              : next(specifier, context);
+          },
+          load(url, context, next) {
+            return url === 'fixture:keyring'
+              ? { format: 'module', source: 'export class AsyncEntry { constructor() { throw new Error("sk-do-not-echo"); } }', shortCircuit: true }
+              : next(url, context);
+          },
+        });
+        process.argv = [process.execPath, process.cwd() + '/src/cli.ts', 'embeddings', 'status', '--json', '--cwd', process.env.HOME];
+        await import('./src/cli.ts');
+      `,
+      ],
+      cwd: CLI_PACKAGE_ROOT,
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+        NO_COLOR: '1',
+        NODE_ENV: 'production',
+        LOG_LEVEL: 'warn',
+        OK_CONSOLE_LEVEL: 'warn',
+        OK_EMBEDDINGS_API_KEY: '',
+        OPENKNOWLEDGE_EMBEDDINGS_API_KEY: '',
+      },
+    });
+    const stdout = result.stdout.toString();
+    const stderr = result.stderr.toString();
+    expect(result.exitCode, stderr).toBe(1);
+    expect(JSON.parse(stdout).key).toMatchObject({ unavailable: true, error: 'native_access' });
+    expect(stderr).toContain('OS credential store');
+    expect(stdout + stderr).not.toContain('sk-do-not-echo');
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+}, 30_000);
+
 describe('CLI argv parsing', () => {
   test('uses node argv slicing when launched by Electron as Node', () => {
     const result = Bun.spawnSync({

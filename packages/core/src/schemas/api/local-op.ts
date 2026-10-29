@@ -90,8 +90,18 @@ export type LocalOpEmbeddingsMutationSuccess = z.infer<
   typeof LocalOpEmbeddingsMutationSuccessSchema
 >;
 
+export const EmbeddingsKeyStoreErrorSchema = z.enum([
+  'index_invalid',
+  'migration_conflict',
+  'native_access',
+  'lock_timeout',
+  'file_access',
+  'timeout',
+]);
+
 export const EmbeddingsTestFailureReasonSchema = z.enum([
   'no_key',
+  'credential_store',
   'invalid_endpoint',
   'rate_limit',
   'timeout',
@@ -117,6 +127,7 @@ export const LocalOpEmbeddingsTestResponseSchema = z.discriminatedUnion('ok', [
       endpoint: z.string().min(1),
       model: z.string().min(1),
       reason: EmbeddingsTestFailureReasonSchema,
+      keyStoreError: EmbeddingsKeyStoreErrorSchema.optional().catch(undefined),
       status: z.number().int().optional(),
     })
     .loose(),

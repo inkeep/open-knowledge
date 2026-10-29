@@ -168,6 +168,7 @@ export {
   type StoreFailure,
   type StorePublishOutcome,
 } from './document-durability-state.ts';
+export { EmbeddingsSecretStoreError } from './embeddings/credential-errors.ts';
 export {
   canonicalProjectKey,
   clearAllEmbeddingsKeys,

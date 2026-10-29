@@ -1126,6 +1126,9 @@ msgstr "কনফ্লিক্ট {0}-এর জন্য আগত সংস�
 msgid "Accept their deletion"
 msgstr "তাদের মুছে ফেলা গ্রহণ করুন"
 
+msgid "Access to the saved API key timed out. Wait for the credential store operation to finish, then try again."
+msgstr "সংরক্ষিত API কী অ্যাক্সেসের সময় শেষ হয়েছে। ক্রেডেনশিয়াল স্টোরের কাজ শেষ হওয়া পর্যন্ত অপেক্ষা করুন, তারপর আবার চেষ্টা করুন।"
+
 msgid "Access token"
 msgstr "প্রবেশ টোকেন"
 
@@ -2810,6 +2813,12 @@ msgstr "কপি করা হচ্ছে"
 
 msgid "Copying..."
 msgstr "কপি করা হচ্ছে…"
+
+msgid "Could not access the saved API key. Check the local credential files, then try again."
+msgstr "সংরক্ষিত API কী অ্যাক্সেস করা যায়নি। স্থানীয় ক্রেডেনশিয়াল ফাইল পরীক্ষা করুন, তারপর আবার চেষ্টা করুন।"
+
+msgid "Could not access the saved API key. Unlock your system credential store or check the local credential files, then try again."
+msgstr "সংরক্ষিত API কী অ্যাক্সেস করা যায়নি। সিস্টেমের ক্রেডেনশিয়াল স্টোর আনলক করুন বা স্থানীয় ক্রেডেনশিয়াল ফাইলগুলি পরীক্ষা করুন, তারপর আবার চেষ্টা করুন।"
 
 msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
 msgstr "{shareBranch}-এর সিমলিংকগুলো যাচাই করা যায়নি, তাই সেখানে যাওয়া হয়নি। আবার চেষ্টা করুন; বারবার ব্যর্থ হলে Git ইনস্টল করা আছে কি না এবং প্রজেক্ট ফোল্ডারটি পড়া যায় কি না তা দেখুন।"
@@ -9081,6 +9090,9 @@ msgstr "এই প্রকল্পের স্কিল ফোল্ডার
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "আপনার বৈশ্বিক স্কিল ফোল্ডারে সংরক্ষিত (যেমন <0>~/.agents/skills</0>)।"
 
+msgid "Saved keys conflict. Enter a replacement key for this project and endpoint to use instead."
+msgstr "সংরক্ষিত কীগুলির মধ্যে বিরোধ আছে। এর বদলে ব্যবহার করতে এই প্রকল্প ও এন্ডপয়েন্টের জন্য একটি নতুন কী দিন।"
+
 msgid "Saved themes couldn’t load. The last available theme list is still shown."
 msgstr "সংরক্ষিত থিমগুলি লোড করা যায়নি। সর্বশেষ উপলভ্য থিমের তালিকাটি এখনও দেখানো হচ্ছে।"
 
@@ -9408,8 +9420,8 @@ msgstr "পাঠানো হয়েছে"
 msgid "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
 msgstr "আপনার নোট ও অ্যাপের সংস্করণসহ ব্যক্তিগতভাবে OpenKnowledge দলের কাছে পাঠানো হয়। কখনও প্রকাশ্যে প্রকাশ করা হয় না।"
 
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
-msgstr "আপনার বিষয়বস্তু এমবেড করতে <0>{endpointHost}</0>-এ পাঠানো হয়। কেবল এই মেশিনেই সংরক্ষিত (<1>{secretsPath}</1>-এ), প্রকল্পে কখনও নয়।"
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored outside the project."
+msgstr "আপনার বিষয়বস্তু এমবেড করতে <0>{endpointHost}</0>-এ পাঠানো হয়। প্রকল্পের বাইরে সংরক্ষিত।"
 
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."
 msgstr "পাঠানো হয়েছে, কিন্তু মন্তব্যগুলো সম্পন্ন হিসেবে চিহ্নিত করা যায়নি — সেগুলো এখনও পাঠানোর অপেক্ষায়।"
@@ -10742,6 +10754,9 @@ msgstr "সংরক্ষিত টোকেনে সেই অনুমতি
 
 msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
 msgstr "সহকর্মীরা প্রথমবার এই প্রকল্প খুললে যে সিঙ্ক মোড দিয়ে শুরু করেন। এটি প্রকল্পের OpenKnowledge সেটিংয়ে সংরক্ষিত থাকে, তাই নিচের কনফিগ ভাগাভাগি ভাগ করা-তে সেট থাকলেই কেবল এটি তাঁদের কাছে পৌঁছায়।"
+
+msgid "The system credential store is unavailable. This key is stored in a file with restricted permissions outside the project."
+msgstr "সিস্টেমের ক্রেডেনশিয়াল স্টোর উপলব্ধ নয়। এই কী প্রকল্পের বাইরে সীমিত অনুমতিসহ একটি ফাইলে সংরক্ষিত।"
 
 msgid "The template's filename (without `.md`)."
 msgstr "টেমপ্লেটের ফাইলের নাম (`.md` ছাড়া)।"

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { EmbeddingsSecretStoreError } from './credential-errors.ts';
 import {
   cosineSimilarity,
   createOpenAiEmbedder,
@@ -415,11 +416,48 @@ describe('loadOpenAiEmbedder', () => {
     ).toBeNull();
   });
 
-  test('a throwing key store degrades to the env fallback (never throws)', async () => {
+  test('an inaccessible key store reports a credential error unless the env fallback is set', async () => {
     const keyStore = { resolveForProject: () => Promise.reject(new Error('store exploded')) };
-    expect(await loadOpenAiEmbedder({ keyStore, projectDir, config })).toBeNull();
+    await expect(loadOpenAiEmbedder({ keyStore, projectDir, config })).rejects.toMatchObject({
+      name: 'EmbeddingsCredentialStoreError',
+      code: 'native_access',
+    });
     process.env[EMBEDDINGS_API_KEY_ENV] = 'sk-env';
     expect(await loadOpenAiEmbedder({ keyStore, projectDir, config })).not.toBeNull();
+  });
+
+  test('credential failures retain bounded diagnostics without native secret text', async () => {
+    const nativeError = Object.assign(new Error('sk-do-not-leak'), { code: 'GenericFailure' });
+    const error = await loadOpenAiEmbedder({
+      keyStore: {
+        resolveForProject: () =>
+          Promise.reject(
+            new EmbeddingsSecretStoreError('native_access', 'native_get', nativeError),
+          ),
+      },
+      projectDir,
+      config,
+    }).catch((failure: unknown) => failure);
+    expect(error).toMatchObject({
+      name: 'EmbeddingsCredentialStoreError',
+      code: 'native_access',
+      cause: { phase: 'native_get', name: 'Error', code: 'GenericFailure' },
+    });
+    expect(JSON.stringify(error)).not.toContain('sk-do-not-leak');
+  });
+
+  test('an inaccessible key store does not block a keyless loopback provider', async () => {
+    const { fetchImpl, calls } = stubFetch([{ json: embeddingsResponse(1, 768) }]);
+    const embedder = await loadOpenAiEmbedder({
+      keyStore: { resolveForProject: () => Promise.reject(new Error('locked')) },
+      projectDir,
+      config: { baseUrl: 'http://localhost:11434/v1', model: 'nomic-embed-text' },
+      options: { fetchImpl, sleep: noSleep },
+    });
+    expect(embedder).not.toBeNull();
+    await embedder?.embed(['query'], { role: 'query' });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].authHeader).toBeUndefined();
   });
 
   test('a keyless LOOPBACK endpoint loads without any key; a custom one does not', async () => {

@@ -1126,6 +1126,9 @@ msgstr "Terima versi masuk untuk konflik {0}"
 msgid "Accept their deletion"
 msgstr "Terima penghapusan mereka"
 
+msgid "Access to the saved API key timed out. Wait for the credential store operation to finish, then try again."
+msgstr "Waktu akses ke kunci API yang disimpan habis. Tunggu operasi penyimpanan kredensial selesai, lalu coba lagi."
+
 msgid "Access token"
 msgstr "Token akses"
 
@@ -2810,6 +2813,12 @@ msgstr "Menyalin"
 
 msgid "Copying..."
 msgstr "Menyalin..."
+
+msgid "Could not access the saved API key. Check the local credential files, then try again."
+msgstr "Tidak dapat mengakses kunci API yang disimpan. Periksa file kredensial lokal, lalu coba lagi."
+
+msgid "Could not access the saved API key. Unlock your system credential store or check the local credential files, then try again."
+msgstr "Tidak dapat mengakses kunci API yang disimpan. Buka kunci penyimpanan kredensial sistem atau periksa file kredensial lokal, lalu coba lagi."
 
 msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
 msgstr "Tidak dapat memeriksa symlink di {shareBranch}, jadi tidak beralih. Coba lagi; jika terus gagal, pastikan Git terpasang dan folder proyek dapat dibaca."
@@ -9081,6 +9090,9 @@ msgstr "Disimpan ke folder keterampilan proyek ini (mis. <0>.agents/skills</0>),
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "Disimpan ke folder keterampilan global Anda (mis. <0>~/.agents/skills</0>)."
 
+msgid "Saved keys conflict. Enter a replacement key for this project and endpoint to use instead."
+msgstr "Kunci yang disimpan bertentangan. Masukkan kunci pengganti untuk proyek dan endpoint ini."
+
 msgid "Saved themes couldn’t load. The last available theme list is still shown."
 msgstr "Tema tersimpan tidak dapat dimuat. Daftar tema terakhir yang tersedia tetap ditampilkan."
 
@@ -9408,8 +9420,8 @@ msgstr "Terkirim"
 msgid "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
 msgstr "Dikirim secara pribadi ke tim OpenKnowledge, beserta catatan Anda dan versi aplikasinya. Tidak pernah dipublikasikan."
 
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
-msgstr "Dikirim ke <0>{endpointHost}</0> untuk meng-embed konten Anda. Disimpan hanya di komputer ini (di <1>{secretsPath}</1>), tidak pernah di proyek."
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored outside the project."
+msgstr "Dikirim ke <0>{endpointHost}</0> untuk meng-embed konten Anda. Disimpan di luar proyek."
 
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."
 msgstr "Terkirim, tetapi komentarnya tidak bisa ditandai selesai — semuanya masih menunggu dikirim."
@@ -10742,6 +10754,9 @@ msgstr "Token yang tersimpan tidak memiliki izin yang dibutuhkan host ini untuk 
 
 msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
 msgstr "Mode sinkronisasi yang digunakan rekan tim saat pertama kali membuka proyek ini. Mode ini disimpan di pengaturan OpenKnowledge proyek, jadi hanya sampai ke mereka jika Berbagi konfigurasi di bawah diatur ke Dibagikan."
+
+msgid "The system credential store is unavailable. This key is stored in a file with restricted permissions outside the project."
+msgstr "Penyimpanan kredensial sistem tidak tersedia. Kunci ini disimpan dalam file dengan izin terbatas di luar proyek."
 
 msgid "The template's filename (without `.md`)."
 msgstr "Nama berkas templatnya (tanpa `.md`)."

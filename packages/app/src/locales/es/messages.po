@@ -1130,6 +1130,9 @@ msgstr "Aceptar la versión entrante para el conflicto {0}"
 msgid "Accept their deletion"
 msgstr "Aceptar su eliminación"
 
+msgid "Access to the saved API key timed out. Wait for the credential store operation to finish, then try again."
+msgstr "Se agotó el tiempo de acceso a la clave API guardada. Espera a que termine la operación del almacén de credenciales y vuelve a intentarlo."
+
 msgid "Access token"
 msgstr "Token de acceso"
 
@@ -2814,6 +2817,12 @@ msgstr "Copiando"
 
 msgid "Copying..."
 msgstr "Copiando..."
+
+msgid "Could not access the saved API key. Check the local credential files, then try again."
+msgstr "No se pudo acceder a la clave API guardada. Revisa los archivos de credenciales locales y vuelve a intentarlo."
+
+msgid "Could not access the saved API key. Unlock your system credential store or check the local credential files, then try again."
+msgstr "No se pudo acceder a la clave API guardada. Desbloquea el almacén de credenciales del sistema o revisa los archivos de credenciales locales y vuelve a intentarlo."
 
 msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
 msgstr "No se pudieron comprobar los enlaces simbólicos de {shareBranch}, así que no se cambió. Vuelve a intentarlo; si sigue fallando, comprueba que Git esté instalado y que la carpeta del proyecto se pueda leer."
@@ -9085,6 +9094,9 @@ msgstr "Guardado en la carpeta de habilidades de este proyecto (p. ej. <0>.agent
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "Guardado en tu carpeta global de habilidades (p. ej. <0>~/.agents/skills</0>)."
 
+msgid "Saved keys conflict. Enter a replacement key for this project and endpoint to use instead."
+msgstr "Las claves guardadas entran en conflicto. Introduce una clave de reemplazo para este proyecto y endpoint."
+
 msgid "Saved themes couldn’t load. The last available theme list is still shown."
 msgstr "No se pudieron cargar los temas guardados. Se sigue mostrando la última lista de temas disponible."
 
@@ -9412,8 +9424,8 @@ msgstr "Enviado"
 msgid "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
 msgstr "Se envía en privado al equipo de OpenKnowledge, junto con tu nota y la versión de la aplicación. Nunca se publica."
 
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
-msgstr "Se envía a <0>{endpointHost}</0> para generar los embeddings de tu contenido. Se guarda solo en este equipo (en <1>{secretsPath}</1>), nunca en el proyecto."
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored outside the project."
+msgstr "Se envía a <0>{endpointHost}</0> para generar los embeddings de tu contenido. Se guarda fuera del proyecto."
 
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."
 msgstr "Se envió, pero no se pudieron marcar los comentarios como hechos: siguen pendientes de envío."
@@ -10746,6 +10758,9 @@ msgstr "Al token guardado le faltan los permisos que este host necesita para hac
 
 msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
 msgstr "El modo de sincronización con el que empiezan tus compañeros la primera vez que abren este proyecto. Se guarda en los ajustes de OpenKnowledge del proyecto, así que solo les llega cuando Compartir configuración, más abajo, está en Compartido."
+
+msgid "The system credential store is unavailable. This key is stored in a file with restricted permissions outside the project."
+msgstr "El almacén de credenciales del sistema no está disponible. Esta clave se guarda en un archivo con permisos restringidos fuera del proyecto."
 
 msgid "The template's filename (without `.md`)."
 msgstr "El nombre de archivo de la plantilla (sin `.md`)."

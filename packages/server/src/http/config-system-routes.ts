@@ -41,8 +41,9 @@ import { collabUrlFromRequestHeaders } from '../collab-bootstrap-url.ts';
 import { getLocalDir } from '../config/paths.ts';
 import { isSupportedDocFile, stripDocExtension } from '../doc-extensions.ts';
 import { deriveDetection, embedProbeRing } from '../embed-probe.ts';
+import { EmbeddingsCredentialStoreError } from '../embeddings/embedder.ts';
 import {
-  FileEmbeddingsBackend,
+  createEmbeddingsSecretStore,
   type ResolvedSemanticConfig,
   resolveEmbeddingsCredential,
   type SemanticSearchService,
@@ -577,11 +578,19 @@ export function createConfigSystemRoutes(deps: ConfigSystemRouteDeps): ConfigSys
         }
         const statusConfig = readSemanticProviderConfig?.();
         const statusBaseUrl = statusConfig?.baseUrl ?? DEFAULT_EMBEDDINGS_BASE_URL;
+        let keyStoreUnavailable = false;
+        let keyStoreError: EmbeddingsCredentialStoreError['code'] | undefined;
+        const keyStore = createEmbeddingsSecretStore(embeddingsSecretsFile);
         const cred = await resolveEmbeddingsCredential(
-          new FileEmbeddingsBackend(embeddingsSecretsFile),
+          keyStore,
           projectDir ?? contentDir,
           statusBaseUrl,
-        );
+        ).catch((error) => {
+          if (!(error instanceof EmbeddingsCredentialStoreError)) throw error;
+          keyStoreUnavailable = true;
+          keyStoreError = error.code;
+          return { apiKey: null, keyless: false, source: 'none' as const };
+        });
         const keyPresent = cred.apiKey !== null;
         const keyNotRequired = !keyPresent && cred.keyless;
         const keySource: 'project' | 'file' | 'env' | null = keyPresent
@@ -604,6 +613,9 @@ export function createConfigSystemRoutes(deps: ConfigSystemRouteDeps): ConfigSys
             keyNotRequired,
             keySource,
             keyHint,
+            keyStoreUnavailable,
+            keyStoreError,
+            keyStoredInFile: keyPresent && cred.source !== 'env' && keyStore.backend === 'file',
             ready,
             capable,
             providerError,

@@ -1126,6 +1126,9 @@ msgstr "कॉन्फ़्लिक्ट {0} के लिए आने व�
 msgid "Accept their deletion"
 msgstr "उनका विलोपन स्वीकारें"
 
+msgid "Access to the saved API key timed out. Wait for the credential store operation to finish, then try again."
+msgstr "सहेजी गई API कुंजी तक पहुँचने का समय समाप्त हो गया। क्रेडेंशियल स्टोर का काम पूरा होने की प्रतीक्षा करें, फिर दोबारा कोशिश करें।"
+
 msgid "Access token"
 msgstr "पहुँच टोकन"
 
@@ -2810,6 +2813,12 @@ msgstr "कॉपी किया जा रहा है"
 
 msgid "Copying..."
 msgstr "कॉपी किया जा रहा है…"
+
+msgid "Could not access the saved API key. Check the local credential files, then try again."
+msgstr "सहेजी गई API कुंजी तक पहुँच नहीं हो सकी। स्थानीय क्रेडेंशियल फ़ाइलें जाँचें, फिर दोबारा कोशिश करें।"
+
+msgid "Could not access the saved API key. Unlock your system credential store or check the local credential files, then try again."
+msgstr "सहेजी गई API कुंजी तक पहुँच नहीं हो सकी। सिस्टम के क्रेडेंशियल स्टोर को अनलॉक करें या स्थानीय क्रेडेंशियल फ़ाइलें जाँचें, फिर दोबारा कोशिश करें।"
 
 msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
 msgstr "{shareBranch} के सिमलिंक की जाँच नहीं हो सकी, इसलिए उस पर स्विच नहीं किया गया। फिर से कोशिश करें; अगर यह बार-बार विफल हो, तो देखें कि Git इंस्टॉल है और प्रोजेक्ट फ़ोल्डर पढ़ा जा सकता है।"
@@ -9081,6 +9090,9 @@ msgstr "इस प्रोजेक्ट के स्किल फ़ोल�
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "आपके वैश्विक स्किल फ़ोल्डर में सहेजा गया (जैसे <0>~/.agents/skills</0>)।"
 
+msgid "Saved keys conflict. Enter a replacement key for this project and endpoint to use instead."
+msgstr "सहेजी गई कुंजियों में विरोध है। इसके बजाय उपयोग करने के लिए इस प्रोजेक्ट और एंडपॉइंट की नई कुंजी दर्ज करें।"
+
 msgid "Saved themes couldn’t load. The last available theme list is still shown."
 msgstr "सहेजी गई थीम लोड नहीं हो सकीं। पिछली उपलब्ध थीम सूची अब भी दिखाई जा रही है।"
 
@@ -9408,8 +9420,8 @@ msgstr "भेजा गया"
 msgid "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
 msgstr "आपके नोट और ऐप संस्करण के साथ निजी तौर पर OpenKnowledge टीम को भेजा गया। कभी सार्वजनिक रूप से पोस्ट नहीं किया जाता।"
 
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
-msgstr "आपकी सामग्री एम्बेड करने के लिए <0>{endpointHost}</0> को भेजा गया। केवल इसी मशीन पर सहेजा गया (<1>{secretsPath}</1> में), प्रोजेक्ट में कभी नहीं।"
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored outside the project."
+msgstr "आपकी सामग्री एम्बेड करने के लिए <0>{endpointHost}</0> को भेजा गया। प्रोजेक्ट के बाहर सहेजा गया।"
 
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."
 msgstr "भेज दिया गया, पर टिप्पणियों को पूर्ण चिह्नित नहीं किया जा सका — वे अब भी भेजे जाने की प्रतीक्षा में हैं।"
@@ -10742,6 +10754,9 @@ msgstr "सहेजे गए टोकन में वे अनुमति�
 
 msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
 msgstr "वह सिंक मोड जिससे सहकर्मी इस प्रोजेक्ट को पहली बार खोलने पर शुरुआत करते हैं। यह प्रोजेक्ट की OpenKnowledge सेटिंग में सहेजा जाता है, इसलिए यह उन तक तभी पहुँचता है जब नीचे कॉन्फ़िग साझाकरण साझा पर सेट हो।"
+
+msgid "The system credential store is unavailable. This key is stored in a file with restricted permissions outside the project."
+msgstr "सिस्टम का क्रेडेंशियल स्टोर उपलब्ध नहीं है। यह कुंजी प्रोजेक्ट के बाहर सीमित अनुमतियों वाली फ़ाइल में सहेजी गई है।"
 
 msgid "The template's filename (without `.md`)."
 msgstr "टेम्पलेट का फ़ाइल-नाम (`.md` के बिना)।"

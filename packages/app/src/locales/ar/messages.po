@@ -1130,6 +1130,9 @@ msgstr "قبول النسخة الواردة للتعارض {0}"
 msgid "Accept their deletion"
 msgstr "قبول حذفهم"
 
+msgid "Access to the saved API key timed out. Wait for the credential store operation to finish, then try again."
+msgstr "انتهت مهلة الوصول إلى مفتاح API المحفوظ. انتظر حتى تنتهي عملية مخزن بيانات الاعتماد، ثم حاول مجددًا."
+
 msgid "Access token"
 msgstr "رمز الوصول"
 
@@ -2814,6 +2817,12 @@ msgstr "يجري النسخ"
 
 msgid "Copying..."
 msgstr "يجري النسخ..."
+
+msgid "Could not access the saved API key. Check the local credential files, then try again."
+msgstr "تعذّر الوصول إلى مفتاح API المحفوظ. تحقق من ملفات بيانات الاعتماد المحلية، ثم حاول مجددًا."
+
+msgid "Could not access the saved API key. Unlock your system credential store or check the local credential files, then try again."
+msgstr "تعذّر الوصول إلى مفتاح API المحفوظ. افتح مخزن بيانات اعتماد النظام أو تحقق من ملفات بيانات الاعتماد المحلية، ثم حاول مرة أخرى."
 
 msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
 msgstr "تعذّر فحص الروابط الرمزية في {shareBranch}، لذا لم يتم التبديل إليه. حاول مرة أخرى؛ وإذا استمر الفشل، فتأكد من تثبيت Git ومن إمكانية قراءة مجلد المشروع."
@@ -9085,6 +9094,9 @@ msgstr "يُحفظ في مجلد مهارات هذا المشروع (مثل <0>.
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "يُحفظ في مجلد مهاراتك العام (مثل <0>~/.agents/skills</0>)."
 
+msgid "Saved keys conflict. Enter a replacement key for this project and endpoint to use instead."
+msgstr "تتعارض المفاتيح المحفوظة. أدخل مفتاحًا بديلاً لهذا المشروع ونقطة الاتصال لاستخدامه بدلاً منها."
+
 msgid "Saved themes couldn’t load. The last available theme list is still shown."
 msgstr "تعذّر تحميل السمات المحفوظة. ما تزال آخر قائمة سمات متاحة معروضة."
 
@@ -9412,8 +9424,8 @@ msgstr "أُرسل"
 msgid "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
 msgstr "يُرسل بشكل خاص إلى فريق OpenKnowledge، مع ملاحظتك ونسخة التطبيق. لا يُنشر علنًا أبدًا."
 
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
-msgstr "يُرسل إلى <0>{endpointHost}</0> لتضمين محتواك. يُخزَّن على هذا الجهاز فقط (في <1>{secretsPath}</1>)، وليس في المشروع أبدًا."
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored outside the project."
+msgstr "يُرسل إلى <0>{endpointHost}</0> لتضمين محتواك. يُخزَّن خارج المشروع."
 
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."
 msgstr "أُرسلت، لكن تعذّر وضع علامة «تم» على التعليقات — لا تزال في انتظار الإرسال."
@@ -10746,6 +10758,9 @@ msgstr "ينقص الرمز المخزّن الصلاحيات التي يحتا�
 
 msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
 msgstr "وضع المزامنة الذي يبدأ به زملاؤك عند فتح هذا المشروع لأول مرة. يُحفظ في إعدادات OpenKnowledge الخاصة بالمشروع، لذا لا يصل إليهم إلا عندما تكون مشاركة الإعدادات أدناه مضبوطة على مشترك."
+
+msgid "The system credential store is unavailable. This key is stored in a file with restricted permissions outside the project."
+msgstr "مخزن بيانات اعتماد النظام غير متاح. يُخزَّن هذا المفتاح في ملف ذي أذونات مقيّدة خارج المشروع."
 
 msgid "The template's filename (without `.md`)."
 msgstr "اسم ملف القالب (بدون `.md`)."

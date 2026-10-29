@@ -1130,6 +1130,9 @@ msgstr "Accept incoming version for conflict {0}"
 msgid "Accept their deletion"
 msgstr "Accept their deletion"
 
+msgid "Access to the saved API key timed out. Wait for the credential store operation to finish, then try again."
+msgstr "Access to the saved API key timed out. Wait for the credential store operation to finish, then try again."
+
 msgid "Access token"
 msgstr "Access token"
 
@@ -2814,6 +2817,12 @@ msgstr "Copying"
 
 msgid "Copying..."
 msgstr "Copying..."
+
+msgid "Could not access the saved API key. Check the local credential files, then try again."
+msgstr "Could not access the saved API key. Check the local credential files, then try again."
+
+msgid "Could not access the saved API key. Unlock your system credential store or check the local credential files, then try again."
+msgstr "Could not access the saved API key. Unlock your system credential store or check the local credential files, then try again."
 
 msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
 msgstr "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
@@ -9085,6 +9094,9 @@ msgstr "Saved into this project's skills folder (e.g. <0>.agents/skills</0>), ve
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 
+msgid "Saved keys conflict. Enter a replacement key for this project and endpoint to use instead."
+msgstr "Saved keys conflict. Enter a replacement key for this project and endpoint to use instead."
+
 msgid "Saved themes couldn’t load. The last available theme list is still shown."
 msgstr "Saved themes couldn’t load. The last available theme list is still shown."
 
@@ -9412,8 +9424,8 @@ msgstr "Sent"
 msgid "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
 msgstr "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
 
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
-msgstr "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored outside the project."
+msgstr "Sent to <0>{endpointHost}</0> to embed your content. Stored outside the project."
 
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."
 msgstr "Sent, but the comments could not be marked done — they're still waiting to send."
@@ -10746,6 +10758,9 @@ msgstr "The stored token is missing the permissions this host needs to push."
 
 msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
 msgstr "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
+
+msgid "The system credential store is unavailable. This key is stored in a file with restricted permissions outside the project."
+msgstr "The system credential store is unavailable. This key is stored in a file with restricted permissions outside the project."
 
 msgid "The template's filename (without `.md`)."
 msgstr "The template's filename (without `.md`)."

@@ -11,6 +11,7 @@ import { i18n } from '@lingui/core';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { emitDocumentsChanged } from '@/lib/documents-events';
 import { describedTextOf } from './settings-a11y.test-helper';
 
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
@@ -273,40 +274,148 @@ describe('SearchSection', () => {
     expect(screen.queryByTestId('settings-search-pending')).toBeNull();
   });
 
-  test.each([
-    [null, '~/.ok/secrets.yml'],
-    ['ok-beta', '~/.ok-beta/secrets.yml'],
-  ])(
-    'names the key file in the home of the channel main named (%s)',
-    async (cliCommandName, path) => {
-      (window as unknown as { okDesktop?: unknown }).okDesktop =
-        cliCommandName === null ? undefined : { cliCommandName };
-      try {
-        mockProjectLocalConfig = configWithSemantic({ enabled: true });
-        mockStatus = {
-          enabled: true,
-          keyPresent: false,
-          keyNotRequired: false,
-          keySource: null,
-          keyHint: null,
-          ready: false,
-          capable: false,
-          embedded: 0,
-          total: 5,
-        };
+  test('describes credential storage and endpoint', async () => {
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
+    mockStatus = {
+      enabled: true,
+      keyPresent: false,
+      keyNotRequired: false,
+      keySource: null,
+      keyHint: null,
+      ready: false,
+      capable: false,
+      embedded: 0,
+      total: 5,
+    };
 
-        render(<SearchSection />);
+    render(<SearchSection />);
 
-        const stored = await screen.findByText(
-          (_content, el) =>
-            el?.tagName === 'P' && (el.textContent ?? '').includes('Stored on this machine only'),
-        );
-        expect(stored.textContent).toContain(`(in ${path})`);
-      } finally {
-        (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
-      }
+    const stored = await screen.findByText(
+      (_content, el) =>
+        el?.tagName === 'P' && (el.textContent ?? '').includes('Stored outside the project'),
+    );
+    expect(stored.textContent).toBe(
+      'Sent to api.openai.com to embed your content. Stored outside the project.',
+    );
+  });
+
+  test.each([true, false])(
+    'credential store failure is shown when enabled is %s',
+    async (enabled) => {
+      const { binding } = makeBinding();
+      mockProjectLocalBinding = binding;
+      mockProjectLocalConfig = configWithSemantic({ enabled });
+      mockStatus = {
+        enabled,
+        keyPresent: false,
+        keyNotRequired: false,
+        keySource: null,
+        keyHint: null,
+        ready: false,
+        capable: false,
+        embedded: 0,
+        total: 5,
+        keyStoreUnavailable: true,
+      };
+      render(<SearchSection />);
+      expect((await screen.findByTestId('settings-search-key-store-error')).textContent).toContain(
+        'Could not access the saved API key.',
+      );
+      expect(screen.queryByTestId('settings-search-needs-key')).toBeNull();
+      const field = screen.getByTestId('settings-search-key');
+      expect(field.textContent).toContain('Could not access the saved API key.');
+      expect(screen.queryByTestId('settings-search-key-input')).toBeNull();
+      expect(screen.queryByTestId('settings-search-key-save')).toBeNull();
+      expect(screen.queryByTestId('settings-search-key-clear')).toBeNull();
+      mockStatus = {
+        ...mockStatus,
+        keyStoreUnavailable: false,
+        keyPresent: true,
+        keySource: 'project',
+        keyHint: '1234',
+      };
+      act(() => emitDocumentsChanged());
+      expect(await screen.findByTestId('settings-search-key-input')).toBeDefined();
+      expect(screen.getByTestId('settings-search-key-clear')).toBeDefined();
+      expect(screen.getByText('Replace key')).toBeDefined();
     },
   );
+
+  test.each([
+    ['future_error', 'Unlock your system credential store'],
+    ['timeout', 'Wait for the credential store operation'],
+    ['index_invalid', 'Check the local credential files'],
+  ])('credential store status preserves fields for %s', async (code, message) => {
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
+    mockStatus = {
+      enabled: true,
+      keyPresent: false,
+      keyNotRequired: false,
+      keySource: null,
+      keyHint: null,
+      ready: false,
+      capable: false,
+      embedded: 0,
+      total: 5,
+      keyStoreUnavailable: true,
+      keyStoreError: code,
+    } as unknown as SemanticIndexStatus;
+    render(<SearchSection />);
+    expect((await screen.findByTestId('settings-search-key-store-error')).textContent).toContain(
+      message,
+    );
+    expect(screen.queryByTestId('settings-search-key-input')).toBeNull();
+  });
+
+  test('a migration conflict permits a replacement and recovers after saving', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
+    mockStatus = {
+      enabled: true,
+      keyPresent: false,
+      keyNotRequired: false,
+      keySource: null,
+      keyHint: null,
+      ready: false,
+      capable: false,
+      embedded: 0,
+      total: 5,
+      keyStoreUnavailable: true,
+      keyStoreError: 'migration_conflict',
+    };
+    const setKey = vi.fn(async () => {
+      if (!mockStatus) throw new Error('Missing status');
+      mockStatus = {
+        ...mockStatus,
+        keyStoreUnavailable: false,
+        keyStoreError: undefined,
+        keyPresent: true,
+        keySource: 'project',
+        keyHint: '1234',
+      };
+      return { ok: true } as const;
+    });
+    render(
+      <SearchSection
+        transport={{
+          setKey,
+          clearKey: async () => ({ ok: true }),
+          testConnection: async () => null,
+        }}
+      />,
+    );
+    const field = screen.getByTestId('settings-search-key');
+    await screen.findByTestId('settings-search-key-store-error');
+    expect(field.textContent).toContain('Saved keys conflict.');
+    const input = screen.getByTestId('settings-search-key-input');
+    await user.type(input, 'replacement-key');
+    await user.click(screen.getByTestId('settings-search-key-save'));
+    expect(setKey).toHaveBeenCalledWith('replacement-key');
+    expect(await screen.findByTestId('settings-search-key-set')).toBeDefined();
+    expect(screen.queryByTestId('settings-search-key-store-error')).toBeNull();
+  });
 
   test('on + key present but provider rejected it: shows the provider-error hint', async () => {
     const { binding } = makeBinding();
@@ -1288,6 +1397,63 @@ describe('SearchSection', () => {
     expect(result.textContent).toContain('401');
   });
 
+  test('connection test reports credential store failure', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({
+      enabled: true,
+      baseUrl: 'https://my-vllm.internal/v1',
+    });
+    render(
+      <SearchSection
+        transport={{
+          setKey: async () => ({ ok: true }),
+          clearKey: async () => ({ ok: true }),
+          testConnection: async () => ({
+            ok: false,
+            endpoint: 'https://my-vllm.internal/v1',
+            model: 'text-embedding-3-small',
+            reason: 'credential_store',
+          }),
+        }}
+      />,
+    );
+    await user.click(screen.getByTestId('settings-search-test-connection'));
+    expect((await screen.findByTestId('settings-search-test-error')).textContent).toContain(
+      'Could not access the saved API key.',
+    );
+  });
+
+  test('connection test reports migration conflict recovery', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({
+      enabled: true,
+      baseUrl: 'https://my-vllm.internal/v1',
+    });
+    render(
+      <SearchSection
+        transport={{
+          setKey: async () => ({ ok: true }),
+          clearKey: async () => ({ ok: true }),
+          testConnection: async () => ({
+            ok: false,
+            endpoint: 'https://my-vllm.internal/v1',
+            model: 'text-embedding-3-small',
+            reason: 'credential_store',
+            keyStoreError: 'migration_conflict',
+          }),
+        }}
+      />,
+    );
+    await user.click(screen.getByTestId('settings-search-test-connection'));
+    const result = await screen.findByTestId('settings-search-test-error');
+    expect(result.textContent).toContain('Saved keys conflict.');
+    expect(result.textContent).not.toContain('Unlock your system credential store');
+  });
+
   test('a verdict for a stale endpoint says so instead of reporting it', async () => {
     const user = userEvent.setup();
     const { binding } = makeBinding();
@@ -1474,6 +1640,43 @@ describe('SearchSection', () => {
     await user.click(screen.getByTestId('settings-search-key-clear'));
     expect(clearKey).toHaveBeenCalled();
   });
+
+  test.each([
+    ['project', true, true],
+    ['project', false, false],
+    ['env', true, false],
+  ] as const)(
+    'file fallback notice for source %s and flag %s',
+    async (keySource, keyStoredInFile, visible) => {
+      const { binding } = makeBinding();
+      mockProjectLocalBinding = binding;
+      mockProjectLocalConfig = configWithSemantic({ enabled: true });
+      mockStatus = {
+        enabled: true,
+        keyPresent: true,
+        keyNotRequired: false,
+        keySource,
+        keyHint: '1234',
+        ready: true,
+        capable: true,
+        embedded: 0,
+        total: 3,
+        keyStoredInFile,
+      };
+      render(<SearchSection />);
+      await screen.findByTestId(
+        keySource === 'env' ? 'settings-search-key-env' : 'settings-search-key-set',
+      );
+      const notice = screen.queryByTestId('settings-search-key-file-fallback');
+      if (visible) {
+        expect(notice?.textContent).toContain(
+          'This key is stored in a file with restricted permissions outside the project.',
+        );
+      } else {
+        expect(notice).toBeNull();
+      }
+    },
+  );
 
   test('a loopback endpoint shows the key as not required, and no needs-key nag', async () => {
     const { binding } = makeBinding();

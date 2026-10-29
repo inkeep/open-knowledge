@@ -18,10 +18,29 @@ import {
   type ConfigBinding,
   ConfigSchema,
 } from '@inkeep/open-knowledge-core';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { removeAllDuringTeardown } from '../stress/_helpers/teardown-fs.ts';
 import { createTestClient, createTestServer, pollUntil, type TestServer } from './test-harness';
+
+const keyring = vi.hoisted(() => new Map<string, string>());
+vi.mock('@napi-rs/keyring', () => ({
+  AsyncEntry: class {
+    private readonly id: string;
+    constructor(service: string, account: string) {
+      this.id = JSON.stringify([service, account]);
+    }
+    async getPassword() {
+      return keyring.get(this.id) ?? null;
+    }
+    async setPassword(value: string) {
+      keyring.set(this.id, value);
+    }
+    async deletePassword() {
+      return keyring.delete(this.id);
+    }
+  },
+}));
 
 interface BoundConfig {
   readonly binding: ConfigBinding;
@@ -201,7 +220,7 @@ describe('test-reset with scope=server returns an isolated server to its booted 
 
     const response = await resetServer(server);
 
-    expect(response.status).toBe(200);
+    expect(response.status, await response.clone().text()).toBe(200);
     expect(existsSync(localConfigPath(server))).toBe(false);
     expect(await semanticSearchEnabled(server)).toBe(false);
   }, 60_000);
@@ -409,7 +428,8 @@ describe('test-reset with scope=server returns an isolated server to its booted 
     const otherSettings = [projectConfigPath(other), localConfigPath(other), userConfigPath(other)];
     const settingsBefore = otherSettings.map((path) => readFileSync(path, 'utf-8'));
 
-    expect((await resetServer(reset)).status).toBe(200);
+    const resetResponse = await resetServer(reset);
+    expect(resetResponse.status, await resetResponse.clone().text()).toBe(200);
 
     expect(otherSettings.map((path) => readFileSync(path, 'utf-8'))).toEqual(settingsBefore);
     expect(other.instance.contentFilter.isExcluded('assets/new.png')).toBe(false);

@@ -1126,6 +1126,9 @@ msgstr "Aceitar a versão recebida para o conflito {0}"
 msgid "Accept their deletion"
 msgstr "Aceitar a exclusão deles"
 
+msgid "Access to the saved API key timed out. Wait for the credential store operation to finish, then try again."
+msgstr "O acesso à chave de API salva excedeu o tempo limite. Aguarde a operação do armazenamento de credenciais terminar e tente novamente."
+
 msgid "Access token"
 msgstr "Token de acesso"
 
@@ -2810,6 +2813,12 @@ msgstr "Copiando"
 
 msgid "Copying..."
 msgstr "Copiando..."
+
+msgid "Could not access the saved API key. Check the local credential files, then try again."
+msgstr "Não foi possível acessar a chave de API salva. Verifique os arquivos de credenciais locais e tente novamente."
+
+msgid "Could not access the saved API key. Unlock your system credential store or check the local credential files, then try again."
+msgstr "Não foi possível acessar a chave de API salva. Desbloqueie o armazenamento de credenciais do sistema ou verifique os arquivos de credenciais locais e tente novamente."
 
 msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
 msgstr "Não foi possível verificar os links simbólicos de {shareBranch}, então a troca não foi feita. Tente novamente; se continuar falhando, confira se o Git está instalado e se a pasta do projeto pode ser lida."
@@ -9081,6 +9090,9 @@ msgstr "Salvo na pasta de habilidades deste projeto (ex.: <0>.agents/skills</0>)
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "Salvo na sua pasta global de habilidades (ex.: <0>~/.agents/skills</0>)."
 
+msgid "Saved keys conflict. Enter a replacement key for this project and endpoint to use instead."
+msgstr "As chaves salvas estão em conflito. Insira uma chave substituta para este projeto e endpoint."
+
 msgid "Saved themes couldn’t load. The last available theme list is still shown."
 msgstr "Não foi possível carregar os temas salvos. A última lista de temas disponível continua sendo exibida."
 
@@ -9408,8 +9420,8 @@ msgstr "Enviado"
 msgid "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
 msgstr "Enviado em particular para a equipe do OpenKnowledge, junto com sua nota e a versão do app. Nunca é publicado."
 
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
-msgstr "Enviada para <0>{endpointHost}</0> para gerar os embeddings do seu conteúdo. Guardada só neste computador (em <1>{secretsPath}</1>), nunca no projeto."
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored outside the project."
+msgstr "Enviada para <0>{endpointHost}</0> para gerar os embeddings do seu conteúdo. Guardada fora do projeto."
 
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."
 msgstr "Enviado, mas não foi possível marcar os comentários como concluídos — eles continuam aguardando envio."
@@ -10742,6 +10754,9 @@ msgstr "Faltam ao token guardado as permissões de que este host precisa para fa
 
 msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
 msgstr "O modo de sincronização com que os colegas começam na primeira vez que abrem este projeto. Ele fica salvo nas configurações do OpenKnowledge do projeto, então só chega até eles quando o Compartilhamento de configuração abaixo está definido como Compartilhado."
+
+msgid "The system credential store is unavailable. This key is stored in a file with restricted permissions outside the project."
+msgstr "O armazenamento de credenciais do sistema está indisponível. Esta chave é guardada em um arquivo com permissões restritas fora do projeto."
 
 msgid "The template's filename (without `.md`)."
 msgstr "O nome do arquivo do modelo (sem `.md`)."

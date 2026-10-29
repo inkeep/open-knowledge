@@ -1130,6 +1130,9 @@ msgstr "Accepter la version entrante pour le conflit {0}"
 msgid "Accept their deletion"
 msgstr "Accepter leur suppression"
 
+msgid "Access to the saved API key timed out. Wait for the credential store operation to finish, then try again."
+msgstr "Le délai d’accès à la clé API enregistrée a expiré. Attendez la fin de l’opération du stockage des identifiants, puis réessayez."
+
 msgid "Access token"
 msgstr "Jeton d'accès"
 
@@ -2814,6 +2817,12 @@ msgstr "Copie en cours"
 
 msgid "Copying..."
 msgstr "Copie en cours…"
+
+msgid "Could not access the saved API key. Check the local credential files, then try again."
+msgstr "Impossible d’accéder à la clé API enregistrée. Vérifiez les fichiers d’identifiants locaux, puis réessayez."
+
+msgid "Could not access the saved API key. Unlock your system credential store or check the local credential files, then try again."
+msgstr "Impossible d’accéder à la clé API enregistrée. Déverrouillez le stockage des identifiants système ou vérifiez les fichiers d’identifiants locaux, puis réessayez."
 
 msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
 msgstr "Impossible de vérifier les liens symboliques de {shareBranch} : le passage n'a donc pas eu lieu. Réessayez ; si l'échec persiste, vérifiez que Git est installé et que le dossier du projet est lisible."
@@ -9085,6 +9094,9 @@ msgstr "Enregistré dans le dossier de compétences de ce projet (par ex. <0>.ag
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "Enregistré dans votre dossier de compétences global (par ex. <0>~/.agents/skills</0>)."
 
+msgid "Saved keys conflict. Enter a replacement key for this project and endpoint to use instead."
+msgstr "Les clés enregistrées sont en conflit. Saisissez une clé de remplacement pour ce projet et ce point de terminaison."
+
 msgid "Saved themes couldn’t load. The last available theme list is still shown."
 msgstr "Impossible de charger les thèmes enregistrés. La dernière liste de thèmes disponible reste affichée."
 
@@ -9412,8 +9424,8 @@ msgstr "Envoyé"
 msgid "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
 msgstr "Envoyé en privé à l'équipe OpenKnowledge, avec votre note et la version de l'application. Jamais publié publiquement."
 
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
-msgstr "Envoyée à <0>{endpointHost}</0> pour calculer les embeddings de votre contenu. Stockée uniquement sur cette machine (dans <1>{secretsPath}</1>), jamais dans le projet."
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored outside the project."
+msgstr "Envoyée à <0>{endpointHost}</0> pour calculer les embeddings de votre contenu. Stockée en dehors du projet."
 
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."
 msgstr "Envoyé, mais les commentaires n'ont pas pu être marqués comme traités — ils attendent toujours d'être envoyés."
@@ -10746,6 +10758,9 @@ msgstr "Il manque au jeton enregistré les permissions dont cet hôte a besoin p
 
 msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
 msgstr "Le mode de synchronisation avec lequel vos coéquipiers démarrent la première fois qu'ils ouvrent ce projet. Il est enregistré dans les paramètres OpenKnowledge du projet ; il ne leur parvient donc que si le Partage de la configuration ci-dessous est réglé sur Partagé."
+
+msgid "The system credential store is unavailable. This key is stored in a file with restricted permissions outside the project."
+msgstr "Le stockage des identifiants système est indisponible. Cette clé est stockée dans un fichier aux permissions restreintes, en dehors du projet."
 
 msgid "The template's filename (without `.md`)."
 msgstr "Le nom de fichier du modèle (sans `.md`)."

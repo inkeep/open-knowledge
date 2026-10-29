@@ -1031,7 +1031,7 @@ export const ConfigSchema = z.looseObject({
               reload: 'live',
               defaultScope: 'project-local',
               description:
-                'Base URL of the OpenAI-compatible embeddings API (default https://api.openai.com/v1). Override to point at a self-hosted server (Ollama / vLLM / LM Studio) or another provider. The API key is NOT stored here — set it with `ok embeddings set-key` (stored in secrets.yml in the OpenKnowledge home folder); it is sent to whichever endpoint this names.',
+                'Base URL of the OpenAI-compatible embeddings API (default https://api.openai.com/v1). Override to point at a self-hosted server (Ollama / vLLM / LM Studio) or another provider. The API key is NOT stored here — set it with `ok embeddings set-key` (stored on this machine, using the OS credential store when available); it is sent to whichever endpoint this names.',
             })
             .default(DEFAULT_EMBEDDINGS_BASE_URL),
           model: z

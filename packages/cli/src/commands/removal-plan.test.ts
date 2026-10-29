@@ -13,8 +13,10 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { SHARED_OK_ENTRIES } from '@inkeep/open-knowledge-core';
+import { currentDesktopProduct } from '@inkeep/open-knowledge-core/constants/product';
 import { MCP_SERVER_NAME } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { EmbeddingsSecretStoreError } from '../auth/embeddings-key-store.ts';
 import { DESKTOP_UPDATER_CACHE_DIR_NAME } from '../integrations/desktop-state.ts';
 import { readPathInstallMarker } from '../integrations/path-shim.ts';
 import {
@@ -52,6 +54,59 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+test('reports the native service for manual cleanup without leaking a credential failure', async () => {
+  const outcome = await runRemoval(
+    {
+      scope: 'uninstall',
+      ops: [{ kind: 'embeddings-key', group: 'credentials', label: 'Remove keys' }],
+    },
+    {
+      clearEmbeddingsKey: async () => {
+        throw new Error('sk-private-native-error');
+      },
+    },
+  );
+  expect(outcome.failed).toHaveLength(1);
+  expect(outcome.failed[0].detail).toContain(
+    `${currentDesktopProduct().keyringService}-embeddings`,
+  );
+  expect(outcome.failed[0].detail).toContain('credential manager');
+  expect(outcome.failed[0].detail).not.toContain('sk-private-native-error');
+});
+
+test('uninstall reports file permissions rather than prescribing native credential deletion', async () => {
+  const outcome = await runRemoval(
+    {
+      scope: 'uninstall',
+      ops: [{ kind: 'embeddings-key', group: 'credentials', label: 'Remove keys' }],
+    },
+    {
+      clearEmbeddingsKey: async () => {
+        throw new EmbeddingsSecretStoreError('file_access');
+      },
+    },
+  );
+  expect(outcome.failed).toHaveLength(1);
+  expect(outcome.failed[0].detail).toContain('Check their contents and permissions');
+  expect(outcome.failed[0].detail).not.toContain('remove entries');
+});
+
+test('uninstall reports unverifiable native cleanup without advising a reinstall', async () => {
+  const outcome = await runRemoval(
+    {
+      scope: 'uninstall',
+      ops: [{ kind: 'embeddings-key', group: 'credentials', label: 'Remove keys' }],
+    },
+    {
+      clearEmbeddingsKey: async () => {
+        throw new EmbeddingsSecretStoreError('native_access', 'load');
+      },
+    },
+  );
+  expect(outcome.failed[0].detail).toContain('automatic native-key removal was not verified');
+  expect(outcome.failed[0].detail).not.toContain('Reinstall');
 });
 
 function write(path: string, content: string): void {

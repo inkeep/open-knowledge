@@ -31,6 +31,25 @@ import { checkLocalOpSecurity } from './local-op-security.ts';
 import type { PinoLogger } from './logger.ts';
 import { saveInMemoryCheckpoint } from './shadow-repo.ts';
 
+const keyring = vi.hoisted(() => new Map<string, string>());
+vi.mock('@napi-rs/keyring', () => ({
+  AsyncEntry: class {
+    private readonly id: string;
+    constructor(service: string, account: string) {
+      this.id = JSON.stringify([service, account]);
+    }
+    async getPassword() {
+      return keyring.get(this.id) ?? null;
+    }
+    async setPassword(value: string) {
+      keyring.set(this.id, value);
+    }
+    async deletePassword() {
+      return keyring.delete(this.id);
+    }
+  },
+}));
+
 const statSyncFaults = vi.hoisted(() => new Map<string, NodeJS.ErrnoException>());
 const statSyncOverrides = vi.hoisted(() => new Map<string, unknown>());
 

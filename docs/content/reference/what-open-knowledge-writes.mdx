@@ -201,7 +201,9 @@ Beta writes the `~/.ok/` entries below under `~/.ok-beta/` instead, except the s
 | Path | What it is | Sensitive? |
 | --- | --- | --- |
 | `~/.ok/global.yml` | User-global [config](./configuration.mdx) (applies to every project) | No |
-| `~/.ok/secrets.yml` | Embeddings provider API key for [semantic search](./configuration.mdx#semantic-search), if you set one. Written `0600`; never in `config.yml` | **Yes** (`0600`) |
+| OS credential store | Embeddings provider keys for [semantic search](./configuration.mdx#semantic-search), isolated by release channel, project and endpoint; service names and recovery are in [credential store troubleshooting](./configuration.mdx#credential-store-troubleshooting) | **Yes** |
+| `~/.ok/secrets.yml` | Legacy embeddings keys awaiting verified migration, or the file fallback when no supported credential store is available. Written `0600`; never in `config.yml` | **Yes** (`0600`) |
+| `~/.ok/secrets.yml.embeddings-index`, `~/.ok/secrets.yml.embeddings-index.required`, `~/.ok/secrets.yml.embeddings-lock.sqlite` | Credential inventory and cross-process coordination; contains project paths and endpoint names, never API keys | Local metadata (`0600`) |
 | `~/.ok/auth.yml` | Auth-token fallback, used only when the Keychain is unavailable. Written `0600` | **Yes** (`0600`) |
 | `~/.ok/skill-state.yml`, `~/.ok/skill-install-events.jsonl` | Skill-install bookkeeping | No |
 | `~/.agents/skills/<name>/`, `~/.claude/skills/<name>/`, … | Your global-scope skills, versioned in place in your home editor dirs (kept by `ok uninstall` unless `--purge-content`) | No |
@@ -349,7 +351,9 @@ Beta writes the `~/.ok/` entries below under `~/.ok-beta/` instead, except the s
 | Path | What it is | Sensitive? |
 | --- | --- | --- |
 | `~/.ok/global.yml` | User-global [config](./configuration.mdx) (applies to every project) | No |
-| `~/.ok/secrets.yml` | Embeddings provider API key for [semantic search](./configuration.mdx#semantic-search), if you set one. Written `0600`; never in `config.yml` | **Yes** (`0600`) |
+| OS credential store | Embeddings provider keys for [semantic search](./configuration.mdx#semantic-search), isolated by release channel, project and endpoint | **Yes** |
+| `~/.ok/secrets.yml` | Legacy embeddings keys awaiting verified migration, or the file fallback when no supported credential store is available. Written `0600`; never in `config.yml` | **Yes** (`0600`) |
+| `~/.ok/secrets.yml.embeddings-index`, `~/.ok/secrets.yml.embeddings-index.required`, `~/.ok/secrets.yml.embeddings-lock.sqlite` | Credential inventory and cross-process coordination; contains project paths and endpoint names, never API keys | Local metadata (`0600`) |
 | `~/.ok/auth.yml` | Auth-token fallback, used when no OS credential store is reachable. Written `0600` | **Yes** (`0600`) |
 | `~/.ok/skill-state.yml`, `~/.ok/skill-install-events.jsonl` | Skill-install bookkeeping | No |
 | `~/.agents/skills/<name>/`, `~/.claude/skills/<name>/`, … | Your global-scope skills, versioned in place in your home editor dirs (kept by `ok uninstall` unless `--purge-content`) | No |

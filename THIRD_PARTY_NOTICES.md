@@ -1699,7 +1699,7 @@ Homepage: https://github.com/Brooooooklyn/canvas
 
 Copyright (c) 2020 lynweklm@gmail.com
 
-### `@napi-rs/keyring@1.3.0`
+### `@napi-rs/keyring@2.1.2`
 Homepage: https://github.com/Brooooooklyn/keyring-node
 
 Copyright (c) 2020 N-API for Rust
