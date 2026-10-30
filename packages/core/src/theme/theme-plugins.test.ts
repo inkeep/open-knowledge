@@ -55,6 +55,15 @@ function expectStatusTextReadable(label: string, tokens: Record<string, string>)
   }
 }
 
+function expectMutedTextReadable(label: string, tokens: Record<string, string>): void {
+  for (const surface of ['background', 'card', 'popover', 'sidebar'] as const) {
+    expect(
+      contrast(tokens['muted-foreground'] ?? '', tokens[surface] ?? ''),
+      `${label} muted text on ${surface}`,
+    ).toBeGreaterThanOrEqual(4.5);
+  }
+}
+
 function expectEditorMarksReadable(label: string, tokens: Record<string, string>): void {
   for (const name of [
     'ok-codeblock-title-bg',
@@ -317,6 +326,26 @@ describe('token mapping + generateColorThemesCss', () => {
     }
   });
 
+  test('every generated palette theme keeps muted text readable on the page and on cards, menus and the sidebar', () => {
+    for (const theme of THEME_PLUGINS) {
+      if (!theme.toTokens) continue;
+      expectMutedTextReadable(theme.id, theme.toTokens());
+    }
+  });
+
+  test('Catppuccin Latte and Frappé muted text moves only as far as it takes to read on the page and on cards', () => {
+    for (const id of ['catppuccin-latte', 'catppuccin-frappe']) {
+      const tokens = THEME_PLUGINS.find((theme) => theme.id === id)?.toTokens?.() ?? {};
+      const muted = tokens['muted-foreground'] ?? '';
+      const weakest = Math.min(
+        contrast(muted, tokens.background ?? ''),
+        contrast(muted, tokens.card ?? ''),
+      );
+      expect(weakest, `${id} muted text on its weakest surface`).toBeGreaterThanOrEqual(4.5);
+      expect(weakest, `${id} muted text on its weakest surface`).toBeLessThan(4.6);
+    }
+  });
+
   test('every generated palette theme keeps status text readable on the page, cards and its own tint', () => {
     for (const theme of THEME_PLUGINS) {
       if (!theme.toTokens) continue;
@@ -377,6 +406,7 @@ describe('token mapping + generateColorThemesCss', () => {
       palette,
     });
     expectStatusTextReadable('low contrast', tokens);
+    expectMutedTextReadable('low contrast', tokens);
     expectEditorMarksReadable('low contrast', tokens);
     for (const [backgroundToken, foregroundToken] of [
       ['sidebar-hover', 'sidebar-hover-foreground'],
