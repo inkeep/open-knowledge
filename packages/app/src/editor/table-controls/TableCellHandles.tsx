@@ -231,8 +231,8 @@ function CellHandle({
               onPointerDown={drag.onPointerDown}
               className={
                 axis === 'column'
-                  ? 'h-3 w-7 rounded-full p-0 text-gray-700 dark:text-muted-foreground bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 hover:text-foreground dark:hover:bg-gray-600 dark:hover:text-gray-100 relative cursor-grab before:absolute before:-inset-[6px] before:content-[""]'
-                  : 'h-7 w-3 rounded-full p-0 text-gray-700 dark:text-muted-foreground bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 hover:text-foreground dark:hover:bg-gray-600 dark:hover:text-gray-100 relative cursor-grab before:absolute before:-inset-[6px] before:content-[""]'
+                  ? 'h-3 w-7 rounded-full p-0 text-foreground/70 dark:text-foreground/90 bg-foreground/10 dark:bg-foreground/20 hover:bg-foreground/15 hover:text-foreground dark:hover:bg-foreground/25 dark:hover:text-foreground relative cursor-grab before:absolute before:-inset-[6px] before:content-[""]'
+                  : 'h-7 w-3 rounded-full p-0 text-foreground/70 dark:text-foreground/90 bg-foreground/10 dark:bg-foreground/20 hover:bg-foreground/15 hover:text-foreground dark:hover:bg-foreground/25 dark:hover:text-foreground relative cursor-grab before:absolute before:-inset-[6px] before:content-[""]'
               }
               aria-label={axis === 'column' ? t`Column options` : t`Row options`}
             >

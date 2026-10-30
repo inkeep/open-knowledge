@@ -361,7 +361,7 @@ async function wikiLinkCompletionSource(
 
 const wikiLinkTheme = EditorView.theme({
   '.cm-wiki-link': {
-    color: 'oklch(52.7% 0.154 228.4)',
+    color: 'var(--link-color)',
     fontWeight: '500',
   },
   '.cm-wiki-link:hover': {

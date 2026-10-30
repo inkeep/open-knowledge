@@ -78,15 +78,15 @@ export function parsePreviewCspViolationMessage(
 }
 
 const PREVIEW_SCROLLBAR_STYLE = `<style>
-  html, body { scrollbar-width: thin; scrollbar-color: rgba(115,115,115,0.4) transparent; }
+  html, body { scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--muted-foreground) 40%, transparent) transparent; }
   html::-webkit-scrollbar, body::-webkit-scrollbar,
   *::-webkit-scrollbar { width: 8px; height: 8px; }
   html::-webkit-scrollbar-track, body::-webkit-scrollbar-track,
   *::-webkit-scrollbar-track { background: transparent; }
   html::-webkit-scrollbar-thumb, body::-webkit-scrollbar-thumb,
-  *::-webkit-scrollbar-thumb { background: rgba(115,115,115,0.4); border-radius: 4px; }
+  *::-webkit-scrollbar-thumb { background: color-mix(in oklab, var(--muted-foreground) 40%, transparent); border-radius: 4px; }
   html::-webkit-scrollbar-thumb:hover, body::-webkit-scrollbar-thumb:hover,
-  *::-webkit-scrollbar-thumb:hover { background: rgba(115,115,115,0.6); }
+  *::-webkit-scrollbar-thumb:hover { background: color-mix(in oklab, var(--muted-foreground) 60%, transparent); }
 </style>`;
 
 function themeDecls(theme: PreviewTheme): string {

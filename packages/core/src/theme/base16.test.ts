@@ -225,6 +225,13 @@ describe('base16ToTokens', () => {
     expect(t['ok-table-resize-handle']).toBe(p.base0D);
     expect(t['ok-diff-ins']).toBe(p.base0B);
     expect(t['ok-diff-del']).toBe(p.base08);
+    expect(t['ok-agent-thread-text']).toBe(p.base05);
+  });
+
+  test('the file tree muted color is the comment slot while it reads on the sidebar', () => {
+    const palette = paletteOf({ base01: '#ffffff', base03: '#8a8a8a' });
+    const t = base16ToTokens({ name: 'T', variant: 'light', palette });
+    expect(t['ok-tree-muted']).toBe('#8a8a8a');
   });
 
   test('find highlights and unresolved links keep the palette color when text already reads', () => {

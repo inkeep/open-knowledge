@@ -88,7 +88,7 @@ function expectEditorMarksReadable(label: string, tokens: Record<string, string>
     .filter(([token]) => token.startsWith('callout-'))
     .map(([token, accent]) => [`${token} wash`, mixHex(page, accent, CALLOUT_WASH_TINT)] as const);
   expect(calloutWashes.length, `${label} callout colors`).toBeGreaterThan(0);
-  for (const name of ['ok-unresolved-link', 'broken-link-color']) {
+  for (const name of ['ok-unresolved-link', 'broken-link-color', 'link-color']) {
     for (const [surface, color] of [
       ['background', page],
       ['muted', tokens.muted ?? ''],
@@ -295,7 +295,7 @@ describe('token mapping + generateColorThemesCss', () => {
     }
   });
 
-  test('every generated palette theme keeps sidebar row text and actions readable', () => {
+  test('every generated palette theme keeps sidebar row text and actions readable, and file tree glyphs visible on the resting sidebar', () => {
     for (const theme of THEME_PLUGINS) {
       if (!theme.toTokens) continue;
       const tokens = theme.toTokens();
@@ -306,6 +306,7 @@ describe('token mapping + generateColorThemesCss', () => {
         ['sidebar-selected', 'sidebar-selected-foreground', 4.5],
         ['sidebar-selected', 'sidebar-selected-muted-foreground', 4.5],
         ['sidebar-selected', 'sidebar-selected-destructive-foreground', 3],
+        ['sidebar', 'ok-tree-muted', 3],
       ] as const) {
         const background = relativeLuminance(tokens[backgroundToken] ?? '');
         const foreground = relativeLuminance(tokens[foregroundToken] ?? '');
@@ -330,6 +331,19 @@ describe('token mapping + generateColorThemesCss', () => {
     }
   });
 
+  test('every generated palette theme keeps links readable on the page, cards and menus', () => {
+    for (const theme of THEME_PLUGINS) {
+      if (!theme.toTokens) continue;
+      const tokens = theme.toTokens();
+      for (const surface of ['background', 'card', 'popover'] as const) {
+        expect(
+          contrast(tokens['link-color'] ?? '', tokens[surface] ?? ''),
+          `${theme.id} link-color on ${surface}`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
   test('every generated palette theme keeps document text readable under find highlights', () => {
     for (const theme of THEME_PLUGINS) {
       if (!theme.toTokens) continue;
@@ -337,7 +351,7 @@ describe('token mapping + generateColorThemesCss', () => {
     }
   });
 
-  test('custom low-contrast palettes receive readable sidebar row foregrounds', () => {
+  test('custom low-contrast palettes receive readable sidebar row foregrounds and file tree glyphs visible on the resting sidebar', () => {
     const palette: Base16Palette = {
       base00: '#e0e0e0',
       base01: '#d9d9d9',
@@ -379,6 +393,7 @@ describe('token mapping + generateColorThemesCss', () => {
     for (const [backgroundToken, foregroundToken] of [
       ['sidebar-hover', 'sidebar-hover-destructive-foreground'],
       ['sidebar-selected', 'sidebar-selected-destructive-foreground'],
+      ['sidebar', 'ok-tree-muted'],
     ] as const) {
       const background = relativeLuminance(tokens[backgroundToken] ?? '');
       const foreground = relativeLuminance(tokens[foregroundToken] ?? '');
