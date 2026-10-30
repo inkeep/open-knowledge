@@ -29,7 +29,7 @@ function rtlImportViolationMessage(violations: readonly string[]): string {
     .map((p) => `  - ${p}`)
     .join(
       '\n',
-    )}\n\nFix: rename to *.dom.test.tsx (NG6 escape hatch — per-file migration allowed when the file is a natural Tier-3 candidate), or to *.browser.test.tsx when it belongs in the production-compiled browser tier, OR remove the @testing-library/react value import. Type-only imports (\`import type { X } from '@testing-library/react'\`) are exempt — they erase at compile time and don't trigger module evaluation.`;
+    )}\n\nFix: rename to *.browser.test.tsx to mount it in the production-compiled browser tier (jsdom is retired, so no new *.dom.test.tsx), OR remove the @testing-library/react value import. Type-only imports (\`import type { X } from '@testing-library/react'\`) are exempt — they erase at compile time and don't trigger module evaluation.`;
 }
 
 const PLANTED_RTL_IMPORT = "import { render, screen } from '@testing-library/react';";
