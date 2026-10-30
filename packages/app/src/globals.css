@@ -7063,3 +7063,12 @@ html:not([data-color-theme]):not(.dark) [data-slot="kbd"] {
 [data-editor-pane-projected] [data-editor-pane-tab-group][data-editor-pane-selected] {
   min-width: 0;
 }
+
+[data-graph-view] .float-tooltip-kap {
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 0.25rem);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: var(--shadow-md, 0 2px 8px oklch(0% 0 0 / 0.15));
+}

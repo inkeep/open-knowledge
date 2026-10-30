@@ -1,62 +1,41 @@
 import { describe, expect, test } from 'vitest';
 import { clusterColor } from './graph-colors';
 
+const PALETTE = [
+  '#111111',
+  '#222222',
+  '#333333',
+  '#444444',
+  '#555555',
+  '#666666',
+  '#777777',
+  '#888888',
+];
+
 describe('clusterColor', () => {
-  test('returns deterministic output for the same input', () => {
-    const color1 = clusterColor('retrieval', true);
-    const color2 = clusterColor('retrieval', true);
-    expect(color1).toBe(color2);
+  test('a cluster keeps its color', () => {
+    expect(clusterColor('retrieval', PALETTE)).toBe(clusterColor('retrieval', PALETTE));
   });
 
-  test('different clusters produce different colors for at least 5 inputs', () => {
-    const clusters = [
-      'retrieval',
-      'long-term-memory',
-      'planning',
-      'knowledge-graphs',
-      'evaluation',
-    ];
-    const darkColors = clusters.map((c) => clusterColor(c, true));
-    const uniqueDark = new Set(darkColors);
-    expect(uniqueDark.size).toBeGreaterThanOrEqual(5);
-  });
-
-  test('dark mode returns valid hex colors', () => {
-    const clusters = [
-      'retrieval',
-      'long-term-memory',
-      'planning',
-      'knowledge-graphs',
-      'evaluation',
-    ];
-    for (const c of clusters) {
-      expect(clusterColor(c, true)).toMatch(/^#[0-9a-f]{6}$/i);
-    }
-  });
-
-  test('light mode returns valid hex colors', () => {
-    const clusters = [
-      'retrieval',
-      'long-term-memory',
-      'planning',
-      'knowledge-graphs',
-      'evaluation',
-    ];
-    for (const c of clusters) {
-      expect(clusterColor(c, false)).toMatch(/^#[0-9a-f]{6}$/i);
-    }
-  });
-
-  test('dark and light palettes produce different colors for the same cluster', () => {
-    const dark = clusterColor('retrieval', true);
-    const light = clusterColor('retrieval', false);
-    expect(dark).not.toBe(light);
-  });
-
-  test('handles single-character and long cluster names', () => {
-    expect(clusterColor('x', true)).toMatch(/^#[0-9a-f]{6}$/i);
-    expect(clusterColor('a-very-long-cluster-name-that-goes-on-and-on', false)).toMatch(
-      /^#[0-9a-f]{6}$/i,
+  test('clusters take every color of the palette and nothing else', () => {
+    const colors = new Set(
+      Array.from({ length: 64 }, (_, index) => clusterColor(`cluster-${index}`, PALETTE)),
     );
+    expect([...colors].sort()).toEqual([...PALETTE].sort());
+  });
+
+  test('a one-character or very long cluster name still takes a palette color', () => {
+    for (const cluster of ['x', 'a-very-long-cluster-name-that-goes-on-and-on']) {
+      expect(PALETTE).toContain(clusterColor(cluster, PALETTE));
+    }
+  });
+
+  test('a cluster keeps its slot when the theme changes the palette', () => {
+    const other = PALETTE.map((_, index) => `#a0a0${index}0`);
+    for (const cluster of ['retrieval', 'planning', 'x', 'a-very-long-cluster-name']) {
+      expect(other.indexOf(clusterColor(cluster, other))).toBe(
+        PALETTE.indexOf(clusterColor(cluster, PALETTE)),
+      );
+    }
   });
 });

@@ -1,6 +1,6 @@
 import type { AnsiSlotName } from '@inkeep/open-knowledge-core/theme/base16';
 import type { ITheme } from '@xterm/xterm';
-import { cssColorToHex } from '@/lib/css-color-to-hex';
+import { readTokenColors, type TokenColorReader } from '@/lib/theme-token-colors';
 
 export const XTERM_DARK_THEME = {
   background: '#171717',
@@ -52,37 +52,6 @@ export const XTERM_LIGHT_THEME = {
 
 export function xtermThemeForMode(resolvedTheme: string | undefined): ITheme {
   return resolvedTheme === 'dark' ? XTERM_DARK_THEME : XTERM_LIGHT_THEME;
-}
-
-export type TokenColorReader = (token: string) => string | null;
-
-function normalizeProbedColor(resolved: string | undefined): string | null {
-  if (!resolved || resolved === 'rgba(0, 0, 0, 0)' || resolved === 'transparent') return null;
-  if (resolved.includes('var(')) return null;
-  return cssColorToHex(resolved, { alpha: true });
-}
-
-function readTokenColors(tokens: readonly string[]): Map<string, string | null> {
-  const resolved = new Map<string, string | null>();
-  if (typeof document === 'undefined' || !document.body) return resolved;
-
-  const fragment = document.createDocumentFragment();
-  const probes = tokens.map((token) => {
-    const probe = document.createElement('span');
-    probe.style.display = 'none';
-    probe.style.backgroundColor = `var(${token})`;
-    fragment.appendChild(probe);
-    return { token, probe };
-  });
-  document.body.appendChild(fragment);
-  try {
-    for (const { token, probe } of probes) {
-      resolved.set(token, normalizeProbedColor(getComputedStyle(probe).backgroundColor));
-    }
-  } finally {
-    for (const { probe } of probes) probe.remove();
-  }
-  return resolved;
 }
 
 const ANSI_TOKEN_BY_SLOT: Record<AnsiSlotName, string> = {

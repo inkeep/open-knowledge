@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-function readDocumentColorMode(): 'light' | 'dark' {
+export function readDocumentColorMode(): 'light' | 'dark' {
   if (typeof document !== 'undefined') {
     const cls = document.documentElement.classList;
     if (cls.contains('dark')) return 'dark';
