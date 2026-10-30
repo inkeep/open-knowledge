@@ -229,10 +229,13 @@ describe('checkTsrsPinsAgree', () => {
 
 describe('tsrsSupportsPlatform', () => {
   const published = {
-    '@tsrs/darwin-arm64': '0.18.0',
-    '@tsrs/linux-x64-gnu': '0.18.0',
-    '@tsrs/linux-x64-musl': '0.18.0',
-    '@tsrs/linux-arm64-gnu': '0.18.0',
+    '@tsrs/darwin-arm64': '0.20.0-ts7.1.0-beta',
+    '@tsrs/darwin-x64': '0.20.0-ts7.1.0-beta',
+    '@tsrs/linux-arm64-gnu': '0.20.0-ts7.1.0-beta',
+    '@tsrs/linux-arm64-musl': '0.20.0-ts7.1.0-beta',
+    '@tsrs/linux-x64-gnu': '0.20.0-ts7.1.0-beta',
+    '@tsrs/linux-x64-musl': '0.20.0-ts7.1.0-beta',
+    '@tsrs/win32-x64': '0.20.0-ts7.1.0-beta',
   };
 
   it('finds the binary for an exact or libc-suffixed platform name', () => {
@@ -240,9 +243,8 @@ describe('tsrsSupportsPlatform', () => {
     expect(tsrsSupportsPlatform(published, 'linux', 'x64')).toBe(true);
   });
 
-  it('reports no binary for Windows or an Intel Mac', () => {
-    expect(tsrsSupportsPlatform(published, 'win32', 'x64')).toBe(false);
-    expect(tsrsSupportsPlatform(published, 'darwin', 'x64')).toBe(false);
+  it('reports no binary for Windows on Arm', () => {
+    expect(tsrsSupportsPlatform(published, 'win32', 'arm64')).toBe(false);
   });
 
   it('does not match a platform that only shares a prefix', () => {

@@ -1,3 +1,4 @@
+import type { RolldownBabelPreset } from '@rolldown/plugin-babel';
 import { reactCompilerPreset } from '@vitejs/plugin-react';
 import type { PluginOptions } from 'babel-plugin-react-compiler';
 
@@ -26,7 +27,7 @@ const reactCompilerConfig: PluginOptions = {
  * calls. `@vitejs/plugin-react` v6 (oxc-based) has no `babel` option, so this
  * shared pass is where the macro must live.
  */
-export const RENDERER_BABEL_OPTIONS = {
+export const RENDERER_BABEL_OPTIONS: { plugins: string[]; presets: RolldownBabelPreset[] } = {
   plugins: ['@lingui/babel-plugin-lingui-macro'],
   presets: [reactCompilerPreset(reactCompilerConfig)],
 };
