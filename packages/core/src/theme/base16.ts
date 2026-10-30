@@ -260,7 +260,11 @@ export function base16ToTokens(scheme: Base16Scheme): Record<string, string> {
     secondary: p.base01,
     'secondary-foreground': p.base05,
     muted: p.base01,
-    'muted-foreground': p.base04,
+    'muted-foreground': minimumContrastForeground(
+      [p.base00, p.base01],
+      p.base04,
+      MINIMUM_CONTRAST_RATIO.text,
+    ),
     accent: p.base02,
     'accent-foreground': p.base05,
     destructive: status(p.base08),

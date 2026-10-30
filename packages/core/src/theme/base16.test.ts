@@ -216,7 +216,6 @@ describe('base16ToTokens', () => {
     expect(t.sidebar).toBe(p.base01);
     expect(t.border).toBe(p.base02);
     expect(t['selection-soft']).toBe(p.base02);
-    expect(t['muted-foreground']).toBe(p.base04);
     expect(t.primary).toBe(p.base0D);
     expect(t['syntax-string']).toBe(p.base0B);
     expect(t['syntax-keyword']).toBe(p.base0E);
@@ -226,6 +225,12 @@ describe('base16ToTokens', () => {
     expect(t['ok-diff-ins']).toBe(p.base0B);
     expect(t['ok-diff-del']).toBe(p.base08);
     expect(t['ok-agent-thread-text']).toBe(p.base05);
+  });
+
+  test('muted text is the palette slot meant for it while that slot reads on pages and cards', () => {
+    const palette = paletteOf({ base00: '#ffffff', base01: '#f5f5f5', base04: '#595959' });
+    const t = base16ToTokens({ name: 'T', variant: 'light', palette });
+    expect(t['muted-foreground']).toBe('#595959');
   });
 
   test('the file tree muted color is the comment slot while it reads on the sidebar', () => {
