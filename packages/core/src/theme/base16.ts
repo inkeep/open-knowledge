@@ -85,6 +85,33 @@ function readableForeground(background: string, paletteCandidates: readonly stri
     : highestContrast(background, ['#000000', '#ffffff']);
 }
 
+function nearestReading(
+  preferred: string,
+  endpoint: string,
+  reads: (candidate: string) => boolean,
+): string | null {
+  for (let step = 0; step <= 255; step += 1) {
+    const candidate = step === 0 ? preferred : mixHex(preferred, endpoint, step / 255);
+    if (reads(candidate)) return candidate;
+  }
+  return null;
+}
+
+const reportedUnreachableFloors = new Set<string>();
+const MAX_REPORTED_UNREACHABLE_FLOORS = 16;
+
+function readingOrEndpoint(found: string | null, endpoint: string, unreachable: string): string {
+  if (found !== null) return found;
+  if (
+    reportedUnreachableFloors.size < MAX_REPORTED_UNREACHABLE_FLOORS &&
+    !reportedUnreachableFloors.has(unreachable)
+  ) {
+    reportedUnreachableFloors.add(unreachable);
+    console.warn(`[base16] ${unreachable}; using the highest-contrast endpoint`);
+  }
+  return endpoint;
+}
+
 function minimumContrastForeground(
   surfaces: readonly string[],
   preferred: string,
@@ -92,13 +119,6 @@ function minimumContrastForeground(
   ownTint = 0,
 ): string {
   const endpoint = highestContrast(surfaces[0] ?? '#ffffff', ['#000000', '#ffffff']);
-  const nearest = (reads: (candidate: string) => boolean): string | null => {
-    for (let step = 0; step <= 255; step += 1) {
-      const candidate = step === 0 ? preferred : mixHex(preferred, endpoint, step / 255);
-      if (reads(candidate)) return candidate;
-    }
-    return null;
-  };
   const onSurfaces = (candidate: string) =>
     surfaces.every((surface) => contrastRatio(surface, candidate) >= minimum);
   const onTints = (candidate: string) =>
@@ -106,15 +126,87 @@ function minimumContrastForeground(
       (surface) => contrastRatio(mixHex(surface, candidate, ownTint), candidate) >= minimum,
     );
   const found =
-    nearest((candidate) => onSurfaces(candidate) && onTints(candidate)) ?? nearest(onSurfaces);
-  if (found !== null) return found;
-  console.warn(
-    `[base16] No foreground reaches a ${minimum}:1 contrast ratio against ${surfaces.join(', ')}; using the highest-contrast endpoint`,
+    nearestReading(
+      preferred,
+      endpoint,
+      (candidate) => onSurfaces(candidate) && onTints(candidate),
+    ) ?? nearestReading(preferred, endpoint, onSurfaces);
+  return readingOrEndpoint(
+    found,
+    endpoint,
+    `No foreground reaches a ${minimum}:1 contrast ratio against ${surfaces.join(', ')}`,
   );
-  return endpoint;
 }
 
 const STATUS_TINT = 0.25;
+
+const CODEBLOCK_TITLE_STEP = 0.5;
+
+const TABLE_SELECTION_TINT = 0.3;
+
+export const DIFF_DELETION_TINT = 0.1;
+
+export const DIFF_DELETION_OPACITY = 0.85;
+
+export const EDITOR_FIND_TINT = 0.28;
+
+export const EDITOR_FIND_ACTIVE_TINT = 0.34;
+
+export const VIEWER_FIND_TINT = 0.3;
+
+export const VIEWER_FIND_ACTIVE_TINT = 0.6;
+
+export const CALLOUT_WASH_TINT = 0.06;
+
+export const COMMENT_RESTING_LINE_ALPHA = 0.7;
+
+function commentHue(surface: string, preferred: string): string {
+  const endpoint = highestContrast(surface, ['#000000', '#ffffff']);
+  const restingLineReads = (candidate: string) =>
+    contrastRatio(surface, mixHex(surface, candidate, COMMENT_RESTING_LINE_ALPHA)) >=
+    MINIMUM_CONTRAST_RATIO.graphical;
+  return readingOrEndpoint(
+    nearestReading(preferred, endpoint, restingLineReads),
+    endpoint,
+    `No comment hue keeps a ${MINIMUM_CONTRAST_RATIO.graphical}:1 resting underline against ${surface}`,
+  );
+}
+
+function fadedForeground(
+  surface: string,
+  fill: string,
+  preferred: string,
+  opacity: number,
+): string {
+  const endpoint = highestContrast(fill, ['#000000', '#ffffff']);
+  const faded = (color: string) => mixHex(surface, color, opacity);
+  const fadedTextReads = (candidate: string) =>
+    contrastRatio(faded(candidate), faded(fill)) >= MINIMUM_CONTRAST_RATIO.text;
+  return readingOrEndpoint(
+    nearestReading(preferred, endpoint, fadedTextReads),
+    endpoint,
+    `No foreground faded to ${opacity} reaches a ${MINIMUM_CONTRAST_RATIO.text}:1 contrast ratio against ${fill} over ${surface}`,
+  );
+}
+
+function highlightBehindText(
+  surface: string,
+  text: string,
+  preferred: string,
+  tints: readonly number[],
+): string {
+  const endpoint = relativeLuminance(surface) > relativeLuminance(text) ? '#ffffff' : '#000000';
+  const textReads = (candidate: string) =>
+    tints.every(
+      (tint) =>
+        contrastRatio(text, mixHex(surface, candidate, tint)) >= MINIMUM_CONTRAST_RATIO.text,
+    );
+  return readingOrEndpoint(
+    nearestReading(preferred, endpoint, textReads),
+    endpoint,
+    `No highlight keeps ${text} text at a ${MINIMUM_CONTRAST_RATIO.text}:1 contrast ratio over ${surface} at ${tints.map((tint) => `${Math.round(tint * 100)}%`).join(', ')}`,
+  );
+}
 
 export function base16ToTokens(scheme: Base16Scheme): Record<string, string> {
   const p = scheme.palette;
@@ -126,6 +218,35 @@ export function base16ToTokens(scheme: Base16Scheme): Record<string, string> {
       MINIMUM_CONTRAST_RATIO.text,
       STATUS_TINT,
     );
+  const callouts = {
+    'callout-note-color': p.base0D,
+    'callout-info-color': p.base0D,
+    'callout-todo-color': p.base0D,
+    'callout-abstract-color': p.base0C,
+    'callout-tip-color': p.base0B,
+    'callout-success-color': p.base0B,
+    'callout-important-color': p.base0E,
+    'callout-example-color': p.base0E,
+    'callout-question-color': p.base0E,
+    'callout-warning-color': p.base0A,
+    'callout-caution-color': p.base09,
+    'callout-danger-color': p.base09,
+    'callout-failure-color': p.base08,
+    'callout-bug-color': p.base08,
+    'callout-quote-color': p.base03,
+  };
+  const calloutWashes = Object.values(callouts).map((accent) =>
+    mixHex(p.base00, accent, CALLOUT_WASH_TINT),
+  );
+  const brokenLink = minimumContrastForeground(
+    [p.base00, p.base01, ...new Set(calloutWashes)],
+    p.base08,
+    MINIMUM_CONTRAST_RATIO.text,
+  );
+  const codeblockTitle = mixHex(p.base01, p.base02, CODEBLOCK_TITLE_STEP);
+  const deletionTint = mixHex(p.base00, p.base08, DIFF_DELETION_TINT);
+  const findHighlight = (tints: readonly number[]) =>
+    highlightBehindText(p.base00, p.base05, p.base0A, tints);
   return {
     background: p.base00,
     foreground: p.base05,
@@ -213,28 +334,42 @@ export function base16ToTokens(scheme: Base16Scheme): Record<string, string> {
     'syntax-bg': p.base01,
 
     'link-color': p.base0D,
-    'broken-link-color': p.base08,
+    'broken-link-color': brokenLink,
     'lint-warning-color': p.base0A,
     'lint-error-color': p.base08,
     'diff-added': p.base0B,
     'diff-removed': p.base08,
     'diff-modified': p.base0D,
 
-    'callout-note-color': p.base0D,
-    'callout-info-color': p.base0D,
-    'callout-todo-color': p.base0D,
-    'callout-abstract-color': p.base0C,
-    'callout-tip-color': p.base0B,
-    'callout-success-color': p.base0B,
-    'callout-important-color': p.base0E,
-    'callout-example-color': p.base0E,
-    'callout-question-color': p.base0E,
-    'callout-warning-color': p.base0A,
-    'callout-caution-color': p.base09,
-    'callout-danger-color': p.base09,
-    'callout-failure-color': p.base08,
-    'callout-bug-color': p.base08,
-    'callout-quote-color': p.base03,
+    'ok-editor-text': p.base05,
+    'ok-codeblock-title-bg': codeblockTitle,
+    'ok-codeblock-title-foreground': minimumContrastForeground(
+      [codeblockTitle],
+      p.base04,
+      MINIMUM_CONTRAST_RATIO.text,
+    ),
+    'ok-comment-hue': commentHue(p.base00, p.base0D),
+    'ok-find-match': findHighlight([EDITOR_FIND_TINT]),
+    'ok-find-match-active': highlightBehindText(p.base00, p.base05, p.base0D, [
+      EDITOR_FIND_ACTIVE_TINT,
+    ]),
+    'ok-viewer-find-match': findHighlight([
+      VIEWER_FIND_TINT,
+      1 - (1 - VIEWER_FIND_TINT) * (1 - VIEWER_FIND_ACTIVE_TINT),
+    ]),
+    'ok-unresolved-link': brokenLink,
+    'ok-table-cell-selected': mixHex(p.base00, p.base0D, TABLE_SELECTION_TINT),
+    'ok-table-resize-handle': p.base0D,
+    'ok-diff-ins': p.base0B,
+    'ok-diff-del': p.base08,
+    'ok-diff-del-foreground': fadedForeground(
+      p.base00,
+      deletionTint,
+      p.base08,
+      DIFF_DELETION_OPACITY,
+    ),
+
+    ...callouts,
 
     ...ansiTokens(p),
   };

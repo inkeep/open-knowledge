@@ -10,7 +10,6 @@ export const THEME_COLOR_PROPERTIES: readonly string[] = [
   ...new Set([
     ...PREVIEW_THEME_TOKENS.filter((token) => token.name !== '--radius').map((token) => token.name),
     ...PALETTE_THEME_COLOR_PROPERTIES,
-    '--ok-comment-hue',
   ]),
 ];
 
