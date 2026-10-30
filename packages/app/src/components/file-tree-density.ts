@@ -63,7 +63,7 @@ export function createFileTreeStyle(resolvedTheme: string | undefined): CSSPrope
     '--trees-border-radius-override': '0.375rem',
     '--trees-selected-fg': 'var(--color-primary)',
     '--truncate-marker-fade-in-duration': '0s',
-    '--trees-file-icon-color-markdown': 'light-dark(var(--color-gray-400), var(--color-gray-500))',
+    '--trees-file-icon-color-markdown': 'var(--color-tree-muted)',
     '--trees-fg-muted': 'var(--color-tree-muted)',
     ...FILE_TREE_DENSITY_STYLE,
   } as CSSProperties;

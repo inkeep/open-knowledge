@@ -608,9 +608,7 @@ function RecentRow({
             <Folder aria-hidden="true" className="size-[18px] shrink-0 text-muted-foreground" />
             <div className="flex min-w-0 flex-col gap-1 truncate">
               <div className="flex min-w-0 items-center gap-2">
-                <span className="truncate font-medium text-sm text-gray-700 dark:text-foreground">
-                  {project.name}
-                </span>
+                <span className="truncate font-medium text-sm text-foreground">{project.name}</span>
                 {isWorktree ? (
                   <Badge
                     variant="secondary"

@@ -238,8 +238,9 @@ export function base16ToTokens(scheme: Base16Scheme): Record<string, string> {
   const calloutWashes = Object.values(callouts).map((accent) =>
     mixHex(p.base00, accent, CALLOUT_WASH_TINT),
   );
+  const documentTextSurfaces = [p.base00, p.base01, ...new Set(calloutWashes)];
   const brokenLink = minimumContrastForeground(
-    [p.base00, p.base01, ...new Set(calloutWashes)],
+    documentTextSurfaces,
     p.base08,
     MINIMUM_CONTRAST_RATIO.text,
   );
@@ -333,7 +334,11 @@ export function base16ToTokens(scheme: Base16Scheme): Record<string, string> {
     'syntax-meta': p.base0F,
     'syntax-bg': p.base01,
 
-    'link-color': p.base0D,
+    'link-color': minimumContrastForeground(
+      documentTextSurfaces,
+      p.base0D,
+      MINIMUM_CONTRAST_RATIO.text,
+    ),
     'broken-link-color': brokenLink,
     'lint-warning-color': p.base0A,
     'lint-error-color': p.base08,
@@ -367,6 +372,12 @@ export function base16ToTokens(scheme: Base16Scheme): Record<string, string> {
       deletionTint,
       p.base08,
       DIFF_DELETION_OPACITY,
+    ),
+    'ok-agent-thread-text': p.base05,
+    'ok-tree-muted': minimumContrastForeground(
+      [p.base01],
+      p.base03,
+      MINIMUM_CONTRAST_RATIO.graphical,
     ),
 
     ...callouts,

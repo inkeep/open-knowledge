@@ -210,11 +210,11 @@ export function ThreadCard({
         'group/comment-card flex flex-col gap-1.5 transition-[box-shadow,border-color,background-color]',
         'border-b py-3 last:border-b-0',
         layout === 'doc' &&
-          'relative isolate before:pointer-events-none before:absolute before:-inset-x-2 before:inset-y-1 before:-z-10 before:rounded-lg before:bg-azure-800/5 dark:before:bg-white/5 before:opacity-0 before:transition-opacity before:duration-150 motion-reduce:before:transition-none',
+          'relative isolate before:pointer-events-none before:absolute before:-inset-x-2 before:inset-y-1 before:-z-10 before:rounded-lg before:bg-foreground/5 before:opacity-0 before:transition-opacity before:duration-150 motion-reduce:before:transition-none',
         layout === 'project' && 'px-3',
         cardSelects && 'cursor-pointer',
         isResolved && 'opacity-70',
-        active && (layout === 'doc' ? 'before:opacity-100' : 'bg-azure-800/5 dark:bg-white/5'),
+        active && (layout === 'doc' ? 'before:opacity-100' : 'bg-foreground/5'),
         focused &&
           (layout === 'doc'
             ? 'before:opacity-100 before:ring-2 before:ring-primary'

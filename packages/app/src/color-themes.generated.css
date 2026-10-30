@@ -82,6 +82,8 @@ html[data-color-theme="dracula"] {
   --ok-diff-ins: #50fa7b;
   --ok-diff-del: #ff5555;
   --ok-diff-del-foreground: #ff8a8a;
+  --ok-agent-thread-text: #f8f8f2;
+  --ok-tree-muted: #6272a4;
   --callout-note-color: #bd93f9;
   --callout-info-color: #bd93f9;
   --callout-todo-color: #bd93f9;
@@ -197,6 +199,8 @@ html[data-color-theme="catppuccin-frappe"] {
   --ok-diff-ins: #a6d189;
   --ok-diff-del: #e78284;
   --ok-diff-del-foreground: #efabac;
+  --ok-agent-thread-text: #c6d0f5;
+  --ok-tree-muted: #707587;
   --callout-note-color: #8caaee;
   --callout-info-color: #8caaee;
   --callout-todo-color: #8caaee;
@@ -292,7 +296,7 @@ html[data-color-theme="catppuccin-latte"] {
   --syntax-operator: #4c4f69;
   --syntax-meta: #dd7878;
   --syntax-bg: #e6e9ef;
-  --link-color: #1d62ec;
+  --link-color: #1c5de1;
   --broken-link-color: #cd0f38;
   --lint-warning-color: #df8e1d;
   --lint-error-color: #d20f39;
@@ -312,6 +316,8 @@ html[data-color-theme="catppuccin-latte"] {
   --ok-diff-ins: #40a02b;
   --ok-diff-del: #d20f39;
   --ok-diff-del-foreground: #af0c2f;
+  --ok-agent-thread-text: #4c4f69;
+  --ok-tree-muted: #82858e;
   --callout-note-color: #1d62ec;
   --callout-info-color: #1d62ec;
   --callout-todo-color: #1d62ec;
@@ -427,6 +433,8 @@ html[data-color-theme="monokai"] {
   --ok-diff-ins: #a6e22e;
   --ok-diff-del: #f92672;
   --ok-diff-del-foreground: #fb7eab;
+  --ok-agent-thread-text: #f8f8f2;
+  --ok-tree-muted: #848170;
   --callout-note-color: #66d9ef;
   --callout-info-color: #66d9ef;
   --callout-todo-color: #66d9ef;
@@ -522,7 +530,7 @@ html[data-color-theme="gruvbox"] {
   --syntax-operator: #d5c4a1;
   --syntax-meta: #d65d0e;
   --syntax-bg: #3c3836;
-  --link-color: #83a598;
+  --link-color: #88a99c;
   --broken-link-color: #fc7b6c;
   --lint-warning-color: #fabd2f;
   --lint-error-color: #fb4934;
@@ -542,6 +550,8 @@ html[data-color-theme="gruvbox"] {
   --ok-diff-ins: #b8bb26;
   --ok-diff-del: #fb4934;
   --ok-diff-del-foreground: #fc887a;
+  --ok-agent-thread-text: #d5c4a1;
+  --ok-tree-muted: #89817b;
   --callout-note-color: #83a598;
   --callout-info-color: #83a598;
   --callout-todo-color: #83a598;
@@ -637,7 +647,7 @@ html[data-color-theme="solarized"] {
   --syntax-operator: #93a1a1;
   --syntax-meta: #d33682;
   --syntax-bg: #073642;
-  --link-color: #2995e1;
+  --link-color: #3c9fe4;
   --broken-link-color: #e87674;
   --lint-warning-color: #b58900;
   --lint-error-color: #dc322f;
@@ -657,6 +667,8 @@ html[data-color-theme="solarized"] {
   --ok-diff-ins: #859900;
   --ok-diff-del: #dc322f;
   --ok-diff-del-foreground: #eb8886;
+  --ok-agent-thread-text: #93a1a1;
+  --ok-tree-muted: #677d85;
   --callout-note-color: #2995e1;
   --callout-info-color: #2995e1;
   --callout-todo-color: #2995e1;

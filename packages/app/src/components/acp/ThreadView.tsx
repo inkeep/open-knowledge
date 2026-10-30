@@ -1196,7 +1196,7 @@ export function ThreadView({
           onOpenChange={(open) => !open && setImagePreview(null)}
         />
         <div // oxlint-disable-line jsx-a11y/no-static-element-interactions -- drop-target — keyboard/AT users have the + picker button in the composer; drop is a pointer-only affordance.
-          className="relative flex min-h-0 flex-1 flex-col text-gray-800 dark:text-gray-200"
+          className="relative flex min-h-0 flex-1 flex-col text-(--ok-agent-thread-text)"
           data-agent-thread-root=""
           onDragEnter={(event) => {
             if (isExternalFileDrag(event)) {

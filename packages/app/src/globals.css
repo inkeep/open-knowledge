@@ -112,7 +112,7 @@
      is unreachable from sidebar chrome rendered outside the tree. This token is
      the shared source: `createFileTreeStyle` feeds it into the tree, and
      out-of-tree rows use the generated `text-tree-muted` utility to match. */
-  --color-tree-muted: light-dark(var(--color-gray-400), var(--color-gray-500));
+  --color-tree-muted: var(--ok-tree-muted);
 
   /* brand colors */
   --color-azure-blue: #3784ff;
@@ -3414,6 +3414,7 @@ button:active:not(:disabled) {
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-info: var(--info);
+  --color-link: var(--link-color);
   --color-identity-1: var(--identity-1);
   --color-identity-2: var(--identity-2);
   --color-identity-3: var(--identity-3);
@@ -3584,6 +3585,8 @@ button:active:not(:disabled) {
   --ok-diff-ins: var(--color-emerald-500);
   --ok-diff-del: var(--color-red-500);
   --ok-diff-del-foreground: var(--color-red-600);
+  --ok-agent-thread-text: var(--color-gray-800);
+  --ok-tree-muted: var(--color-gray-400);
 
   /*
     Terminal ANSI slots. The docked terminal reads these live, so a base16
@@ -3692,6 +3695,8 @@ button:active:not(:disabled) {
   --ok-unresolved-link: #f87171;
   --ok-table-cell-selected: var(--color-azure-900);
   --ok-diff-del-foreground: var(--color-red-400);
+  --ok-agent-thread-text: var(--color-gray-200);
+  --ok-tree-muted: var(--color-gray-500);
 
   --ansi-black: #000000;
   --ansi-red: #cd3131;
