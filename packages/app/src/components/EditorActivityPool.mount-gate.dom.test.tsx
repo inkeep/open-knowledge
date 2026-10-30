@@ -20,9 +20,6 @@ const poolEntries: FakePoolEntry[] = [];
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({ poolEntries, serverRestartRecovery: { kind: 'idle' } }),
 }));
-vi.doMock('./PageListContext', () => ({
-  usePageList: () => ({ pages: new Map(), loading: false }),
-}));
 vi.doMock('@/hooks/use-conflicts', () => ({
   useDocConflict: () => null,
   useConflicts: () => ({
