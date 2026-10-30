@@ -219,7 +219,7 @@ function ThreadHistoryRow({
   return (
     <SidebarMenuItem
       className={cn(
-        'rounded-md [--thread-row-destructive-foreground:var(--sidebar-hover-destructive-foreground)] [--thread-row-foreground:var(--sidebar-hover-foreground)] [--thread-row-muted-foreground:var(--sidebar-hover-muted-foreground)] [contain-intrinsic-size:auto_2.25rem] [content-visibility:auto]',
+        'rounded-md [--thread-row-destructive-foreground:var(--sidebar-hover-destructive-foreground)] [--thread-row-foreground:var(--sidebar-hover-foreground)] [--thread-row-muted-foreground:var(--sidebar-hover-muted-foreground)] [contain-intrinsic-size:auto_2.25rem] [content-visibility:auto] focus-within:z-10 focus-within:[content-visibility:visible]',
         active
           ? 'bg-[var(--thread-row-bg)] [--thread-row-bg:var(--sidebar-selected)] [--thread-row-destructive-foreground:var(--sidebar-selected-destructive-foreground)] [--thread-row-foreground:var(--sidebar-selected-foreground)] [--thread-row-muted-foreground:var(--sidebar-selected-muted-foreground)]'
           : 'hover:bg-[var(--thread-row-bg)] focus-within:bg-[var(--thread-row-bg)] [--thread-row-bg:var(--sidebar-hover)]',
