@@ -1,11 +1,20 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 
-type WriterProcess = Pick<
-  ChildProcess,
-  'stderr' | 'on' | 'once' | 'kill' | 'pid' | 'exitCode' | 'signalCode'
->;
+type WriterProcess = Pick<ChildProcess, 'stderr' | 'kill' | 'pid' | 'exitCode' | 'signalCode'> & {
+  on(event: 'message', listener: (message: unknown) => void): void;
+  on(event: 'error', listener: (error: Error) => void): void;
+  once(
+    event: 'close',
+    listener: (exitCode: number | null, signal: NodeJS.Signals | null) => void,
+  ): void;
+};
 export type SpawnWriter = (configPath: string, serverKey: string) => WriterProcess;
+export type WriterMessage =
+  | 'started'
+  | 'ready'
+  | 'written'
+  | { type: 'module-loaded'; url: string };
 
 const WORKER_PATH = resolve(import.meta.dirname, 'config-race-worker.ts');
 const NO_PROGRESS_MS = 30_000;
@@ -29,6 +38,7 @@ interface WriterState {
   proc: WriterProcess;
   serverKey: string;
   phase: number;
+  loadedModules: Set<string>;
   stderr: string;
   stopRequested: boolean;
 }
@@ -96,7 +106,14 @@ export async function runConfigWriters(
       } catch (error) {
         throw writerFailure({ serverKey, phase: 0, stderr: '' }, error);
       }
-      const state: WriterState = { proc, serverKey, phase: 0, stderr: '', stopRequested: false };
+      const state: WriterState = {
+        proc,
+        serverKey,
+        phase: 0,
+        loadedModules: new Set(),
+        stderr: '',
+        stopRequested: false,
+      };
       pending.add(state);
       completions.push(
         new Promise((resolveClose) => {
@@ -104,6 +121,21 @@ export async function runConfigWriters(
             state.stderr += chunk.toString('utf-8');
           });
           proc.on('message', (message: unknown) => {
+            if (
+              !failure &&
+              pending.has(state) &&
+              state.phase === PHASES.indexOf('started') &&
+              typeof message === 'object' &&
+              message !== null &&
+              'type' in message &&
+              message.type === 'module-loaded' &&
+              'url' in message &&
+              typeof message.url === 'string' &&
+              !state.loadedModules.has(message.url)
+            ) {
+              state.loadedModules.add(message.url);
+              progress();
+            }
             const phase = typeof message === 'string' ? PHASES.indexOf(message) : -1;
             if (phase > state.phase) {
               state.phase = phase;

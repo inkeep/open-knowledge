@@ -643,141 +643,160 @@ function importSpecifier(node, sourceFile) {
   return found;
 }
 
-function bindsName(name, target) {
-  if (ts.isIdentifier(name)) return name.text === target;
-  if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name)) {
-    return name.elements.some(
-      (element) => !ts.isOmittedExpression(element) && bindsName(element.name, target),
-    );
+const scopeBindingCache = new WeakMap();
+const hoistedBindingCache = new WeakMap();
+
+function forEachBindingName(name, visit) {
+  if (ts.isIdentifier(name)) {
+    visit(name.text);
+  } else if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name)) {
+    for (const element of name.elements) {
+      if (!ts.isOmittedExpression(element)) forEachBindingName(element.name, visit);
+    }
   }
-  return false;
 }
 
-function variableBinding(list, target) {
-  const declaration = list.declarations.find((entry) => bindsName(entry.name, target));
-  if (!declaration) return null;
-  if (ts.isIdentifier(declaration.name)) return { initializer: declaration.initializer ?? null };
-  const element = ts.isObjectBindingPattern(declaration.name)
-    ? declaration.name.elements.find(
-        (entry) => ts.isIdentifier(entry.name) && entry.name.text === target,
-      )
-    : undefined;
-  const key =
-    element && !element.dotDotDotToken
-      ? propertyName({ name: element.propertyName ?? element.name })
-      : null;
-  return {
-    initializer: null,
-    destructured:
-      key !== null && declaration.initializer ? { from: declaration.initializer, key } : null,
-  };
+function addBinding(bindings, name, binding) {
+  if (!bindings.has(name)) bindings.set(name, binding);
 }
 
-function statementBinding(statement, target) {
-  if (ts.isVariableStatement(statement)) return variableBinding(statement.declarationList, target);
-  if (ts.isFunctionDeclaration(statement) && statement.name && bindsName(statement.name, target)) {
-    return { initializer: null, declaration: statement };
+function addVariableBindings(bindings, list) {
+  for (const declaration of list.declarations) {
+    if (ts.isIdentifier(declaration.name)) {
+      addBinding(bindings, declaration.name.text, { initializer: declaration.initializer ?? null });
+      continue;
+    }
+    const destructured = new Map();
+    if (ts.isObjectBindingPattern(declaration.name)) {
+      for (const element of declaration.name.elements) {
+        if (!ts.isIdentifier(element.name) || destructured.has(element.name.text)) continue;
+        const key = !element.dotDotDotToken
+          ? propertyName({ name: element.propertyName ?? element.name })
+          : null;
+        destructured.set(element.name.text, {
+          initializer: null,
+          destructured:
+            key !== null && declaration.initializer ? { from: declaration.initializer, key } : null,
+        });
+      }
+    }
+    forEachBindingName(declaration.name, (name) => {
+      addBinding(bindings, name, destructured.get(name) ?? { initializer: null, destructured: null });
+    });
   }
-  if (
+}
+
+function addStatementBindings(bindings, statement) {
+  if (ts.isVariableStatement(statement)) {
+    addVariableBindings(bindings, statement.declarationList);
+  } else if (ts.isFunctionDeclaration(statement) && statement.name) {
+    addBinding(bindings, statement.name.text, { initializer: null, declaration: statement });
+  } else if (
     (ts.isClassDeclaration(statement) ||
       ts.isEnumDeclaration(statement) ||
       ts.isModuleDeclaration(statement) ||
       (ts.isImportEqualsDeclaration(statement) && !statement.isTypeOnly)) &&
     statement.name &&
-    bindsName(statement.name, target)
+    ts.isIdentifier(statement.name)
   ) {
-    return { initializer: null };
-  }
-  if (ts.isImportDeclaration(statement) && !statement.importClause?.isTypeOnly) {
+    addBinding(bindings, statement.name.text, { initializer: null });
+  } else if (ts.isImportDeclaration(statement) && !statement.importClause?.isTypeOnly) {
     const clause = statement.importClause;
     const named = clause?.namedBindings;
-    let imported = null;
-    if (
-      clause?.name?.text === target ||
-      (named && ts.isNamespaceImport(named) && named.name.text === target)
-    ) {
-      imported = { namespace: true };
-    } else if (named && ts.isNamedImports(named)) {
-      const element = named.elements.find(
-        (entry) => !entry.isTypeOnly && entry.name.text === target,
-      );
-      if (element)
-        imported = { namespace: false, name: (element.propertyName ?? element.name).text };
-    }
-    if (imported) {
-      return {
+    const module = stringValue(statement.moduleSpecifier);
+    if (clause?.name) {
+      addBinding(bindings, clause.name.text, {
         initializer: null,
-        imported: { ...imported, module: stringValue(statement.moduleSpecifier) },
-      };
+        imported: { namespace: true, module },
+      });
+    }
+    if (named && ts.isNamespaceImport(named)) {
+      addBinding(bindings, named.name.text, {
+        initializer: null,
+        imported: { namespace: true, module },
+      });
+    } else if (named && ts.isNamedImports(named)) {
+      for (const element of named.elements) {
+        if (element.isTypeOnly) continue;
+        addBinding(bindings, element.name.text, {
+          initializer: null,
+          imported: { namespace: false, name: (element.propertyName ?? element.name).text, module },
+        });
+      }
     }
   }
-  return null;
 }
 
-function hoistedVariableBinding(scope, target) {
-  let binding = null;
+function scopeBindings(scope) {
+  const cached = scopeBindingCache.get(scope);
+  if (cached) return cached;
+  const bindings = new Map();
+  if ((ts.isFunctionExpression(scope) || ts.isClassLike(scope)) && scope.name) {
+    addBinding(bindings, scope.name.text, { initializer: null });
+  }
+  if (ts.isFunctionLike(scope)) {
+    for (const parameter of scope.parameters) {
+      forEachBindingName(parameter.name, (name) => addBinding(bindings, name, { initializer: null }));
+    }
+  }
+  if (
+    (ts.isForStatement(scope) || ts.isForOfStatement(scope) || ts.isForInStatement(scope)) &&
+    scope.initializer &&
+    ts.isVariableDeclarationList(scope.initializer)
+  ) {
+    for (const declaration of scope.initializer.declarations) {
+      forEachBindingName(declaration.name, (name) => addBinding(bindings, name, { initializer: null }));
+    }
+  }
+  if (ts.isCatchClause(scope) && scope.variableDeclaration) {
+    forEachBindingName(scope.variableDeclaration.name, (name) =>
+      addBinding(bindings, name, { initializer: null }),
+    );
+  }
+  if (
+    ts.isSourceFile(scope) ||
+    ts.isBlock(scope) ||
+    ts.isModuleBlock(scope) ||
+    ts.isCaseBlock(scope)
+  ) {
+    const statements = ts.isCaseBlock(scope)
+      ? scope.clauses.flatMap((clause) => clause.statements)
+      : scope.statements;
+    for (const statement of statements) addStatementBindings(bindings, statement);
+  }
+  scopeBindingCache.set(scope, bindings);
+  return bindings;
+}
+
+function hoistedVariableBindings(scope) {
+  const cached = hoistedBindingCache.get(scope);
+  if (cached) return cached;
+  const bindings = new Map();
   const visit = (node) => {
-    if (binding || ts.isFunctionLike(node) || ts.isClassLike(node) || ts.isModuleDeclaration(node))
-      return;
+    if (ts.isFunctionLike(node) || ts.isClassLike(node) || ts.isModuleDeclaration(node)) return;
     if (ts.isVariableDeclarationList(node) && !(node.flags & ts.NodeFlags.BlockScoped)) {
-      binding = variableBinding(node, target);
-      if (binding) return;
+      addVariableBindings(bindings, node);
     }
     ts.forEachChild(node, visit);
   };
   ts.forEachChild(scope, visit);
-  return binding;
+  hoistedBindingCache.set(scope, bindings);
+  return bindings;
 }
 
 function visibleBinding(identifier, target) {
   let child = identifier;
   for (let scope = identifier.parent; scope; child = scope, scope = scope.parent) {
-    if ((ts.isFunctionExpression(scope) || ts.isClassLike(scope)) && scope.name?.text === target) {
-      return { initializer: null };
-    }
-    if (
-      ts.isFunctionLike(scope) &&
-      scope.parameters.some((parameter) => bindsName(parameter.name, target))
-    ) {
-      return { initializer: null };
-    }
-    if (
-      (ts.isForStatement(scope) || ts.isForOfStatement(scope) || ts.isForInStatement(scope)) &&
-      scope.initializer &&
-      ts.isVariableDeclarationList(scope.initializer) &&
-      variableBinding(scope.initializer, target)
-    ) {
-      return { initializer: null };
-    }
-    if (
-      ts.isCatchClause(scope) &&
-      scope.variableDeclaration &&
-      bindsName(scope.variableDeclaration.name, target)
-    ) {
-      return { initializer: null };
-    }
-    if (
-      ts.isSourceFile(scope) ||
-      ts.isBlock(scope) ||
-      ts.isModuleBlock(scope) ||
-      ts.isCaseBlock(scope)
-    ) {
-      const statements = ts.isCaseBlock(scope)
-        ? scope.clauses.flatMap((clause) => clause.statements)
-        : scope.statements;
-      for (const statement of statements) {
-        const binding = statementBinding(statement, target);
-        if (binding) return binding;
-      }
-    }
+    const binding = scopeBindings(scope).get(target);
+    if (binding) return binding;
     if (
       ts.isSourceFile(scope) ||
       ts.isModuleBlock(scope) ||
       ts.isClassStaticBlockDeclaration(scope) ||
       (ts.isFunctionLike(scope) && child === scope.body)
     ) {
-      const binding = hoistedVariableBinding(scope, target);
-      if (binding) return binding;
+      const hoisted = hoistedVariableBindings(scope).get(target);
+      if (hoisted) return hoisted;
     }
     if (ts.isFunctionLike(scope) && !ts.isArrowFunction(scope) && target === 'arguments') {
       return { initializer: null };
