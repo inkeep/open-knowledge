@@ -14,7 +14,6 @@ import { t } from '@lingui/core/macro';
 import { type AnyExtension, Editor, type EditorOptions, Extension, isMacOS } from '@tiptap/core';
 import Collaboration from '@tiptap/extension-collaboration';
 import Placeholder from '@tiptap/extension-placeholder';
-import { EditorContent } from '@tiptap/react';
 import { initProseMirrorDoc, yCursorPlugin, ySyncPluginKey } from '@tiptap/y-tiptap';
 import { type FC, use, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -69,6 +68,7 @@ import {
   createHandlePaste,
 } from './clipboard/index.ts';
 import { useDocumentContext } from './DocumentContext';
+import { EditorContent } from './EditorContent';
 import { isUserIntentOrigin } from './extensions/autonomous-fragment-edit.ts';
 import { createBareHtmlImageDecoration } from './extensions/bare-html-image-decoration';
 import { setEditorDocName } from './extensions/doc-context.ts';

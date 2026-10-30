@@ -67,7 +67,7 @@ vi.doMock('@/components/editor/SelectionAnnouncer', () => ({
   SelectionAnnouncer: () => <div />,
 }));
 vi.doMock('./interaction-layer', () => ({ InteractionLayerView: () => <div /> }));
-vi.doMock('@tiptap/react', () => ({ EditorContent: () => <div data-testid="editor-content" /> }));
+vi.doMock('./EditorContent', () => ({ EditorContent: () => <div data-testid="editor-content" /> }));
 
 const { TiptapEditor } = await import('./TiptapEditor');
 
