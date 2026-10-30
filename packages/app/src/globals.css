@@ -1365,7 +1365,7 @@ section[data-editor-pane-id] {
      block stay put) gives the right border the same slack the left already has. */
   margin-right: -2.5rem;
   padding-right: 2.5rem;
-  @apply text-gray-800 dark:text-white/80;
+  color: var(--ok-editor-text);
 }
 
 /* The dead zone, granted only where the affordance can actually engage. The
@@ -1684,12 +1684,12 @@ section[data-editor-pane-id] {
 
 .ProseMirror .ok-find-match {
   border-radius: 0.15rem;
-  background-color: color-mix(in oklab, var(--color-agent) 28%, transparent);
+  background-color: color-mix(in oklab, var(--ok-find-match) 28%, transparent);
   color: inherit;
 }
 
 .ProseMirror .ok-find-match-active {
-  background-color: color-mix(in oklab, var(--primary) 34%, transparent);
+  background-color: color-mix(in oklab, var(--ok-find-match-active) 34%, transparent);
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary) 55%, transparent);
 }
 
@@ -1875,19 +1875,14 @@ section[data-editor-pane-id] {
   align-items: center;
   gap: 0.375rem;
   padding: 0.375rem 1rem;
-  background: oklch(0.94 0 0);
+  background: var(--ok-codeblock-title-bg);
   border: 1px solid var(--border);
   border-bottom: 0;
   border-radius: 0.5rem 0.5rem 0 0;
   font-family: var(--font-mono);
   font-size: 0.75rem;
-  color: var(--muted-foreground);
+  color: var(--ok-codeblock-title-foreground);
   user-select: none;
-}
-
-.dark .ok-codeblock-title {
-  background: oklch(0.22 0.005 285);
-  color: oklch(0.78 0 0);
 }
 
 .ok-codeblock-title-text {
@@ -2249,8 +2244,7 @@ section[data-editor-pane-id] {
 .ProseMirror .ok-skill-ref,
 .cm-skill-ref {
   cursor: pointer;
-  color: var(--color-azure-blue);
-  @apply dark:text-sky-blue;
+  color: var(--link-color);
 }
 .ProseMirror .ok-skill-ref:hover,
 .cm-skill-ref:hover {
@@ -2266,10 +2260,10 @@ section[data-editor-pane-id] {
 
 /* In-viewer find (§8.4): CSS Custom Highlight API paint — DOM untouched. */
 ::highlight(ok-find) {
-  background-color: color-mix(in srgb, var(--color-azure-blue) 30%, transparent);
+  background-color: color-mix(in srgb, var(--ok-viewer-find-match) 30%, transparent);
 }
 ::highlight(ok-find-active) {
-  background-color: color-mix(in srgb, var(--color-azure-blue) 60%, transparent);
+  background-color: color-mix(in srgb, var(--ok-viewer-find-match) 60%, transparent);
 }
 
 /* Skill-doc bundle-path affordance — code spans shaped like `references/…` /
@@ -2285,8 +2279,7 @@ section[data-editor-pane-id] {
 .cm-skill-path-link:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
-  color: var(--color-azure-blue);
-  @apply dark:text-sky-blue;
+  color: var(--link-color);
 }
 
 /* Resolution states — the decoration plugin writes `data-resolution-state`
@@ -2307,14 +2300,9 @@ section[data-editor-pane-id] {
    broken state visible in WYSIWYG (source mode has its own squiggly via
    `source-polish`). */
 .ProseMirror [data-resolution-state="unresolved"] {
-  color: var(--color-red-600, #dc2626);
+  color: var(--ok-unresolved-link);
   text-decoration-style: wavy;
-  text-decoration-color: var(--color-red-600, #dc2626);
-}
-
-.dark .ProseMirror [data-resolution-state="unresolved"] {
-  color: #f87171; /* red-400 */
-  text-decoration-color: #f87171;
+  text-decoration-color: var(--ok-unresolved-link);
 }
 
 /* Loading — awaiting page-list-cache population. Dotted underline
@@ -2437,7 +2425,7 @@ section[data-editor-pane-id] {
   content: "";
   position: absolute;
   inset: 0;
-  background: var(--color-azure-100);
+  background: var(--ok-table-cell-selected);
   opacity: 0.4;
   pointer-events: none;
   z-index: 2;
@@ -2449,7 +2437,7 @@ section[data-editor-pane-id] {
   top: 0;
   bottom: -2px;
   width: 4px;
-  background-color: var(--color-azure-400);
+  background-color: var(--ok-table-resize-handle);
   pointer-events: none;
   z-index: 20;
 }
@@ -3568,6 +3556,9 @@ button:active:not(:disabled) {
   --syntax-meta: var(--color-gray-600, oklch(0.444 0.011 73.639));
   /* Code-block canvas — a hair off `--background` so a fence reads as a slab. */
   --syntax-bg: oklch(0.97 0 0);
+  --ok-editor-text: var(--color-gray-800);
+  --ok-codeblock-title-bg: oklch(0.94 0 0);
+  --ok-codeblock-title-foreground: var(--muted-foreground);
 
   /* Editor affordances a theme repaints. */
   /* Every document link paints this token, so it is normal-weight body text
@@ -3584,6 +3575,15 @@ button:active:not(:disabled) {
   --diff-added: var(--color-green-800, #22863a);
   --diff-removed: var(--color-red-700, #b31d28);
   --diff-modified: var(--color-blue-700, #005cc5);
+  --ok-find-match: var(--color-agent);
+  --ok-find-match-active: var(--primary);
+  --ok-viewer-find-match: var(--color-azure-blue);
+  --ok-unresolved-link: var(--color-red-600, #dc2626);
+  --ok-table-cell-selected: var(--color-azure-100);
+  --ok-table-resize-handle: var(--color-azure-400);
+  --ok-diff-ins: var(--color-emerald-500);
+  --ok-diff-del: var(--color-red-500);
+  --ok-diff-del-foreground: var(--color-red-600);
 
   /*
     Terminal ANSI slots. The docked terminal reads these live, so a base16
@@ -3678,6 +3678,9 @@ button:active:not(:disabled) {
   --syntax-operator: var(--foreground);
   --syntax-meta: oklch(0.78 0.01 56.259);
   --syntax-bg: oklch(0.18 0.005 285);
+  --ok-editor-text: color-mix(in oklab, var(--color-white) 80%, transparent);
+  --ok-codeblock-title-bg: oklch(0.22 0.005 285);
+  --ok-codeblock-title-foreground: oklch(0.78 0 0);
 
   --link-color: var(--color-sky-blue);
   --broken-link-color: oklch(72% 0.18 25);
@@ -3686,6 +3689,9 @@ button:active:not(:disabled) {
   --diff-added: var(--color-green-300, #7ee787);
   --diff-removed: var(--color-red-300, #ffa198);
   --diff-modified: var(--color-blue-300, #79c0ff);
+  --ok-unresolved-link: #f87171;
+  --ok-table-cell-selected: var(--color-azure-900);
+  --ok-diff-del-foreground: var(--color-red-400);
 
   --ansi-black: #000000;
   --ansi-red: #cd3131;
@@ -5984,12 +5990,6 @@ html [data-editor-file-list-slot] [data-slot="sidebar-inner"] {
   animation-name: undo-ready-dark;
 }
 
-/* Dark overrides — MEDIUM-severity items */
-.dark .ProseMirror .selectedCell::after {
-  background: var(--color-azure-900);
-  opacity: 0.4;
-}
-
 /* ========================================================================
    Source-view minimal polish
    ======================================================================== */
@@ -6661,7 +6661,7 @@ html [data-editor-file-list-slot] [data-slot="sidebar-inner"] {
    content DOM (RenderedDiffView). `ins`/`del` are decoration classes, not real
    nodes — see lib/rendered-diff/diff-decorations.ts. */
 .ProseMirror .ok-diff-ins {
-  background-color: color-mix(in srgb, var(--color-emerald-500) 18%, transparent);
+  background-color: color-mix(in srgb, var(--ok-diff-ins) 18%, transparent);
   border-radius: 2px;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
@@ -6669,22 +6669,18 @@ html [data-editor-file-list-slot] [data-slot="sidebar-inner"] {
 
 /* Whole added block (node decoration on the `<li>`/`<p>`/`<h2>` itself). */
 .ProseMirror .ok-diff-ins-block {
-  background-color: color-mix(in srgb, var(--color-emerald-500) 14%, transparent);
+  background-color: color-mix(in srgb, var(--ok-diff-ins) 14%, transparent);
   border-radius: 2px;
   padding-inline: 0.25rem;
-  border-left: 2px solid var(--color-emerald-500);
+  border-left: 2px solid var(--ok-diff-ins);
 }
 
 .ProseMirror .ok-diff-del {
-  color: var(--color-red-600);
+  color: var(--ok-diff-del-foreground);
   text-decoration: line-through;
-  background-color: color-mix(in srgb, var(--color-red-500) 10%, transparent);
+  background-color: color-mix(in srgb, var(--ok-diff-del) 10%, transparent);
   border-radius: 2px;
   opacity: 0.85;
-}
-
-.dark .ProseMirror .ok-diff-del {
-  color: var(--color-red-400);
 }
 
 /* Whole-block deletions render as a struck-through block (removed heading /
@@ -6693,7 +6689,7 @@ html [data-editor-file-list-slot] [data-slot="sidebar-inner"] {
   display: block;
   margin-block: 0.15em;
   padding-inline: 0.25rem;
-  border-left: 2px solid var(--color-red-500);
+  border-left: 2px solid var(--ok-diff-del);
 }
 
 /* Removed content is chrome, not editable document — never show a text caret. */

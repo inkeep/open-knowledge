@@ -1,13 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { COMMENT_RESTING_LINE_ALPHA } from '@inkeep/open-knowledge-core/theme/base16';
 import { assert, describe, expect, test } from 'vitest';
 
 const GLOBALS_CSS = resolve(dirname(fileURLToPath(import.meta.url)), '../globals.css');
 
 const MIN_NONTEXT_CONTRAST = 3;
-
-const RESTING_LINE_ALPHA = 0.7;
 
 const CANVASES = {
   light: { rgb: [255, 255, 255], decl: 'oklch(1 0 0)' },
@@ -67,7 +66,7 @@ describe('comment highlight hue', () => {
     const canvas = CANVASES[theme].rgb;
     const line = composite(
       hue(declarations('--ok-comment-hue')[index]),
-      RESTING_LINE_ALPHA,
+      COMMENT_RESTING_LINE_ALPHA,
       canvas,
     );
     expect(contrast(line, canvas)).toBeGreaterThanOrEqual(MIN_NONTEXT_CONTRAST);

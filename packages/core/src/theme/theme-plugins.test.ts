@@ -3,8 +3,16 @@ import {
   BASE16_SLOTS,
   type Base16Palette,
   base16ToTokens,
+  CALLOUT_WASH_TINT,
+  COMMENT_RESTING_LINE_ALPHA,
+  DIFF_DELETION_OPACITY,
+  DIFF_DELETION_TINT,
+  EDITOR_FIND_ACTIVE_TINT,
+  EDITOR_FIND_TINT,
   mixHex,
   relativeLuminance,
+  VIEWER_FIND_ACTIVE_TINT,
+  VIEWER_FIND_TINT,
 } from './base16.ts';
 import {
   colorThemeMode,
@@ -25,6 +33,8 @@ import {
 
 const NON_STATIC = new Set(['default', 'custom']);
 
+const HEX_TOKEN = /^#[0-9a-f]{6}$/i;
+
 function contrast(a: string, b: string): number {
   const la = relativeLuminance(a);
   const lb = relativeLuminance(b);
@@ -42,6 +52,77 @@ function expectStatusTextReadable(label: string, tokens: Record<string, string>)
         `${label} ${status} on its 25% tint over ${surface}`,
       ).toBeGreaterThanOrEqual(4.5);
     }
+  }
+}
+
+function expectEditorMarksReadable(label: string, tokens: Record<string, string>): void {
+  for (const name of [
+    'ok-codeblock-title-bg',
+    'ok-codeblock-title-foreground',
+    'ok-comment-hue',
+    'ok-diff-del',
+    'ok-diff-del-foreground',
+    'ok-unresolved-link',
+    'broken-link-color',
+  ]) {
+    expect(tokens[name], `${label} ${name}`).toMatch(HEX_TOKEN);
+  }
+  const page = tokens.background ?? '';
+  expect(
+    contrast(tokens['ok-codeblock-title-foreground'] ?? '', tokens['ok-codeblock-title-bg'] ?? ''),
+    `${label} code block title`,
+  ).toBeGreaterThanOrEqual(4.5);
+  expect(
+    contrast(mixHex(page, tokens['ok-comment-hue'] ?? '', COMMENT_RESTING_LINE_ALPHA), page),
+    `${label} resting comment underline`,
+  ).toBeGreaterThanOrEqual(3);
+  const faded = (color: string) => mixHex(page, color, DIFF_DELETION_OPACITY);
+  expect(
+    contrast(
+      faded(tokens['ok-diff-del-foreground'] ?? ''),
+      faded(mixHex(page, tokens['ok-diff-del'] ?? '', DIFF_DELETION_TINT)),
+    ),
+    `${label} deleted text in a rendered diff`,
+  ).toBeGreaterThanOrEqual(4.5);
+  const calloutWashes = Object.entries(tokens)
+    .filter(([token]) => token.startsWith('callout-'))
+    .map(([token, accent]) => [`${token} wash`, mixHex(page, accent, CALLOUT_WASH_TINT)] as const);
+  expect(calloutWashes.length, `${label} callout colors`).toBeGreaterThan(0);
+  for (const name of ['ok-unresolved-link', 'broken-link-color']) {
+    for (const [surface, color] of [
+      ['background', page],
+      ['muted', tokens.muted ?? ''],
+      ...calloutWashes,
+    ] as const) {
+      expect(
+        contrast(tokens[name] ?? '', color),
+        `${label} ${name} on ${surface}`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  }
+}
+
+function expectTextReadableUnderFindHighlights(
+  label: string,
+  tokens: Record<string, string>,
+): void {
+  const page = tokens.background ?? '';
+  const text = tokens['ok-editor-text'] ?? '';
+  for (const [name, tint, highlight] of [
+    ['ok-find-match', EDITOR_FIND_TINT, 'editor find match'],
+    ['ok-find-match-active', EDITOR_FIND_ACTIVE_TINT, 'active editor find match'],
+    ['ok-viewer-find-match', VIEWER_FIND_TINT, 'viewer find match'],
+    [
+      'ok-viewer-find-match',
+      1 - (1 - VIEWER_FIND_TINT) * (1 - VIEWER_FIND_ACTIVE_TINT),
+      'active viewer find match',
+    ],
+  ] as const) {
+    expect(tokens[name], `${label} ${name}`).toMatch(HEX_TOKEN);
+    expect(
+      contrast(text, mixHex(page, tokens[name] ?? '', tint)),
+      `${label} text under the ${highlight}`,
+    ).toBeGreaterThanOrEqual(4.5);
   }
 }
 
@@ -242,6 +323,20 @@ describe('token mapping + generateColorThemesCss', () => {
     }
   });
 
+  test('every generated palette theme keeps code block titles, unresolved links and deleted diff text readable, and comment underlines visible', () => {
+    for (const theme of THEME_PLUGINS) {
+      if (!theme.toTokens) continue;
+      expectEditorMarksReadable(theme.id, theme.toTokens());
+    }
+  });
+
+  test('every generated palette theme keeps document text readable under find highlights', () => {
+    for (const theme of THEME_PLUGINS) {
+      if (!theme.toTokens) continue;
+      expectTextReadableUnderFindHighlights(theme.id, theme.toTokens());
+    }
+  });
+
   test('custom low-contrast palettes receive readable sidebar row foregrounds', () => {
     const palette: Base16Palette = {
       base00: '#e0e0e0',
@@ -268,6 +363,7 @@ describe('token mapping + generateColorThemesCss', () => {
       palette,
     });
     expectStatusTextReadable('low contrast', tokens);
+    expectEditorMarksReadable('low contrast', tokens);
     for (const [backgroundToken, foregroundToken] of [
       ['sidebar-hover', 'sidebar-hover-foreground'],
       ['sidebar-hover', 'sidebar-hover-muted-foreground'],
