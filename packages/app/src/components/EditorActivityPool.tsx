@@ -49,7 +49,6 @@ import { DocumentBoundary } from './DocumentBoundary';
 import { DocumentErrorBoundary } from './DocumentErrorBoundary';
 import { EditorSkeleton } from './EditorSkeleton';
 import { PageHeader } from './PageHeader';
-import { usePageList } from './PageListContext';
 import { PropertyPanel } from './PropertyPanel';
 import {
   clampTargetToContent,
@@ -136,21 +135,6 @@ export function computeEffectiveSourceMode(
   lastActiveIsSourceMode: boolean,
 ): boolean {
   return isActive ? isSourceMode : lastActiveIsSourceMode;
-}
-
-export function computeIsNewDoc(args: {
-  docName: string;
-  pages: ReadonlySet<string>;
-  loading: boolean;
-}): boolean {
-  const { docName, pages, loading } = args;
-  return (
-    !loading &&
-    !pages.has(docName) &&
-    !isManagedArtifactDocName(docName) &&
-    parseTemplateContentDocName(docName) === null &&
-    isMarkdownDocFile(docName)
-  );
 }
 
 /**
@@ -284,7 +268,6 @@ function EditorActivityPoolInner({
   onRecycle,
 }: EditorActivityPoolProps) {
   const { poolEntries, serverRestartRecovery } = useDocumentContext();
-  const { pages, loading } = usePageList();
   const effectiveVisibleDocNames = visibleDocNames ?? new Set([activeDocName]);
   const mountList = computeActivityMountList(
     poolEntries,
@@ -344,7 +327,6 @@ function EditorActivityPoolInner({
             }
             isSourceMode={isSourceMode}
             editorPlaceholder={editorPlaceholder}
-            isNewDoc={computeIsNewDoc({ docName: entry.docName, pages, loading })}
             previousDocName={previousDocName}
             onNavigateBack={onNavigateBack}
             onRecycle={onRecycle}
@@ -362,7 +344,6 @@ interface ActivityEntryProps {
   toolbar?: ReactNode;
   isSourceMode: boolean;
   editorPlaceholder?: string;
-  isNewDoc: boolean;
   previousDocName?: string;
   onNavigateBack?: (previousDocName: string) => void;
   onRecycle: (docName: string) => void;
@@ -753,7 +734,6 @@ function ActivityEntry({
   toolbar,
   isSourceMode,
   editorPlaceholder,
-  isNewDoc,
   previousDocName,
   onNavigateBack,
   onRecycle,
@@ -956,7 +936,7 @@ function ActivityEntry({
                             className={effectiveIsSourceMode ? 'ok-mode-hidden h-full' : 'h-full'}
                           >
                             <TiptapEditor
-                              key={`${entry.docName}-${String(isNewDoc)}-${entry.poolEventId}`}
+                              key={`${entry.docName}-${entry.poolEventId}`}
                               provider={entry.provider}
                               placeholder={editorPlaceholder}
                               isSourceMode={effectiveIsSourceMode}

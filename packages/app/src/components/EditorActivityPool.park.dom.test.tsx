@@ -47,9 +47,6 @@ function ParkedBody({ provider }: { provider: FakePoolEntry['provider'] }) {
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({ poolEntries, serverRestartRecovery: { kind: 'idle' } }),
 }));
-vi.doMock('./PageListContext', () => ({
-  usePageList: () => ({ pages: new Map(), loading: false }),
-}));
 vi.doMock('@/hooks/use-conflicts', () => ({
   useDocConflict: () => null,
   useConflicts: () => ({ conflicts: [], loading: false, error: null, refresh: () => {} }),
