@@ -96,6 +96,16 @@ describe('default theme focus ring and muted text', () => {
       }
     });
 
+    test(`${mode}: the sidebar ring reaches 3:1 over the sidebar and page`, () => {
+      const ring = color(tokens.get('--sidebar-ring'));
+      for (const name of ['--sidebar', '--background']) {
+        expect(
+          wcagContrast(ring, color(tokens.get(name))),
+          `--sidebar-ring over ${name}`,
+        ).toBeGreaterThanOrEqual(3);
+      }
+    });
+
     test(`${mode}: the half-opacity ring reaches 3:1 over the default surface tokens`, () => {
       const ring = color(tokens.get('--ring'));
       for (const [name, surface] of surfaces) {

@@ -3537,7 +3537,7 @@ button:active:not(:disabled) {
   --sidebar-selected-muted-foreground: #6c6c6c;
   --sidebar-selected-destructive-foreground: var(--destructive);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: oklch(0.64 0 0);
 
   --syntax-keyword: var(--color-purple-700, #6f42c1);
   --syntax-tag: var(--color-red-700, #b31d28);
