@@ -33,6 +33,7 @@ import { useEffect, useState } from 'react';
 import { GraphLegend } from '@/components/GraphLegend';
 import { GraphView } from '@/components/GraphView';
 import type { GraphSkillVisibility } from '@/components/graph-skill-filter';
+import { useGraphPalette } from '@/components/graph-theme';
 import {
   type GraphNodeSelection,
   getHashForGraphDocSelection,
@@ -288,6 +289,7 @@ export function GraphPanel({
   ) => void;
 }) {
   const { t } = useLingui();
+  const graphPalette = useGraphPalette();
   const {
     folderPaths,
     loading: pageListLoading,
@@ -627,8 +629,13 @@ export function GraphPanel({
               setStats({ nodes, links });
             }}
             onClustersChange={setClusters}
+            palette={graphPalette}
           />
-          <GraphLegend clusters={clusters} variant={isExpanded ? 'fullscreen' : 'docked'} />
+          <GraphLegend
+            clusters={clusters}
+            clusterPalette={graphPalette.clusters}
+            variant={isExpanded ? 'fullscreen' : 'docked'}
+          />
           {isExpanded && activeMode === 'explore' && selectedNode !== null && selectedNodeState ? (
             <div className="pointer-events-none absolute inset-x-4 top-4 z-10 flex justify-center">
               <div

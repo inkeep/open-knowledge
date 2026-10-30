@@ -1,5 +1,4 @@
 import { Trans } from '@lingui/react/macro';
-import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { clusterColor } from './graph-colors';
 
@@ -42,13 +41,13 @@ function getGraphLegendLayout(variant: GraphLegendVariant): GraphLegendLayout {
 
 export function GraphLegend({
   clusters,
+  clusterPalette,
   variant = 'fullscreen',
 }: {
   clusters: string[];
+  clusterPalette: readonly string[];
   variant?: GraphLegendVariant;
 }) {
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === 'dark';
   const layout = getGraphLegendLayout(variant);
 
   if (clusters.length === 0) return null;
@@ -61,23 +60,17 @@ export function GraphLegend({
       className={cn(
         'pointer-events-none absolute z-10 flex flex-col backdrop-blur-sm',
         layout.containerClassName,
-        isDark ? 'bg-black/70 text-gray-200' : 'bg-white/80 text-gray-800 ring-1 ring-black/5',
+        'bg-background/80 text-foreground ring-1 ring-foreground/5',
       )}
     >
-      <div
-        className={cn(
-          'font-medium',
-          layout.titleClassName,
-          isDark ? 'text-slate-300' : 'text-slate-700',
-        )}
-      >
+      <div className={cn('font-medium', layout.titleClassName)}>
         <Trans>Clusters</Trans>
       </div>
       {visible.map((cluster) => (
         <div key={cluster} className={cn('flex items-center', layout.rowClassName)}>
           <span
             className={cn('inline-block shrink-0 rounded-full', layout.swatchClassName)}
-            style={{ backgroundColor: clusterColor(cluster, isDark) }}
+            style={{ backgroundColor: clusterColor(cluster, clusterPalette) }}
           />
           <span className={cn('truncate', layout.labelClassName)}>{cluster}</span>
         </div>

@@ -24,6 +24,7 @@ import {
 } from './graph-label-layout';
 import { buildGraphLabelDescriptors } from './graph-label-utils';
 import { filterGraphSkillNodes, type GraphSkillVisibility } from './graph-skill-filter';
+import { type GraphPalette, withAlpha } from './graph-theme';
 import {
   buildGraphLinkSignature,
   buildGraphNodeSignature,
@@ -508,6 +509,7 @@ export function GraphView({
   onBackgroundClick,
   onStatsChange,
   onClustersChange,
+  palette,
 }: {
   activeDocName: string;
   selectedNodeId?: string | null;
@@ -523,6 +525,7 @@ export function GraphView({
   onBackgroundClick?: () => void;
   onStatsChange?: (nodes: number, links: number, loading: boolean) => void;
   onClustersChange?: (clusters: string[]) => void;
+  palette: GraphPalette;
 }) {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const lastSigRef = useRef({ nodes: '', links: '' });
@@ -691,25 +694,24 @@ export function GraphView({
   }, []);
 
   const isDark = resolvedTheme === 'dark';
-  const bgColor = isDark ? 'hsl(0 0% 4%)' : 'hsl(0 0% 100%)';
-  const defaultNodeColor = isDark ? '#6b7280' : '#9ca3af';
-  const activeNodeColor = isDark ? '#69a3ff' : '#3784ff';
-  const selectedNodeColor = isDark ? '#34d399' : '#059669';
-  const activeSelectedNodeColor = isDark ? '#c084fc' : '#7c3aed';
-  const externalNodeColor = isDark ? '#f59e0b' : '#c2410c';
-  const folderNodeColor = isDark ? '#a78bfa' : '#7c3aed';
-  const missingNodeColor = isDark ? '#f87171' : '#dc2626';
-  const edgeRgb = isDark ? '75,85,99' : '209,213,219';
-  const edgeBaseAlpha = isDark ? 0.6 : 0.8;
-  const edgeColor = `rgba(${edgeRgb},${edgeBaseAlpha})`;
-  const labelColor = isDark ? '#f3f4f6' : '#111827';
-  const activeNodeRingColor = isDark ? 'rgba(105,163,255,0.45)' : 'rgba(55,132,255,0.3)';
-  const folderNodeRingColor = isDark ? 'rgba(167,139,250,0.38)' : 'rgba(124,58,237,0.22)';
-  const missingNodeRingColor = isDark ? 'rgba(248,113,113,0.58)' : 'rgba(220,38,38,0.38)';
-  const selectedNodeRingColor = isDark ? 'rgba(52,211,153,0.5)' : 'rgba(5,150,105,0.3)';
-  const activeSelectedNodeRingColor = isDark ? 'rgba(192,132,252,0.5)' : 'rgba(124,58,237,0.35)';
-  const labelChipColor = isDark ? 'rgba(3,7,18,0.92)' : 'rgba(255,255,255,0.94)';
-  const labelChipBorderColor = isDark ? 'rgba(243,244,246,0.08)' : 'rgba(17,24,39,0.08)';
+  const bgColor = palette.background;
+  const defaultNodeColor = palette.muted;
+  const activeNodeColor = palette.primary;
+  const selectedNodeColor = palette.success;
+  const activeSelectedNodeColor = palette.folder;
+  const externalNodeColor = palette.warning;
+  const folderNodeColor = palette.folder;
+  const missingNodeColor = palette.destructive;
+  const edgeBaseAlpha = isDark ? 0.28 : 0.33;
+  const edgeColor = withAlpha(palette.muted, edgeBaseAlpha);
+  const labelColor = palette.foreground;
+  const activeNodeRingColor = withAlpha(palette.primary, isDark ? 0.45 : 0.3);
+  const folderNodeRingColor = withAlpha(palette.folder, isDark ? 0.38 : 0.22);
+  const missingNodeRingColor = withAlpha(palette.destructive, isDark ? 0.58 : 0.38);
+  const selectedNodeRingColor = withAlpha(palette.success, isDark ? 0.5 : 0.3);
+  const activeSelectedNodeRingColor = withAlpha(palette.folder, isDark ? 0.5 : 0.35);
+  const labelChipColor = withAlpha(palette.background, isDark ? 0.92 : 0.94);
+  const labelChipBorderColor = withAlpha(palette.foreground, 0.08);
   const focusZoom = isExpanded ? 1.6 : 2.35;
   const maxLabelWidthPx = isExpanded ? 220 : 150;
   const maxVisibleLabels = isExpanded ? 10 : 18;
@@ -982,6 +984,7 @@ export function GraphView({
   return (
     <div
       ref={containerRef}
+      data-graph-view=""
       className={cn('h-full min-h-0 overflow-hidden', className)}
       onPointerCancel={() => {
         backgroundPointerRef.current = null;
@@ -1169,7 +1172,9 @@ export function GraphView({
               });
 
               const docCluster = node.kind === 'doc' ? node.cluster : undefined;
-              const clusterFill = docCluster ? clusterColor(docCluster, isDark) : defaultNodeColor;
+              const clusterFill = docCluster
+                ? clusterColor(docCluster, palette.clusters)
+                : defaultNodeColor;
               const fill =
                 state === 'active'
                   ? activeNodeColor
@@ -1324,7 +1329,7 @@ export function GraphView({
                 LINK_BIRTH_MS,
               );
               if (born >= 1) return edgeColor;
-              return `rgba(${edgeRgb},${(edgeBaseAlpha * born).toFixed(3)})`;
+              return withAlpha(palette.muted, edgeBaseAlpha * born);
             }}
             linkDirectionalArrowLength={3}
             linkDirectionalArrowRelPos={1}

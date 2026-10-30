@@ -53,7 +53,7 @@ const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 const HAS_NON_WHITESPACE_RE = /\P{White_Space}/u;
 type EndpointSearchContrastFloor = 3 | 4.5;
 
-const MINIMUM_CONTRAST_RATIO = {
+export const MINIMUM_CONTRAST_RATIO = {
   graphical: 3,
   text: 4.5,
 } as const satisfies Record<'graphical' | 'text', EndpointSearchContrastFloor>;
@@ -66,7 +66,7 @@ export function isBase16Hex(value: unknown): value is string {
   return typeof value === 'string' && HEX_RE.test(value);
 }
 
-function contrastRatio(a: string, b: string): number {
+export function contrastRatio(a: string, b: string): number {
   const aLuminance = relativeLuminance(a);
   const bLuminance = relativeLuminance(b);
   return (Math.max(aLuminance, bLuminance) + 0.05) / (Math.min(aLuminance, bLuminance) + 0.05);
@@ -85,7 +85,7 @@ function readableForeground(background: string, paletteCandidates: readonly stri
     : highestContrast(background, ['#000000', '#ffffff']);
 }
 
-function nearestReading(
+export function nearestReading(
   preferred: string,
   endpoint: string,
   reads: (candidate: string) => boolean,

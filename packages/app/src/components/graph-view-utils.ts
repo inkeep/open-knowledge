@@ -210,22 +210,22 @@ export function getGraphNodeTooltipLabel(
 
   const lines: string[] = [
     ...getGraphNodeTooltipStatusLines(displayState),
-    `<div style="font-weight:600;font-size:14px;color:#f1f5f9;margin-bottom:${hasMetadata ? 8 : 0}px;padding-bottom:${hasMetadata ? 6 : 0}px;border-bottom:${hasMetadata ? '1px solid rgba(148,163,184,0.3)' : 'none'}">${escapeHtml(title)}</div>`,
+    `<div style="font-weight:600;font-size:14px;margin-bottom:${hasMetadata ? 8 : 0}px;padding-bottom:${hasMetadata ? 6 : 0}px;border-bottom:${hasMetadata ? '1px solid var(--border)' : 'none'}">${escapeHtml(title)}</div>`,
   ];
 
   if (node.cluster) {
     lines.push(
-      `<div style="font-size:12.5px;color:#f1f5f9;margin-bottom:2px"><span style="color:#cbd5e1">cluster:</span> ${escapeHtml(node.cluster)}</div>`,
+      `<div style="font-size:12.5px;margin-bottom:2px"><span style="font-weight:600">cluster:</span> ${escapeHtml(node.cluster)}</div>`,
     );
   }
   if (node.category) {
     lines.push(
-      `<div style="font-size:12.5px;color:#f1f5f9;margin-bottom:2px"><span style="color:#cbd5e1">category:</span> ${escapeHtml(node.category)}</div>`,
+      `<div style="font-size:12.5px;margin-bottom:2px"><span style="font-weight:600">category:</span> ${escapeHtml(node.category)}</div>`,
     );
   }
   if (node.tags && node.tags.length > 0) {
     lines.push(
-      `<div style="font-size:12.5px;color:#f1f5f9"><span style="color:#cbd5e1">tags:</span> ${node.tags.map(escapeHtml).join(', ')}</div>`,
+      `<div style="font-size:12.5px"><span style="font-weight:600">tags:</span> ${node.tags.map(escapeHtml).join(', ')}</div>`,
     );
   }
 
@@ -235,14 +235,14 @@ export function getGraphNodeTooltipLabel(
 function getGraphNodeTooltipStatusLines(displayState: GraphDocDisplayState): string[] {
   if (displayState === 'missing') {
     return [
-      '<div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#fca5a5;margin-bottom:6px">Broken / uncreated link</div>',
-      '<div style="font-size:12px;color:#fecaca;margin-bottom:8px">This page does not exist yet. Open it to create it.</div>',
+      '<div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--destructive);margin-bottom:6px">Broken / uncreated link</div>',
+      '<div style="font-size:12px;margin-bottom:8px">This page does not exist yet. Open it to create it.</div>',
     ];
   }
   if (displayState === 'folder') {
     return [
-      '<div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#c4b5fd;margin-bottom:6px">Folder target</div>',
-      '<div style="font-size:12px;color:#ddd6fe;margin-bottom:8px">This link resolves to a folder view rather than a standalone page.</div>',
+      '<div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px">Folder target</div>',
+      '<div style="font-size:12px;margin-bottom:8px">This link resolves to a folder view rather than a standalone page.</div>',
     ];
   }
   return [];
