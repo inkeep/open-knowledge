@@ -2508,25 +2508,35 @@ section[data-editor-pane-id] {
   z-index: 4;
 }
 
-/* Occluder above the frozen header (frozen-table-headers.ts): scrolled-past
-   rows must not show in the translucent toolbar-fade slot above the pinned
-   header. An opaque block riding each header cell's composited layer tracks
-   the frozen header's transform pixel-for-pixel — unlike a scroll-driven
-   clip-path on the wrapper, which updates on the main thread and trails the
-   compositor during scroll. Hidden until the extension's scroll-driven
-   opacity flip reveals it while frozen. The wrapper's own overflow clips the
-   block at the table's top edge, so it never covers content above the table.
-   ±1px horizontal overlap closes the seams over collapsed cell borders.
-   height must stay >= TOOLBAR_HEIGHT (56px, frozen-table-headers.ts) so the
-   block spans the whole toolbar-fade slot; 80px adds margin. */
+/* Occluder behind the frozen header (frozen-table-headers.ts). It rides each
+   header cell's composited layer, so it tracks the freeze transform
+   pixel-for-pixel; a scroll-driven clip-path on the wrapper would update on
+   the main thread and trail the compositor. The extension's scroll-driven
+   opacity flip shows it only while frozen, and the wrapper's overflow clips
+   it at the table's top edge.
+   - Top 80px (keep >= TOOLBAR_HEIGHT, 56px): hides scrolled-past rows in the
+     translucent toolbar-fade slot. ±1px overlap closes the seams over
+     collapsed cell borders.
+   - Below that: the cell's own background, behind its content, so no seam
+     opens where the slot meets the cell.
+   - Bottom border: the table paints a collapsed border where the row sat
+     before the freeze moved it, so this redraws the header's bottom border
+     over an opaque strip, because --border is translucent in the dark theme.
+     Without both, body text shows through at the header's bottom edge. The
+     side borders stay transparent so the column borders still show. */
 .ProseMirror .tableWrapper > table > tbody > tr:first-child:has(> th) > :is(th, td)::before {
   content: "";
   position: absolute;
-  left: -1px;
-  right: -1px;
-  bottom: 100%;
-  height: 80px;
-  background: var(--background);
+  z-index: -1;
+  inset: -80px -1px -1px;
+  border-style: solid;
+  border-width: 0 1px 1px;
+  border-color: transparent transparent var(--border);
+  background:
+    linear-gradient(var(--background) 0 0) top / 100% 80px no-repeat border-box,
+    linear-gradient(var(--background) 0 0) bottom / 100% 1px no-repeat border-box,
+    linear-gradient(transparent 0 0) padding-box;
+  background-color: inherit;
   opacity: 0;
   pointer-events: none;
 }

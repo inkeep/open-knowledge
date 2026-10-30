@@ -441,10 +441,10 @@ test('header row pins below the toolbar on mid-table scroll', async ({
       document.querySelector('.ProseMirror .tableWrapper > table > tbody tr') as HTMLTableRowElement
     ).cells[0];
     const s = getComputedStyle(cell, '::before');
-    return { opacity: s.opacity, height: Number.parseFloat(s.height) };
+    return { opacity: s.opacity, reachAbovePx: -Number.parseFloat(s.top) };
   });
   expect(occluder.opacity).toBe('1');
-  expect(occluder.height).toBeGreaterThanOrEqual(56);
+  expect(occluder.reachAbovePx).toBeGreaterThanOrEqual(TOOLBAR_HEIGHT);
   expect(await scanSlotPixels(page)).toBeLessThan(10);
   await page.emulateMedia({ media: 'print' });
   const printed = await page.evaluate(() => {
@@ -812,6 +812,149 @@ test('slot above pinned header stays clean in a prose-heavy doc (pixel-verified)
   }
   await page.screenshot({ path: testInfo.outputPath('prose-above-frozen.png') });
 });
+
+async function bodyPixelsAroundPinnedHeader(page: Parameters<typeof test>[1]['page']): Promise<{
+  insideHeaderMaxDiff: number;
+  belowHeaderMaxDiff: number;
+}> {
+  const box = await page.evaluate((sel) => {
+    const scrollEl = document.querySelector<HTMLElement>(sel);
+    const table = document.querySelector<HTMLElement>('.ProseMirror .tableWrapper > table');
+    const headerCell = table?.querySelector<HTMLTableRowElement>('tbody tr')?.cells[0];
+    if (!scrollEl || !table || !headerCell) throw new Error('no pinned table header to measure');
+    const header = headerCell.getBoundingClientRect();
+    const tableRect = table.getBoundingClientRect();
+    const scrollRect = scrollEl.getBoundingClientRect();
+    const left = Math.ceil(Math.max(tableRect.left, scrollRect.left));
+    const right = Math.floor(Math.min(tableRect.right, scrollRect.left + scrollEl.clientWidth));
+    return {
+      headerTop: header.top,
+      headerBottom: header.bottom,
+      clip: {
+        x: left,
+        y: Math.floor(header.top - 8),
+        width: right - left,
+        height: Math.ceil(header.bottom - header.top) + 128,
+      },
+    };
+  }, SCROLL_SELECTOR);
+  const shown = (await page.screenshot({ clip: box.clip })).toString('base64');
+  const hideBodyContent = await page.addStyleTag({
+    content:
+      '.ProseMirror .tableWrapper > table > tbody > tr:not(:first-child) > :is(td, th) > * { visibility: hidden !important; }',
+  });
+  await twoFrames(page);
+  const hidden = (await page.screenshot({ clip: box.clip })).toString('base64');
+  await hideBodyContent.evaluate((style) => style.remove());
+  await twoFrames(page);
+  return page.evaluate(
+    async ({ shown, hidden, box }) => {
+      const decode = async (png: string): Promise<ImageData> => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${png}`;
+        await img.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+        ctx.drawImage(img, 0, 0);
+        return ctx.getImageData(0, 0, canvas.width, canvas.height);
+      };
+      const a = await decode(shown);
+      const b = await decode(hidden);
+      const scale = a.width / box.clip.width;
+      const maxDiff = (fromCss: number, toCss: number): number => {
+        const from = Math.ceil((fromCss - box.clip.y) * scale);
+        const to = Math.min(Math.floor((toCss - box.clip.y) * scale), a.height);
+        let max = 0;
+        for (let y = Math.max(from, 0); y < to; y++) {
+          for (let x = 0; x < a.width; x++) {
+            const i = (y * a.width + x) * 4;
+            for (let c = 0; c < 3; c++)
+              max = Math.max(max, Math.abs(a.data[i + c] - b.data[i + c]));
+          }
+        }
+        return max;
+      };
+      return {
+        insideHeaderMaxDiff: maxDiff(box.headerTop - 8, box.headerBottom),
+        belowHeaderMaxDiff: maxDiff(box.headerBottom + 4, box.clip.y + box.clip.height),
+      };
+    },
+    { shown, hidden, box },
+  );
+}
+
+for (const deviceScaleFactor of [1, 2]) {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    test.describe(`at device scale ${deviceScaleFactor} in the ${colorScheme} theme`, () => {
+      test.use({ deviceScaleFactor, colorScheme });
+
+      test('body text never shows through the pinned header edges', async ({
+        page,
+        api,
+        workerServer,
+      }) => {
+        const doc = `frozen-hdr-edges-${deviceScaleFactor}x-${colorScheme}`;
+        await api.seedDocs([{ name: doc, markdown: PROSE_ABOVE_MARKDOWN }]);
+        await page.goto(`${workerServer.baseURL}/#/${doc}`);
+        await waitForActiveProviderSynced(page);
+        await page.locator('table').first().waitFor({ state: 'attached' });
+        await waitForQuiescence(page, SCROLL_SELECTOR);
+        await expect
+          .poll(() => page.evaluate(() => document.documentElement.classList.contains('dark')))
+          .toBe(colorScheme === 'dark');
+        await expect(page.locator('.ok-agent-insert-flash')).toHaveCount(0);
+
+        const tableDocTop = await page.evaluate((sel) => {
+          const scrollEl = document.querySelector<HTMLElement>(sel);
+          const table = document.querySelector<HTMLElement>('.ProseMirror .tableWrapper > table');
+          if (!scrollEl || !table) throw new Error('no table in the editor scroll container');
+          return (
+            scrollEl.scrollTop +
+            table.getBoundingClientRect().top -
+            scrollEl.getBoundingClientRect().top
+          );
+        }, SCROLL_SELECTOR);
+
+        for (let step = 0; step < 12; step++) {
+          const top = Math.round(tableDocTop + 300 + step * 2.5);
+          await page.evaluate(
+            ({ sel, top }) =>
+              document.querySelector<HTMLElement>(sel)?.scrollTo({
+                top,
+                behavior: 'instant' as ScrollBehavior,
+              }),
+            { sel: SCROLL_SELECTOR, top },
+          );
+          await page.waitForFunction(
+            ({ sel, toolbarHeight }) => {
+              const scrollEl = document.querySelector<HTMLElement>(sel);
+              const cell = document.querySelector<HTMLTableRowElement>(
+                '.ProseMirror .tableWrapper > table > tbody tr',
+              )?.cells[0];
+              if (!scrollEl || !cell) return false;
+              const pinnedTop = scrollEl.getBoundingClientRect().top + toolbarHeight;
+              return Math.abs(cell.getBoundingClientRect().top - pinnedTop) < 2;
+            },
+            { sel: SCROLL_SELECTOR, toolbarHeight: TOOLBAR_HEIGHT },
+            { timeout: 5_000, polling: 'raf' },
+          );
+          await twoFrames(page);
+          const pixels = await bodyPixelsAroundPinnedHeader(page);
+          expect(
+            pixels.belowHeaderMaxDiff,
+            `no body text found below the header at scrollTop ${top}`,
+          ).toBeGreaterThan(100);
+          expect(
+            pixels.insideHeaderMaxDiff,
+            `body text shows inside the pinned header at scrollTop ${top}`,
+          ).toBeLessThanOrEqual(8);
+        }
+      });
+    });
+  }
+}
 
 const MANY_TABLES_MARKDOWN = `# Quarterly Review
 
