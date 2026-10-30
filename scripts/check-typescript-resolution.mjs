@@ -62,7 +62,7 @@ export function checkTsrs({
   }
   if (!EXACT_VERSION.test(tsrsDeclared)) {
     return [
-      `${where} declares tsrs ${tsrsDeclared}, not an exact version. tsrs ships TypeScript dev builds, so a range lets an install move the type checker to a different compiler build without a manifest edit.`,
+      `${where} declares tsrs ${tsrsDeclared}, not an exact version. tsrs ships TypeScript prerelease builds, so a range lets an install move the type checker to a different compiler build without a manifest edit.`,
     ];
   }
   if (tsrsResolved !== tsrsDeclared) {

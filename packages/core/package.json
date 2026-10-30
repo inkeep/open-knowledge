@@ -953,7 +953,7 @@
     "micromark": "^4.0.2",
     "micromark-util-symbol": "^2.0.1",
     "tsdown": "^0.22.14",
-    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
+    "tsrs": "0.20.0-ts7.1.0-beta",
     "typescript": "~7.0.2",
     "vitest": "^5.0.3",
     "y-prosemirror": "1.3.7"
