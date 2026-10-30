@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
@@ -79,6 +80,7 @@ vi.doMock('@panzoom/panzoom', () => ({
 
 const { MermaidLightbox, MermaidView } = await import('./Mermaid');
 const { TooltipProvider } = await import('@/components/ui/tooltip');
+const { ParkingActivity } = await import('@/lib/activity-park');
 
 function renderMermaidView(chart: string) {
   return render(
@@ -423,6 +425,17 @@ describe('MermaidView expand control', () => {
 });
 
 describe('MermaidLightbox', () => {
+  beforeEach(() => {
+    renderMermaid.mockClear();
+    createPanzoom.mockClear();
+    panzoomInstances.length = 0;
+    panzoomOptions.length = 0;
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
   test('hosts a complete toolbar, a view-only cue, and no expand control', async () => {
     render(
       <TooltipProvider>
@@ -503,5 +516,233 @@ describe('MermaidView editBinding (standalone .mmd path)', () => {
     await waitForPanzoomInstance();
     expect(screen.getByRole('toolbar')).toBeDefined();
     expect(committed).toBeNull();
+  });
+});
+
+function TabHost({
+  visible,
+  chart,
+  diagram = true,
+}: {
+  visible: boolean;
+  chart: string;
+  diagram?: boolean;
+}) {
+  return (
+    <StrictMode>
+      <TooltipProvider>
+        <ParkingActivity visible={visible}>
+          {diagram && <MermaidView chart={chart} />}
+        </ParkingActivity>
+      </TooltipProvider>
+    </StrictMode>
+  );
+}
+
+type Tab = 'diagram' | 'notes';
+
+function TabStrip({ order, visible }: { order: Tab[]; visible: Tab }) {
+  return (
+    <StrictMode>
+      <TooltipProvider>
+        {order.map((tab) => (
+          <ParkingActivity key={tab} visible={tab === visible}>
+            {tab === 'diagram' ? <MermaidView chart="graph TD; A-->B;" /> : <p>Notes</p>}
+          </ParkingActivity>
+        ))}
+      </TooltipProvider>
+    </StrictMode>
+  );
+}
+
+async function nextUserEvent(): Promise<void> {
+  await act(async () => {});
+}
+
+function trackDocumentPointerdownListeners() {
+  const live = new Set<EventListenerOrEventListenerObject>();
+  const add = document.addEventListener.bind(document);
+  const remove = document.removeEventListener.bind(document);
+  const spies = [
+    vi.spyOn(document, 'addEventListener').mockImplementation((type, listener, options) => {
+      if (type === 'pointerdown' && listener) live.add(listener);
+      add(type, listener, options);
+    }),
+    vi.spyOn(document, 'removeEventListener').mockImplementation((type, listener, options) => {
+      if (type === 'pointerdown' && listener) live.delete(listener);
+      remove(type, listener, options);
+    }),
+  ];
+  return {
+    count: () => live.size,
+    restore: () => {
+      for (const spy of spies) spy.mockRestore();
+    },
+  };
+}
+
+async function readyDiagram(container: HTMLElement): Promise<Element> {
+  const selector = '[data-component-type="mermaid"].mermaid-ready .mw-svg-host svg';
+  await waitFor(() => {
+    expect(container.querySelector(selector)).not.toBeNull();
+  });
+  const svg = container.querySelector(selector);
+  if (!svg) throw new Error('the diagram never became ready');
+  return svg;
+}
+
+describe('MermaidView in a tab that is hidden and shown again', () => {
+  beforeEach(() => {
+    renderMermaid.mockClear();
+    initializeMermaid.mockClear();
+    panzoomInstances.length = 0;
+    document.documentElement.classList.remove('dark');
+  });
+
+  afterEach(() => {
+    cleanup();
+    document.documentElement.classList.remove('dark');
+  });
+
+  test('shows the diagram it already rendered instead of rendering it again', async () => {
+    const chart = 'graph TD; A-->B;';
+    const { container, rerender } = render(<TabHost visible chart={chart} />);
+    const rendered = await readyDiagram(container);
+
+    rerender(<TabHost visible={false} chart={chart} />);
+    await nextUserEvent();
+    rerender(<TabHost visible chart={chart} />);
+
+    expect(await readyDiagram(container)).toBe(rendered);
+  });
+
+  test('shows the diagram it already rendered when switching tabs reorders them', async () => {
+    const { container, rerender } = render(
+      <TabStrip order={['diagram', 'notes']} visible="diagram" />,
+    );
+    const rendered = await readyDiagram(container);
+
+    rerender(<TabStrip order={['notes', 'diagram']} visible="notes" />);
+    await nextUserEvent();
+    rerender(<TabStrip order={['diagram', 'notes']} visible="diagram" />);
+
+    expect(await readyDiagram(container)).toBe(rendered);
+  });
+
+  test('renders the chart that changed while the tab was hidden', async () => {
+    const { container, rerender } = render(<TabHost visible chart="graph TD; A-->B;" />);
+    await readyDiagram(container);
+
+    rerender(<TabHost visible={false} chart="graph TD; A-->B;" />);
+    rerender(<TabHost visible={false} chart="graph TD; C-->D;" />);
+    rerender(<TabHost visible chart="graph TD; C-->D;" />);
+
+    await waitFor(() => {
+      const charts = renderMermaid.mock.calls.map((call) => call[1]);
+      expect(charts.some((chart) => chart.includes('C-->D'))).toBe(true);
+    });
+  });
+
+  test('switches to the theme chosen while the tab was hidden', async () => {
+    const chart = 'graph TD; A-->B;';
+    const { container, rerender } = render(<TabHost visible chart={chart} />);
+    await readyDiagram(container);
+    const rendersBefore = renderMermaid.mock.calls.length;
+
+    rerender(<TabHost visible={false} chart={chart} />);
+    document.documentElement.classList.add('dark');
+    rerender(<TabHost visible chart={chart} />);
+
+    await waitFor(() => {
+      expect(renderMermaid.mock.calls.length).toBeGreaterThan(rendersBefore);
+    });
+    expect(initializeMermaid).toHaveBeenLastCalledWith(expect.objectContaining({ theme: 'dark' }));
+  });
+
+  test('the toolbar still pans and zooms the diagram after the tab is shown again', async () => {
+    const chart = 'graph TD; A-->B;';
+    const { rerender } = render(<TabHost visible chart={chart} />);
+    const kept = await waitForPanzoomInstance();
+
+    rerender(<TabHost visible={false} chart={chart} />);
+    await nextUserEvent();
+    rerender(<TabHost visible chart={chart} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Zoom in' }));
+
+    expect(kept.zoomIn).toHaveBeenCalledTimes(1);
+    expect(panzoomInstances).toEqual([kept]);
+  });
+});
+
+describe('MermaidView removed for good', () => {
+  let listeners: ReturnType<typeof trackDocumentPointerdownListeners>;
+
+  beforeEach(() => {
+    renderMermaid.mockClear();
+    panzoomInstances.length = 0;
+    listeners = trackDocumentPointerdownListeners();
+  });
+
+  afterEach(() => {
+    cleanup();
+    listeners.restore();
+  });
+
+  test('stops listening to the document once unmounted', async () => {
+    const { container, unmount } = renderMermaidView('graph TD; A-->B;');
+    await readyDiagram(container);
+    expect(listeners.count()).toBe(1);
+
+    unmount();
+
+    expect(listeners.count()).toBe(0);
+  });
+
+  test('stops listening to the document once its hidden tab closes', async () => {
+    const chart = 'graph TD; A-->B;';
+    const { container, rerender, unmount } = render(<TabHost visible chart={chart} />);
+    await readyDiagram(container);
+    expect(listeners.count()).toBe(1);
+
+    rerender(<TabHost visible={false} chart={chart} />);
+    await nextUserEvent();
+    expect(listeners.count()).toBe(1);
+    unmount();
+
+    await waitFor(() => {
+      expect(listeners.count()).toBe(0);
+    });
+  });
+
+  test('stops listening to the document once removed from a hidden tab that is shown again', async () => {
+    const chart = 'graph TD; A-->B;';
+    const { container, rerender } = render(<TabHost visible chart={chart} />);
+    await readyDiagram(container);
+    expect(listeners.count()).toBe(1);
+
+    rerender(<TabHost visible={false} chart={chart} />);
+    await nextUserEvent();
+    expect(listeners.count()).toBe(1);
+    rerender(<TabHost visible={false} chart={chart} diagram={false} />);
+    await nextUserEvent();
+    rerender(<TabHost visible chart={chart} diagram={false} />);
+
+    expect(listeners.count()).toBe(0);
+  });
+
+  test('keeps only the restored diagram listening after its chart is cleared and restored', async () => {
+    const chart = 'graph TD; A-->B;';
+    const { container, rerender } = render(<TabHost visible chart={chart} />);
+    await readyDiagram(container);
+    expect(listeners.count()).toBe(1);
+
+    rerender(<TabHost visible chart="" />);
+    await waitFor(() => {
+      expect(listeners.count()).toBe(0);
+    });
+    rerender(<TabHost visible chart={chart} />);
+    await readyDiagram(container);
+
+    expect(listeners.count()).toBe(1);
   });
 });

@@ -12,7 +12,6 @@ import { randomUUID } from '@inkeep/open-knowledge-core/utils/random-uuid';
 import { t } from '@lingui/core/macro';
 import { RefreshCw } from 'lucide-react';
 import {
-  Activity,
   lazy,
   type ReactNode,
   type RefObject,
@@ -40,6 +39,7 @@ import {
 import { TiptapEditor } from '@/editor/TiptapEditor';
 import type { EditorModeValue } from '@/editor/use-editor-mode';
 import { useDocConflict } from '@/hooks/use-conflicts';
+import { ParkingActivity } from '@/lib/activity-park';
 import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name';
 import { isNoteWindow } from '@/lib/note-window-mode';
 import { mark, ProfilerBoundary } from '@/lib/perf';
@@ -864,7 +864,7 @@ function ActivityEntry({
   ]);
 
   return (
-    <Activity mode={isVisible ? 'visible' : 'hidden'} name={`editor:${entry.docName}`}>
+    <ParkingActivity visible={isVisible} name={`editor:${entry.docName}`}>
       <ScrollPreservingContainer
         isActive={isVisible}
         docName={entry.docName}
@@ -974,6 +974,6 @@ function ActivityEntry({
         )}
       </ScrollPreservingContainer>
       {toolbar}
-    </Activity>
+    </ParkingActivity>
   );
 }

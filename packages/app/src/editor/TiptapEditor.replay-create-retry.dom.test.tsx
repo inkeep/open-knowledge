@@ -51,7 +51,7 @@ vi.doMock('@/components/editor/SelectionAnnouncer', () => ({
   SelectionAnnouncer: () => <div />,
 }));
 vi.doMock('./interaction-layer', () => ({ InteractionLayerView: () => <div /> }));
-vi.doMock('@tiptap/react', () => ({ EditorContent: () => <div data-testid="editor-content" /> }));
+vi.doMock('./EditorContent', () => ({ EditorContent: () => <div data-testid="editor-content" /> }));
 vi.doMock('./utils/get-editor-view', () => ({
   getEditorView: (editor: Editor) =>
     viewReady ? (editor as unknown as { editorView?: unknown }).editorView : undefined,
