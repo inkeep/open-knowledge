@@ -297,6 +297,15 @@ describe('readMarkdownReferenceAt', () => {
 });
 
 describe('readReferenceDefinition', () => {
+  test('footnote definitions are not ordinary link reference definitions', () => {
+    expect(readReferenceDefinition('[^note]: ./not-a-link.md')).toBeNull();
+    expect(readReferenceDefinition('   [^note]: [source](./source.md)')).toBeNull();
+    expect(readReferenceDefinition('[a^b]: ./source.md')).toMatchObject({ label: 'a^b' });
+    expect(readReferenceDefinition('[\\^literal]: ./source.md')).toMatchObject({
+      label: '\\^literal',
+    });
+  });
+
   test('bare destination with the repair range bounding the destination token', () => {
     const line = '[ref]: ./file.pdf';
     const def = readReferenceDefinition(line);
