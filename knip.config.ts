@@ -111,7 +111,7 @@ export default {
         'test-support/fixtures/read-declarations/*.cjs',
         'scripts/check-no-major-changeset.mjs',
       ],
-      vitest: { entry: ['**/*.uncached.test.{ts,tsx,mjs}'] },
+      vitest: { entry: ['**/*.uncached.test.{ts,tsx,mjs}', '!.{agents,codex}/skills/**'] },
     },
     'packages/app': {
       entry: [
