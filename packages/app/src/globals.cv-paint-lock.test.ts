@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { CV_SCAN_ROOT } from './globals.cv-paint-lock.reads';
 import { blankComments, readGlobalsCssWithoutComments } from './globals-css.test-helper';
 
 const CSS = readGlobalsCssWithoutComments();
@@ -94,7 +95,7 @@ describe('globals.css content-visibility paint-lock deferral contract', () => {
     const STYLE_PROP_CV_HIDDEN = /contentVisibility\s*[:=]\s*['"`]\s*hidden\s*['"`]/;
     const SET_PROPERTY_CV_HIDDEN =
       /setProperty\(\s*['"`]content-visibility['"`]\s*,\s*['"`]\s*hidden\s*['"`]/;
-    const srcRoot = __dirname;
+    const srcRoot = join(__dirname, '..', '..', '..', CV_SCAN_ROOT);
     const offenders: string[] = [];
     for (const entry of readdirSync(srcRoot, { recursive: true, withFileTypes: true })) {
       if (!entry.isFile() || !/\.(ts|tsx|css)$/.test(entry.name)) continue;

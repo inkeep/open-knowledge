@@ -7,15 +7,20 @@ import {
   DEFAULT_SIGTERM_POLL_MS,
   type DesktopProductName,
   desktopChannelLabel,
-  SPAWN_ERROR_LOG,
   sliceLastSpawnAttempt,
 } from '@inkeep/open-knowledge-core';
+import type {
+  OkDeepLinkPayload,
+  OkShareReceivedPayload,
+} from '@inkeep/open-knowledge-core/desktop-bridge';
 import type { KeepaliveHandle } from '@inkeep/open-knowledge-core/keepalive';
+import { projectSpawnErrorLogPath } from '@inkeep/open-knowledge-core/server';
 import {
   assessLockHolder,
   getLocalDir,
   type LockHolderIdentity,
   type ProcessStart,
+  readBootStartedAtMs,
   readProcessStart,
 } from '@inkeep/open-knowledge-server';
 import {
@@ -33,7 +38,7 @@ import {
   utilityInitPhaseEvent,
 } from '../shared/boot-narration.ts';
 import type { OkServerRestartOutcome } from '../shared/bridge-contract.ts';
-import { registerPendingDelivery } from '../shared/ipc-send.ts';
+import { registerPendingDelivery, sendToRenderer } from '../shared/ipc-send.ts';
 import type { AssetOpenResult } from './asset-allowlist.ts';
 import { attachAssetSafetyNet } from './asset-safety-net.ts';
 import { startBootHeartbeat } from './boot-heartbeat.ts';
@@ -374,8 +379,7 @@ export interface EphemeralOpenIdentity {
   docName: string;
 }
 
-interface CreateProjectWindowOpts {
-  projectPath: string;
+export interface PendingDeepLinkOpts {
   pendingDeepLinkTarget?: {
     kind: 'doc' | 'folder';
     path: string;
@@ -385,12 +389,41 @@ interface CreateProjectWindowOpts {
   pendingBranch?: string | null;
   pendingMultiCandidate?: boolean;
   pendingTargetMissing?: boolean;
+}
+
+interface CreateProjectWindowOpts extends PendingDeepLinkOpts {
+  projectPath: string;
   pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload;
   didEnsureGit?: boolean;
   consentVersion?: number;
   localOpCliInvocation?: HostCliInvocation;
   pendingServerRestartedToast?: boolean;
   freshlyCreated?: boolean;
+}
+
+export function pendingDeepLinkPayload(opts: PendingDeepLinkOpts): OkDeepLinkPayload | undefined {
+  const target = opts.pendingDeepLinkTarget;
+  if (target === undefined) return undefined;
+  return {
+    doc: target.path,
+    kind: target.kind,
+    branch: opts.pendingBranch ?? null,
+    multiCandidate: opts.pendingMultiCandidate === true,
+    ...(target.repositoryPath === undefined ? {} : { repositoryPath: target.repositoryPath }),
+    ...(target.contentRootDepth === undefined ? {} : { contentRootDepth: target.contentRootDepth }),
+    ...(opts.pendingTargetMissing === true ? { targetMissing: true } : {}),
+  };
+}
+
+export function shareBranchSwitchPayload(
+  branchSwitch: ShareDeepLinkBranchSwitchPayload,
+): OkShareReceivedPayload {
+  return {
+    kind: 'project-branch-switch',
+    share: branchSwitch.share,
+    projectPath: branchSwitch.projectPath,
+    currentBranch: branchSwitch.currentBranch,
+  };
 }
 
 export interface SpawnedServer {
@@ -483,6 +516,7 @@ export interface WindowManagerDeps {
   removeServerLock?(lockDir: string, expected: { pid: number }): boolean;
   isProcessAlive?(pid: number): boolean;
   readProcessStart?(pid: number): ProcessStart | null;
+  readBootInstant?(): number | null;
   hostname?(): string;
   probeWsUpgrade?(url: string, timeoutMs: number): Promise<boolean>;
   utilityInitTimeoutMs?: number;
@@ -628,6 +662,25 @@ export class WindowManager {
 
   private bringToFront(win: BrowserWindowLike, opts?: { activate?: boolean }): void {
     bringWindowToFront(win, () => this.deps.activateApp?.(), opts);
+  }
+
+  private focusOpenProjectWindow(
+    ctx: ProjectContext,
+    opts: CreateProjectWindowOpts,
+  ): ProjectContext {
+    this.bringToFront(ctx.window);
+    const deepLink = pendingDeepLinkPayload(opts);
+    if (deepLink) {
+      sendToRenderer(ctx.window.webContents, 'ok:deep-link', deepLink);
+    }
+    if (opts.pendingShareBranchSwitch) {
+      sendToRenderer(
+        ctx.window.webContents,
+        'ok:share:received',
+        shareBranchSwitchPayload(opts.pendingShareBranchSwitch),
+      );
+    }
+    return ctx;
   }
 
   getContextForBrowserWindow(win: BrowserWindowLike): ProjectContext | undefined {
@@ -853,6 +906,11 @@ export class WindowManager {
     return read ? read(pid) : readProcessStart(pid);
   }
 
+  private readBootInstant(): number | null {
+    const read = this.deps.readBootInstant;
+    return read ? read() : readBootStartedAtMs();
+  }
+
   private settleUnlessLockWriter(
     lock: LockHolderIdentity,
     sigtermSent: boolean,
@@ -860,6 +918,7 @@ export class WindowManager {
     const assessment = assessLockHolder(lock, {
       isAlive: (pid) => this.isPidAlive(pid),
       readProcessStart: (pid) => this.readHolderStart(pid),
+      readBootInstant: () => this.readBootInstant(),
     });
     const withheld = sigtermSent ? 'SIGKILL' : 'SIGTERM';
     switch (assessment.verdict) {
@@ -1439,8 +1498,7 @@ export class WindowManager {
     if (inFlight) {
       const ctx = await inFlight;
       if (ctx.window.isDestroyed?.() !== true) {
-        this.bringToFront(ctx.window);
-        return ctx;
+        return this.focusOpenProjectWindow(ctx, opts);
       }
     }
     const work = (async (): Promise<ProjectContext> => {
@@ -1462,8 +1520,7 @@ export class WindowManager {
     const existing = this.windowsByPath.get(canonicalKey);
     if (existing) {
       if (existing.window.isDestroyed?.() !== true) {
-        this.bringToFront(existing.window);
-        return existing;
+        return this.focusOpenProjectWindow(existing, opts);
       }
       this.deps.log?.warn(
         { canonicalKey },
@@ -1581,6 +1638,7 @@ export class WindowManager {
     }
 
     if (this.deps.spawnDetachedServer) {
+      const spawnErrorLogPath = projectSpawnErrorLogPath(projectPath);
       const reactShellDistDir = dirname(this.deps.rendererEntryPath);
       const handle = await this.deps.spawnDetachedServer({
         contentDir: projectPath,
@@ -1606,6 +1664,7 @@ export class WindowManager {
           pid: handle.pid,
           exit: childExit,
           lockDir,
+          spawnErrorLogPath,
           deadlineMs: waitedDeadlineMs,
           spawnLabel: 'spawn',
           childExited,
@@ -1793,34 +1852,17 @@ export class WindowManager {
     this.deps.startup?.markWindowCreated?.();
     this.attachSafetyNet(window.webContents, apiOrigin, projectPath);
 
-    if (opts.pendingDeepLinkTarget) {
-      const doc = opts.pendingDeepLinkTarget.path;
-      const kind = opts.pendingDeepLinkTarget.kind;
-      const branch = opts.pendingBranch ?? null;
-      const multiCandidate = opts.pendingMultiCandidate === true;
-      registerPendingDelivery(window.webContents, 'ok:deep-link', {
-        doc,
-        kind,
-        branch,
-        multiCandidate,
-        ...(opts.pendingDeepLinkTarget.repositoryPath === undefined
-          ? {}
-          : { repositoryPath: opts.pendingDeepLinkTarget.repositoryPath }),
-        ...(opts.pendingDeepLinkTarget.contentRootDepth === undefined
-          ? {}
-          : { contentRootDepth: opts.pendingDeepLinkTarget.contentRootDepth }),
-        ...(opts.pendingTargetMissing === true ? { targetMissing: true } : {}),
-      });
+    const deepLink = pendingDeepLinkPayload(opts);
+    if (deepLink) {
+      registerPendingDelivery(window.webContents, 'ok:deep-link', deepLink);
     }
 
     if (opts.pendingShareBranchSwitch) {
-      const branchSwitch = opts.pendingShareBranchSwitch;
-      registerPendingDelivery(window.webContents, 'ok:share:received', {
-        kind: 'project-branch-switch' as const,
-        share: branchSwitch.share,
-        projectPath: branchSwitch.projectPath,
-        currentBranch: branchSwitch.currentBranch,
-      });
+      registerPendingDelivery(
+        window.webContents,
+        'ok:share:received',
+        shareBranchSwitchPayload(opts.pendingShareBranchSwitch),
+      );
     }
 
     const disposeShowGate = this.deps.showGate.register(window, { kind: 'editor' });
@@ -2070,6 +2112,7 @@ export class WindowManager {
 
     const tempProjectDir = createEphemeralProjectDir(opts.contentDir);
     const lockDir = getLocalDir(tempProjectDir);
+    const spawnErrorLogPath = projectSpawnErrorLogPath(tempProjectDir);
 
     const reactShellDistDir = dirname(this.deps.rendererEntryPath);
     let handle: Awaited<ReturnType<SpawnCliServer>>;
@@ -2115,6 +2158,7 @@ export class WindowManager {
         pid: handle.pid,
         exit: childExit,
         lockDir,
+        spawnErrorLogPath,
         deadlineMs: waitedDeadlineMs,
         spawnLabel: 'ephemeral spawn',
         childExited,
@@ -2324,24 +2368,29 @@ export class WindowManager {
     pid: number;
     exit: { code: number | null; signal: string | null } | null;
     lockDir: string;
+    spawnErrorLogPath: string;
     deadlineMs: number;
     spawnLabel: string;
     childExited: boolean | undefined;
   }): Error {
-    const { pid, exit, lockDir, deadlineMs, spawnLabel, childExited } = opts;
+    const { pid, exit, lockDir, spawnErrorLogPath, deadlineMs, spawnLabel, childExited } = opts;
     const STDERR_TAIL_BYTES = 8192;
     let stderrTail: string | undefined;
     try {
-      const attempt = sliceLastSpawnAttempt(
-        readFileSync(join(lockDir, SPAWN_ERROR_LOG), 'utf-8'),
-      ).trim();
+      const attempt = sliceLastSpawnAttempt(readFileSync(spawnErrorLogPath, 'utf-8')).trim();
       stderrTail =
         attempt.length > STDERR_TAIL_BYTES ? `…${attempt.slice(-STDERR_TAIL_BYTES)}` : attempt;
     } catch (readErr) {
       const code = (readErr as NodeJS.ErrnoException).code;
       if (code !== 'ENOENT' && code !== 'ENOTDIR') {
         this.deps.log?.warn(
-          { event: 'desktop-spawn-error-log-read-failed', err: readErr, code, lockDir },
+          {
+            event: 'desktop-spawn-error-log-read-failed',
+            err: readErr,
+            code,
+            lockDir,
+            spawnErrorLogPath,
+          },
           '[window-manager] could not read the spawn error log',
         );
       }
@@ -2527,33 +2576,22 @@ export class WindowManager {
     return upgradeOk;
   }
 
-  private async attachToExistingServer(args: {
-    projectPath: string;
-    canonicalKey: string;
-    projectName: string;
-    lock: ServerLockMetadataLike;
-    pendingDeepLinkTarget?: {
-      kind: 'doc' | 'folder';
-      path: string;
-      repositoryPath?: string;
-      contentRootDepth?: number;
-    };
-    pendingBranch?: string | null;
-    pendingMultiCandidate?: boolean;
-    pendingTargetMissing?: boolean;
-    pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload;
-    pendingServerRestartedToast?: boolean;
-    freshlyCreated?: boolean;
-  }): Promise<ProjectContext> {
+  private async attachToExistingServer(
+    args: PendingDeepLinkOpts & {
+      projectPath: string;
+      canonicalKey: string;
+      projectName: string;
+      lock: ServerLockMetadataLike;
+      pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload;
+      pendingServerRestartedToast?: boolean;
+      freshlyCreated?: boolean;
+    },
+  ): Promise<ProjectContext> {
     const {
       projectPath,
       canonicalKey,
       projectName,
       lock,
-      pendingDeepLinkTarget,
-      pendingBranch,
-      pendingMultiCandidate,
-      pendingTargetMissing,
       pendingShareBranchSwitch,
       pendingServerRestartedToast,
       freshlyCreated,
@@ -2596,34 +2634,17 @@ export class WindowManager {
     this.deps.startup?.markWindowCreated?.();
     this.attachSafetyNet(window.webContents, apiOrigin, projectPath);
 
-    if (pendingDeepLinkTarget) {
-      const doc = pendingDeepLinkTarget.path;
-      const kind = pendingDeepLinkTarget.kind;
-      const branch = pendingBranch ?? null;
-      const multiCandidate = pendingMultiCandidate === true;
-      registerPendingDelivery(window.webContents, 'ok:deep-link', {
-        doc,
-        kind,
-        branch,
-        multiCandidate,
-        ...(pendingDeepLinkTarget.repositoryPath === undefined
-          ? {}
-          : { repositoryPath: pendingDeepLinkTarget.repositoryPath }),
-        ...(pendingDeepLinkTarget.contentRootDepth === undefined
-          ? {}
-          : { contentRootDepth: pendingDeepLinkTarget.contentRootDepth }),
-        ...(pendingTargetMissing === true ? { targetMissing: true } : {}),
-      });
+    const deepLink = pendingDeepLinkPayload(args);
+    if (deepLink) {
+      registerPendingDelivery(window.webContents, 'ok:deep-link', deepLink);
     }
 
     if (pendingShareBranchSwitch) {
-      const branchSwitch = pendingShareBranchSwitch;
-      registerPendingDelivery(window.webContents, 'ok:share:received', {
-        kind: 'project-branch-switch' as const,
-        share: branchSwitch.share,
-        projectPath: branchSwitch.projectPath,
-        currentBranch: branchSwitch.currentBranch,
-      });
+      registerPendingDelivery(
+        window.webContents,
+        'ok:share:received',
+        shareBranchSwitchPayload(pendingShareBranchSwitch),
+      );
     }
 
     const selfProtocol = this.deps.selfProtocolVersion;

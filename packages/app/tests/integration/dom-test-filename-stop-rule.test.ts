@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { DOM_TEST_SCAN_GLOB, DOM_TEST_SCAN_ROOTS } from './dom-test-filename-stop-rule.reads';
 
 const PACKAGE_APP_ROOT = resolve(import.meta.dir, '../..');
-const SCAN_ROOTS = ['src', 'tests'] as const;
 
 const VALUE_RTL_IMPORT_PATTERN =
   /\bimport\s+(?!type\s)[\s\S]*?from\s+['"]@testing-library\/react['"]|\bimport\s+['"]@testing-library\/react['"]/;
@@ -36,9 +36,9 @@ const PLANTED_RTL_IMPORT = "import { render, screen } from '@testing-library/rea
 
 function listTestTsxFiles(): string[] {
   const results: string[] = [];
-  for (const root of SCAN_ROOTS) {
+  for (const root of DOM_TEST_SCAN_ROOTS) {
     const rootAbsolute = resolve(PACKAGE_APP_ROOT, root);
-    for (const path of new Bun.Glob('**/*.test.tsx').scanSync({
+    for (const path of new Bun.Glob(DOM_TEST_SCAN_GLOB).scanSync({
       cwd: rootAbsolute,
       absolute: true,
     })) {

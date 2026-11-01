@@ -42,7 +42,6 @@ import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { useSemanticSearchStatus } from '@/hooks/use-semantic-search-status';
-import { okUserHomeLabel } from '@/lib/channel-cli-copy';
 import { useConfigContext } from '@/lib/config-provider';
 import {
   type EmbeddingsKeyTransport,
@@ -302,7 +301,7 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
           />
         </div>
 
-        {enabled ? <SemanticStatusPanel status={status} /> : null}
+        {enabled || status?.keyStoreUnavailable ? <SemanticStatusPanel status={status} /> : null}
       </div>
 
       <EmbeddingsKeyField
@@ -310,6 +309,10 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
         refresh={refresh}
         endpointHost={endpointHost}
         keyPresent={keyPresent}
+        keyStoreUnavailable={status?.keyStoreUnavailable === true}
+        keyStoreConflict={status?.keyStoreError === 'migration_conflict'}
+        keyStoreError={status?.keyStoreError}
+        keyStoredInFile={status?.keyStoredInFile === true && !status.keyStoreUnavailable}
         keyHint={keyHint}
         keySource={keySource}
         keyNotRequired={keyNotRequired}
@@ -694,6 +697,10 @@ interface EmbeddingsKeyFieldProps {
   refresh: () => void;
   endpointHost: string;
   keyPresent: boolean;
+  keyStoreUnavailable: boolean;
+  keyStoreConflict: boolean;
+  keyStoreError?: SemanticIndexStatus['keyStoreError'];
+  keyStoredInFile: boolean;
   keyHint: string | null;
   keySource: 'project' | 'file' | 'env' | null;
   keyNotRequired: boolean;
@@ -705,13 +712,16 @@ function EmbeddingsKeyField({
   refresh,
   endpointHost,
   keyPresent,
+  keyStoreUnavailable,
+  keyStoreConflict,
+  keyStoreError,
+  keyStoredInFile,
   keyHint,
   keySource,
   keyNotRequired,
   loaded,
 }: EmbeddingsKeyFieldProps) {
   const { t } = useLingui();
-  const secretsPath = okUserHomeLabel('secrets.yml');
   const [keyInput, setKeyInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -757,15 +767,17 @@ function EmbeddingsKeyField({
           ) : (
             <Trans>
               Sent to <span className="font-medium">{endpointHost}</span> to embed your content.
-              Stored on this machine only (in{' '}
-              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{secretsPath}</code>
-              ), never in the project.
+              Stored outside the project.
             </Trans>
           )}
         </p>
       </div>
 
-      {keySource === 'env' ? (
+      {keyStoreUnavailable && !keyStoreConflict ? (
+        <p className="text-1sm text-foreground" data-testid="settings-search-key-unavailable">
+          <CredentialStoreError code={keyStoreError} />
+        </p>
+      ) : keySource === 'env' ? (
         <p className="text-muted-foreground text-1sm" data-testid="settings-search-key-env">
           <Trans>
             Using the{' '}
@@ -777,6 +789,23 @@ function EmbeddingsKeyField({
         </p>
       ) : (
         <>
+          {keyStoreConflict ? (
+            <p className="text-1sm text-foreground">
+              <CredentialStoreError code={keyStoreError} />
+            </p>
+          ) : null}
+          {keyPresent && keyStoredInFile ? (
+            <p
+              role="status"
+              className="text-1sm text-foreground"
+              data-testid="settings-search-key-file-fallback"
+            >
+              <Trans>
+                The system credential store is unavailable. This key is stored in a file with
+                restricted permissions outside the project.
+              </Trans>
+            </p>
+          ) : null}
           {keyPresent ? (
             <div
               className="flex items-center justify-between gap-3"
@@ -861,6 +890,17 @@ interface SemanticStatusPanelProps {
 }
 
 function SemanticStatusPanel({ status }: SemanticStatusPanelProps) {
+  if (status?.keyStoreUnavailable) {
+    return (
+      <div
+        role="alert"
+        className="mt-2 rounded-md border border-warning/40 px-3 py-2 text-1sm text-foreground"
+        data-testid="settings-search-key-store-error"
+      >
+        <CredentialStoreError code={status.keyStoreError} />
+      </div>
+    );
+  }
   if (!status?.enabled) {
     return (
       <p
@@ -1022,6 +1062,8 @@ function TestConnectionFailure({
   response: Extract<LocalOpEmbeddingsTestResponse, { ok: false }>;
 }) {
   switch (response.reason) {
+    case 'credential_store':
+      return <CredentialStoreError code={response.keyStoreError} />;
     case 'no_key':
       return <Trans>No API key is set for this endpoint. Add one above.</Trans>;
     case 'invalid_endpoint':
@@ -1064,6 +1106,37 @@ function TestConnectionFailure({
         <Trans>The provider rejected the request. Check the API key and the model id.</Trans>
       );
   }
+}
+
+function CredentialStoreError({ code }: { code?: SemanticIndexStatus['keyStoreError'] }) {
+  if (code === 'migration_conflict') {
+    return (
+      <Trans>
+        Saved keys conflict. Enter a replacement key for this project and endpoint to use instead.
+      </Trans>
+    );
+  }
+  if (code === 'lock_timeout' || code === 'timeout') {
+    return (
+      <Trans>
+        Access to the saved API key timed out. Wait for the credential store operation to finish,
+        then try again.
+      </Trans>
+    );
+  }
+  if (code === 'index_invalid' || code === 'file_access') {
+    return (
+      <Trans>
+        Could not access the saved API key. Check the local credential files, then try again.
+      </Trans>
+    );
+  }
+  return (
+    <Trans>
+      Could not access the saved API key. Unlock your system credential store or check the local
+      credential files, then try again.
+    </Trans>
+  );
 }
 
 function TestConnectionMessage({

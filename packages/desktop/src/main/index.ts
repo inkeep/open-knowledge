@@ -61,7 +61,6 @@ import {
   projectWorktreeCreateResult,
   resolveDesktopProductName,
   ServerInfoSuccessSchema,
-  SPAWN_ERROR_LOG,
   TERMINAL_CLIS,
   type TerminalCli,
   type UninstallFeedbackAnswers,
@@ -73,7 +72,7 @@ import type {
   OkTerminalDockStateWriteResult,
   OkTerminalRestartSnapshot,
 } from '@inkeep/open-knowledge-core/desktop-bridge';
-import { openSpawnErrorLog } from '@inkeep/open-knowledge-core/server';
+import { openSpawnErrorLog, projectSpawnErrorLogPath } from '@inkeep/open-knowledge-core/server';
 import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
 import {
   assertGitAvailable,
@@ -91,8 +90,10 @@ import {
   normalizeFsPath,
   ONBOARDING_BUNDLE_IDS,
   prepareSingleFileOpen,
+  prepareSpawnProjectLogsDir,
   type ResolvedSkillHost,
   RUNTIME_VERSION,
+  readBootStartedAtMs,
   readBundleDecision,
   readProcessStart,
   readServerLock,
@@ -200,7 +201,7 @@ import {
   resolveDesktopLocaleForPushed,
 } from './boot-locale.ts';
 import { resolveBootRestoreDecision, resolveRestoreActions } from './boot-restore-decision.ts';
-import { readBootSessionUuid, readBootStartedAtMs } from './boot-session.ts';
+import { readBootSessionUuid } from './boot-session.ts';
 import { runBootstrap } from './bootstrap.ts';
 import {
   type BranchInfoProxyDeps,
@@ -514,6 +515,7 @@ import {
   windowRestoreKey,
 } from './state-store.ts';
 import { stopCommandLine } from './stop-command.ts';
+import { createMacMemoryPressureProbe, readSystemMemorySample } from './system-memory-sample.ts';
 import { isTerminalAvailable, withTerminalCapabilityArg } from './terminal-capability.ts';
 import {
   isTerminalConsented,
@@ -594,7 +596,9 @@ import {
   bringWindowToFront,
   collabUrlFromApiOrigin,
   heldChildServer,
+  pendingDeepLinkPayload,
   setWindowInstanceLabels,
+  shareBranchSwitchPayload,
   type UtilityProcessLike,
   WindowManager,
   type WindowManagerDeps,
@@ -1410,14 +1414,15 @@ function ensureWindowManager() {
         );
       }
     }
-    const spawnErrorLogPath = join(lockDir, SPAWN_ERROR_LOG);
+    const spawnErrorLogPath = projectSpawnErrorLogPath(projectRoot);
     let spawnErrorLogFd: number;
     try {
+      await prepareSpawnProjectLogsDir(projectRoot);
       spawnErrorLogFd = openSpawnErrorLog(spawnErrorLogPath, process.pid);
     } catch (err) {
       throw Object.assign(
         new Error(
-          `spawnCliServer: failed to open spawn-error log fd at ${spawnErrorLogPath}: ${
+          `spawnCliServer: server start failed while preparing diagnostics at ${spawnErrorLogPath}: ${
             err instanceof Error ? err.message : String(err)
           }`,
         ),
@@ -5085,19 +5090,13 @@ function registerIpcHandlers() {
         | (BrowserWindowLike & { webContents: BrowserWindowLike['webContents'] })
         | null;
       if (existing) {
-        sendToRenderer(existing.webContents, 'ok:deep-link', {
-          doc: request.pendingDeepLinkTarget.path,
-          kind: request.pendingDeepLinkTarget.kind,
-          branch: request.pendingBranch ?? null,
-          multiCandidate: request.pendingMultiCandidate === true,
-          ...(request.pendingDeepLinkTarget.repositoryPath === undefined
-            ? {}
-            : { repositoryPath: request.pendingDeepLinkTarget.repositoryPath }),
-          ...(request.pendingDeepLinkTarget.contentRootDepth === undefined
-            ? {}
-            : { contentRootDepth: request.pendingDeepLinkTarget.contentRootDepth }),
-          ...(targetMissing ? { targetMissing: true } : {}),
+        const deepLink = pendingDeepLinkPayload({
+          pendingDeepLinkTarget: request.pendingDeepLinkTarget,
+          pendingBranch: request.pendingBranch,
+          pendingMultiCandidate: request.pendingMultiCandidate,
+          pendingTargetMissing: targetMissing,
         });
+        if (deepLink) sendToRenderer(existing.webContents, 'ok:deep-link', deepLink);
         return undefined;
       }
     }
@@ -5106,12 +5105,11 @@ function registerIpcHandlers() {
         | (BrowserWindowLike & { webContents: BrowserWindowLike['webContents'] })
         | null;
       if (existing) {
-        sendToRenderer(existing.webContents, 'ok:share:received', {
-          kind: 'project-branch-switch' as const,
-          share: request.pendingShareBranchSwitch.share,
-          projectPath: request.pendingShareBranchSwitch.projectPath,
-          currentBranch: request.pendingShareBranchSwitch.currentBranch,
-        });
+        sendToRenderer(
+          existing.webContents,
+          'ok:share:received',
+          shareBranchSwitchPayload(request.pendingShareBranchSwitch),
+        );
         return undefined;
       }
     }
@@ -6223,10 +6221,21 @@ function bootPrimaryInstance(): void {
   );
 
   startLocalCrashReporter(crashReporter);
+  const macMemoryPressure =
+    process.platform === 'darwin' ? createMacMemoryPressureProbe({ now: () => new Date() }) : null;
+  macMemoryPressure?.refresh();
   desktopProcessObservability = createDesktopProcessObservability({
     now: () => new Date(),
     getAppMetrics: () => app.getAppMetrics(),
     getAllWindows: () => BrowserWindow.getAllWindows(),
+    readSystemMemory: () => {
+      const sample = readSystemMemorySample(
+        process.getSystemMemoryInfo(),
+        macMemoryPressure?.latest() ?? null,
+      );
+      macMemoryPressure?.refresh();
+      return sample;
+    },
     logger: getLogger('desktop-process-observability'),
     setInterval: (callback, ms) => setInterval(callback, ms).unref(),
     clearInterval: (handle) => clearInterval(handle),
@@ -6594,6 +6603,9 @@ function bootPrimaryInstance(): void {
         evaluateSchemaCompatibility,
         installLocalhostCorsInjector,
         installEmbedRefererRewriter,
+        publishAppState: (state) => {
+          appState = state;
+        },
         registerIpcHandlers,
         setNativeThemeSource: (source) => {
           nativeTheme.themeSource = source;
@@ -6604,7 +6616,6 @@ function bootPrimaryInstance(): void {
         appVersion: app.getVersion(),
         maxSupportedSchemaVersion: MAX_SUPPORTED_SCHEMA_VERSION,
       });
-      appState = result.appState;
 
       if (process.platform !== 'darwin') {
         nativeTheme.on('updated', fanOutChromeColors);

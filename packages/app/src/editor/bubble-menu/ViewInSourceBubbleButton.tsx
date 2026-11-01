@@ -10,14 +10,22 @@ import { getEditorDocName } from '../extensions/doc-context';
 import { requestViewInSource } from '../mode-switch-landing';
 import { getYDoc } from '../utils/get-ydoc';
 
-export function ViewInSourceBubbleButton({ editor }: { editor: Editor }): ReactNode {
+export function ViewInSourceBubbleButton({
+  editor,
+  getTargetPosition,
+}: {
+  editor: Editor;
+  getTargetPosition?: () => number | undefined;
+}): ReactNode {
   const { t } = useLingui();
 
   const jump = (): void => {
     const docName = getEditorDocName(editor);
     const ydoc = getYDoc(editor);
     if (docName === null || !ydoc) return;
-    requestViewInSource({ editor, docName, ytext: ydoc.getText('source') });
+    const pmPosition = getTargetPosition?.();
+    if (getTargetPosition && pmPosition === undefined) return;
+    requestViewInSource({ editor, docName, ytext: ydoc.getText('source'), pmPosition });
   };
 
   return (

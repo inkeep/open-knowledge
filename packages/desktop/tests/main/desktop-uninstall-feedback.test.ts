@@ -51,10 +51,11 @@ describe('desktop uninstall feedback step', () => {
     const step = runDesktopUninstallFeedbackStep({
       collect: async () => answered,
       appVersion: '1.4.0',
-      submit: () =>
-        new Promise<UninstallFeedbackResult>((resolve) => {
-          releaseSubmit = resolve;
-        }),
+      submit: () => {
+        const { promise, resolve } = Promise.withResolvers<UninstallFeedbackResult>();
+        releaseSubmit = resolve;
+        return promise;
+      },
     }).then((outcome) => {
       stepDone = true;
       return outcome;

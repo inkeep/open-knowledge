@@ -1,6 +1,6 @@
 import { EMPTY_DETECTION_SNAPSHOT, EMPTY_PROBE_SNAPSHOT } from '@inkeep/open-knowledge-core';
 import type { IpcMainInvokeEvent } from 'electron';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { writeUserMcpConfigs } from '../../../cli/src/commands/init.ts';
 import type {
   AgentIntegrationsApplyRequest,
@@ -393,6 +393,14 @@ describe('ok:integrations:dispatch — status', () => {
 });
 
 describe('ok:integrations:dispatch — set editor', () => {
+  beforeEach(() => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   test('enable writes the one editor and returns ok with a fresh snapshot', async () => {
     const cli = makeCli();
     const { set } = setup({ cli });
@@ -554,9 +562,9 @@ describe('ok:integrations:dispatch — gates and serialization', () => {
     let releaseFirst: () => void = () => {};
     path.install = async () => {
       order.push('install-start');
-      await new Promise<void>((resolve) => {
-        releaseFirst = resolve;
-      });
+      const { promise, resolve } = Promise.withResolvers<void>();
+      releaseFirst = resolve;
+      await promise;
       order.push('install-end');
       return { ok: true };
     };
@@ -591,9 +599,9 @@ describe('ok:integrations:dispatch — gates and serialization', () => {
     let releaseInstall: () => void = () => {};
     path.install = async () => {
       order.push('toggle-start');
-      await new Promise<void>((resolve) => {
-        releaseInstall = resolve;
-      });
+      const { promise, resolve } = Promise.withResolvers<void>();
+      releaseInstall = resolve;
+      await promise;
       order.push('toggle-end');
       return { ok: true };
     };

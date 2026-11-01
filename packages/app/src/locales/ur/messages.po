@@ -94,8 +94,8 @@ msgstr "(منقطع)"
 msgid "(inline)"
 msgstr "(اِن لائن)"
 
-msgid "(no id)"
-msgstr "(کوئی شناخت نہیں)"
+msgid "(no name)"
+msgstr "(کوئی نام نہیں)"
 
 msgid "(opens in new tab)"
 msgstr "(نئے ٹیب میں کھلتا ہے)"
@@ -892,11 +892,11 @@ msgstr "<0>{cliCommand}</0> بیرونی ٹرمینلز میں اس وقت تک 
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> کو یہاں مرج نہیں کیا جا سکتا۔ رکھنے کے لیے ورژن چنیں۔"
 
-msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
-msgstr "<0>مرر — ایک ماخذ منتخب کریں۔</0> خصوصیات کے پینل سے <1>src</1> + <2>anchor</2> مقرر کریں تاکہ کہیں اور موجود <3><MirrorSource></3> کی طرف اشارہ ہو۔"
+msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
+msgstr "<0>مرر — ایک ماخذ منتخب کریں۔</0> خصوصیات کے پینل سے <1>src</1> + <2>name</2> مقرر کریں تاکہ کہیں اور موجود <3><MirrorSource></3> کی طرف اشارہ ہو۔"
 
-msgid "<0>Mirror anchor not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
-msgstr "<0>مرر اینکر نہیں ملا۔</0> <2>{src}</2> میں کوئی <1>{mirrorSourceTag}</1> موجود نہیں۔"
+msgid "<0>Mirror name not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
+msgstr "<0>مرر کا نام نہیں ملا۔</0> <2>{src}</2> میں کوئی <1>{mirrorSourceTag}</1> موجود نہیں۔"
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>مرر کا ماخذ ہٹا دیا گیا۔</0> دستاویز <1>{src}</1> اب دستیاب نہیں۔"
@@ -1084,6 +1084,9 @@ msgstr "عنوان، تفصیل، ٹیگز — کوئی بھی چیز جو اس 
 msgid "A token added here only applies to HTTPS remotes, and this project's remote doesn't use HTTPS."
 msgstr "یہاں شامل کیا گیا ٹوکن صرف HTTPS ریموٹس پر لاگو ہوتا ہے، اور اس پروجیکٹ کا ریموٹ HTTPS استعمال نہیں کرتا۔"
 
+msgid "A variable needs two braces on each side, such as {filenameVariable}."
+msgstr "متغیر کے ہر طرف دو قوسین درکار ہیں، جیسے {filenameVariable}۔"
+
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "{shareBranch} کے لیے ورک ٹری فولڈر پہلے سے موجود ہے۔"
 
@@ -1126,6 +1129,9 @@ msgstr "کنفلکٹ {0} کے لیے آنے والا ورژن قبول کریں"
 
 msgid "Accept their deletion"
 msgstr "ان کا حذف قبول کریں"
+
+msgid "Access to the saved API key timed out. Wait for the credential store operation to finish, then try again."
+msgstr "محفوظ API کلید تک رسائی کا وقت ختم ہو گیا۔ کریڈینشل اسٹور کا عمل مکمل ہونے کا انتظار کریں، پھر دوبارہ کوشش کریں۔"
 
 msgid "Access token"
 msgstr "رسائی ٹوکن"
@@ -2444,8 +2450,8 @@ msgstr "«AI سے پوچھیں» سکیڑیں"
 msgid "Collapse graph"
 msgstr "گراف سکیڑیں"
 
-msgid "Collapsible content block (Notion-style toggle)."
-msgstr "سکڑنے والا مواد بلاک (Notion طرز کا ٹوگل)۔"
+msgid "Collapsible block, the same as Accordion."
+msgstr "سکڑنے والا بلاک، Accordion جیسا ہی۔"
 
 msgid "Collapsible section with a clickable summary."
 msgstr "قابلِ کلک خلاصے کے ساتھ سکڑنے والا سیکشن۔"
@@ -2671,9 +2677,6 @@ msgstr "مواد کی ڈائریکٹری"
 msgid "Content directory must be inside the project"
 msgstr "مواد کی ڈائریکٹری پروجیکٹ کے اندر ہونی چاہیے"
 
-msgid "Content root"
-msgstr "مواد کی جڑ"
-
 msgid "Content rules"
 msgstr "مواد کے قواعد"
 
@@ -2814,6 +2817,12 @@ msgstr "نقل کیا جا رہا ہے"
 
 msgid "Copying..."
 msgstr "نقل کیا جا رہا ہے..."
+
+msgid "Could not access the saved API key. Check the local credential files, then try again."
+msgstr "محفوظ API کلید تک رسائی نہیں ہو سکی۔ مقامی کریڈینشل فائلیں چیک کریں، پھر دوبارہ کوشش کریں۔"
+
+msgid "Could not access the saved API key. Unlock your system credential store or check the local credential files, then try again."
+msgstr "محفوظ API کلید تک رسائی نہیں ہو سکی۔ سسٹم کا کریڈینشل اسٹور ان لاک کریں یا مقامی کریڈینشل فائلیں چیک کریں، پھر دوبارہ کوشش کریں۔"
 
 msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
 msgstr "{shareBranch} کے سِم لنکس کی جانچ نہیں ہو سکی، اس لیے اس پر منتقل نہیں کیا گیا۔ دوبارہ کوشش کریں؛ اگر یہ بار بار ناکام ہو تو دیکھیں کہ Git انسٹال ہے اور پروجیکٹ فولڈر پڑھا جا سکتا ہے۔"
@@ -3115,8 +3124,8 @@ msgstr "{displayName} تک رسائی نہیں ہو سکی۔ براہِ کرم �
 msgid "Couldn't reach {displayName} — try again?"
 msgstr "{displayName} تک رسائی نہیں ہو سکی۔ دوبارہ کوشش کریں؟"
 
-msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-msgstr "اشتراکی سرور تک رسائی نہیں ہو سکی — {errorDetail}۔ <0>{cliCommand} status</0> آزمائیں یا <1>.ok/local/last-spawn-error.log</1> دیکھیں۔"
+msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or collect logs with <1>{cliCommand} diagnose bundle</1>."
+msgstr "اشتراکی سرور تک رسائی نہیں ہو سکی — {errorDetail}۔ <0>{cliCommand} status</0> آزمائیں یا <1>{cliCommand} diagnose bundle</1> کے ذریعے لاگز جمع کریں۔"
 
 msgid "Couldn't reach GitHub. Try again?"
 msgstr "GitHub تک رسائی نہیں ہو سکی۔ دوبارہ کوشش کریں؟"
@@ -3307,6 +3316,18 @@ msgstr "{subRoot} تازہ نہیں ہو سکا: {0}"
 msgid "Couldn't update from {0}: {1}"
 msgstr "{0} سے اپ ڈیٹ نہیں ہو سکا: {1}"
 
+msgid "Couldn't upload the file. The {settingKey} value in {configFile} can't be used. Fix it in that file."
+msgstr "فائل اپ لوڈ نہیں ہو سکی۔ {configFile} میں {settingKey} کی قدر استعمال نہیں ہو سکتی۔ اسے اسی فائل میں درست کریں۔"
+
+msgid "Couldn't upload the file. The attachment folder has a {open} or {close} without its pair. Fix it under Attachments in Settings."
+msgstr "فائل اپ لوڈ نہیں ہو سکی۔ منسلکات کے فولڈر میں جوڑے کے بغیر {open} یا {close} ہے۔ اسے ترتیبات میں منسلکات کے تحت درست کریں۔"
+
+msgid "Couldn't upload the file. The attachment folder uses {filenameVariable} more than once in one folder name. Fix it under Attachments in Settings."
+msgstr "فائل اپ لوڈ نہیں ہو سکی۔ منسلکات کا فولڈر ایک فولڈر کے نام میں {filenameVariable} ایک سے زیادہ بار استعمال کرتا ہے۔ اسے ترتیبات میں منسلکات کے تحت درست کریں۔"
+
+msgid "Couldn't upload the file. The attachment folder uses the unknown variable {variables}. Fix it under Attachments in Settings."
+msgstr "فائل اپ لوڈ نہیں ہو سکی۔ منسلکات کا فولڈر نامعلوم متغیر {variables} استعمال کرتا ہے۔ اسے ترتیبات میں منسلکات کے تحت درست کریں۔"
+
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
 msgstr "تصدیق نہیں ہو سکی کہ {displayName} ({bin}) دستیاب ہے، اس لیے یہ ایک سادہ شیل ہے۔ آپ پھر بھی خود {bin} چلا سکتے ہیں۔"
 
@@ -3486,9 +3507,6 @@ msgstr "تاریخ"
 
 msgid "Default"
 msgstr "ڈیفالٹ"
-
-msgid "Default location for new attachments"
-msgstr "نئے منسلکات کے لیے طے شدہ مقام"
 
 msgid "Default properties"
 msgstr "طے شدہ خصوصیات"
@@ -3783,6 +3801,9 @@ msgstr "دستاویز کے اعداد و شمار"
 msgid "Document structure"
 msgstr "دستاویز کا ڈھانچہ"
 
+msgid "Document suggestions"
+msgstr "دستاویزات کی تجاویز"
+
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "اس ریپو کے ڈھانچے کی دستاویز بنائیں: ایک جائزہ صفحہ بنائیں جو ہر بڑے ماڈیول کے صفحے سے جڑا ہو اور اس کی ذمہ داریاں اور داخلی نقاط بیان کرے۔"
 
@@ -3895,9 +3916,6 @@ msgstr "«{0}» پر نقل بن گئی"
 msgid "Duplicates dropped"
 msgstr "نقول ہٹا دی گئیں"
 
-msgid "e.g. assets/uploads"
-msgstr "مثلاً assets/uploads"
-
 msgid "e.g. drafts/ or *.draft.md"
 msgstr "مثلاً drafts/ یا *.draft.md"
 
@@ -3909,6 +3927,9 @@ msgstr "مثلاً مطابقت پذیری کے دوران پروجیکٹ بدل
 
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr "مثلاً بڑا ٹیبل چسپاں کرنے کے بعد ایڈیٹر جم گیا"
+
+msgid "Each {open} needs a matching {close}."
+msgstr "ہر {open} کے لیے مماثل {close} ضروری ہے۔"
 
 #. Says what symlinking two skill folders together buys the user, before any button names it
 msgid "Each AI tool reads skills from its own folder. Point one folder at another and both tools see the same skills — add a skill once instead of copying it into every tool."
@@ -4266,6 +4287,9 @@ msgstr "{1}/ کے اندر {0}/ فولڈرز کے تحت سب کچھ"
 
 msgid "everything under any {0}/ folder"
 msgstr "کسی بھی {0}/ فولڈر کے تحت سب کچھ"
+
+msgid "Example: a file added to <0>{exampleDoc}</0> is saved as <1>{exampleFile}</1>"
+msgstr "مثال: <0>{exampleDoc}</0> میں شامل کی گئی فائل <1>{exampleFile}</1> میں محفوظ ہوتی ہے"
 
 msgid "Excalidraw board"
 msgstr "Excalidraw بورڈ"
@@ -4751,9 +4775,6 @@ msgstr "مقررہ"
 msgid "Fixed {total, plural, one {# file} other {# files}}."
 msgstr "{total, plural, one {# فائل درست کی گئی} other {# فائلیں درست کی گئیں}}۔"
 
-msgid "Fixed folder in content root"
-msgstr "مواد کی جڑ میں مقررہ فولڈر"
-
 msgid "Fixed port number"
 msgstr "مقررہ پورٹ نمبر"
 
@@ -4789,6 +4810,12 @@ msgstr "فولڈر کا نام"
 
 msgid "Folder name: {detail}"
 msgstr "فولڈر کا نام: {detail}"
+
+msgid "Folder names cannot contain {reserved}."
+msgstr "فولڈر کے ناموں میں {reserved} نہیں ہو سکتے۔"
+
+msgid "Folder path must start with {documentPrefix} or {rootPrefix} and cannot contain {parentFolder}"
+msgstr "فولڈر کا راستہ {documentPrefix} یا {rootPrefix} سے شروع ہونا چاہیے اور اس میں {parentFolder} نہیں ہو سکتا۔"
 
 msgid "Folder properties"
 msgstr "فولڈر کی خصوصیات"
@@ -5517,6 +5544,9 @@ msgstr "اِن لائن ریاضی"
 
 msgid "Inline Math Properties"
 msgstr "اِن لائن ریاضی کی خصوصیات"
+
+msgid "Inline row for a downloadable file. Drag-drop also works."
+msgstr "قابلِ ڈاؤن لوڈ فائل کے لیے اِن لائن قطار۔ کھینچ کر چھوڑنا بھی کام کرتا ہے۔"
 
 msgid "Input"
 msgstr "اِن پٹ"
@@ -6276,6 +6306,9 @@ msgstr "مرر کا ماخذ <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "مرر کا ماخذ <0>api-spec</0>"
 
+msgid "Mirror source names"
+msgstr "مرر کے ماخذوں کے نام"
+
 msgid "Missing"
 msgstr "غائب"
 
@@ -6903,6 +6936,12 @@ msgstr "کوئی مماثل ریپازٹری نہیں۔"
 msgid "No matching worktrees or branches."
 msgstr "کوئی مماثل ورک ٹری یا برانچ نہیں۔"
 
+msgid "No Mirror Source block in {docName} matches the text in this field. Clear it to see them all."
+msgstr "{docName} میں اس فیلڈ کے متن سے ملتا ہوا مرر کا کوئی ماخذ بلاک نہیں ہے۔ سب دیکھنے کے لیے اسے خالی کریں۔"
+
+msgid "No Mirror Source blocks in {docName}"
+msgstr "{docName} میں مرر کے ماخذ کا کوئی بلاک نہیں ہے"
+
 msgid "No Outgoing"
 msgstr "کوئی جانے والا نہیں"
 
@@ -7114,9 +7153,6 @@ msgstr "کمٹ کرنے کو کچھ نہیں: ورکنگ ٹری صاف ہے۔"
 
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "کچھ بھی اپ لوڈ نہیں ہوا۔ جب تک آپ ہمیں ای میل نہیں کرتے، رپورٹ اسی کمپیوٹر پر رہتی ہے۔"
-
-msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
-msgstr "قابلِ ڈاؤن لوڈ فائل کے لیے Notion طرز کی اِن لائن قطار۔ کھینچ کر چھوڑنا بھی کام کرتا ہے۔"
 
 msgid "Number"
 msgstr "عدد"
@@ -8589,6 +8625,12 @@ msgstr "انتخاب ہٹائیں"
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "والد <0>.git</0> فولڈر ہٹائیں"
 
+msgid "Remove the slash at the end of the path."
+msgstr "راستے کے آخر سے سلیش ہٹا دیں۔"
+
+msgid "Remove the spaces at the start or end of the path."
+msgstr "راستے کے شروع یا آخر کی خالی جگہیں ہٹا دیں۔"
+
 msgid "Removed"
 msgstr "ہٹا دیا گیا"
 
@@ -9019,9 +9061,6 @@ msgstr "پروجیکٹ کا آڈٹ چل رہا ہے"
 msgid "Runs a shell command"
 msgstr "ایک شیل کمانڈ چلاتا ہے"
 
-msgid "Same folder as current file"
-msgstr "موجودہ فائل والا ہی فولڈر"
-
 msgid "Sample image"
 msgstr "نمونہ تصویر"
 
@@ -9054,6 +9093,9 @@ msgstr "اس پروجیکٹ کے مہارت فولڈر میں محفوظ (مثل
 
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "آپ کے عالمی مہارت فولڈر میں محفوظ (مثلاً <0>~/.agents/skills</0>)۔"
+
+msgid "Saved keys conflict. Enter a replacement key for this project and endpoint to use instead."
+msgstr "محفوظ کلیدوں میں تضاد ہے۔ اس پروجیکٹ اور اینڈ پوائنٹ کے لیے متبادل کلید درج کریں۔"
 
 msgid "Saved themes couldn’t load. The last available theme list is still shown."
 msgstr "محفوظ شدہ تھیمز لوڈ نہیں ہو سکیں۔ آخری دستیاب تھیم فہرست اب بھی دکھائی جا رہی ہے۔"
@@ -9382,8 +9424,8 @@ msgstr "بھیج دیا گیا"
 msgid "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
 msgstr "آپ کے نوٹ اور ایپ کے ورژن سمیت نجی طور پر OpenKnowledge ٹیم کو بھیجا جاتا ہے۔ کبھی عوامی طور پر شائع نہیں ہوتا۔"
 
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
-msgstr "آپ کا مواد ایمبیڈ کرنے کے لیے <0>{endpointHost}</0> کو بھیجا جاتا ہے۔ صرف اسی مشین پر محفوظ ہوتا ہے (<1>{secretsPath}</1> میں)، کبھی پروجیکٹ میں نہیں۔"
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored outside the project."
+msgstr "آپ کا مواد ایمبیڈ کرنے کے لیے <0>{endpointHost}</0> کو بھیجا جاتا ہے۔ پروجیکٹ سے باہر محفوظ ہوتا ہے۔"
 
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."
 msgstr "بھیج دیا گیا، مگر تبصروں کو مکمل نشان زد نہیں کیا جا سکا — وہ اب بھی بھیجنے کے منتظر ہیں۔"
@@ -9463,8 +9505,8 @@ msgstr "OpenKnowledge کے انضمامات ترتیب دیں…"
 msgid "Set up syncing"
 msgstr "مطابقت پذیری ترتیب دیں"
 
-msgid "Set where pasted and dropped files are stored for this project."
-msgstr "مقرر کریں کہ اس پروجیکٹ کے لیے چسپاں اور چھوڑی گئی فائلیں کہاں محفوظ ہوں۔"
+msgid "Set where pasted and dropped files are stored."
+msgstr "مقرر کریں کہ چسپاں اور چھوڑی گئی فائلیں کہاں محفوظ ہوں۔"
 
 msgid "Setting up"
 msgstr "ترتیب دیا جا رہا ہے"
@@ -9731,6 +9773,9 @@ msgstr "{agentName} میں سائن اِن کیا جا رہا ہے…"
 
 msgid "Single page"
 msgstr "ایک صفحہ"
+
+msgid "size limit"
+msgstr "حجم کی حد"
 
 msgid "skill \"{0}\""
 msgstr "مہارت «{0}»"
@@ -10114,9 +10159,6 @@ msgstr "subagents"
 
 msgid "Subfolder name"
 msgstr "ذیلی فولڈر کا نام"
-
-msgid "Subfolder under current folder"
-msgstr "موجودہ فولڈر کے تحت ذیلی فولڈر"
 
 msgid "Subscribe"
 msgstr "رکن بنیں"
@@ -10717,6 +10759,9 @@ msgstr "محفوظ ٹوکن میں وہ اجازتیں نہیں ہیں جو اس
 msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
 msgstr "وہ مطابقت پذیری موڈ جس سے ساتھی اس پروجیکٹ کو پہلی بار کھولنے پر شروع کرتے ہیں۔ یہ پروجیکٹ کی OpenKnowledge ترتیبات میں محفوظ ہوتا ہے، اس لیے یہ ان تک صرف تب پہنچتا ہے جب نیچے کنفیگ کا اشتراک مشترک پر سیٹ ہو۔"
 
+msgid "The system credential store is unavailable. This key is stored in a file with restricted permissions outside the project."
+msgstr "سسٹم کا کریڈینشل اسٹور دستیاب نہیں ہے۔ یہ کلید پروجیکٹ سے باہر محدود اجازتوں والی فائل میں محفوظ ہے۔"
+
 msgid "The template's filename (without `.md`)."
 msgstr "ٹیمپلیٹ کی فائل کا نام (`.md` کے بغیر)۔"
 
@@ -10907,6 +10952,9 @@ msgstr "یہ تبصرہ پوری خصوصیت پر ہے"
 
 msgid "This component changed. Try again."
 msgstr "یہ جزو تبدیل ہو گیا ہے۔ دوبارہ کوشش کریں۔"
+
+msgid "This component is too large to render."
+msgstr "یہ جزو دکھانے کے لیے بہت بڑا ہے۔"
 
 msgid "This component was removed."
 msgstr "یہ جزو ہٹا دیا گیا ہے۔"
@@ -11530,6 +11578,9 @@ msgstr "نامعلوم تاریخ"
 msgid "Unknown error"
 msgstr "نامعلوم خرابی"
 
+msgid "Unknown variable {unknownList}. Available variables: {supportedVariables}."
+msgstr "نامعلوم متغیر {unknownList}۔ دستیاب متغیرات: {supportedVariables}۔"
+
 msgid "unlink"
 msgstr "لنک ختم کریں"
 
@@ -11699,6 +11750,9 @@ msgstr "فعال روشن موڈ کے لیے {0} استعمال کریں"
 msgid "Use {editor} version"
 msgstr "{editor} والا ورژن استعمال کریں"
 
+msgid "Use {filenameVariable} at most once in each folder name."
+msgstr "ہر فولڈر کے نام میں {filenameVariable} زیادہ سے زیادہ ایک بار استعمال کریں۔"
+
 msgid "Use <0>{copyShortcut}</0> to copy the link below, or open OK in the desktop app."
 msgstr "نیچے دیا گیا لنک نقل کرنے کے لیے <0>{copyShortcut}</0> استعمال کریں، یا OK کو ڈیسک ٹاپ ایپ میں کھولیں۔"
 
@@ -11737,6 +11791,9 @@ msgstr "صرف چھوٹے حروف، ہندسے اور <0>-</0> استعمال �
 
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "صرف چھوٹے حروف، اعداد اور ڈیش استعمال کریں"
+
+msgid "Use one slash between folder names."
+msgstr "فولڈر کے ناموں کے درمیان ایک سلیش استعمال کریں۔"
 
 msgid "Use their version"
 msgstr "ان کا ورژن لیں"
@@ -11964,9 +12021,6 @@ msgstr "جب آپ کوئی شائع شدہ مہارت نصب کریں تو مہ�
 
 msgid "Where"
 msgstr "کہاں"
-
-msgid "Where newly added attachments are placed."
-msgstr "نئے شامل ہونے والے منسلکات کہاں رکھے جاتے ہیں۔"
 
 msgid "Where should it live?"
 msgstr "یہ کہاں رہنا چاہیے؟"

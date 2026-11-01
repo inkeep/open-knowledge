@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ConfigSchema } from '@inkeep/open-knowledge-server';
 import { afterEach, expect, test, vi } from 'vitest';
 import type { BundleIdentityState, BundleIdentityWatcherDeps } from './bundle-identity.ts';
@@ -73,6 +74,7 @@ test.for([false, true])(
       handle = await startGlobalMcpServer({
         startupCwd: root,
         startupConfig: ConfigSchema.parse({}),
+        bundleAnchorPath: fileURLToPath(new URL('./server.ts', import.meta.url)),
       });
       const detect = observation.detect;
       if (detect === undefined) throw new Error('Bundle watcher was not registered');

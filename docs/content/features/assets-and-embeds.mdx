@@ -8,9 +8,31 @@ OpenKnowledge treats assets (images, PDFs, video, audio) as first-class content 
 
 ## Adding files
 
-Drag files into the editor or paste them — screenshots paste straight from the clipboard, and any file type is accepted. The file uploads into the project and the matching block is inserted. Uploads land beside the document by default; point [`content.attachmentFolderPath`](/docs/reference/configuration) at a different folder to change that. A configured attachment folder is also a sync scope: in shared projects, linkable files inside it auto-sync to teammates even when no document sits beside them. Dropping a file whose bytes already exist in the target folder reuses the existing file rather than writing a duplicate. You can also insert an image, video, or audio block from the `/` insert menu and upload from its settings.
+Drag files into the editor or paste them. Screenshots paste straight from the clipboard, and any file type is accepted. The file uploads into the project, and the matching block is inserted. You can also insert an image, video, or audio block from the `/` insert menu and upload from its settings.
+
+If the target folder already has a file with the same bytes, OpenKnowledge reuses it instead of writing a duplicate.
 
 AI agents add assets through the MCP [`write`](/docs/reference/mcp) tool's `asset` target, passing exactly one of `content` (the bytes as base64, for small files) or `source` (a local filesystem path the server reads — use it for large files).
+
+### Attachment folder
+
+By default, each document gets its own upload folder beside it: a file added to `notes/meeting.md` goes to `notes/meeting.assets/`. Files uploaded earlier stay where they are. To change this, set **Settings → This project → Preferences → Attachments**, or [`content.attachmentFolderPath`](/docs/reference/configuration) in `.ok/config.yml`.
+
+The path must start with `./`, relative to the document, or `/`, relative to the content root. The settings field rejects a bare name such as `attachments`: write `/attachments` instead. A bare name in an existing config keeps working and is read as `/attachments`. Version 0.86.18 and earlier reject `/attachments`, so update every collaborator before you save it.
+
+| Value | Where files go |
+| --- | --- |
+| `./{{filename}}.assets` (default) | A folder per document, named after it |
+| `./` | Next to the document |
+| `./assets` | A folder next to the document |
+| `/` | The content root |
+| `/attachments` | One folder at the content root |
+
+- `{{filename}}` is the document name without its extension. It is the only variable.
+- The settings field marks an unknown variable, such as `{{FILENAME}}`, and does not save it. If one is in `.ok/config.yml`, uploads are refused until you fix it.
+- Links to these files are content-root paths. They work inside the project, but not in a copy of the document outside it.
+- Renaming or moving a document does not rename its folder, and its links keep working.
+- In shared projects, linkable files in the attachment folder sync to teammates, even when no document sits beside them.
 
 ## How assets render
 

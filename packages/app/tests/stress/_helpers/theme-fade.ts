@@ -65,14 +65,8 @@ export async function installThemeFadeProbe(page: Page): Promise<void> {
         | { matched: false; reason: string }
         | { matched: true; transition: CSSTransition; durationMs: number; delayMs: number };
       let captured: Capture = { matched: false, reason: 'no transition was captured' };
-      let resolveStart!: (value: ThemeFadeStart) => void;
-      const started = new Promise<ThemeFadeStart>((resolve) => {
-        resolveStart = resolve;
-      });
-      let resolveSettle!: (value: ThemeFadeSettle) => void;
-      const settled = new Promise<ThemeFadeSettle>((resolve) => {
-        resolveSettle = resolve;
-      });
+      const { promise: started, resolve: resolveStart } = Promise.withResolvers<ThemeFadeStart>();
+      const { promise: settled, resolve: resolveSettle } = Promise.withResolvers<ThemeFadeSettle>();
 
       const lifetime = new AbortController();
       let startTimer = 0;

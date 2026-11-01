@@ -348,7 +348,7 @@ export async function runUninstall(opts: UninstallOptions = {}): Promise<Uninsta
   const detectInstall = opts.deps?.detectInstallMethods ?? detectInstallMethods;
 
   const lockDirs = await discoverLocks();
-  const marker = readPathInstallMarker(home);
+  const marker = readPathInstallMarker(home, undefined, platform, env);
   const recentDeinitProjectRoots = await resolveRecents({
     home,
     platform,

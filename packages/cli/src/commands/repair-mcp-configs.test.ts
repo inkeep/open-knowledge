@@ -11,8 +11,8 @@ vi.mock('./init.ts', async (importOriginal) => {
   return { ...actual, writeEditorMcpConfig: vi.fn(actual.writeEditorMcpConfig) };
 });
 
-const CHAIN_ENTRY = buildManagedServerEntry({ mode: 'published' });
-const WIN_CHAIN_ENTRY = buildManagedServerEntry({ mode: 'published', platformName: 'win32' });
+let CHAIN_ENTRY: ReturnType<typeof buildManagedServerEntry>;
+let WIN_CHAIN_ENTRY: ReturnType<typeof buildManagedServerEntry>;
 const CMD_WORKAROUND = {
   command: 'cmd',
   args: ['/c', 'C:\\Users\\me\\AppData\\Roaming\\npm\\ok.cmd', 'mcp'],
@@ -36,6 +36,7 @@ describe('repairMcpConfigs', () => {
   let logEvents: RepairLogEvent[];
 
   beforeEach(() => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
     testDir = resolve(
       tmpdir(),
       `repair-mcp-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -45,10 +46,13 @@ describe('repairMcpConfigs', () => {
     mkdirSync(join(fakeHome, '.claude'), { recursive: true });
     mkdirSync(projectDir, { recursive: true });
     Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+    CHAIN_ENTRY = buildManagedServerEntry({ mode: 'published' });
+    WIN_CHAIN_ENTRY = buildManagedServerEntry({ mode: 'published', platformName: 'win32' });
     logEvents = [];
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
     rmSync(testDir, { recursive: true, force: true });
   });

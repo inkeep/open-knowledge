@@ -68,12 +68,7 @@ describe('credentialed jobs in public/open-knowledge/.github/workflows declare t
       'desktop-release.yml#finalize': 'none',
       'desktop-release.yml#release-consumers': 'none',
       'desktop-release.yml#alert': 'none',
-      'linear-pr-relay.yml#relay': 'none',
       'linear-release.yml#stamp': 'none',
-      'monorepo-pr-bridge.yml#acknowledge': 'none',
-      'monorepo-pr-bridge.yml#sync': 'none',
-      'monorepo-pr-bridge.yml#close': 'none',
-      'monorepo-pr-bridge.yml#refresh-cla': 'none',
       'point-release.yml#point-release': 'none',
       'promote-stable.yml#promote': 'none',
       'publish-linux-repo.yml#publish': 'none',
@@ -85,7 +80,6 @@ describe('credentialed jobs in public/open-knowledge/.github/workflows declare t
       'select-beta-to-promote.yml#page-smoke-incident': 'write-only',
       'share-contract-deployment-gate.yml#reader-contract': 'none',
       'share-contract-monitor.yml#probe': 'none',
-      'stale.yml#stale': 'none',
       'write-back.yml#notify': 'none',
     });
   });

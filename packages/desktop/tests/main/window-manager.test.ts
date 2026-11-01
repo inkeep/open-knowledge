@@ -1,9 +1,15 @@
+import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { DEFAULT_SERVER_HOST, formatSpawnAttemptHeader } from '@inkeep/open-knowledge-core';
+import {
+  DEFAULT_SERVER_HOST,
+  formatSpawnAttemptHeader,
+  SPAWN_ERROR_LOG,
+} from '@inkeep/open-knowledge-core';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { getMachineId } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { failedOpenHolder, promptHolderStop } from '../../src/main/holder-stop-prompt.ts';
@@ -220,6 +226,7 @@ function buildEnv(): TestEnv {
         startedAtMs: Date.parse('2026-01-01T00:00:00Z'),
         clock: 'creation',
       }),
+      readBootInstant: () => Date.parse('2026-01-01T00:00:00Z'),
       activateApp,
       showGate,
       log: {
@@ -744,10 +751,11 @@ describe('WindowManager', () => {
 
     test('starts no project server for an open still in progress when the drain begins', async () => {
       let finishClean: (() => void) | undefined;
-      env.deps.runClean = () =>
-        new Promise<void>((resolveClean) => {
-          finishClean = resolveClean;
-        });
+      env.deps.runClean = () => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        finishClean = resolve;
+        return promise;
+      };
       const wm = new WindowManager(env.deps);
       const openFailure = wm
         .createProjectWindow({ projectPath: '/tmp/quit-drain-pending-open' })
@@ -869,12 +877,11 @@ describe('WindowManager', () => {
     env.deps.createWindow = (opts) => {
       env.createWindowOpts.push(opts);
       const w = makeWindow();
-      w.loadFile = vi.fn(
-        () =>
-          new Promise<void>((resolve) => {
-            releaseLoad = resolve;
-          }),
-      ) as typeof w.loadFile;
+      w.loadFile = vi.fn(() => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        releaseLoad = resolve;
+        return promise;
+      });
       env.windows.push(w);
       return w;
     };
@@ -902,12 +909,11 @@ describe('WindowManager', () => {
     env.deps.createWindow = (opts) => {
       env.createWindowOpts.push(opts);
       const w = makeWindow();
-      w.loadFile = vi.fn(
-        () =>
-          new Promise<void>((_resolve, reject) => {
-            rejectLoad = reject;
-          }),
-      ) as typeof w.loadFile;
+      w.loadFile = vi.fn(() => {
+        const { promise, reject } = Promise.withResolvers<void>();
+        rejectLoad = reject;
+        return promise;
+      });
       env.windows.push(w);
       return w;
     };
@@ -1501,12 +1507,11 @@ describe('WindowManager', () => {
       env.deps.createWindow = (opts) => {
         env.createWindowOpts.push(opts);
         const w = makeWindow();
-        w.loadFile = vi.fn(
-          () =>
-            new Promise<void>((resolve) => {
-              releaseLoad = resolve;
-            }),
-        ) as typeof w.loadFile;
+        w.loadFile = vi.fn(() => {
+          const { promise, resolve } = Promise.withResolvers<void>();
+          releaseLoad = resolve;
+          return promise;
+        });
         env.windows.push(w);
         return w;
       };
@@ -2259,10 +2264,10 @@ describe('WindowManager', () => {
       let resolveSpawn: (() => void) | undefined;
       let rejectSpawn: ((err: Error) => void) | undefined;
       env.deps.spawnDetachedServer = async () => {
-        await new Promise<void>((resolve, reject) => {
-          resolveSpawn = resolve;
-          rejectSpawn = reject;
-        });
+        const { promise, resolve, reject } = Promise.withResolvers<void>();
+        resolveSpawn = resolve;
+        rejectSpawn = reject;
+        await promise;
         spawned = true;
         return heldChild(env.deps, 6666);
       };
@@ -3068,6 +3073,7 @@ describe('WindowManager', () => {
 
       const spawnStderrRoots: string[] = [];
       afterEach(() => {
+        vi.unstubAllEnvs();
         while (spawnStderrRoots.length > 0) {
           const root = spawnStderrRoots.pop();
           if (root) rmSync(root, { recursive: true, force: true });
@@ -3075,10 +3081,17 @@ describe('WindowManager', () => {
       });
 
       function projectWithSpawnErrorLog(contents: string): string {
-        const root = mkdtempSync(join(tmpdir(), 'ok-spawn-stderr-'));
-        spawnStderrRoots.push(root);
-        mkdirSync(join(root, '.ok', 'local'), { recursive: true });
-        writeFileSync(join(root, '.ok', 'local', 'last-spawn-error.log'), contents);
+        const fixtureRoot = mkdtempSync(join(tmpdir(), 'ok-spawn-stderr-'));
+        spawnStderrRoots.push(fixtureRoot);
+        const root = join(fixtureRoot, 'project');
+        const home = join(fixtureRoot, 'home');
+        mkdirSync(root);
+        vi.stubEnv('HOME', home);
+        vi.stubEnv('USERPROFILE', home);
+        const projectHash = createHash('sha256').update(realpathSync.native(root)).digest('hex');
+        const logsDir = join(okUserHomeDir(home), 'logs', 'projects', projectHash);
+        mkdirSync(logsDir, { recursive: true });
+        writeFileSync(join(logsDir, SPAWN_ERROR_LOG), contents);
         return root;
       }
 
@@ -4934,6 +4947,73 @@ describe('WindowManager — pendingDeepLinkTarget dom-ready gate (M4 US-007 / Fi
       multiCandidate: false,
     });
   });
+
+  test('open window: a second open with pendingDeepLinkTarget focuses it and delivers the target', async () => {
+    const wm = new WindowManager(env.deps);
+    const first = wm.createProjectWindow({ projectPath: '/tmp/deep-link-open' });
+    env.utilities[0]?.fire({ type: 'ready', port: 51224, apiOrigin: 'http://localhost:51224' });
+    const ctx = await first;
+    const window = env.windows[0];
+    if (!window) throw new Error('expected window to be created');
+    window.fireDomReady();
+    const send = window.webContents.send as ReturnType<typeof vi.fn>;
+    expect(send.mock.calls.filter((c) => c[0] === 'ok:deep-link')).toEqual([]);
+
+    const second = await wm.createProjectWindow({
+      projectPath: '/tmp/deep-link-open',
+      pendingDeepLinkTarget: { kind: 'doc', path: 'notes/opened-from-finder' },
+      pendingBranch: 'feature',
+    });
+
+    expect(second).toBe(ctx);
+    expect(env.windows.length).toBe(1);
+    expect(env.utilities.length).toBe(1);
+    expect(window.focus).toHaveBeenCalled();
+    expect(send.mock.calls.filter((c) => c[0] === 'ok:deep-link')).toEqual([
+      [
+        'ok:deep-link',
+        { doc: 'notes/opened-from-finder', kind: 'doc', branch: 'feature', multiCandidate: false },
+      ],
+    ]);
+  });
+
+  test('opening window: an open with pendingDeepLinkTarget while the window loads delivers it without a later dom-ready', async () => {
+    const wm = new WindowManager(env.deps);
+    const first = wm.createProjectWindow({ projectPath: '/tmp/deep-link-opening' });
+    const second = wm.createProjectWindow({
+      projectPath: '/tmp/deep-link-opening',
+      pendingDeepLinkTarget: { kind: 'doc', path: 'notes/while-loading' },
+    });
+    env.utilities[0]?.fire({ type: 'ready', port: 51225, apiOrigin: 'http://localhost:51225' });
+    const [ctx1, ctx2] = await Promise.all([first, second]);
+
+    expect(ctx2).toBe(ctx1);
+    expect(env.windows.length).toBe(1);
+    const window = env.windows[0];
+    if (!window) throw new Error('expected window to be created');
+    const send = window.webContents.send as ReturnType<typeof vi.fn>;
+    expect(send.mock.calls.filter((c) => c[0] === 'ok:deep-link')).toEqual([
+      [
+        'ok:deep-link',
+        { doc: 'notes/while-loading', kind: 'doc', branch: null, multiCandidate: false },
+      ],
+    ]);
+  });
+
+  test('open window: a second open without pendingDeepLinkTarget sends no deep link', async () => {
+    const wm = new WindowManager(env.deps);
+    const first = wm.createProjectWindow({ projectPath: '/tmp/deep-link-refocus' });
+    env.utilities[0]?.fire({ type: 'ready', port: 51226, apiOrigin: 'http://localhost:51226' });
+    await first;
+    const window = env.windows[0];
+    if (!window) throw new Error('expected window to be created');
+    window.fireDomReady();
+
+    await wm.createProjectWindow({ projectPath: '/tmp/deep-link-refocus' });
+
+    const send = window.webContents.send as ReturnType<typeof vi.fn>;
+    expect(send.mock.calls.filter((c) => c[0] === 'ok:deep-link')).toEqual([]);
+  });
 });
 
 describe('WindowManager — pendingShareBranchSwitch dom-ready gate (US-004)', () => {
@@ -5099,6 +5179,36 @@ describe('WindowManager — pendingShareBranchSwitch dom-ready gate (US-004)', (
       projectPath: '/tmp/attach-share-branch-switch',
       currentBranch: 'main',
     });
+  });
+
+  test('opening window: an open with pendingShareBranchSwitch while the window loads delivers it without a later dom-ready', async () => {
+    const branchSwitch = {
+      share: {
+        owner: 'inkeep',
+        repo: 'playbooks',
+        branch: 'feature/y',
+        path: 'docs/while-loading.md',
+        blobUrl: 'https://github.com/inkeep/playbooks/blob/feature/y/docs/while-loading.md',
+      },
+      projectPath: '/tmp/share-branch-switch-opening',
+      currentBranch: 'main',
+    };
+    const wm = new WindowManager(env.deps);
+    const first = wm.createProjectWindow({ projectPath: '/tmp/share-branch-switch-opening' });
+    const second = wm.createProjectWindow({
+      projectPath: '/tmp/share-branch-switch-opening',
+      pendingShareBranchSwitch: branchSwitch,
+    });
+    env.utilities[0]?.fire({ type: 'ready', port: 51890, apiOrigin: 'http://localhost:51890' });
+    const [ctx1, ctx2] = await Promise.all([first, second]);
+
+    expect(ctx2).toBe(ctx1);
+    const window = env.windows[0];
+    if (!window) throw new Error('expected window to be created');
+    const send = window.webContents.send as ReturnType<typeof vi.fn>;
+    expect(send.mock.calls.filter((c) => c[0] === 'ok:share:received')).toEqual([
+      ['ok:share:received', { kind: 'project-branch-switch', ...branchSwitch }],
+    ]);
   });
 });
 

@@ -1,10 +1,12 @@
+import { I18nProvider } from '@lingui/react';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { AppHeader } from '@/components/AppHeader';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfigContext } from '@/lib/config-context';
+import { i18n } from '@/lib/i18n';
 import { configContextWithTerminal, TERMINAL_SETTING_UNSET } from '@/test-utils/config-context';
 
 vi.mock('@/editor/DocumentContext', () => ({
@@ -15,12 +17,22 @@ vi.mock('@/editor/DocumentContext', () => ({
   }),
 }));
 
+const shareStatus = vi.hoisted(() => ({ hasRemote: false }));
+
 vi.mock('@/hooks/use-git-sync-status', () => ({
   useGitSyncStatusDetailed: () => ({
-    status: { state: 'dormant', conflictCount: 0, hasRemote: false },
+    status: {
+      state: shareStatus.hasRemote ? 'disabled' : 'dormant',
+      conflictCount: 0,
+      hasRemote: shareStatus.hasRemote,
+    },
     fetchError: null,
   }),
-  useGitSyncStatus: () => ({ state: 'dormant', conflictCount: 0, hasRemote: false }),
+  useGitSyncStatus: () => ({
+    state: shareStatus.hasRemote ? 'disabled' : 'dormant',
+    conflictCount: 0,
+    hasRemote: shareStatus.hasRemote,
+  }),
 }));
 
 vi.mock('@/presence/use-sync-toasts', () => ({ useSyncToasts: () => {} }));
@@ -84,6 +96,24 @@ function installLayout() {
   vi.stubGlobal('ResizeObserver', CapturingResizeObserver);
 }
 
+let blurredByDisable: Element[] = [];
+
+function installSynchronousBlurOnDisable() {
+  blurredByDisable = [];
+  const setAttribute = Element.prototype.setAttribute;
+  vi.spyOn(Element.prototype, 'setAttribute').mockImplementation(function blurBeforeDisabling(
+    this: Element,
+    name: string,
+    value: string,
+  ) {
+    if (name === 'disabled' && this === document.activeElement && this instanceof HTMLElement) {
+      this.blur();
+      blurredByDisable.push(this);
+    }
+    setAttribute.call(this, name, value);
+  });
+}
+
 function relayout(next: typeof CRAMPED | typeof ROOMY) {
   metrics = next;
   for (const callback of resizeCallbacks) {
@@ -94,7 +124,9 @@ function relayout(next: typeof CRAMPED | typeof ROOMY) {
 function HeaderProviders({ children }: { children: ReactNode }) {
   return (
     <ConfigContext value={configContextWithTerminal(TERMINAL_SETTING_UNSET)}>
-      <TooltipProvider>{children}</TooltipProvider>
+      <I18nProvider i18n={i18n}>
+        <TooltipProvider>{children}</TooltipProvider>
+      </I18nProvider>
     </ConfigContext>
   );
 }
@@ -112,12 +144,15 @@ async function closeDialogWithEscape() {
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 }
 
+beforeEach(installSynchronousBlurOnDisable);
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   metrics = ROOMY;
   resizeCallbacks = [];
+  shareStatus.hasRemote = false;
 });
 
 describe('AppHeader Publish to GitHub dialog focus return', () => {
@@ -128,6 +163,7 @@ describe('AppHeader Publish to GitHub dialog focus return', () => {
     const share = within(trailingGroup()).getByRole('button', { name: 'Share doc' });
     await userEvent.click(share);
     await screen.findByRole('dialog');
+    expect(blurredByDisable).toContain(share);
 
     await closeDialogWithEscape();
 
@@ -138,8 +174,10 @@ describe('AppHeader Publish to GitHub dialog focus return', () => {
     installLayout();
     renderHeader();
 
-    await userEvent.click(within(trailingGroup()).getByRole('button', { name: 'Share doc' }));
+    const share = within(trailingGroup()).getByRole('button', { name: 'Share doc' });
+    await userEvent.click(share);
     await screen.findByRole('dialog');
+    expect(blurredByDisable).toContain(share);
 
     relayout(CRAMPED);
     const trigger = screen.getByTestId('header-overflow-actions-trigger');
@@ -162,8 +200,44 @@ describe('AppHeader Publish to GitHub dialog focus return', () => {
       expect(found).not.toBeNull();
       return found as HTMLElement;
     });
-    await userEvent.click(within(panel).getByRole('button', { name: 'Share doc' }));
+    const share = within(panel).getByRole('button', { name: 'Share doc' });
+    await userEvent.click(share);
     await screen.findByRole('dialog');
+    expect(blurredByDisable).toContain(share);
+    await waitFor(() =>
+      expect(document.querySelector('[data-header-overflow-actions]')).toBeNull(),
+    );
+
+    await closeDialogWithEscape();
+
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  test('a server no-remote response closes More actions for Publish and restores its trigger on close', async () => {
+    shareStatus.hasRemote = true;
+    metrics = CRAMPED;
+    installLayout();
+    const constructUrl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ ok: false, error: 'no-remote' }));
+    vi.stubGlobal('fetch', constructUrl);
+    renderHeader();
+
+    const trigger = screen.getByTestId('header-overflow-actions-trigger');
+    await userEvent.click(trigger);
+    const panel = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>('[data-header-overflow-actions]');
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    const share = within(panel).getByRole('button', { name: 'Share doc' });
+    await userEvent.click(share);
+    await screen.findByRole('dialog', { name: 'Publish to GitHub' });
+    expect(blurredByDisable).toContain(share);
+    expect(constructUrl).toHaveBeenCalledWith(
+      '/api/share/construct-url',
+      expect.objectContaining({ method: 'POST' }),
+    );
     await waitFor(() =>
       expect(document.querySelector('[data-header-overflow-actions]')).toBeNull(),
     );

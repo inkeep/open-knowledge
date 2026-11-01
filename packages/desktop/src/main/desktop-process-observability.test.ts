@@ -7,6 +7,7 @@ import {
   type ObservedBrowserWindow,
   type ProcessMetricLike,
 } from './desktop-process-observability.ts';
+import type { SystemMemorySample } from './system-memory-sample.ts';
 
 interface TestWindow extends ObservedBrowserWindow {
   emit(
@@ -107,7 +108,7 @@ function processMetric(input: {
   };
 }
 
-function harness() {
+function harness(options: { readSystemMemory?: () => SystemMemorySample } = {}) {
   let nowMs = Date.parse('2026-09-22T19:25:00.000Z');
   let metrics: ProcessMetricLike[] = [
     processMetric({ pid: 100, type: 'Browser', workingSetSize: 50_000 }),
@@ -128,6 +129,7 @@ function harness() {
     now: () => new Date(nowMs),
     getAppMetrics: () => metrics,
     getAllWindows: () => windows,
+    ...options,
     logger: {
       info: (payload) => info.push(payload),
       warn: (payload) => warn.push(payload),
@@ -399,7 +401,18 @@ describe('desktop process observability', () => {
   });
 
   test('bounds each log line while retaining counts and the highest-memory processes', () => {
-    const rig = harness();
+    const rig = harness({
+      readSystemMemory: () => ({
+        totalKb: 137_438_953_472,
+        freeKb: 137_438_953_472,
+        swapTotalKb: 137_438_953_472,
+        swapFreeKb: 137_438_953_472,
+        swapUsedKb: 137_438_953_472,
+        pressure: 'unreadable',
+        pressureReadAt: '2026-09-22T19:24:59.999Z',
+        pressureUnreadableCause: 'unparsed',
+      }),
+    });
     rig.setMetrics(
       Array.from({ length: 40 }, (_, index) =>
         processMetric({
@@ -441,11 +454,49 @@ describe('desktop process observability', () => {
     expect(sample.windowsTruncated).toBe(21 - MAX_DESKTOP_WINDOW_SAMPLE_ROWS);
     expect(sample.windows).toHaveLength(MAX_DESKTOP_WINDOW_SAMPLE_ROWS);
     expect((sample.windows[0] as { windowId?: number }).windowId).toBe(7);
+    expect(sample).toHaveProperty('systemMemory.pressure', 'unreadable');
     const sampleBytes = Buffer.byteLength(JSON.stringify(sample));
     const samplesPerDay = (24 * 60 * 60 * 1_000) / DESKTOP_PROCESS_SAMPLE_INTERVAL_MS;
     expect(Number.isInteger(samplesPerDay)).toBe(true);
     expect(sampleBytes).toBeLessThan(5 * 1_024);
     expect(sampleBytes * samplesPerDay).toBeLessThan(6 * 1024 * 1024);
+  });
+
+  test('records the machine memory state beside the app processes, and samples without it when unreadable', () => {
+    const info: Array<Record<string, unknown>> = [];
+    const warn: Array<Record<string, unknown>> = [];
+    let readSystemMemory = () => ({
+      totalKb: 16_777_216,
+      freeKb: 102_400,
+      swapUsedKb: 6_291_456,
+      pressure: 'critical' as const,
+      pressureReadAt: '2026-10-19T09:17:58.000Z',
+    });
+    const observability = createDesktopProcessObservability({
+      now: () => new Date('2026-10-19T09:17:59.000Z'),
+      getAppMetrics: () => [processMetric({ pid: 100, type: 'Browser', workingSetSize: 50_000 })],
+      getAllWindows: () => [],
+      readSystemMemory: () => readSystemMemory(),
+      logger: { info: (payload) => info.push(payload), warn: (payload) => warn.push(payload) },
+      setInterval: () => 1,
+      clearInterval: () => {},
+    });
+
+    observability.start();
+    readSystemMemory = () => {
+      throw new Error('sysinfo unavailable');
+    };
+    observability.sampleNow('renderer-ready');
+
+    expect(info[0]).toMatchObject({
+      event: 'desktop-process-observability.sample',
+      systemMemory: { freeKb: 102_400, swapUsedKb: 6_291_456, pressure: 'critical' },
+    });
+    expect(info[1]).toMatchObject({ trigger: 'renderer-ready', processes: [{ pid: 100 }] });
+    expect(info[1]).not.toHaveProperty('systemMemory');
+    expect(warn).toEqual([
+      expect.objectContaining({ event: 'desktop-process-observability.system-memory-failed' }),
+    ]);
   });
 
   test('stop is idempotent', () => {

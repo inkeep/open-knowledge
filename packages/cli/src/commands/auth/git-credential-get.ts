@@ -1,13 +1,44 @@
 import type { Readable, Writable } from 'node:stream';
-import { gitCredentialHostKey } from '@inkeep/open-knowledge-core';
+import { gitCredentialHostKey } from '@inkeep/open-knowledge-core/constants/github';
 import type { Logger as PinoLoggerInstance } from 'pino';
 import type { TokenStore, TokenStoreDiagnostics } from '../../auth/token-store.ts';
 
-export type KeychainReadInfo = Parameters<NonNullable<TokenStoreDiagnostics['onKeychainRead']>>[0];
+type KeychainReadInfo = Parameters<NonNullable<TokenStoreDiagnostics['onKeychainRead']>>[0];
 
 export interface CredentialGetLogContext {
   log?: PinoLoggerInstance;
   getDiag?: () => KeychainReadInfo | undefined;
+}
+
+export interface GitCredentialGetContext {
+  getTokenStore: (diag?: TokenStoreDiagnostics) => Promise<TokenStore>;
+  log?: PinoLoggerInstance;
+}
+
+export async function getGitCredential({
+  getTokenStore,
+  log,
+}: GitCredentialGetContext): Promise<number> {
+  try {
+    let lastKeychainRead: KeychainReadInfo | undefined;
+    const store = await getTokenStore({
+      onKeychainRead: (info) => {
+        lastKeychainRead = info;
+      },
+      onBackendSelected: (info) => {
+        if (info.backend === 'file' && info.reason) {
+          log?.warn({ backend: 'file', reason: info.reason }, '[auth] token storage fallback');
+        }
+      },
+    });
+    return await handleCredentialGet(process.stdin, process.stdout, store, {
+      log,
+      getDiag: () => lastKeychainRead,
+    });
+  } catch (err) {
+    log?.error({ err }, '[auth] git-credential get: unexpected error');
+    return 1;
+  }
 }
 
 export async function handleCredentialGet(

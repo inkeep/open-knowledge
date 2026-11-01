@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import type { Config } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
+import { recordedCliEntryPath } from '../cli-entry-path.ts';
 import {
   emitBundleProxyEvent,
   findBundledOkPath,
@@ -31,6 +32,7 @@ export function mcpCommand(getConfig: () => Config): Command {
         if (opts.port !== undefined) {
           const timeoutMs = parseSpawnTimeoutEnv(process.env.OK_MCP_SPAWN_TIMEOUT_MS);
           await startMcpShim({
+            projectDir: '',
             lockDir: '',
             contentDir: '',
             portOverride: opts.port,
@@ -85,6 +87,7 @@ export function mcpCommand(getConfig: () => Config): Command {
         await startGlobalMcpServer({
           startupCwd,
           startupConfig,
+          bundleAnchorPath: recordedCliEntryPath(),
         });
       } catch (err) {
         process.stderr.write(

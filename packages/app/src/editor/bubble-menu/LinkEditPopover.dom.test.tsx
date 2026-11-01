@@ -371,12 +371,11 @@ describe('LinkEditPopover clipboard pre-fill', () => {
 
   test('leaves the input empty when the clipboard holds prose, with no error surfaced', async () => {
     let resolveRead!: (value: string) => void;
-    const clip = stubClipboardRead(
-      () =>
-        new Promise<string>((resolve) => {
-          resolveRead = resolve;
-        }),
-    );
+    const clip = stubClipboardRead(() => {
+      const { promise, resolve } = Promise.withResolvers<string>();
+      resolveRead = resolve;
+      return promise;
+    });
     try {
       renderPopover(makeEditor({ active: false }));
       fireEvent.mouseDown(screen.getByRole('button', { name: 'Insert link' }));
@@ -395,12 +394,11 @@ describe('LinkEditPopover clipboard pre-fill', () => {
 
   test('degrades silently to an empty, functional input when the clipboard read is denied', async () => {
     let rejectRead!: (reason: unknown) => void;
-    const clip = stubClipboardRead(
-      () =>
-        new Promise<string>((_resolve, reject) => {
-          rejectRead = reject;
-        }),
-    );
+    const clip = stubClipboardRead(() => {
+      const { promise, reject } = Promise.withResolvers<string>();
+      rejectRead = reject;
+      return promise;
+    });
     try {
       renderPopover(makeEditor({ active: false }));
       fireEvent.mouseDown(screen.getByRole('button', { name: 'Insert link' }));
@@ -440,12 +438,11 @@ describe('LinkEditPopover clipboard pre-fill', () => {
 
   test('a value the user typed before the clipboard resolved wins', async () => {
     let resolveRead!: (value: string) => void;
-    const clip = stubClipboardRead(
-      () =>
-        new Promise<string>((resolve) => {
-          resolveRead = resolve;
-        }),
-    );
+    const clip = stubClipboardRead(() => {
+      const { promise, resolve } = Promise.withResolvers<string>();
+      resolveRead = resolve;
+      return promise;
+    });
     try {
       renderPopover(makeEditor({ active: false }));
       fireEvent.mouseDown(screen.getByRole('button', { name: 'Insert link' }));

@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   ConfigDiagnosticSchema,
   ConfigDiagnosticsReportSchema,
@@ -145,6 +145,14 @@ describe('ConfigValidationErrorSchema', () => {
 });
 
 describe('humanFormat', () => {
+  beforeEach(() => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   test('VALUE_FALLBACK describes recovered settings without rejecting the file or exposing its value', () => {
     const diagnostic = {
       code: 'VALUE_FALLBACK',

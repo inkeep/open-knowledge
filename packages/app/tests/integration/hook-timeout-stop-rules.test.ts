@@ -3,9 +3,12 @@ import { join, relative, win32 } from 'node:path';
 import { ts } from 'ts-morph';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
+import { HOOK_TIMEOUT_SCAN_DIRS } from './hook-timeout-stop-rules.reads';
 
 const REPO_ROOT = join(import.meta.dirname, '..', '..', '..', '..');
-const SCANNED_DIRS = [import.meta.dirname, join(import.meta.dirname, '..', 'conversion')];
+const SCANNED_DIRS = HOOK_TIMEOUT_SCAN_DIRS.map((dir) =>
+  join(import.meta.dirname, '..', '..', dir),
+);
 
 interface ScannedFile {
   path: string;

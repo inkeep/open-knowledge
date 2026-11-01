@@ -3013,19 +3013,15 @@ describe('ThreadView retry', () => {
   });
 
   test('a retry rejection that lands after the thread moved on never surfaces when the thread fails again', async () => {
-    let rejectRetry: ((err: unknown) => void) | undefined;
-    retryThread.mockReturnValueOnce(
-      new Promise<ThreadInfo>((_resolve, reject) => {
-        rejectRetry = reject;
-      }),
-    );
+    const { promise: pendingRetry, reject: rejectRetry } = Promise.withResolvers<ThreadInfo>();
+    retryThread.mockReturnValueOnce(pendingRetry);
     model = makeModel({ turnActive: false, items: [failureNotice('connect')] });
     const view = render(<ThreadView info={makeInfo({ status: 'error' })} />);
 
     await userEvent.click(screen.getByTestId('agent-thread-retry'));
     view.rerender(<ThreadView info={makeInfo({ status: 'spawning' })} />);
     await act(async () => {
-      rejectRetry?.(new ThreadRetryError('timeout', 'retry timed out'));
+      rejectRetry(new ThreadRetryError('timeout', 'retry timed out'));
     });
     view.rerender(<ThreadView info={makeInfo({ status: 'error' })} />);
 
@@ -4332,12 +4328,8 @@ describe('ThreadView auth-required dead ends', () => {
   });
 
   test('a new chat that lost the race to another launch says so rather than going quiet', async () => {
-    let releaseCreate: (() => void) | undefined;
-    createThread.mockReturnValueOnce(
-      new Promise<void>((resolve) => {
-        releaseCreate = resolve;
-      }),
-    );
+    const { promise: pendingCreate, resolve: releaseCreate } = Promise.withResolvers<void>();
+    createThread.mockReturnValueOnce(pendingCreate);
     const inflight = launchAgentThread({ source: 'registry', id: 'claude' }, null, null, null);
     model = makeModel({ turnActive: false, items: [authNotice()] });
     render(<ThreadView info={makeInfo({ archived: true, status: 'exited', resumable: false })} />);
@@ -4351,7 +4343,7 @@ describe('ThreadView auth-required dead ends', () => {
     expect(createThread).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      releaseCreate?.();
+      releaseCreate();
       await inflight;
     });
   });
@@ -4588,12 +4580,8 @@ describe('ThreadView auth-required dead ends', () => {
   test.each(IN_FLIGHT_CASES)(
     'the $kind offer is disabled and announced while it is in flight',
     async ({ info, items, spy, announcement }) => {
-      let release: (() => void) | undefined;
-      spy().mockReturnValueOnce(
-        new Promise<void>((resolve) => {
-          release = resolve;
-        }),
-      );
+      const { promise: pending, resolve: release } = Promise.withResolvers<void>();
+      spy().mockReturnValueOnce(pending);
       model = makeModel({ turnActive: false, items: [...items] });
       render(<ThreadView info={makeInfo(info)} />);
 
@@ -4606,7 +4594,7 @@ describe('ThreadView auth-required dead ends', () => {
       expect(spy()).toHaveBeenCalledTimes(1);
 
       await act(async () => {
-        release?.();
+        release();
       });
       await waitFor(() => expect(offerButton().hasAttribute('disabled')).toBe(false));
       expect(offerButton().getAttribute('aria-busy')).toBe('false');
@@ -4740,12 +4728,8 @@ describe('ThreadView auth-required dead ends', () => {
     resumeThread.mockRejectedValueOnce(
       new ThreadResumeError('capacity', 'maximum of 8 concurrent agent threads'),
     );
-    let releaseCreate: (() => void) | undefined;
-    createThread.mockReturnValueOnce(
-      new Promise<void>((resolve) => {
-        releaseCreate = resolve;
-      }),
-    );
+    const { promise: pendingCreate, resolve: releaseCreate } = Promise.withResolvers<void>();
+    createThread.mockReturnValueOnce(pendingCreate);
     model = makeModel({ turnActive: false, items: [authNotice()] });
     render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
 
@@ -4759,7 +4743,7 @@ describe('ThreadView auth-required dead ends', () => {
     expect(within(offerButton()).queryByRole('status')).toBeNull();
 
     await act(async () => {
-      releaseCreate?.();
+      releaseCreate();
     });
     await waitFor(() => expect(offerButton().hasAttribute('disabled')).toBe(false));
   });
@@ -4768,12 +4752,8 @@ describe('ThreadView auth-required dead ends', () => {
     resumeThread.mockRejectedValueOnce(
       new ThreadResumeError('capacity', 'maximum of 8 concurrent agent threads'),
     );
-    let releaseCreate: (() => void) | undefined;
-    createThread.mockReturnValueOnce(
-      new Promise<void>((resolve) => {
-        releaseCreate = resolve;
-      }),
-    );
+    const { promise: pendingCreate, resolve: releaseCreate } = Promise.withResolvers<void>();
+    createThread.mockReturnValueOnce(pendingCreate);
     model = makeModel({ turnActive: false, items: [authNotice()] });
     render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
 
@@ -4790,18 +4770,14 @@ describe('ThreadView auth-required dead ends', () => {
     expect(offerButton().hasAttribute('disabled')).toBe(true);
 
     await act(async () => {
-      releaseCreate?.();
+      releaseCreate();
     });
     await waitFor(() => expect(createThread).toHaveBeenCalledTimes(1));
   });
 
   test('an unresumable chat keeps its new-chat offer through the launch it starts', async () => {
-    let releaseCreate: (() => void) | undefined;
-    createThread.mockReturnValueOnce(
-      new Promise<void>((resolve) => {
-        releaseCreate = resolve;
-      }),
-    );
+    const { promise: pendingCreate, resolve: releaseCreate } = Promise.withResolvers<void>();
+    createThread.mockReturnValueOnce(pendingCreate);
     model = makeModel({ turnActive: false, items: [authNotice()] });
     render(<ThreadView info={makeInfo({ archived: true, status: 'exited', resumable: false })} />);
 
@@ -4809,7 +4785,7 @@ describe('ThreadView auth-required dead ends', () => {
     expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('new-chat');
 
     await act(async () => {
-      releaseCreate?.();
+      releaseCreate();
     });
     await waitFor(() => expect(createThread).toHaveBeenCalledTimes(1));
     expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('new-chat');
@@ -4851,12 +4827,8 @@ describe('ThreadView auth-required dead ends', () => {
     resumeThread.mockRejectedValueOnce(
       new ThreadResumeError('resume-unsupported', 'this thread never completed an agent session'),
     );
-    let releaseCreate: (() => void) | undefined;
-    createThread.mockReturnValueOnce(
-      new Promise<void>((resolve) => {
-        releaseCreate = resolve;
-      }),
-    );
+    const { promise: pendingCreate, resolve: releaseCreate } = Promise.withResolvers<void>();
+    createThread.mockReturnValueOnce(pendingCreate);
     model = makeModel({ turnActive: false, items: [authNotice()] });
     render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
 
@@ -4873,7 +4845,7 @@ describe('ThreadView auth-required dead ends', () => {
     expect(offerButton().hasAttribute('disabled')).toBe(true);
 
     await act(async () => {
-      releaseCreate?.();
+      releaseCreate();
     });
     await waitFor(() => expect(createThread).toHaveBeenCalledTimes(1));
   });

@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   anchorFromHash,
   assetPathFromHash,
+  clearHashWithoutNavigation,
   docNameFromHash,
   encodeShareTargetForHash,
   encodeSkillPreviewSegments,
@@ -17,7 +18,7 @@ import {
   isSameHash,
   markCurrentHashHistoryEntry,
   pushHashWithoutNavigation,
-  replaceHashWithoutNavigation,
+  readManagedHashHistoryEntry,
   type SkillFileHashTarget,
   type SkillPreviewHashTarget,
   selectedPathForSkillPreview,
@@ -324,7 +325,7 @@ describe('pushHashWithoutNavigation', () => {
   test('pushes a distinct hash while preserving the current path and query', () => {
     const { pushState, restore } = installWindow('#/old');
     try {
-      pushHashWithoutNavigation('#/new');
+      pushHashWithoutNavigation('#/new', 'permanent');
     } finally {
       restore();
     }
@@ -338,10 +339,44 @@ describe('pushHashWithoutNavigation', () => {
     expect(isManagedHashHistoryState(pushState.mock.calls[0]?.[0])).toBe(true);
   });
 
+  test('stores the disposition while preserving unrelated state', () => {
+    const { pushState, restore } = installWindow('#/old');
+    try {
+      pushHashWithoutNavigation('#/preview', 'preview');
+      const firstState = pushState.mock.calls[0]?.[0];
+      Object.defineProperty(window.history, 'state', {
+        configurable: true,
+        value: firstState,
+      });
+      Object.defineProperty(window.location, 'hash', {
+        configurable: true,
+        value: '#/preview',
+      });
+      pushHashWithoutNavigation('#/permanent', 'permanent');
+      const firstEntry = readManagedHashHistoryEntry(firstState);
+      const secondEntry = readManagedHashHistoryEntry(pushState.mock.calls[1]?.[0]);
+      expect(firstEntry?.disposition).toBe('preview');
+      expect(secondEntry?.disposition).toBe('permanent');
+      expect(pushState.mock.calls[1]?.[0]).toEqual(expect.objectContaining({ preserved: 'value' }));
+    } finally {
+      restore();
+    }
+  });
+
+  test('ignores incomplete managed metadata', () => {
+    expect(readManagedHashHistoryEntry({ __okHashHistoryEntry: true })).toBeNull();
+    expect(
+      readManagedHashHistoryEntry({
+        __okHashHistoryEntry: true,
+        __okHashHistoryDisposition: 'other',
+      }),
+    ).toBeNull();
+  });
+
   test('does not push when the hash is already current', () => {
     const { pushState, restore } = installWindow('#/current');
     try {
-      pushHashWithoutNavigation('#/current');
+      pushHashWithoutNavigation('#/current', 'permanent');
     } finally {
       restore();
     }
@@ -381,10 +416,10 @@ describe('pushHashWithoutNavigation', () => {
     expect(replaceState).not.toHaveBeenCalled();
   });
 
-  test('replaces the current hash while preserving managed history state', () => {
+  test('clears the current hash while preserving managed history state', () => {
     const { replaceState, restore } = installWindow('#/current');
     try {
-      replaceHashWithoutNavigation('');
+      clearHashWithoutNavigation();
     } finally {
       restore();
     }

@@ -567,12 +567,11 @@ describe('CustomThemeEditor', () => {
       },
     };
     let resolveUpdate: ((result: UpdateSavedThemeResult) => void) | undefined;
-    updateTheme.mockImplementation(
-      async () =>
-        new Promise<UpdateSavedThemeResult>((resolve) => {
-          resolveUpdate = resolve;
-        }),
-    );
+    updateTheme.mockImplementation(() => {
+      const { promise, resolve } = Promise.withResolvers<UpdateSavedThemeResult>();
+      resolveUpdate = resolve;
+      return promise;
+    });
     const { container, rerenderEditor, getByText } = await renderEditor();
     const first = hexInputs(container)[0] as HTMLInputElement;
 
@@ -616,12 +615,11 @@ describe('CustomThemeEditor', () => {
       },
     };
     let resolveUpdate: ((result: UpdateSavedThemeResult) => void) | undefined;
-    updateTheme.mockImplementation(
-      async () =>
-        new Promise<UpdateSavedThemeResult>((resolve) => {
-          resolveUpdate = resolve;
-        }),
-    );
+    updateTheme.mockImplementation(() => {
+      const { promise, resolve } = Promise.withResolvers<UpdateSavedThemeResult>();
+      resolveUpdate = resolve;
+      return promise;
+    });
     const { container, rerenderEditor } = await renderEditor();
     const first = hexInputs(container)[0] as HTMLInputElement;
 
@@ -698,12 +696,11 @@ describe('CustomThemeEditor', () => {
       },
     ];
     let resolveUpdate: ((result: UpdateSavedThemeResult) => void) | undefined;
-    updateTheme.mockImplementation(
-      async () =>
-        new Promise<UpdateSavedThemeResult>((resolve) => {
-          resolveUpdate = resolve;
-        }),
-    );
+    updateTheme.mockImplementation(() => {
+      const { promise, resolve } = Promise.withResolvers<UpdateSavedThemeResult>();
+      resolveUpdate = resolve;
+      return promise;
+    });
     const { container, rerenderEditor } = await renderEditor();
     const first = hexInputs(container)[0] as HTMLInputElement;
 
@@ -743,12 +740,11 @@ describe('CustomThemeEditor', () => {
     ];
     let resolveUpdate: ((result: UpdateSavedThemeResult) => void) | undefined;
     updateTheme
-      .mockImplementationOnce(
-        async () =>
-          new Promise<UpdateSavedThemeResult>((resolve) => {
-            resolveUpdate = resolve;
-          }),
-      )
+      .mockImplementationOnce(() => {
+        const { promise, resolve } = Promise.withResolvers<UpdateSavedThemeResult>();
+        resolveUpdate = resolve;
+        return promise;
+      })
       .mockResolvedValue({ ok: true, id: 'saved-active', filename: 'active.yaml' });
     const { container } = await renderEditor();
     const first = hexInputs(container)[0] as HTMLInputElement;
@@ -792,12 +788,11 @@ describe('CustomThemeEditor', () => {
       { id: 'saved-b', label: 'Theme B', kind: 'dark', scheme: themeB },
     ];
     let resolveUpdate: ((result: UpdateSavedThemeResult) => void) | undefined;
-    updateTheme.mockImplementation(
-      async () =>
-        new Promise<UpdateSavedThemeResult>((resolve) => {
-          resolveUpdate = resolve;
-        }),
-    );
+    updateTheme.mockImplementation(() => {
+      const { promise, resolve } = Promise.withResolvers<UpdateSavedThemeResult>();
+      resolveUpdate = resolve;
+      return promise;
+    });
     const { container, rerenderEditor } = await renderEditor();
     const first = hexInputs(container)[0] as HTMLInputElement;
 
@@ -833,12 +828,11 @@ describe('CustomThemeEditor', () => {
       },
     ];
     let resolveUpdate: ((result: UpdateSavedThemeResult) => void) | undefined;
-    updateTheme.mockImplementation(
-      async () =>
-        new Promise<UpdateSavedThemeResult>((resolve) => {
-          resolveUpdate = resolve;
-        }),
-    );
+    updateTheme.mockImplementation(() => {
+      const { promise, resolve } = Promise.withResolvers<UpdateSavedThemeResult>();
+      resolveUpdate = resolve;
+      return promise;
+    });
     const { container, rerenderEditor, getByText, queryByText } = await renderEditor();
     const first = hexInputs(container)[0] as HTMLInputElement;
 

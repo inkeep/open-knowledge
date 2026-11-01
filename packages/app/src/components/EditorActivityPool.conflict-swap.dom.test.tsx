@@ -17,9 +17,6 @@ const poolEntries: FakePoolEntry[] = [];
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({ poolEntries, serverRestartRecovery: { kind: 'idle' } }),
 }));
-vi.doMock('./PageListContext', () => ({
-  usePageList: () => ({ pages: new Map(), loading: false }),
-}));
 let tiptapMounts = 0;
 
 vi.doMock('@/editor/TiptapEditor', () => ({

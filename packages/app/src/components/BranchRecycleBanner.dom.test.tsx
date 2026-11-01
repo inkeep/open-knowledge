@@ -75,12 +75,11 @@ test('the transient switch banner dismisses itself after its deadline', async ()
 
 test('with the desktop bridge, Restart server disables in flight and re-enables on failure', async () => {
   let resolveRestart: (v: { ok: boolean }) => void = () => {};
-  restartMock.mockImplementation(
-    () =>
-      new Promise<{ ok: boolean }>((resolve) => {
-        resolveRestart = resolve;
-      }),
-  );
+  restartMock.mockImplementation(() => {
+    const { promise, resolve } = Promise.withResolvers<{ ok: boolean }>();
+    resolveRestart = resolve;
+    return promise;
+  });
   Object.defineProperty(window, 'okDesktop', {
     value: { restart: true },
     configurable: true,

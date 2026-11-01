@@ -80,9 +80,9 @@ function mockTimelineFetch(
         signal: init?.signal,
       });
       if (holdRollback) {
-        return new Promise<Response>((resolve) => {
-          resolveHeld = resolve;
-        });
+        const { promise, resolve } = Promise.withResolvers<Response>();
+        resolveHeld = resolve;
+        return promise;
       }
       return Promise.resolve(new Response(null, { status: 200 }));
     }

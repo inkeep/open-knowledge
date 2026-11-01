@@ -4,6 +4,25 @@ import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 
+const keyring = vi.hoisted(() => new Map<string, string>());
+vi.mock('@napi-rs/keyring', () => ({
+  AsyncEntry: class {
+    private readonly id: string;
+    constructor(service: string, account: string) {
+      this.id = JSON.stringify([service, account]);
+    }
+    async getPassword() {
+      return keyring.get(this.id) ?? null;
+    }
+    async setPassword(value: string) {
+      keyring.set(this.id, value);
+    }
+    async deletePassword() {
+      return keyring.delete(this.id);
+    }
+  },
+}));
+
 const statPollWatchers = vi.hoisted(() => ({ swallowEvents: true, swallowed: 0 }));
 afterAll(() => {
   statPollWatchers.swallowEvents = false;

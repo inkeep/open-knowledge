@@ -492,14 +492,8 @@ interface HeldLaunch {
 }
 
 function holdLaunch(heldSlot: number): HeldLaunch {
-  let markStarted: () => void = () => {};
-  const started = new Promise<void>((resolve) => {
-    markStarted = resolve;
-  });
-  let proceed: () => void = () => {};
-  const gate = new Promise<void>((resolve) => {
-    proceed = resolve;
-  });
+  const { promise: started, resolve: markStarted } = Promise.withResolvers<void>();
+  const { promise: gate, resolve: proceed } = Promise.withResolvers<void>();
   return {
     started,
     proceed: () => proceed(),

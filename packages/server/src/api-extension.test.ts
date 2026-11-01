@@ -250,7 +250,7 @@ describe('handleUploadAsset', () => {
   });
 
   test('configured content-root folder stores upload under fixed attachments directory', async () => {
-    attachmentFolderPath = 'attachments';
+    attachmentFolderPath = '/attachments';
     const res = await uploadImage(createPngBuffer(), 'diagram.png', 'docs/guide.md');
     const body = (await res.json()) as { src: string; path: string; deduped: boolean };
     expect(res.status).toBe(200);
@@ -304,7 +304,7 @@ describe('handleUploadAsset', () => {
   });
 
   test('a configured attachmentFolderPath naming .ok is refused at the resolved destination', async () => {
-    attachmentFolderPath = '.ok/skills';
+    attachmentFolderPath = '/.ok/skills';
     const res = await uploadImage(createPngBuffer(), 'planted.png', 'docs/guide.md');
     const body = (await res.json()) as { type: string; status: number };
     expect(res.status).toBe(400);
@@ -313,7 +313,7 @@ describe('handleUploadAsset', () => {
   });
 
   test('parent-dir placement keeps explicit sidebar folder drops in the target folder', async () => {
-    attachmentFolderPath = 'attachments';
+    attachmentFolderPath = '/attachments';
     const res = await uploadImage(createPngBuffer(), 'clip.png', 'docs/guide.md', 'parent-dir');
     const body = (await res.json()) as { src: string; path: string };
     expect(res.status).toBe(200);
@@ -514,6 +514,7 @@ describe('handleUploadAsset — same-dir sha256 dedup (FR-2)', () => {
       sessionManager,
       contentDir,
       getFileIndex: () => new Map(),
+      getAttachmentFolderPath: () => './',
     });
 
     const { createServer } = await import('node:http');

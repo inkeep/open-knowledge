@@ -619,12 +619,11 @@ describe('signalSlidevChild', () => {
   it('waits for the Windows tree kill to settle', async () => {
     const { child } = fakeChild();
     let release: (() => void) | undefined;
-    const killWindowsTree = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          release = resolve;
-        }),
-    );
+    const killWindowsTree = vi.fn(() => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      release = resolve;
+      return promise;
+    });
     let settled = false;
 
     const signal = signalSlidevChild(child, 'SIGTERM', {

@@ -75,6 +75,14 @@ vi.mock('@inkeep/open-knowledge-server', async (importOriginal) => {
 
 const NATIVE_TOML_AVAILABLE = createTomlConfigEngine().backend === 'native';
 
+beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 async function runInit(...args: Parameters<typeof runInitProduct>) {
   const result = await runInitProduct(...args);
   if (result.didGitInit || existsSync(join(result.projectRoot, '.git', 'config'))) {
@@ -1465,17 +1473,26 @@ describe('runInit', () => {
   });
 
   describe('ensureProjectGit wiring (US-005)', () => {
-    it('fresh tmpdir (no .git/) → runInit creates .git/ and reports didGitInit=true', async () => {
-      const result = await runInitForTest({ editors: ['claude'] });
+    it.each(['main', 'trunk'])(
+      'initializes the configured %s branch without a misleading label',
+      async (branch) => {
+        const gitConfig = join(fakeHome, 'gitconfig');
+        writeFileSync(gitConfig, `[init]\n\tdefaultBranch = ${branch}\n`);
+        vi.stubEnv('GIT_CONFIG_GLOBAL', gitConfig);
+        vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
 
-      expect(result.didGitInit).toBe(true);
-      expect(existsSync(join(testDir, '.git/HEAD'))).toBe(true);
-      const head = readFileSync(join(testDir, '.git/HEAD'), 'utf-8');
-      expect(head).toBe('ref: refs/heads/main\n');
+        const result = await runInitForTest({ editors: ['claude'] });
 
-      const output = formatInitResult(result, testDir);
-      expect(output).toContain(`Initialized git repo at ${testDir}/.git/ (default branch: main)`);
-    });
+        expect(result.didGitInit).toBe(true);
+        const head = readFileSync(join(testDir, '.git/HEAD'), 'utf-8');
+        expect(head).toBe(`ref: refs/heads/${branch}\n`);
+
+        const output = formatInitResult(result, testDir);
+        expect(output.split('\n').find((line) => line.startsWith('Initialized git repo at'))).toBe(
+          `Initialized git repo at ${testDir}/.git/`,
+        );
+      },
+    );
 
     it('pre-existing .git/HEAD → runInit does not re-init and reports didGitInit=false', async () => {
       mkdirSync(join(testDir, '.git'));

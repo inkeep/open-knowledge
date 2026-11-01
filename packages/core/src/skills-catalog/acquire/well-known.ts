@@ -6,7 +6,8 @@ import {
   SKILL_IMPORT_MAX_FILE_BYTES,
   SKILL_IMPORT_MAX_TOTAL_BYTES,
 } from '../import-limits.ts';
-import { SkillFetchError } from './errors.ts';
+import { SkillDestinationPolicyError, SkillFetchError } from './errors.ts';
+import { fetchWebsiteSkill } from './website-fetch.ts';
 
 const INDEX_CANDIDATES = [
   '/.well-known/agent-skills/index.json',
@@ -51,7 +52,7 @@ export interface WellKnownSkillSummary {
 const MAX_REDIRECTS = 5;
 
 async function fetchWithinOrigin(
-  fetchImpl: typeof fetch,
+  fetchImpl: typeof fetchWebsiteSkill,
   url: string,
   origin: string,
   init: RequestInit,
@@ -60,6 +61,7 @@ async function fetchWithinOrigin(
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const response = await fetchImpl(current, { ...init, redirect: 'manual' });
     if (response.status < 300 || response.status >= 400) return response;
+    await response.body?.cancel();
 
     const location = response.headers.get('location');
     if (location === null || location === '') {
@@ -135,9 +137,42 @@ function childUrl(origin: string, basePath: string, skill: string, file: string)
   return new URL(`${basePath}/${path}`, origin).href;
 }
 
+async function readBoundedBody(
+  response: Response,
+  maxBytes: number,
+  tooLarge: string,
+  consumeBytes?: (count: number) => void,
+): Promise<Uint8Array> {
+  const reader = response.body?.getReader();
+  if (!reader) return new Uint8Array();
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  try {
+    const declaredLength = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+      throw new SkillFetchError(tooLarge);
+    }
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      byteLength += value.byteLength;
+      if (byteLength > maxBytes) throw new SkillFetchError(tooLarge);
+      consumeBytes?.(value.byteLength);
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks, byteLength);
+  } finally {
+    try {
+      await reader.cancel();
+    } finally {
+      reader.releaseLock();
+    }
+  }
+}
+
 async function readIndex(
   origin: string,
-  fetchImpl: typeof fetch,
+  fetchImpl: typeof fetchWebsiteSkill,
   timeoutMs: number,
 ): Promise<{ basePath: string; skills: LegacySkillEntry[] }> {
   const failures: string[] = [];
@@ -151,11 +186,12 @@ async function readIndex(
         failures.push(`${indexPath}: HTTP ${response.status}`);
         continue;
       }
-      const raw = await response.text();
-      if (Buffer.byteLength(raw) > MAX_INDEX_BYTES) {
-        failures.push(`${indexPath}: index exceeds ${MAX_INDEX_BYTES} bytes`);
-        continue;
-      }
+      const bytes = await readBoundedBody(
+        response,
+        MAX_INDEX_BYTES,
+        `index exceeds ${MAX_INDEX_BYTES} bytes`,
+      );
+      const raw = new TextDecoder().decode(bytes);
       let value: unknown;
       try {
         value = JSON.parse(raw);
@@ -170,6 +206,7 @@ async function readIndex(
       }
       return { basePath: indexPath.slice(0, -'/index.json'.length), skills };
     } catch (error) {
+      if (error instanceof SkillDestinationPolicyError) throw error;
       failures.push(`${indexPath}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -189,8 +226,7 @@ export async function readWellKnownIndex(
   opts: WellKnownFetchOptions = {},
 ): Promise<WellKnownIndex> {
   const origin = normalizedOrigin(rawOrigin);
-  const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
-  if (!fetchImpl) throw new SkillFetchError('No fetch implementation available.');
+  const fetchImpl = opts.fetchImpl ?? fetchWebsiteSkill;
   return readIndex(origin, fetchImpl, opts.timeoutMs ?? 15_000);
 }
 
@@ -202,8 +238,7 @@ export async function fetchWellKnownSkill(
     throw new SkillFetchError(`Invalid website skill name: ${spec.skill}`);
   }
   const origin = normalizedOrigin(spec.origin);
-  const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
-  if (!fetchImpl) throw new SkillFetchError('No fetch implementation available.');
+  const fetchImpl = opts.fetchImpl ?? fetchWebsiteSkill;
   const timeoutMs = opts.timeoutMs ?? 15_000;
   const { basePath, skills } = opts.index ?? (await readIndex(origin, fetchImpl, timeoutMs));
   const entry = skills.find((candidate) => candidate.name === spec.skill);
@@ -214,46 +249,49 @@ export async function fetchWellKnownSkill(
   const tmp = mkdtempSync(join(tmpdir(), 'ok-skill-site-'));
   const skillDir = join(tmp, entry.name);
   let totalBytes = 0;
+  const controller = new AbortController();
   try {
     const pending = [...entry.files];
     const fetchOne = async (file: string): Promise<void> => {
       const url = childUrl(origin, basePath, entry.name, file);
       const response = await fetchWithinOrigin(fetchImpl, url, origin, {
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.any([AbortSignal.timeout(timeoutMs), controller.signal]),
       });
       if (!response.ok) {
         throw new SkillFetchError(`Website skill file returned HTTP ${response.status}: ${file}`);
       }
-      const declaredLength = Number(response.headers.get('content-length'));
-      if (Number.isFinite(declaredLength) && declaredLength > SKILL_IMPORT_MAX_FILE_BYTES) {
-        throw new SkillFetchError(
-          `Website skill file exceeds ${SKILL_IMPORT_MAX_FILE_BYTES} bytes: ${file}`,
-        );
-      }
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (bytes.byteLength > SKILL_IMPORT_MAX_FILE_BYTES) {
-        throw new SkillFetchError(
-          `Website skill file exceeds ${SKILL_IMPORT_MAX_FILE_BYTES} bytes: ${file}`,
-        );
-      }
-      totalBytes += bytes.byteLength;
-      if (totalBytes > SKILL_IMPORT_MAX_TOTAL_BYTES) {
-        throw new SkillFetchError(
-          `Website skill bundle exceeds ${SKILL_IMPORT_MAX_TOTAL_BYTES} bytes.`,
-        );
-      }
+      const bytes = await readBoundedBody(
+        response,
+        SKILL_IMPORT_MAX_FILE_BYTES,
+        `Website skill file exceeds ${SKILL_IMPORT_MAX_FILE_BYTES} bytes: ${file}`,
+        (count) => {
+          totalBytes += count;
+          if (totalBytes > SKILL_IMPORT_MAX_TOTAL_BYTES) {
+            throw new SkillFetchError(
+              `Website skill bundle exceeds ${SKILL_IMPORT_MAX_TOTAL_BYTES} bytes.`,
+            );
+          }
+        },
+      );
       const destination = join(skillDir, ...file.split('/'));
       mkdirSync(dirname(destination), { recursive: true });
       writeFileSync(destination, bytes);
     };
     const worker = async (): Promise<void> => {
-      for (let file = pending.shift(); file !== undefined; file = pending.shift()) {
-        await fetchOne(file);
+      try {
+        for (let file = pending.shift(); file !== undefined; file = pending.shift()) {
+          controller.signal.throwIfAborted();
+          await fetchOne(file);
+        }
+      } catch (error) {
+        controller.abort(error);
+        throw error;
       }
     };
-    await Promise.all(
+    await Promise.allSettled(
       Array.from({ length: Math.min(SITE_FILE_CONCURRENCY, pending.length) }, worker),
     );
+    controller.signal.throwIfAborted();
     return { dir: skillDir, cleanup: () => rmSync(tmp, { recursive: true, force: true }) };
   } catch (error) {
     rmSync(tmp, { recursive: true, force: true });

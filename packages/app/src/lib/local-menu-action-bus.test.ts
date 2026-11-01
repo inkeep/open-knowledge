@@ -7,6 +7,7 @@ import {
   emitLocalMenuAction,
   subscribeLocalMenuAction,
 } from './local-menu-action-bus';
+import { MENU_SCAN_ROOT } from './local-menu-action-bus.reads';
 
 describe('local menu-action bus', () => {
   afterEach(() => {
@@ -244,7 +245,7 @@ function declaredOrigin(args: string): string {
 
 describe('local menu-action bus — production emitters declare their provenance', () => {
   test('the set of emitters and their declared origins is exactly the reviewed one', () => {
-    const appSrc = join(import.meta.dir, '..');
+    const appSrc = join(import.meta.dir, '..', '..', '..', '..', MENU_SCAN_ROOT);
     const isTestLike = (name: string) => /\.(test|dom\.test|test-helper)\.[cm]?tsx?$/.test(name);
     const found: { file: string; origins: string[] }[] = [];
     const importsButUnparsed: string[] = [];

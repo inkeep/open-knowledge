@@ -401,12 +401,8 @@ describe('navigator boot narration (the phase consent-dialog waits over)', () =>
   }
 
   test('narrates while the navigator renderer is still loading, on the app cadence', () => {
-    let resolveLoad: (() => void) | undefined;
-    const h = harness(
-      new Promise<void>((r) => {
-        resolveLoad = r;
-      }),
-    );
+    const { promise: loaded, resolve: resolveLoad } = Promise.withResolvers<void>();
+    const h = harness(loaded);
     createNavigatorWindow(h.deps);
 
     const beat = h.intervals.find((i) => !i.cleared);
@@ -416,7 +412,7 @@ describe('navigator boot narration (the phase consent-dialog waits over)', () =>
     beat?.cb();
     expect(h.lines.filter((l) => l.event === 'desktop-navigator-load-progress')).toHaveLength(2);
     expect(h.flushes()).toBe(2);
-    resolveLoad?.();
+    resolveLoad();
   });
 
   test('stops narrating and records the terminal line once the renderer resolves', async () => {

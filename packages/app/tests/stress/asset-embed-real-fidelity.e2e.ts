@@ -87,10 +87,12 @@ async function waitForDiskFile(
 
 test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/005/006/010)', () => {
   let runId: string;
+  let assetDir: string;
 
   test.beforeEach(async ({ page, api }) => {
     runId = randomUUID().slice(0, 8);
     const docName = `real-${runId}`;
+    assetDir = `${docName}.assets`;
     await api.createPage(`${docName}.md`);
     await api.replaceDoc(docName, '# Real\n');
     await page.goto(`/#/${docName}`);
@@ -116,7 +118,7 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
       .poll(async () => await getSourceText(page), { timeout: 10_000 })
       .toContain(`![[${pdfName}]]`);
 
-    const onDisk = await waitForDiskFile(workerServer.contentDir, pdfName);
+    const onDisk = await waitForDiskFile(workerServer.contentDir, `${assetDir}/${pdfName}`);
     expect(onDisk.length).toBe(pdf.length);
     expect(sha256(onDisk)).toBe(expectedSha);
 
@@ -136,10 +138,10 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
     await dropFileBytesIntoEditor(page, mp4, mp4Name, 'video/mp4');
     await expect
       .poll(async () => await getSourceText(page), { timeout: 10_000 })
-      .toMatch(new RegExp(`<video\\s+src="/?${escapeRegExp(mp4Name)}"`));
+      .toMatch(new RegExp(`<video\\s+src="/?${escapeRegExp(`${assetDir}/${mp4Name}`)}"`));
     const text = await getSourceText(page);
     expect(text).not.toMatch(/controls(=|\s|\/>|>)/);
-    const onDisk = await waitForDiskFile(workerServer.contentDir, mp4Name);
+    const onDisk = await waitForDiskFile(workerServer.contentDir, `${assetDir}/${mp4Name}`);
     expect(sha256(onDisk)).toBe(expectedSha);
   });
 
@@ -153,10 +155,10 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
     await dropFileBytesIntoEditor(page, mp3, mp3Name, 'audio/mpeg');
     await expect
       .poll(async () => await getSourceText(page), { timeout: 10_000 })
-      .toMatch(new RegExp(`<audio\\s+src="/?${escapeRegExp(mp3Name)}"`));
+      .toMatch(new RegExp(`<audio\\s+src="/?${escapeRegExp(`${assetDir}/${mp3Name}`)}"`));
     const text = await getSourceText(page);
     expect(text).not.toMatch(/controls(=|\s|\/>|>)/);
-    const onDisk = await waitForDiskFile(workerServer.contentDir, mp3Name);
+    const onDisk = await waitForDiskFile(workerServer.contentDir, `${assetDir}/${mp3Name}`);
     expect(sha256(onDisk)).toBe(expectedSha);
   });
 
@@ -173,7 +175,7 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
       .toContain(zipName);
     const text = await getSourceText(page);
     expect(text).toContain(`![[${zipName}]]`);
-    const onDisk = await waitForDiskFile(workerServer.contentDir, zipName);
+    const onDisk = await waitForDiskFile(workerServer.contentDir, `${assetDir}/${zipName}`);
     expect(sha256(onDisk)).toBe(expectedSha);
   });
 
@@ -195,9 +197,9 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
     await dropFileBytesIntoEditor(page, svg, svgName, 'image/svg+xml');
     await expect
       .poll(async () => await getSourceText(page), { timeout: 10_000 })
-      .toMatch(new RegExp(`<img\\s+src="/?${escapeRegExp(svgName)}"`));
+      .toMatch(new RegExp(`<img\\s+src="/?${escapeRegExp(`${assetDir}/${svgName}`)}"`));
 
-    const onDisk = await waitForDiskFile(workerServer.contentDir, svgName);
+    const onDisk = await waitForDiskFile(workerServer.contentDir, `${assetDir}/${svgName}`);
     expect(sha256(onDisk)).toBe(expectedSha);
 
     const scriptCount = await page.locator('.ProseMirror script').count();
@@ -221,7 +223,7 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
       .toContain(csvName);
     const text = await getSourceText(page);
     expect(text).toContain(`![[${csvName}]]`);
-    const onDisk = await waitForDiskFile(workerServer.contentDir, csvName);
+    const onDisk = await waitForDiskFile(workerServer.contentDir, `${assetDir}/${csvName}`);
     expect(sha256(onDisk)).toBe(expectedSha);
     expect(onDisk.toString('utf-8')).toBe('name,age,city\nAlice,30,NYC\nBob,25,LA\n');
   });
@@ -255,7 +257,7 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
 
     expect(resultJson.elapsedMs).toBeLessThan(10_000);
 
-    const onDisk = await waitForDiskFile(workerServer.contentDir, binName);
+    const onDisk = await waitForDiskFile(workerServer.contentDir, `${assetDir}/${binName}`);
     expect(onDisk.length).toBe(payloadBytes);
 
     console.log(
@@ -282,7 +284,7 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
     await dropFileBytesIntoEditor(page, png, pngName, 'image/png');
     await expect
       .poll(async () => await getSourceText(page), { timeout: 10_000 })
-      .toMatch(new RegExp(`<img\\s+src="/?${escapeRegExp(pngName)}"`));
+      .toMatch(new RegExp(`<img\\s+src="/?${escapeRegExp(`${assetDir}/${pngName}`)}"`));
 
     await dropFileBytesIntoEditor(page, png, pngName, 'image/png');
 
@@ -290,8 +292,11 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
       .poll(
         async () => {
           const t = await getSourceText(page);
-          return (t.match(new RegExp(`<img\\s+[^>]*src="/?${escapeRegExp(pngName)}"`, 'g')) ?? [])
-            .length;
+          return (
+            t.match(
+              new RegExp(`<img\\s+[^>]*src="/?${escapeRegExp(`${assetDir}/${pngName}`)}"`, 'g'),
+            ) ?? []
+          ).length;
         },
         { timeout: 10_000 },
       )
@@ -299,11 +304,11 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
     const text = await getSourceText(page);
     expect(text).not.toContain(collisionName);
 
-    const onDisk = await waitForDiskFile(workerServer.contentDir, pngName);
+    const onDisk = await waitForDiskFile(workerServer.contentDir, `${assetDir}/${pngName}`);
     expect(sha256(onDisk)).toBe(expectedSha);
 
     await expect(async () => {
-      await waitForDiskFile(workerServer.contentDir, collisionName, 500);
+      await waitForDiskFile(workerServer.contentDir, `${assetDir}/${collisionName}`, 500);
     }).rejects.toThrow(/not found/);
   });
 });

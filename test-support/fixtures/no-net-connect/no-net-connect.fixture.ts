@@ -105,14 +105,9 @@ describe('suite hook declarations cannot authorize sibling suite blocks', () => 
 });
 
 describe('a block that lands after its scope drained is reported, not enforced', () => {
-  let resolveOrphan: (outcome: unknown) => void;
-  let resolveLateDeclaration: (outcome: unknown) => void;
-  const orphanOutcome = new Promise<unknown>((resolve) => {
-    resolveOrphan = resolve;
-  });
-  const lateDeclarationOutcome = new Promise<unknown>((resolve) => {
-    resolveLateDeclaration = resolve;
-  });
+  const { promise: orphanOutcome, resolve: resolveOrphan } = Promise.withResolvers<unknown>();
+  const { promise: lateDeclarationOutcome, resolve: resolveLateDeclaration } =
+    Promise.withResolvers<unknown>();
 
   test('schedules a forbidden fetch that lands after it returns', () => {
     expect(() => {
@@ -145,18 +140,12 @@ test('unrelated console error passes', () => {
 });
 
 describe('concurrent siblings isolate exact hostname expectations', () => {
-  let releaseAlpha: (() => void) | undefined;
-  let releaseBeta: (() => void) | undefined;
-  const alphaDeclared = new Promise<void>((resolve) => {
-    releaseAlpha = resolve;
-  });
-  const betaDeclared = new Promise<void>((resolve) => {
-    releaseBeta = resolve;
-  });
+  const { promise: alphaDeclared, resolve: releaseAlpha } = Promise.withResolvers<void>();
+  const { promise: betaDeclared, resolve: releaseBeta } = Promise.withResolvers<void>();
 
   test.concurrent('alpha request', async ({ expect }) => {
     expectBlockedNetworkRequest('alpha.invalid');
-    releaseAlpha?.();
+    releaseAlpha();
     await betaDeclared;
     const error = await captureBlockedRequest('alpha.invalid');
     expect(error).toBeInstanceOf(NetConnectBlockedError);
@@ -165,43 +154,33 @@ describe('concurrent siblings isolate exact hostname expectations', () => {
   test.concurrent('beta request', async ({ expect }) => {
     await alphaDeclared;
     expectBlockedNetworkRequest('beta.invalid');
-    releaseBeta?.();
+    releaseBeta();
     const error = await captureBlockedRequest('beta.invalid');
     expect(error).toBeInstanceOf(NetConnectBlockedError);
   });
 });
 
 describe('concurrent unexpected block stays with its owning test', () => {
-  let releaseOffenderStarted: (() => void) | undefined;
-  let releaseInnocentReady: (() => void) | undefined;
-  let releaseOffenderBlocked: (() => void) | undefined;
-  let releaseInnocentDone: (() => void) | undefined;
-  const offenderStarted = new Promise<void>((resolve) => {
-    releaseOffenderStarted = resolve;
-  });
-  const innocentReady = new Promise<void>((resolve) => {
-    releaseInnocentReady = resolve;
-  });
-  const offenderBlocked = new Promise<void>((resolve) => {
-    releaseOffenderBlocked = resolve;
-  });
-  const innocentDone = new Promise<void>((resolve) => {
-    releaseInnocentDone = resolve;
-  });
+  const { promise: offenderStarted, resolve: releaseOffenderStarted } =
+    Promise.withResolvers<void>();
+  const { promise: innocentReady, resolve: releaseInnocentReady } = Promise.withResolvers<void>();
+  const { promise: offenderBlocked, resolve: releaseOffenderBlocked } =
+    Promise.withResolvers<void>();
+  const { promise: innocentDone, resolve: releaseInnocentDone } = Promise.withResolvers<void>();
 
   test.concurrent('offender swallows its unexpected block', async ({ expect }) => {
-    releaseOffenderStarted?.();
+    releaseOffenderStarted();
     await innocentReady;
     const error = await captureBlockedRequest('concurrent-offender.invalid');
-    releaseOffenderBlocked?.();
+    releaseOffenderBlocked();
     await innocentDone;
     expect(error).toBeInstanceOf(NetConnectBlockedError);
   });
 
   test.concurrent('innocent sibling passes', async ({ expect }) => {
     await offenderStarted;
-    releaseInnocentReady?.();
+    releaseInnocentReady();
     await expect(offenderBlocked).resolves.toBeUndefined();
-    releaseInnocentDone?.();
+    releaseInnocentDone();
   });
 });

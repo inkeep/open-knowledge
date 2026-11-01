@@ -12,6 +12,7 @@ import { resolveIcon } from '../registry/icons.ts';
 import { getDescriptor, getRegisteredDescriptors } from '../registry/index.ts';
 import type { JsxComponentDescriptor } from '../registry/types.ts';
 import type { SlashCommandContext, SlashCommandItem } from './items';
+import { nextMirrorSourceName } from './mirror-source-name.ts';
 import imagePreview from './preview-assets/image-preview.png';
 import videoPreview from './preview-assets/video-preview.png';
 
@@ -34,7 +35,7 @@ const PREVIEW_CONFIG: Record<string, PreviewConfig> = {
     children: () => t`Hidden content goes here.`,
   },
   Toggle: {
-    description: msg`Collapsible content block (Notion-style toggle).`,
+    description: msg`Collapsible block, the same as Accordion.`,
     props: () => ({ title: t`Click to expand`, defaultOpen: true }),
     children: () => t`Hidden content goes here.`,
   },
@@ -393,6 +394,13 @@ function createInsertCommand(
       tab2Attrs.props = { ...(tab2Attrs.props as Record<string, unknown>), label: 'Tab 2' };
       (inserted as Record<string, unknown>).content = [tab1, tab2];
     }
+    if (descriptor.name === 'MirrorSource') {
+      const insertedAttrs = inserted.attrs as Record<string, unknown>;
+      insertedAttrs.props = {
+        ...(insertedAttrs.props as Record<string, unknown>),
+        name: nextMirrorSourceName(state.doc, state.selection.from),
+      };
+    }
     chain().insertContent(inserted).run();
 
     afterCommit(() => {
@@ -428,7 +436,7 @@ function getCustomBlockComponentItems(): SlashCommandItem[] {
       insertsBlockComponent: true,
       command: openFilePickerAndUpload,
       preview: {
-        description: t`Notion-style inline row for a downloadable file. Drag-drop also works.`,
+        description: t`Inline row for a downloadable file. Drag-drop also works.`,
         render: () => (
           <div className="flex w-full items-baseline gap-2 rounded-md px-2 py-1.5">
             <FileUp className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />

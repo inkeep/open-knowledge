@@ -85,6 +85,7 @@ export {
   type BootedServer,
   type BootServerOptions,
   bootServer,
+  type ServerExitDetail,
   type ServerExitReason,
 } from './boot.ts';
 export {
@@ -167,6 +168,7 @@ export {
   type StoreFailure,
   type StorePublishOutcome,
 } from './document-durability-state.ts';
+export { EmbeddingsSecretStoreError } from './embeddings/credential-errors.ts';
 export {
   canonicalProjectKey,
   clearAllEmbeddingsKeys,
@@ -452,6 +454,7 @@ export {
   type ProcessStartToken,
   parseProcessStartToken,
   processStartToken,
+  readBootStartedAtMs,
   readProcessStart,
   recordsLockOwner,
   registerNativeProcessStartReader,
@@ -497,6 +500,7 @@ export {
   ensureProjectGit,
   ProjectGitInitError,
 } from './project-git.ts';
+export { prepareProjectLogsDir, prepareSpawnProjectLogsDir } from './project-logs-retention.ts';
 export {
   CONFLICT_MARKER_RE,
   containsConflictMarkers,

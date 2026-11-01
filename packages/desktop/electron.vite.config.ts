@@ -133,10 +133,7 @@ export default defineConfig({
       react(),
       // Lingui macro + React Compiler share one Babel pass, options shared
       // with `packages/app/vite.config.ts` via `RENDERER_BABEL_OPTIONS`.
-      // `await` is required here: electron-vite deep-clones the renderer
-      // config and chokes on the non-plain preset object —
-      // https://github.com/alex8088/electron-vite/issues/902
-      await babel(RENDERER_BABEL_OPTIONS),
+      babel(RENDERER_BABEL_OPTIONS),
     ],
     resolve: {
       alias: {

@@ -1,6 +1,6 @@
 import { isAbsolute, join, relative, sep } from 'node:path';
 
-const E2E_COVERAGE_DIR_ENV = 'OK_E2E_COVERAGE_DIR';
+export const E2E_COVERAGE_DIR_ENV = 'OK_E2E_COVERAGE_DIR';
 export const E2E_COVERAGE_PATH = '/__ok-e2e-coverage';
 
 interface CoverageRange {

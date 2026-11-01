@@ -4,7 +4,6 @@ import {
   currentDesktopProduct,
   OK_DIR,
   OK_USER_HOME_AUTH_FILE,
-  OK_USER_HOME_SECRETS_FILE,
   PROJECT_SKILL_PROJECTION_PATHS,
   resolveDesktopProductName,
   SHARED_OK_ENTRIES,
@@ -18,7 +17,10 @@ import {
   resolveLockDir,
   scanLockProcesses,
 } from '@inkeep/open-knowledge-server';
-import { clearAllEmbeddingsKeys } from '../auth/embeddings-key-store.ts';
+import {
+  clearAllEmbeddingsKeys,
+  EmbeddingsSecretStoreError,
+} from '../auth/embeddings-key-store.ts';
 import { clearTokenFromAllBackends } from '../auth/token-store.ts';
 import {
   DESKTOP_LEGACY_PRODUCT_NAME,
@@ -264,7 +266,7 @@ export function buildUninstallPlan(input: UninstallPlanInput): RemovalPlan {
   ops.push({
     kind: 'embeddings-key',
     group: 'Credentials',
-    label: `Remove all embeddings API keys (${OK_USER_HOME_SECRETS_FILE})`,
+    label: 'Remove all embeddings API keys from the OS credential store and file fallback',
   });
 
   ops.push(...pathRevertOps(marker, home));
@@ -420,7 +422,7 @@ interface RunRemovalSharedDeps {
   clearToken?: (
     host: string,
   ) => Promise<{ touched: Array<'keychain' | 'file'>; keychainError?: string }>;
-  clearEmbeddingsKey?: () => Promise<{ touched: Array<'file'> }>;
+  clearEmbeddingsKey?: () => Promise<{ touched: Array<'keychain' | 'file'> }>;
 }
 
 type RemovalStopServer = (lockDir: string) => Promise<{
@@ -574,8 +576,22 @@ async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpRe
       return { op, status: touched.length > 0 ? 'removed' : 'not-present' };
     }
     case 'embeddings-key': {
-      const { touched } = await deps.clearEmbeddingsKey();
-      return { op, status: touched.length > 0 ? 'removed' : 'not-present' };
+      try {
+        const { touched } = await deps.clearEmbeddingsKey();
+        return { op, status: touched.length > 0 ? 'removed' : 'not-present' };
+      } catch (error) {
+        const message =
+          error instanceof EmbeddingsSecretStoreError && error.cause?.phase === 'load'
+            ? 'The credential-store backend could not load, so automatic native-key removal was not verified.'
+            : error instanceof EmbeddingsSecretStoreError
+              ? error.message
+              : 'Embeddings credentials could not be cleared.';
+        return {
+          op,
+          status: 'failed',
+          detail: `${message} Native credentials, if any, are under OS credential manager service "${currentDesktopProduct().keyringService}-embeddings" (Keychain Access on macOS, Credential Manager on Windows, or a Secret Service password manager on Linux).`,
+        };
+      }
     }
     case 'shell-block': {
       const resolved = resolveRemovalFilePath(op.rcFile);

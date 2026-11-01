@@ -2,7 +2,7 @@ import { EditorSelection } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { Config } from '@inkeep/open-knowledge-core';
-import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { Activity } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
@@ -41,6 +41,45 @@ vi.mock('./mode-switch-landing', async (importOriginal) => {
     ...actual,
     startSourceLanding: (params: Parameters<typeof actual.startSourceLanding>[0]) =>
       landingOverride.start ? landingOverride.start() : actual.startSourceLanding(params),
+  };
+});
+
+const appLanguage = vi.hoisted(() => {
+  const english = (text: string) => text;
+  let translate = english;
+  const listeners = new Set<() => void>();
+  return {
+    current: () => translate,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    switchTo(next: (text: string) => string) {
+      translate = next;
+      for (const listener of listeners) listener();
+    },
+    reset() {
+      translate = english;
+    },
+  };
+});
+
+vi.mock('@lingui/react/macro', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@lingui/react/macro')>();
+  const { useSyncExternalStore } = await import('react');
+  const { renderLinguiTemplate } = await import('@/test-utils/lingui-mock');
+  return {
+    ...actual,
+    useLingui: () => {
+      const translate = useSyncExternalStore(appLanguage.subscribe, appLanguage.current);
+      return {
+        ...actual.useLingui(),
+        t: (...args: Parameters<typeof renderLinguiTemplate>) =>
+          translate(renderLinguiTemplate(...args)),
+      };
+    },
   };
 });
 
@@ -136,8 +175,32 @@ function setPlatform(platform: string): void {
 }
 
 describe('SourceEditor host contract', () => {
+  test('names the CodeMirror textbox', async () => {
+    const { provider, ytext } = makeProvider('source-editor-accessible-name');
+    const { container } = render(<Harness provider={provider} ytext={ytext} wordWrap={true} />);
+
+    const content = await findCmContent(container);
+
+    expect(within(container).getByRole('textbox', { name: /\S/ })).toBe(content);
+  });
+
+  test('renames the mounted CodeMirror textbox when the app language changes', async () => {
+    const { provider, ytext } = makeProvider('source-editor-language-switch');
+    const { container } = render(<Harness provider={provider} ytext={ytext} wordWrap={true} />);
+    const content = await findCmContent(container);
+    expect(within(container).getByRole('textbox', { name: 'Markdown source' })).toBe(content);
+
+    const french: Record<string, string> = { 'Markdown source': 'Source Markdown' };
+    act(() => {
+      appLanguage.switchTo((text) => french[text] ?? text);
+    });
+
+    expect(within(container).getByRole('textbox', { name: 'Source Markdown' })).toBe(content);
+  });
+
   afterEach(() => {
     cleanup();
+    appLanguage.reset();
     for (const docName of mountedDocNames) {
       evictCmEditor(docName);
     }

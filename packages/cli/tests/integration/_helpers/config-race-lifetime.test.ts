@@ -1,8 +1,11 @@
+import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { inspect } from 'node:util';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import {
   runConfigWriters,
@@ -56,6 +59,110 @@ function expectWriterFailure(error: unknown, writer: string, cause: Error) {
   expect(error).toBeInstanceOf(Error);
   expect((error as Error).message).toContain(writer);
   expect((error as Error).cause).toBe(cause);
+}
+
+function arrangeRealPreparation(options: {
+  signal: AbortSignal;
+  advanceOnLoad?: boolean;
+  hold?: boolean;
+}) {
+  const root = mkdtempSync(join(tmpdir(), 'config-race-preparation-'));
+  const configPath = join(root, 'config.json');
+  const preloadPath = join(root, 'observe-loads.mjs');
+  const workerPath = fileURLToPath(new URL('./config-race-worker.ts', import.meta.url));
+  const initUrl = new URL('../../../src/commands/init.ts', import.meta.url).href;
+  const existing = { command: 'keep-this-command', args: ['keep-this-argument'] };
+  writeFileSync(configPath, JSON.stringify({ mcpServers: { existing } }));
+  writeFileSync(
+    preloadPath,
+    `import { registerHooks } from 'node:module';
+process.once('disconnect', () => process.exit(70));
+const hold = new URL(import.meta.url).searchParams.get('hold');
+registerHooks({
+  load(url, context, nextLoad) {
+    const loaded = nextLoad(url, context);
+    process.send({ type: 'test-module-loaded', url });
+    if (url !== hold) return loaded;
+    return {
+      ...loaded,
+      source: \`await new Promise((resolve) => {
+        process.on('message', (message) => {
+          if (message === 'release-test-module') resolve();
+        });
+        process.send({ type: 'test-module-held', url: import.meta.url });
+      });\` + Buffer.from(loaded.source).toString('utf8'),
+    };
+  },
+});
+`,
+  );
+  const preloadUrl = pathToFileURL(preloadPath);
+  if (options.hold) preloadUrl.searchParams.set('hold', initUrl);
+  const observed = new Set<string>();
+  const reported: string[] = [];
+  const premature: string[] = [];
+  const closes: { exitCode: number | null; signal: NodeJS.Signals | null }[] = [];
+  const entered = Promise.withResolvers<boolean>();
+  const controller = new AbortController();
+  const result = runConfigWriters(configPath, ['progress-writer'], {
+    signal: AbortSignal.any([controller.signal, options.signal]),
+    spawnWriter: (path, key) => {
+      const child = spawn(process.execPath, ['--import', preloadUrl.href, workerPath, path, key], {
+        stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+        env: {
+          PATH: process.env.PATH,
+          SystemRoot: process.env.SystemRoot,
+          HOME: root,
+          USERPROFILE: root,
+          XDG_CONFIG_HOME: join(root, 'xdg'),
+          APPDATA: join(root, 'appdata'),
+          DO_NOT_TRACK: '1',
+        },
+      });
+      let phase = 'spawned';
+      child.on('message', (message: unknown) => {
+        if (typeof message === 'string') {
+          phase = message;
+          return;
+        }
+        if (
+          typeof message !== 'object' ||
+          message === null ||
+          !('type' in message) ||
+          !('url' in message) ||
+          typeof message.url !== 'string'
+        ) {
+          return;
+        }
+        if (message.type === 'test-module-held' && message.url === initUrl && phase === 'started') {
+          entered.resolve(true);
+        }
+        if (phase !== 'started') return;
+        if (message.type === 'test-module-loaded' && !observed.has(message.url)) {
+          observed.add(message.url);
+          if (options.advanceOnLoad) vi.advanceTimersByTime(20_000);
+        }
+        if (message.type === 'module-loaded') {
+          if (!observed.has(message.url)) premature.push(message.url);
+          reported.push(message.url);
+        }
+      });
+      child.once('close', (exitCode, signal) => {
+        closes.push({ exitCode, signal });
+        entered.resolve(false);
+      });
+      return child;
+    },
+  }).then(
+    (outcomes) => ({ status: 'passed' as const, outcomes }),
+    (error: unknown) => ({ status: 'failed' as const, error }),
+  );
+  onTestFinished(async () => {
+    controller.abort(new Error('preparation fixture finished'));
+    await Promise.allSettled([result]);
+    rmSync(root, { recursive: true, force: true });
+  });
+  return { configPath, existing, observed, reported, premature, closes, entered, result };
 }
 
 afterEach(() => {
@@ -231,6 +338,75 @@ describe('config writer cohort lifetime', () => {
     expect(child.signals).toEqual(['SIGKILL']);
     child.complete();
     expectWriterFailure(await result, 'later: phase=spawned', cause);
+  });
+});
+
+describe('config writer preparation progress', () => {
+  it('does not renew stalled preparation for a repeated completed-work identity', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { children, result } = arrangeWriters(1);
+    const completed = {
+      type: 'module-loaded',
+      url: new URL('../../../src/commands/editors.ts', import.meta.url).href,
+    };
+    children[0].emit('message', 'started');
+    children[0].emit('message', completed);
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(children[0].signals).toEqual([]);
+    children[0].emit('message', { ...completed });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(children[0].signals).toEqual(['SIGKILL']);
+    children[0].complete();
+    expect((await result).status).toBe('failed');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('accepts real preparation work between coarse phases', async ({ signal }) => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const fixture = arrangeRealPreparation({ signal, advanceOnLoad: true });
+    expect(vi.getTimerCount()).toBe(1);
+    const settled = await fixture.result;
+    expect(fixture.observed.size).toBeGreaterThanOrEqual(2);
+    expect(settled).toMatchObject({
+      status: 'passed',
+      outcomes: [{ serverKey: 'progress-writer', exitCode: 0, signal: null, phase: 'written' }],
+    });
+    expect(fixture.reported.length).toBeGreaterThan(0);
+    expect(fixture.premature).toEqual([]);
+    expect(fixture.closes).toEqual([{ exitCode: 0, signal: null }]);
+    const config: unknown = JSON.parse(readFileSync(fixture.configPath, 'utf8'));
+    expect(config).toEqual({
+      mcpServers: { existing: fixture.existing, 'progress-writer': expect.any(Object) },
+    });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('stops genuinely stalled real preparation and joins its close before rejecting', async ({
+    signal,
+  }) => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const fixture = arrangeRealPreparation({ signal, hold: true });
+    expect(vi.getTimerCount()).toBe(1);
+    const entered = await fixture.entered.promise;
+    expect(
+      entered,
+      entered
+        ? undefined
+        : inspect({ closes: fixture.closes, result: await fixture.result }, { depth: null }),
+    ).toBe(true);
+    expect(fixture.observed.size).toBeGreaterThanOrEqual(2);
+    expect(fixture.closes).toEqual([]);
+    await vi.advanceTimersByTimeAsync(30_000);
+    const settled = await fixture.result;
+    expect(settled).toMatchObject({
+      status: 'failed',
+      error: expect.objectContaining({
+        message: expect.stringContaining('Config writers made no progress for 30000ms:'),
+      }),
+    });
+    expect(fixture.closes).toEqual([{ exitCode: null, signal: 'SIGKILL' }]);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 

@@ -141,6 +141,9 @@ describe('clone honours the environment command-scope git config (GIT_CONFIG_COU
     vi.stubEnv('USERPROFILE', workspace);
     vi.stubEnv('XDG_CONFIG_HOME', join(workspace, '.config'));
     vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
+    vi.stubEnv('NO_PROXY', undefined);
+    vi.stubEnv('no_proxy', undefined);
+    vi.stubEnv('GIT_SSL_CAINFO', undefined);
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
   });
 

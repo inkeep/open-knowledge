@@ -16,6 +16,7 @@ import {
 import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import {
   BridgeMergeContentLossError,
   DEFAULT_LINTER_CONFIG,
@@ -60,6 +61,7 @@ import {
   writeManagedRenameJournal,
 } from './managed-rename-journal.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
+import type { NativeWatcherBackend } from './parcel-subscription.ts';
 import { ensureProjectGit } from './project-git.ts';
 import { MAX_LCS_CELLS } from './reconciliation.ts';
 import { saveRemovedDocsJournal } from './removed-docs-journal.ts';
@@ -71,6 +73,7 @@ import {
   type ShadowHandle,
   shadowGit,
 } from './shadow-repo.ts';
+import { SyncEngine } from './sync-engine.ts';
 import { TagIndex } from './tag-index.ts';
 import { contentHash } from './version-hash.ts';
 import { createWatcherDouble } from './watcher-double.test-helper.ts';
@@ -469,12 +472,11 @@ describe('createServer() — derived-index branch lifecycle', () => {
     let rejectBegin!: (error: Error) => void;
     const beginBranch = vi
       .spyOn(DerivedDocumentIndex.prototype, 'beginBranchSwitch')
-      .mockImplementationOnce(
-        () =>
-          new Promise<never>((_resolve, reject) => {
-            rejectBegin = reject;
-          }),
-      );
+      .mockImplementationOnce(() => {
+        const { promise, reject } = Promise.withResolvers<never>();
+        rejectBegin = reject;
+        return promise;
+      });
     const abort = vi.spyOn(DerivedDocumentIndex.prototype, 'abortBranchSwitch');
 
     await git.checkout('feature');
@@ -509,15 +511,81 @@ async function executePendingStore(server: ServerInstance, docName: string): Pro
 describe('createServer().destroy() — graceful shutdown flush', () => {
   let tmpDir: string;
   let logCapture: ReturnType<typeof captureAllLoggers>;
+  let finishControlledInit: (() => Promise<void>) | undefined;
 
   beforeEach(async () => {
+    finishControlledInit = undefined;
     tmpDir = await mkdtemp(join(tmpdir(), 'ok-destroy-test-'));
     logCapture = captureAllLoggers();
   });
 
   afterEach(async () => {
+    await finishControlledInit?.();
     loggerFactory.reset();
     await rm(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
+
+  test('late watcher release failure is a shutdown phase error and retains authority', async () => {
+    const contentDir = join(tmpDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    const authorityRegistryPath = join(tmpDir, 'authority.sqlite');
+    const releaseFailure = new Error('late watcher release failed');
+    let server: ServerInstance | undefined;
+    let destroyPromise: Promise<void> | undefined;
+    const backend: NativeWatcherBackend = {
+      async subscribe() {
+        if (destroyPromise === undefined) {
+          if (server === undefined) throw new Error('server was not returned before subscription');
+          destroyPromise = server.destroy();
+        }
+        return {
+          async unsubscribe() {
+            throw releaseFailure;
+          },
+        };
+      },
+    };
+
+    server = createServer({
+      contentDir,
+      projectDir: tmpDir,
+      authorityRegistryPath,
+      watcherBackend: backend,
+      gitEnabled: false,
+      quiet: true,
+    });
+
+    try {
+      await server.ready;
+      await destroyPromise;
+
+      expect(server.degraded).not.toContain('file-watcher');
+      expect(server.degraded).not.toContain('head-watcher');
+      const shutdownLogs = logCapture.getCalls('warn', 'shutdown flushed');
+      expect(shutdownLogs).toHaveLength(1);
+      expect(shutdownLogs[0]?.payload.phaseErrors).toContainEqual({
+        phase: 'watcher-unsubscribe',
+        error: releaseFailure.message,
+      });
+      expect(logCapture.getCalls('error', 'shutdown phase-1 watcher unsubscribe failed')).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ payload: expect.objectContaining({ watched: 'content' }) }),
+        ]),
+      );
+      expect(logCapture.getCalls('error', 'disk bridge watcher failed to start')).toHaveLength(0);
+      expect(logCapture.getCalls('error', 'HEAD watcher failed to start')).toHaveLength(0);
+
+      const registry = new DatabaseSync(authorityRegistryPath, { readOnly: true });
+      try {
+        expect(registry.prepare('SELECT count(*) AS count FROM server_authority').get()).toEqual({
+          count: 1,
+        });
+      } finally {
+        registry.close();
+      }
+    } finally {
+      await server.destroy();
+    }
   });
 
   test('flushes L1 markdown writes before destroy() resolves + emits shutdown log', async () => {
@@ -1454,16 +1522,70 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     await server.destroy();
   });
 
-  test('destroy() during async init — before ready resolves', async () => {
+  test('destroy() during async init — before ready resolves', async (ctx) => {
+    const startCompleted = Promise.withResolvers<SyncEngine>();
+    const releaseStart = Promise.withResolvers<void>();
+    const realStart = SyncEngine.prototype.start;
+    let startReturned = false;
+    const start = vi.spyOn(SyncEngine.prototype, 'start').mockImplementation(async function () {
+      await realStart.call(this);
+      startCompleted.resolve(this);
+      await releaseStart.promise;
+      startReturned = true;
+    });
+    let restored = false;
+    const releaseAndRestore = () => {
+      releaseStart.resolve();
+      if (!restored) {
+        restored = true;
+        start.mockRestore();
+      }
+    };
+    finishControlledInit = async () => releaseAndRestore();
+    ctx.signal.addEventListener('abort', releaseAndRestore, { once: true });
+    ctx.onTestFinished(() => {
+      ctx.signal.removeEventListener('abort', releaseAndRestore);
+      releaseAndRestore();
+    });
     const server = createServer({
       contentDir: tmpDir,
       projectDir: tmpDir,
       quiet: true,
     });
-    await server.destroy();
+    finishControlledInit = async () => {
+      releaseAndRestore();
+      await server.destroy();
+    };
+    let readySettled = false;
+    const readiness = server.ready.then(
+      () => {
+        readySettled = true;
+      },
+      (error: unknown) => {
+        readySettled = true;
+        throw error;
+      },
+    );
+    try {
+      const engine = await Promise.race([
+        startCompleted.promise,
+        readiness.then(() => {
+          throw new Error('Initialization finished without reaching the held startup');
+        }),
+      ]);
+      ctx.signal.throwIfAborted();
+      expect(engine === server.syncEngine).toBe(true);
+      expect(startReturned).toBe(false);
+      expect(readySettled).toBe(false);
+      const destroying = server.destroy();
+      releaseStart.resolve();
+      await Promise.all([readiness, destroying]);
 
-    const shutdownLogs = logCapture.getCalls('info', 'shutdown flushed');
-    expect(shutdownLogs).toHaveLength(1);
+      const shutdownLogs = logCapture.getCalls('info', 'shutdown flushed');
+      expect(shutdownLogs).toHaveLength(1);
+    } finally {
+      releaseAndRestore();
+    }
   });
 
   test('destroy() with zero documents loaded (short-circuit path)', async () => {
@@ -1496,10 +1618,7 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     await server.ready;
     const coordinator = beginStartup.mock.instances[0] as DerivedDocumentIndex;
     beginStartup.mockRestore();
-    let releaseTagClose!: () => void;
-    const tagCloseReleased = new Promise<void>((resolve) => {
-      releaseTagClose = resolve;
-    });
+    const { promise: tagCloseReleased, resolve: releaseTagClose } = Promise.withResolvers<void>();
     let tagCloseEntered = false;
     const tagCloseImplementation = TagIndex.prototype.close;
     const tagClose = vi.spyOn(TagIndex.prototype, 'close').mockImplementation(async function (
@@ -4401,14 +4520,8 @@ describe('createServer() — generated index wiring', () => {
   test('server readiness settles before the boot index sweep starts planning', async () => {
     writeDoc('existing.md', 'Existing at boot', 'note');
 
-    let enterPlanning!: () => void;
-    const planningEntered = new Promise<void>((resolve) => {
-      enterPlanning = resolve;
-    });
-    let releasePlanning!: () => void;
-    const planningBarrier = new Promise<void>((resolve) => {
-      releasePlanning = resolve;
-    });
+    const { promise: planningEntered, resolve: enterPlanning } = Promise.withResolvers<void>();
+    const { promise: planningBarrier, resolve: releasePlanning } = Promise.withResolvers<void>();
     let readySettled = false;
 
     const activeServer = await startServerWithIndexHooks({
@@ -4465,14 +4578,9 @@ describe('createServer() — generated index wiring', () => {
     const rootMtime = statSync(indexPath()).mtimeMs;
     const betaMtime = statSync(indexPathAt('beta')).mtimeMs;
 
-    let firstWriteFinished!: () => void;
-    const firstWrite = new Promise<void>((resolve) => {
-      firstWriteFinished = resolve;
-    });
-    let releaseFirstWrite!: () => void;
-    const firstWriteBarrier = new Promise<void>((resolve) => {
-      releaseFirstWrite = resolve;
-    });
+    const { promise: firstWrite, resolve: firstWriteFinished } = Promise.withResolvers<void>();
+    const { promise: firstWriteBarrier, resolve: releaseFirstWrite } =
+      Promise.withResolvers<void>();
     let paused = false;
 
     const activeServer = await startServerWithIndexHooks({
@@ -4517,22 +4625,11 @@ describe('createServer() — generated index wiring', () => {
   test('boot sweep readiness waits for live requests coalesced behind it', async () => {
     writeDoc('anchor.md', 'Anchor', 'note');
 
-    let firstPassEntered!: () => void;
-    const firstPassStarted = new Promise<void>((resolve) => {
-      firstPassEntered = resolve;
-    });
-    let releaseFirstPass!: () => void;
-    const firstPassBarrier = new Promise<void>((resolve) => {
-      releaseFirstPass = resolve;
-    });
-    let coordinatorIdle!: () => void;
-    const coordinatorSettled = new Promise<void>((resolve) => {
-      coordinatorIdle = resolve;
-    });
-    let blockedKickObserved!: () => void;
-    const followupDeferredBySingleFlight = new Promise<void>((resolve) => {
-      blockedKickObserved = resolve;
-    });
+    const { promise: firstPassStarted, resolve: firstPassEntered } = Promise.withResolvers<void>();
+    const { promise: firstPassBarrier, resolve: releaseFirstPass } = Promise.withResolvers<void>();
+    const { promise: coordinatorSettled, resolve: coordinatorIdle } = Promise.withResolvers<void>();
+    const { promise: followupDeferredBySingleFlight, resolve: blockedKickObserved } =
+      Promise.withResolvers<void>();
     let passCount = 0;
 
     const activeServer = await startServerWithIndexHooks({
@@ -4578,18 +4675,9 @@ describe('createServer() — generated index wiring', () => {
   test('destroy cancels and drains an in-flight generated-index write', async () => {
     writeDoc('deep/note.md', 'Deep note', 'note');
 
-    let writePaused!: () => void;
-    const firstWritePaused = new Promise<void>((resolve) => {
-      writePaused = resolve;
-    });
-    let releaseWrite!: () => void;
-    const writeBarrier = new Promise<void>((resolve) => {
-      releaseWrite = resolve;
-    });
-    let abortObserved!: () => void;
-    const regenerationAborted = new Promise<void>((resolve) => {
-      abortObserved = resolve;
-    });
+    const { promise: firstWritePaused, resolve: writePaused } = Promise.withResolvers<void>();
+    const { promise: writeBarrier, resolve: releaseWrite } = Promise.withResolvers<void>();
+    const { promise: regenerationAborted, resolve: abortObserved } = Promise.withResolvers<void>();
     let blocked = false;
 
     const activeServer = await startServerWithIndexHooks({

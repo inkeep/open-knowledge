@@ -12,23 +12,10 @@ import { presentPublishError, resolveNameCheckStatus } from '@/lib/share/publish
 import { mapValidationToToast, presentReceiveError } from '@/lib/share/receive-flow';
 import { mapShareErrorToToast } from '@/lib/share/run-share-action';
 import { extractedMessages } from '../../scripts/lingui-message-origins.mjs';
+import { MIGRATED_MODULES } from './helper-string-catalog-parity.reads';
 
 const APP_ROOT = join(import.meta.dir, '..', '..');
 const LOCALES_DIR = join(import.meta.dir, '..', 'locales', 'en');
-
-const MIGRATED_MODULES: ReadonlyArray<readonly [path: string, messages: number]> = [
-  ['src/lib/share/run-share-action.ts', 11],
-  ['src/lib/share/receive-flow.ts', 6],
-  ['src/lib/share/publish-wizard.ts', 7],
-  ['src/hooks/use-folder-config.ts', 2],
-  ['src/lib/install-onboarding-toast.ts', 9],
-  ['src/lib/install-deep-link-listener.ts', 1],
-  ['src/components/handoff/useHandoffDispatch.ts', 8],
-  ['src/editor/utils/editor-strings.ts', 2],
-  ['src/editor/components/IconPickerInput.tsx', 4],
-  ['src/editor/components/ColorPickerInput.tsx', 2],
-  ['src/editor/components/SrcAutocomplete.tsx', 1],
-];
 
 const messageIds = new Set<string>();
 const originCounts = new Map<string, number>();

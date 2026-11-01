@@ -434,9 +434,45 @@ function isSelfClosingTagAt(
   return result[tagClose - 1] === '/';
 }
 
-function indexUppercaseTagSpans(source: string): Array<[number, number]> {
+function indexUppercaseTagEnds(
+  source: string,
+  quotes: 'all' | 'double',
+  reservedClosers: ReadonlySet<number>,
+): Int32Array {
+  const ends = new Int32Array(source.length + 1);
+  const braceCloses = new Int32Array(source.length + 1);
+  ends[source.length] = -1;
+  braceCloses[source.length] = -1;
+  const quoteCharacters = quotes === 'all' ? ['"', "'", '`'] : ['"'];
+  const quoteEnds = quoteCharacters.map(() => -1);
+  const quoteEndsAfterNext = quoteCharacters.map(() => -1);
+  for (let i = source.length - 1; i >= 0; i--) {
+    const ch = source[i];
+    const quote = quoteCharacters.indexOf(ch);
+    let next = i + 1;
+    if (quote !== -1 || ch === '{') {
+      const close = quote !== -1 ? quoteEnds[quote] : braceCloses[i + 1];
+      next = close === -1 ? source.length : close + 1;
+    }
+    ends[i] = ch === '>' && !reservedClosers.has(i) ? i : ends[next];
+    braceCloses[i] = ch === '}' ? i : braceCloses[next];
+    for (let q = 0; q < quoteCharacters.length; q++) {
+      const end =
+        ch === quoteCharacters[q] ? i : ch === '\\' ? quoteEndsAfterNext[q] : quoteEnds[q];
+      quoteEndsAfterNext[q] = quoteEnds[q];
+      quoteEnds[q] = end;
+    }
+  }
+  return ends;
+}
+
+function indexUppercaseTagSpans(
+  source: string,
+  greaterThanOffsets: number[],
+): Array<[number, number]> {
   const spans: Array<[number, number]> = [];
   const doubleNewlineOffsets = indexLiteralDoubleNewlines(source);
+  let tagEnds: Int32Array | undefined;
   const TAG_START_RE = /<\/?([A-Z][A-Za-z0-9.]*)/g;
   for (const m of source.matchAll(TAG_START_RE)) {
     const tagStart = m.index;
@@ -444,43 +480,15 @@ function indexUppercaseTagSpans(source: string): Array<[number, number]> {
       const [prevStart, prevEnd] = spans[spans.length - 1];
       if (tagStart > prevStart && tagStart <= prevEnd) continue;
     }
-    let i = tagStart + m[0].length;
+    const scanStart = tagStart + m[0].length;
     const dnIdx = lowerBound(doubleNewlineOffsets, tagStart);
     const scanEnd =
       dnIdx < doubleNewlineOffsets.length ? doubleNewlineOffsets[dnIdx] : source.length;
-    let inSingleQuote = false;
-    let inDoubleQuote = false;
-    let inBacktick = false;
-    let braceDepth = 0;
-    let terminator = -1;
-    while (i < scanEnd) {
-      const ch = source[i];
-      if (inSingleQuote) {
-        if (ch === "'") inSingleQuote = false;
-        else if (ch === '\\' && i + 1 < source.length) i++;
-      } else if (inDoubleQuote) {
-        if (ch === '"') inDoubleQuote = false;
-        else if (ch === '\\' && i + 1 < source.length) i++;
-      } else if (inBacktick) {
-        if (ch === '`') inBacktick = false;
-        else if (ch === '\\' && i + 1 < source.length) i++;
-      } else if (ch === "'") {
-        inSingleQuote = true;
-      } else if (ch === '"') {
-        inDoubleQuote = true;
-      } else if (ch === '`') {
-        inBacktick = true;
-      } else if (ch === '{') {
-        braceDepth++;
-      } else if (ch === '}' && braceDepth > 0) {
-        braceDepth--;
-      } else if (braceDepth === 0 && ch === '>') {
-        terminator = i;
-        break;
-      }
-      i++;
-    }
-    if (terminator !== -1) spans.push([tagStart, terminator]);
+    const gtIdx = lowerBound(greaterThanOffsets, scanStart);
+    if (gtIdx >= greaterThanOffsets.length || greaterThanOffsets[gtIdx] >= scanEnd) continue;
+    tagEnds ??= indexUppercaseTagEnds(source, 'all', new Set());
+    const terminator = tagEnds[scanStart];
+    if (terminator !== -1 && terminator < scanEnd) spans.push([tagStart, terminator]);
   }
   return spans;
 }
@@ -503,36 +511,11 @@ function isUppercaseJsxSelfClosingAt(
   scanStart: number,
   result: string,
   nextBlankLine: number,
-  destinations: AngleDestinationIndex,
+  tagEnds: Int32Array,
 ): boolean {
   const scanEnd = Math.min(result.length, nextBlankLine);
-  let inDoubleQuote = false;
-  let braceDepth = 0;
-  for (let i = scanStart; i < scanEnd; i++) {
-    const ch = result[i];
-    if (inDoubleQuote) {
-      if (ch === '"') inDoubleQuote = false;
-      if (ch === '\\' && i + 1 < scanEnd) i++;
-      continue;
-    }
-    if (ch === '"') {
-      inDoubleQuote = true;
-      continue;
-    }
-    if (ch === '{') {
-      braceDepth++;
-      continue;
-    }
-    if (ch === '}' && braceDepth > 0) {
-      braceDepth--;
-      continue;
-    }
-    if (braceDepth > 0) continue;
-    if (ch === '>' && !destinations.closes.has(i)) {
-      return i > 0 && result[i - 1] === '/';
-    }
-  }
-  return false;
+  const close = tagEnds[scanStart];
+  return close > 0 && close < scanEnd && result[close - 1] === '/';
 }
 
 export interface BraceSpan {
@@ -675,7 +658,8 @@ export function protectFromMdx(source: string): string {
   const closeTagOffsets = indexUppercaseCloseTagsByName(result, angleDestinations);
   const paragraphBreaks = indexParagraphBreaks(result);
   const greaterThanOffsets = indexGreaterThan(result);
-  const uppercaseTagSpans = indexUppercaseTagSpans(result);
+  const uppercaseTagSpans = indexUppercaseTagSpans(result, greaterThanOffsets);
+  let uppercaseSelfClosingTagEnds: Int32Array | undefined;
 
   result = result.replace(/</g, (match, offset) => {
     if (angleDestinations.opens.has(offset)) return match;
@@ -722,8 +706,17 @@ export function protectFromMdx(source: string): string {
     const nextBlankLine = pbIdx < paragraphBreaks.length ? paragraphBreaks[pbIdx] : result.length;
 
     const scanStart = offset + 1 + tagName.length;
-    if (isUppercaseJsxSelfClosingAt(scanStart, result, nextBlankLine, angleDestinations)) {
-      return match;
+    if (greaterThanOffsets.length > 0) {
+      uppercaseSelfClosingTagEnds ??= indexUppercaseTagEnds(
+        result,
+        'double',
+        angleDestinations.closes,
+      );
+      if (
+        isUppercaseJsxSelfClosingAt(scanStart, result, nextBlankLine, uppercaseSelfClosingTagEnds)
+      ) {
+        return match;
+      }
     }
 
     const positions = closeTagOffsets.get(tagName);

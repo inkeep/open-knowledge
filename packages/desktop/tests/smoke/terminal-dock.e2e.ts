@@ -125,6 +125,7 @@ interface LaunchOpts {
   restrictPath?: boolean;
   connectionsAvailable?: boolean;
   phaseTrace?: boolean;
+  deepLink?: boolean;
 }
 
 async function launchApp(s: Seed, opts: LaunchOpts = {}): Promise<ElectronApplication> {
@@ -140,7 +141,7 @@ async function launchApp(s: Seed, opts: LaunchOpts = {}): Promise<ElectronApplic
     electron,
     desktopLaunchOptions({
       target: TARGET,
-      args: [`--user-data-dir=${s.userDataDir}`, deepLink],
+      args: [`--user-data-dir=${s.userDataDir}`, ...(opts.deepLink === false ? [] : [deepLink])],
       timeout: 30_000,
       env: {
         ...process.env,
@@ -1710,8 +1711,10 @@ test.describe('Docked terminal — live Electron', () => {
     test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('editor-relaunch', { consent: true });
     track(s.tmpHome, s.projectDir);
-    const launchOnProfile = async (): Promise<{ app: ElectronApplication; page: Page }> => {
-      const app = await launchApp(s, { restrictPath: true });
+    const launchOnProfile = async (
+      deepLink = true,
+    ): Promise<{ app: ElectronApplication; page: Page }> => {
+      const app = await launchApp(s, { restrictPath: true, deepLink });
       captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
       return { app, page: await findEditorWindow(app) };
     };
@@ -1726,7 +1729,7 @@ test.describe('Docked terminal — live Electron', () => {
     await expect.poll(() => viewMenuEditorLabel(first.app), { timeout: 8_000 }).toBe('Show Editor');
     await closeAppForRelaunch(first.app);
 
-    const second = await launchOnProfile();
+    const second = await launchOnProfile(false);
     await expect
       .poll(() => restoredDockState(second.page), { timeout: 25_000 })
       .toMatchObject({ editorVisible: false });
@@ -1741,7 +1744,7 @@ test.describe('Docked terminal — live Electron', () => {
     await expect(editorPaneButton(second.page)).toHaveAttribute('aria-pressed', 'true');
     await closeAppForRelaunch(second.app);
 
-    const third = await launchOnProfile();
+    const third = await launchOnProfile(false);
     await expect(editorPaneButton(third.page)).toHaveAttribute('aria-pressed', 'true', {
       timeout: 25_000,
     });

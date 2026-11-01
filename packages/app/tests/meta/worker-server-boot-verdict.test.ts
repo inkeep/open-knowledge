@@ -269,6 +269,16 @@ function linesTaggedWith(run: VerdictRun, type: string): string[] {
   return run.transcript.split(/\r?\n/).filter((line) => line.startsWith(`[${type}]`));
 }
 
+function renderedSummary(run: VerdictRun, type: string): unknown {
+  const prefix = `[${type}] summary `;
+  const summaries = linesTaggedWith(run, type).filter((line) => line.startsWith(prefix));
+  expect(
+    summaries,
+    `verdict run [${run.cases.join(', ')}] must render exactly one summary line tagged [${type}]; transcript:\n${run.transcript}`,
+  ).toHaveLength(1);
+  return JSON.parse((summaries[0] as string).slice(prefix.length));
+}
+
 function renderedNonResultLines(type: string): string[] {
   const rendered = linesTaggedWith(bootRun, type);
   expect(
@@ -440,6 +450,40 @@ describe('the stress reporters render a declared setup non-result under its decl
       rendered.filter((line) => line.includes(controlSpec.title)),
       `a line tagged [${type}] names the passing test "${controlSpec.title}", which declared nothing`,
     ).toEqual([]);
+  });
+
+  test('each run summarises its declared non-results with every failed result accounted for and no run error', () => {
+    const type = nonResultAnnotationType();
+    const reasonsOf = (run: VerdictRun, caseName: string) =>
+      soleTestOf(run, caseName).test.results.flatMap((result) => declaredReasons(result, type));
+
+    expect(
+      renderedSummary(bootRun, type),
+      'the boot attempt is the only failed result in its run and is declared; the passing control is not counted',
+    ).toEqual({
+      declaredUnexpected: 1,
+      unexpected: 1,
+      runErrors: 0,
+      reasons: reasonsOf(bootRun, BOOT_CASE),
+    });
+    expect(
+      renderedSummary(retriedBootRun, type),
+      'both failed attempts of the retried boot case are declared',
+    ).toEqual({
+      declaredUnexpected: 2,
+      unexpected: 2,
+      runErrors: 0,
+      reasons: reasonsOf(retriedBootRun, BOOT_CASE),
+    });
+    expect(
+      renderedSummary(recoveredRun, type),
+      'only the declared first attempt of the recovered case failed',
+    ).toEqual({
+      declaredUnexpected: 1,
+      unexpected: 1,
+      runErrors: 0,
+      reasons: reasonsOf(recoveredRun, RECOVERED_CASE),
+    });
   });
 
   test('a run whose only failure is an executed assertion failure renders no line under the non-result type', () => {

@@ -310,12 +310,11 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
     shouldThrow = true;
     installBugReportBridge();
     let releaseRestart!: (value: { ok: true }) => void;
-    restartServer.mockImplementationOnce(
-      () =>
-        new Promise<{ ok: true }>((resolve) => {
-          releaseRestart = resolve;
-        }),
-    );
+    restartServer.mockImplementationOnce(() => {
+      const { promise, resolve } = Promise.withResolvers<{ ok: true }>();
+      releaseRestart = resolve;
+      return promise;
+    });
 
     render(
       <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={vi.fn(() => {})}>

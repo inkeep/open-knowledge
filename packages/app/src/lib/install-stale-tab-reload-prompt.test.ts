@@ -229,10 +229,7 @@ describe('stale tab reload prompt', () => {
   });
 
   test('Reload waits for unsaved edits to reach the server before reloading', async () => {
-    let finishSaving: (result: SavedWorkResult) => void = () => {};
-    const saving = new Promise<SavedWorkResult>((resolve) => {
-      finishSaving = resolve;
-    });
+    const { promise: saving, resolve: finishSaving } = Promise.withResolvers<SavedWorkResult>();
     const reload = vi.fn();
     install({ bridge: undefined, waitForSavedWork: () => saving, reload });
     observeServerVersion(loadedFrom);
@@ -383,10 +380,7 @@ describe('stale tab reload prompt', () => {
   });
 
   test('a withheld reload does not bring the prompt back once the server is back in sync', async () => {
-    let finishSaving: (result: SavedWorkResult) => void = () => {};
-    const saving = new Promise<SavedWorkResult>((resolve) => {
-      finishSaving = resolve;
-    });
+    const { promise: saving, resolve: finishSaving } = Promise.withResolvers<SavedWorkResult>();
     const watch = refusalWatch();
     install({
       bridge: undefined,
@@ -532,10 +526,7 @@ describe('waitForSavedWork', () => {
   });
 
   test('waits for a server-restart recovery to finish first', async () => {
-    let settle: () => void = () => {};
-    const settled = new Promise<void>((resolve) => {
-      settle = resolve;
-    });
+    const { promise: settled, resolve: settle } = Promise.withResolvers<void>();
     const work = workSource({ unsynced: false, settled });
     let done = false;
 
@@ -605,10 +596,7 @@ describe('watchForSavedWork', () => {
   });
 
   test('stopping it before recovery settles means it never reports', async () => {
-    let settle: () => void = () => {};
-    const settled = new Promise<void>((resolve) => {
-      settle = resolve;
-    });
+    const { promise: settled, resolve: settle } = Promise.withResolvers<void>();
     const work = workSource({ unsynced: false, settled });
     const onSaved = vi.fn();
 

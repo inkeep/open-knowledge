@@ -44,6 +44,7 @@ import {
   type UpdateNoticeReplayTarget,
 } from '../../src/main/update-notice-replay.ts';
 import type { SendableWebContents } from '../../src/shared/ipc-send.ts';
+import { UPDATER_SCAN_ROOT } from './auto-updater.reads.ts';
 
 interface SendTarget {
   webContents: SendableWebContents;
@@ -5320,12 +5321,11 @@ describe('staged-cache reclaim — fires only once every install commitment is s
 
   test('the launch check waits for the reclaim to settle (no rm/download interleave)', async () => {
     let resolveReclaim: (() => void) | undefined;
-    const reclaim = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveReclaim = resolve;
-        }),
-    );
+    const reclaim = vi.fn(() => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      resolveReclaim = resolve;
+      return promise;
+    });
     const { rig } = makeRig({ reclaimStagedUpdateCache: reclaim });
     expect(reclaim).toHaveBeenCalledTimes(1);
     await Promise.resolve();
@@ -5646,7 +5646,7 @@ describe('cited upstream behaviour stays tied to the pinned dependency', () => {
     };
     const pinned =
       pkg.dependencies?.['electron-updater'] ?? pkg.devDependencies?.['electron-updater'];
-    const mainDir = join(here, '../../src/main');
+    const mainDir = join(here, '..', '..', '..', '..', UPDATER_SCAN_ROOT);
     const cited = readdirSync(mainDir, { recursive: true, encoding: 'utf8' })
       .filter((entry) => entry.endsWith('.ts'))
       .flatMap((entry) => [
@@ -6471,12 +6471,11 @@ describe('a manual check that finds the staged build re-offers the card', () => 
 
   test('Quit and Restart after the pending install was dropped behind the open dialog tells the user', async () => {
     let answer: (choice: 'relaunch' | 'dismiss') => void = () => {};
-    const showCheckNowResult = vi.fn(
-      () =>
-        new Promise<'relaunch' | 'dismiss'>((resolve) => {
-          answer = resolve;
-        }),
-    );
+    const showCheckNowResult = vi.fn(() => {
+      const { promise, resolve } = Promise.withResolvers<'relaunch' | 'dismiss'>();
+      answer = resolve;
+      return promise;
+    });
     const { rig } = makeRig({
       versionPendingInstall: null,
       showCheckNowResult,
@@ -6791,12 +6790,11 @@ describe('update mode off switch', () => {
 
   test('turning updates off before the deferred launch check runs skips that check', async () => {
     let settleReclaim: () => void = () => {};
-    const reclaim = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          settleReclaim = resolve;
-        }),
-    );
+    const reclaim = vi.fn(() => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      settleReclaim = resolve;
+      return promise;
+    });
     const { rig } = makeRig({ reclaimStagedUpdateCache: reclaim });
     await rig.ipc.invoke('ok:update:dispatch', { kind: 'set-mode', mode: 'off' });
     settleReclaim();

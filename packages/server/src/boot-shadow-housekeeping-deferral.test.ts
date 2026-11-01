@@ -6,10 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 
 function makeGate() {
-  let release!: () => void;
-  const held = new Promise<void>((r) => {
-    release = r;
-  });
+  const { promise: held, resolve: release } = Promise.withResolvers<void>();
   return { held, release, calls: 0, readyHadSettledAtCall: null as boolean | null };
 }
 

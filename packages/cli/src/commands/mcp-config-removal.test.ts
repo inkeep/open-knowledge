@@ -14,7 +14,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MCP_SERVER_NAME } from '@inkeep/open-knowledge-server';
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { buildPiExtensionSource } from '../integrations/pi-extension.ts';
 import {
   createTomlConfigEngine,
@@ -32,7 +32,16 @@ function tmp(): string {
   return realpathSync(mkdtempSync(join(tmpdir(), 'ok-mcp-remove-')));
 }
 
-const OWN_ENTRY = buildManagedServerEntry({ mode: 'published' });
+let ownEntry: ReturnType<typeof buildManagedServerEntry>;
+
+beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
+  ownEntry = buildManagedServerEntry({ mode: 'published' });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('removeOwnMcpEntry — JSON', () => {
   test('removes only OK’s entry, preserving a sibling server + its comment', () => {
@@ -43,7 +52,7 @@ describe('removeOwnMcpEntry — JSON', () => {
   // my mcp servers
   "mcpServers": {
     "other": { "command": "node", "args": ["server.js"] },
-    "${MCP_SERVER_NAME}": ${JSON.stringify(OWN_ENTRY)}
+    "${MCP_SERVER_NAME}": ${JSON.stringify(ownEntry)}
   }
 }
 `;
@@ -66,7 +75,7 @@ describe('removeOwnMcpEntry — JSON', () => {
       const configPath = join(dir, 'config.json');
       writeFileSync(
         configPath,
-        `${JSON.stringify({ mcpServers: { [MCP_SERVER_NAME]: OWN_ENTRY } }, null, 2)}\n`,
+        `${JSON.stringify({ mcpServers: { [MCP_SERVER_NAME]: ownEntry } }, null, 2)}\n`,
       );
       const outcome = removeOwnMcpEntry(EDITOR_TARGETS.claude, dir, undefined, configPath);
       expect(outcome.kind).toBe('removed');
@@ -116,7 +125,7 @@ describe('removeOwnMcpEntry — JSON', () => {
       const configPath = join(dir, 'config.json');
       writeFileSync(
         configPath,
-        `${JSON.stringify({ mcpServers: { other: { command: 'x' }, [MCP_SERVER_NAME]: OWN_ENTRY } }, null, 2)}\n`,
+        `${JSON.stringify({ mcpServers: { other: { command: 'x' }, [MCP_SERVER_NAME]: ownEntry } }, null, 2)}\n`,
       );
       expect(removeOwnMcpEntry(EDITOR_TARGETS.claude, dir, undefined, configPath).kind).toBe(
         'removed',
@@ -183,7 +192,7 @@ describe('removeOwnMcpEntry — JSON', () => {
     const dir = tmp();
     try {
       const configPath = join(dir, 'bom.json');
-      const raw = `\uFEFF${JSON.stringify({ mcpServers: { other: { command: 'x' }, [MCP_SERVER_NAME]: OWN_ENTRY } }, null, 2)}\n`;
+      const raw = `\uFEFF${JSON.stringify({ mcpServers: { other: { command: 'x' }, [MCP_SERVER_NAME]: ownEntry } }, null, 2)}\n`;
       writeFileSync(configPath, raw);
       expect(removeOwnMcpEntry(EDITOR_TARGETS.claude, dir, undefined, configPath).kind).toBe(
         'removed',
@@ -203,7 +212,7 @@ describe('removeOwnMcpEntry — TOML (Codex)', () => {
     const dir = tmp();
     try {
       const configPath = join(dir, 'config.toml');
-      const chain = (OWN_ENTRY.args as string[])[2];
+      const chain = (ownEntry.args as string[])[2];
       const raw = `# codex config\nmodel = "gpt-5"\n\n[mcp_servers.other]\ncommand = "node"  # keep me\n\n[mcp_servers.${MCP_SERVER_NAME}]\ncommand = "/bin/sh"\nargs = ["-l", "-c", ${JSON.stringify(chain)}]\n`;
       writeFileSync(configPath, raw);
       const outcome = removeOwnMcpEntry(EDITOR_TARGETS.codex, dir, undefined, configPath);
@@ -237,7 +246,7 @@ describe('removeOwnMcpEntry — TOML (Codex)', () => {
     const dir = tmp();
     try {
       const configPath = join(dir, 'config.toml');
-      const chain = (OWN_ENTRY.args as string[])[2];
+      const chain = (ownEntry.args as string[])[2];
       const raw = `# codex\r\n[mcp_servers.other]\r\ncommand = "node"\r\n\r\n[mcp_servers.${MCP_SERVER_NAME}]\r\ncommand = "/bin/sh"\r\nargs = ["-l", "-c", ${JSON.stringify(chain)}]\r\n`;
       writeFileSync(configPath, raw);
       expect(removeOwnMcpEntry(EDITOR_TARGETS.codex, dir, undefined, configPath).kind).toBe(
@@ -270,7 +279,7 @@ describe('removeOwnMcpEntry — TOML (Codex)', () => {
     const dir = tmp();
     try {
       const configPath = join(dir, 'config.toml');
-      const chain = (OWN_ENTRY.args as string[])[2];
+      const chain = (ownEntry.args as string[])[2];
       const raw = `[mcp_servers.${MCP_SERVER_NAME}]\ncommand = "/bin/sh"\nargs = ["-l", "-c", ${JSON.stringify(chain)}]\n`;
       writeFileSync(configPath, raw);
       setTomlConfigEngineForTesting(createTomlConfigEngine(() => null));
@@ -516,13 +525,13 @@ describe('removeOwnMcpEntry — symlinks', () => {
       try {
         const configPath = join(dir, 'config');
         const targetPath = join(dir, 'dotfiles-config');
-        const chain = (OWN_ENTRY.args as string[])[2];
+        const chain = (ownEntry.args as string[])[2];
         const raw =
           editorId === 'codex'
             ? `# user configuration\n[mcp_servers.other]\ncommand = "node"\n\n[mcp_servers.${MCP_SERVER_NAME}]\ncommand = "/bin/sh"\nargs = ["-l", "-c", ${JSON.stringify(chain)}]\n`
             : editorId === 'hermes'
-              ? `# user configuration\nmcp_servers:\n  other:\n    command: node\n  ${MCP_SERVER_NAME}: ${JSON.stringify(OWN_ENTRY)}\n`
-              : `{\n  // user configuration\n  "mcpServers": {"other": {"command": "node"}, "${MCP_SERVER_NAME}": ${JSON.stringify(OWN_ENTRY)}}\n}\n`;
+              ? `# user configuration\nmcp_servers:\n  other:\n    command: node\n  ${MCP_SERVER_NAME}: ${JSON.stringify(ownEntry)}\n`
+              : `{\n  // user configuration\n  "mcpServers": {"other": {"command": "node"}, "${MCP_SERVER_NAME}": ${JSON.stringify(ownEntry)}}\n}\n`;
         writeFileSync(targetPath, raw, { mode: 0o640 });
         symlinkSync('dotfiles-config', join(dir, 'intermediate'));
         symlinkSync('intermediate', configPath);

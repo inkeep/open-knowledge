@@ -30,11 +30,14 @@ export const PINNED_THIRD_PARTY_INLINING_ARTIFACTS = [
   },
 ];
 
+export const ZOD_APPLY_UNKNOWN_ADDITION = 1;
+export const ZOD_VALIDATE_UNKNOWN_ADDITION = 2;
+
 export const PUBLISHED_SURFACE_BASELINE = {
   capturedFrom:
-    "TypeScript 5.9.3, counted trivia-free: comments and string literals excluded. Recorded in the internal evidence tree's dts-baseline-5.9.3/index.tokens.txt, which this package does not ship. Raising a ceiling is a reviewed edit against that token stream, not a regeneration from the artifact that just failed. If you are an outside contributor and a ceiling blocks you, say so on the pull request and ask a maintainer to check it against that token stream: these numbers are a pre-change capture you cannot see, not a budget to raise.",
+    "TypeScript 5.9.3 plus one reviewed unknown for Zod 4.5's variadic ZodType.apply type arguments and two reviewed input parameters for Zod 4.6's validate and validateAsync methods, counted trivia-free: comments and string literals excluded. Recorded in the internal evidence tree's dts-baseline-5.9.3/index.tokens.txt, which this package does not ship. Raising a ceiling is a reviewed edit against that token stream, not a regeneration from the artifact that just failed. If you are an outside contributor and a ceiling blocks you, say so on the pull request and ask a maintainer to check it against that token stream: these numbers are a pre-change capture you cannot see, not a budget to raise.",
   anyCeiling: 202,
-  unknownCeiling: 128,
+  unknownCeiling: 128 + ZOD_APPLY_UNKNOWN_ADDITION + ZOD_VALIDATE_UNKNOWN_ADDITION,
   exportedSymbols: [
     'ALL_EDITOR_IDS',
     'BundleExtraFile',
@@ -334,7 +337,7 @@ export function checkSurface(surface, baseline) {
   }
   if (surface.unknownCount > baseline.unknownCeiling) {
     violations.push(
-      `\`unknown\` occurs ${surface.unknownCount} times outside comments and string literals, above the ${baseline.unknownCeiling} the 5.9.3 token stream recorded. Same two causes and the same remedy as the \`any\` ceiling above.`,
+      `\`unknown\` occurs ${surface.unknownCount} times outside comments and string literals, above its ceiling of ${baseline.unknownCeiling}: the count the 5.9.3 token stream recorded plus the reviewed additions that capturedFrom names. Same two causes and the same remedy as the \`any\` ceiling above.`,
     );
   }
   return violations;

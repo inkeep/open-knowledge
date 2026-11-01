@@ -712,7 +712,7 @@ Included: `**/*.ts`, `**/*.tsx`, `**/*.mts`, `**/*.cts`, `**/*.js`, `**/*.jsx`, 
 
 The shared module owns the definition. The portability test inventories only the sibling dependency-free `.mjs` implementation modules; it does not classify TypeScript, and its test-file exclusion remains local. Scanners that deliberately inspect test helpers retain that scope rather than inheriting the production default.
 
-The fixture pairs 15 violations with adjacent negatives. The self-test also plants a check under `scripts/` and invokes the real lint configuration, verifies the shared-predicate replacement passes, and removes the planted file. The rule and its self-test run in the existing lint and uncached test jobs.
+The fixture pairs 15 violations with adjacent negatives. The self-test also plants a check and its shared-predicate replacement side by side under `scripts/`, lints both with the real lint configuration in one invocation, expects the diagnostic on the planted check alone, and removes both files. One invocation pays the type-aware startup once rather than once per file. The rule and its self-test run in the existing lint and uncached test jobs.
 
 Rule: [`no-hand-rolled-test-file-suffix.mjs`](rules/no-hand-rolled-test-file-suffix.mjs). Fixture: [`no-hand-rolled-test-file-suffix.fixture.tsx`](__fixtures__/no-hand-rolled-test-file-suffix.fixture.tsx). Test: [`no-hand-rolled-test-file-suffix.uncached.test.mjs`](tests/no-hand-rolled-test-file-suffix.uncached.test.mjs).
 

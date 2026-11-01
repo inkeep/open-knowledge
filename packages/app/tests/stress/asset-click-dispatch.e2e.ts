@@ -347,7 +347,7 @@ test.describe('asset-click dispatcher — P9 E2E scenarios (SPEC 2026-04-23)', (
       .poll(async () => await getSourceText(page), { timeout: 30_000 })
       .toContain(`![[${pdfName}]]`);
 
-    const expectedHref = `/${subdirDoc.split('/').slice(0, -1).join('/')}/${pdfName}`;
+    const expectedHref = `/${subdirDoc}.assets/${pdfName}`;
 
     const res = await page.request.get(expectedHref);
     expect(res.status()).toBe(200);
@@ -413,13 +413,15 @@ test.describe('asset-click dispatcher — P9 E2E scenarios (SPEC 2026-04-23)', (
 
     await expect.poll(async () => await getSourceText(page), { timeout: 5_000 }).toContain(m4vName);
     const text = await getSourceText(page);
-    expect(text).toMatch(new RegExp(`<video\\s+src="/docs/sub-[^/]+/${escapeRegExp(m4vName)}"`));
+    expect(text).toMatch(
+      new RegExp(`<video\\s+src="/docs/sub-[^/]+/notes\\.assets/${escapeRegExp(m4vName)}"`),
+    );
     expect(text).not.toMatch(/controls(=|\s|\/>|>)/);
 
     const videoEl = page.locator(`.ProseMirror video[src*="/${m4vName}"]`).first();
     await videoEl.waitFor({ state: 'visible', timeout: 5_000 });
     const src = await videoEl.getAttribute('src');
-    expect(src).toMatch(new RegExp(`^/docs/sub-[^/]+/${escapeRegExp(m4vName)}$`));
+    expect(src).toMatch(new RegExp(`^/docs/sub-[^/]+/notes\\.assets/${escapeRegExp(m4vName)}$`));
 
     const res = await page.request.get(src ?? '');
     expect(res.status()).toBe(200);

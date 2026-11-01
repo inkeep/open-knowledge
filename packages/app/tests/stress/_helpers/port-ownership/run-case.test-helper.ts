@@ -209,7 +209,7 @@ export async function runOwnershipCase(ownershipCase: OwnershipCase): Promise<Ow
     throw error;
   });
   const env = createNestedPlaywrightEnv({
-    NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require=${PRELOAD}`.trim(),
+    NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require=${JSON.stringify(PRELOAD)}`.trim(),
     OK_PORT_OWNERSHIP_CALLER: ownershipCase.caller,
     OK_PORT_OWNERSHIP_RECORDS: join(runDir, 'events.jsonl'),
     OK_PORT_OWNERSHIP_RUN_DIR: runDir,
@@ -338,7 +338,7 @@ export async function runLeaseInheritanceProbe(): Promise<LeaseInheritanceRun> {
   const driver = spawn(process.execPath, [LEASE_PROBE, 'driver'], {
     env: {
       ...process.env,
-      NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require=${PRELOAD}`.trim(),
+      NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require=${JSON.stringify(PRELOAD)}`.trim(),
       OK_PORT_OWNERSHIP_LEASE_FD: String(LEASE_PROBE_STDIO.length),
     },
     stdio: [...LEASE_PROBE_STDIO, lease] as const,

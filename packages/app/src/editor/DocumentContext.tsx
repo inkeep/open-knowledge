@@ -60,6 +60,7 @@ import {
   hydrateEditorWorkspace,
   normalizeEditorWorkspace,
   type PaneSide,
+  preserveLivePreviewTabs,
   projectVisibleEditorWorkspace,
   type RecentlyClosedEditorTab,
   recordRecentlyClosedTab,
@@ -737,6 +738,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
             activeTarget: currentFocused.activeNewTabId ? null : pane.activeTarget,
           }));
         }
+        nextWorkspace = preserveLivePreviewTabs(nextWorkspace, currentWorkspace, state);
         const hash = window.location.hash;
         const hashTabId = tabIdFromHash(hash);
         const hashOwner = hashTabId ? findPaneOwningTab(nextWorkspace, hashTabId) : null;

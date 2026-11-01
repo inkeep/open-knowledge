@@ -13,6 +13,7 @@ import {
   normalizeEditorWorkspace,
   parsePersistedEditorWorkspace,
   persistEditorWorkspace,
+  preserveLivePreviewTabs,
   projectVisibleEditorWorkspace,
   pruneEmptyEditorPanes,
   recordRecentlyClosedTab,
@@ -105,6 +106,107 @@ describe('editor pane workspace', () => {
       ],
       focusedPaneId: 'pane-a',
     });
+  });
+
+  test('preserves live preview markers while merging restored tabs', () => {
+    const restored = hydrateEditorWorkspace({
+      panes: [
+        {
+          id: 'pane-a',
+          openTabs: ['other'],
+          pinnedTabIds: [],
+          activeTabId: 'other',
+          size: 100,
+        },
+      ],
+      focusedPaneId: 'pane-a',
+    });
+    const live = {
+      panes: [
+        {
+          ...pane('pane-a', ['other', 'preview'], 'preview'),
+          previewTabId: 'preview',
+        },
+      ],
+      focusedPaneId: 'pane-a',
+    };
+
+    const merged = preserveLivePreviewTabs(
+      {
+        ...restored,
+        panes: restored.panes.map((item) => ({
+          ...item,
+          openTabs: ['other', 'preview'],
+          activeTabId: 'preview',
+        })),
+      },
+      live,
+      { panes: [{ ...restored.panes[0], openTabs: ['other'] }] },
+    );
+
+    expect(merged.panes[0]?.previewTabId).toBe('preview');
+  });
+
+  test('keeps persisted tabs permanent when a live preview marker overlaps them', () => {
+    const persisted = {
+      panes: [
+        {
+          id: 'pane-a',
+          openTabs: ['saved'],
+          pinnedTabIds: [],
+          activeTabId: 'saved',
+          size: 100,
+        },
+      ],
+      focusedPaneId: 'pane-a',
+    };
+    const restored = hydrateEditorWorkspace(persisted);
+    const live = {
+      panes: [{ ...pane('pane-a', ['saved'], 'saved'), previewTabId: 'saved' }],
+      focusedPaneId: 'pane-a',
+    };
+
+    const merged = preserveLivePreviewTabs(restored, live, persisted);
+
+    expect(merged.panes[0]?.previewTabId).toBeNull();
+  });
+
+  test('matches duplicate independent preview ids to their live panes', () => {
+    const folderTabId = '\u0000folder:foo';
+    const workspace = {
+      panes: [
+        { ...pane('pane-a', [folderTabId], folderTabId, 50), previewTabId: null },
+        { ...pane('pane-b', [folderTabId], folderTabId, 50), previewTabId: null },
+      ],
+      focusedPaneId: 'pane-b',
+    };
+    const live = {
+      panes: [
+        { ...pane('pane-a', [folderTabId], folderTabId, 50), previewTabId: folderTabId },
+        { ...pane('pane-b', [folderTabId], folderTabId, 50), previewTabId: folderTabId },
+      ],
+      focusedPaneId: 'pane-b',
+    };
+
+    const merged = preserveLivePreviewTabs(workspace, live, { panes: [] });
+
+    expect(merged.panes.map((item) => item.previewTabId)).toEqual([folderTabId, folderTabId]);
+  });
+
+  test('falls back to a restored pane when a live preview pane id differs', () => {
+    const previewTabId = '\u0000folder:foo';
+    const workspace = {
+      panes: [{ ...pane('restored-pane', [previewTabId], previewTabId), previewTabId: null }],
+      focusedPaneId: 'restored-pane',
+    };
+    const live = {
+      panes: [{ ...pane('live-pane', [previewTabId], previewTabId), previewTabId }],
+      focusedPaneId: 'live-pane',
+    };
+
+    const merged = preserveLivePreviewTabs(workspace, live, { panes: [] });
+
+    expect(merged.panes[0]?.previewTabId).toBe(previewTabId);
   });
 
   test('normalizes current ids, target ownership, pins, focus, and size percentages', () => {

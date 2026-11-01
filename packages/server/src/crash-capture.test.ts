@@ -1,26 +1,33 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { SERVER_CRASH_LOG } from '@inkeep/open-knowledge-core';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   buildCrashRecord,
   type CrashCaptureHandle,
   installCrashCapture,
   writeCrashArtifacts,
 } from './crash-capture.ts';
+import { logsCurrentPath } from './telemetry-file-sink.ts';
 
+let fixtureDir: string;
 let projectDir: string;
 const handles: CrashCaptureHandle[] = [];
 
 beforeEach(async () => {
-  projectDir = await mkdtemp(join(tmpdir(), 'ok-crash-capture-'));
+  fixtureDir = await mkdtemp(join(tmpdir(), 'ok-crash-capture-'));
+  projectDir = join(fixtureDir, 'project');
+  await mkdir(projectDir);
+  vi.stubEnv('HOME', join(fixtureDir, 'home'));
+  vi.stubEnv('USERPROFILE', join(fixtureDir, 'home'));
 });
 
 afterEach(async () => {
   for (const handle of handles.splice(0)) handle.uninstall();
-  await rm(projectDir, { recursive: true, force: true });
+  vi.unstubAllEnvs();
+  await rm(fixtureDir, { recursive: true, force: true });
 });
 
 function emitMonitor(err: unknown, origin: string): void {
@@ -28,7 +35,7 @@ function emitMonitor(err: unknown, origin: string): void {
 }
 
 const crashJsonPath = () => join(projectDir, '.ok', 'local', SERVER_CRASH_LOG);
-const logsPath = () => join(projectDir, '.ok', 'local', 'logs', 'server-current.jsonl');
+const logsPath = () => logsCurrentPath(projectDir);
 
 describe('buildCrashRecord', () => {
   test('captures name, message, stack, pid, uptime from an Error', () => {
@@ -61,6 +68,8 @@ describe('writeCrashArtifacts', () => {
     expect(crashJson.pid).toBe(process.pid);
 
     const lines = readFileSync(logsPath(), 'utf-8').trim().split('\n');
+    if (process.platform !== 'win32')
+      expect(statSync(dirname(logsPath())).mode & 0o777).toBe(0o700);
     expect(lines).toHaveLength(1);
     const logLine = JSON.parse(lines[0]);
     expect(logLine.level).toBe(60);
@@ -70,7 +79,7 @@ describe('writeCrashArtifacts', () => {
   });
 
   test('appends to an existing log sink file instead of truncating it', () => {
-    mkdirSync(join(projectDir, '.ok', 'local', 'logs'), { recursive: true });
+    mkdirSync(dirname(logsPath()), { recursive: true });
     writeFileSync(logsPath(), '{"level":30,"msg":"earlier"}\n');
     writeCrashArtifacts(projectDir, buildCrashRecord(new Error('later'), 'uncaughtException'));
     const lines = readFileSync(logsPath(), 'utf-8').trim().split('\n');
@@ -99,6 +108,8 @@ describe('writeCrashArtifacts', () => {
   test('swallows write failures instead of throwing', () => {
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
     writeFileSync(join(projectDir, '.ok', 'local'), 'not a directory');
+    mkdirSync(dirname(dirname(logsPath())), { recursive: true });
+    writeFileSync(dirname(logsPath()), 'not a directory');
     expect(() =>
       writeCrashArtifacts(projectDir, buildCrashRecord(new Error('x'), 'uncaughtException')),
     ).not.toThrow();

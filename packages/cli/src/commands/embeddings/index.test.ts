@@ -1,4 +1,15 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -11,6 +22,27 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stringify } from 'yaml';
 import * as embeddingsKeyStore from '../../auth/embeddings-key-store.ts';
 import { embeddingsCommand, formatSemanticCapabilityLabel } from './index.ts';
+
+const keyring = vi.hoisted(() => ({ entries: new Map<string, string>(), mode: 'available' }));
+vi.mock('@napi-rs/keyring', () => ({
+  AsyncEntry: class {
+    private readonly id: string;
+    constructor(service: string, account: string) {
+      this.id = JSON.stringify([service, account]);
+    }
+    async getPassword() {
+      if (keyring.mode === 'error') throw new Error('sk-test-secret');
+      return keyring.entries.get(this.id) ?? null;
+    }
+    async setPassword(value: string) {
+      if (keyring.mode === 'error') throw new Error(value);
+      keyring.entries.set(this.id, value);
+    }
+    async deletePassword() {
+      return keyring.entries.delete(this.id);
+    }
+  },
+}));
 
 const LIVE_STATUS: SemanticIndexStatus = {
   enabled: true,
@@ -209,6 +241,9 @@ describe('embeddings hints name the running channel CLI', () => {
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'ok-embeddings-channel-'));
+    keyring.entries.clear();
+    vi.stubEnv('OK_EMBEDDINGS_API_KEY', undefined);
+    keyring.mode = 'available';
     stdout = '';
     stderr = '';
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
@@ -224,6 +259,12 @@ describe('embeddings hints name the running channel CLI', () => {
       keyless: false,
       source: 'none',
     });
+    const createStore = embeddingsKeyStore.createEmbeddingsSecretStore;
+    vi.spyOn(embeddingsKeyStore, 'createEmbeddingsSecretStore').mockImplementation(() =>
+      keyring.mode === 'unavailable'
+        ? createStore(join(dir, 'secrets.yml'), undefined, async () => null)
+        : createStore(join(dir, 'secrets.yml')),
+    );
   });
 
   afterEach(() => {
@@ -252,12 +293,239 @@ describe('embeddings hints name the running channel CLI', () => {
     vi.spyOn(process, 'stdin', 'get').mockReturnValue(
       Readable.from([Buffer.from('sk-test')]) as unknown as typeof process.stdin,
     );
-    vi.spyOn(embeddingsKeyStore, 'createEmbeddingsSecretStore').mockReturnValue({
-      setForProject: async () => {},
-    } as unknown as ReturnType<typeof embeddingsKeyStore.createEmbeddingsSecretStore>);
     await embeddingsCommand().parseAsync(['set-key', '--cwd', dir], { from: 'user' });
+    expect([...keyring.entries.values()]).toContain('sk-test');
+    expect(existsSync(join(dir, 'secrets.yml'))).toBe(false);
+    expect(stderr).toContain('OS credential store');
     expect(stderr).toContain(
       `  Enable semantic search with \`${command} embeddings enable\`, or in\n`,
     );
+  });
+
+  test('reports file fallback when the native credential store is unavailable', async () => {
+    keyring.mode = 'unavailable';
+    vi.spyOn(process, 'stdin', 'get').mockReturnValue(
+      Readable.from([Buffer.from('sk-test')]) as unknown as typeof process.stdin,
+    );
+    await embeddingsCommand().parseAsync(['set-key', '--cwd', dir], { from: 'user' });
+    expect(readFileSync(join(dir, 'secrets.yml'), 'utf8')).toContain('sk-test');
+    expect(stderr).toContain('file fallback: ~/.ok/secrets.yml, 0600');
+    expect(stderr).not.toContain('OS credential store');
+  });
+
+  test.each([false, true])('status handles an inaccessible saved key (json=%s)', async (json) => {
+    vi.mocked(embeddingsKeyStore.resolveEmbeddingsCredential).mockRestore();
+    await embeddingsKeyStore
+      .createEmbeddingsSecretStore()
+      .setForProject(dir, DEFAULT_EMBEDDINGS_BASE_URL, 'sk-saved-secret');
+    keyring.mode = 'error';
+    await embeddingsCommand().parseAsync(['status', '--cwd', dir, ...(json ? ['--json'] : [])], {
+      from: 'user',
+    });
+    expect(process.exitCode).toBe(1);
+    if (json) {
+      expect(JSON.parse(stdout).key).toMatchObject({
+        present: false,
+        unavailable: true,
+        error: 'native_access',
+      });
+    } else {
+      expect(stdout).toContain('unavailable');
+      expect(stdout).not.toContain('Set a key:');
+    }
+    expect(stdout + stderr).not.toContain('sk-test-secret');
+    expect(stdout + stderr).not.toContain('sk-saved-secret');
+  });
+
+  test('enable leaves configuration unchanged when saved credentials cannot be accessed', async () => {
+    vi.mocked(embeddingsKeyStore.resolveEmbeddingsCredential).mockRestore();
+    await embeddingsKeyStore
+      .createEmbeddingsSecretStore()
+      .setForProject(dir, DEFAULT_EMBEDDINGS_BASE_URL, 'sk-saved-secret');
+    keyring.mode = 'error';
+    await embeddingsCommand().parseAsync(['enable', '--cwd', dir], { from: 'user' });
+    expect(process.exitCode).toBe(1);
+    expect(readLocalConfig(dir)).toBe('');
+    expect(stderr).toContain('Unlock the OS credential store');
+    expect(stderr).not.toContain('Semantic search enabled');
+    expect(stderr).not.toContain('sk-test-secret');
+  });
+
+  test('list handles inaccessible saved credentials without exposing native error text', async () => {
+    await embeddingsKeyStore
+      .createEmbeddingsSecretStore()
+      .setForProject(dir, DEFAULT_EMBEDDINGS_BASE_URL, 'sk-saved-secret');
+    keyring.mode = 'error';
+    await embeddingsCommand().parseAsync(['list'], { from: 'user' });
+    expect(process.exitCode).toBe(1);
+    expect(stderr).toContain('Unlock the OS credential store');
+    expect(stderr).not.toContain('sk-test-secret');
+    expect(stderr).not.toContain('No project embeddings keys');
+    expect(stdout).toBe('');
+  });
+
+  test('status identifies a migration conflict and set-key repairs it through stdin', async () => {
+    vi.mocked(embeddingsKeyStore.resolveEmbeddingsCredential).mockRestore();
+    const store = embeddingsKeyStore.createEmbeddingsSecretStore();
+    await store.setForProject(dir, DEFAULT_EMBEDDINGS_BASE_URL, 'sk-native-secret');
+    writeFileSync(
+      join(dir, 'secrets.yml'),
+      stringify({
+        embeddings_projects: {
+          [realpathSync(dir)]: { [DEFAULT_EMBEDDINGS_BASE_URL]: 'sk-file-secret' },
+        },
+      }),
+      { mode: 0o600 },
+    );
+    await embeddingsCommand().parseAsync(['status', '--cwd', dir, '--json'], { from: 'user' });
+    expect(process.exitCode).toBe(1);
+    expect(JSON.parse(stdout).key).toMatchObject({
+      unavailable: true,
+      error: 'migration_conflict',
+    });
+    expect(stderr).toContain('Set a project-specific key');
+    expect(stdout + stderr).not.toMatch(/sk-(native|file)-secret/);
+    process.exitCode = 0;
+    vi.spyOn(process, 'stdin', 'get').mockReturnValue(
+      Readable.from([Buffer.from('sk-replacement')]) as unknown as typeof process.stdin,
+    );
+    await embeddingsCommand().parseAsync(['set-key', '--cwd', dir], { from: 'user' });
+    expect(process.exitCode).toBe(0);
+    expect(await store.resolveForProject(dir, DEFAULT_EMBEDDINGS_BASE_URL)).toMatchObject({
+      key: 'sk-replacement',
+    });
+    expect(existsSync(join(dir, 'secrets.yml'))).toBe(false);
+  });
+
+  test('migrate-keys secures unused project keys and the shared legacy key', async () => {
+    const other = join(dir, 'unused-project');
+    mkdirSync(other);
+    writeFileSync(
+      join(dir, 'secrets.yml'),
+      stringify({
+        embeddings_projects: {
+          [realpathSync(dir)]: { [DEFAULT_EMBEDDINGS_BASE_URL]: 'sk-first' },
+          [realpathSync(other)]: { 'https://custom.example/v1': 'sk-unused' },
+        },
+        OPENAI_API_KEY: 'sk-legacy',
+        unrelated: 'retained',
+      }),
+      { mode: 0o600 },
+    );
+    await embeddingsCommand().exitOverride().parseAsync(['migrate-keys'], { from: 'user' });
+    expect(process.exitCode).toBe(0);
+    expect(stdout).toContain('Credential scopes verified: 3. Requiring attention: 0.');
+    expect(readFileSync(join(dir, 'secrets.yml'), 'utf8')).toBe('unrelated: retained\n');
+    const store = embeddingsKeyStore.createEmbeddingsSecretStore();
+    expect(await store.resolveForProject(other, 'https://custom.example/v1')).toMatchObject({
+      key: 'sk-unused',
+    });
+    expect(await store.getLegacyKey()).toBe('sk-legacy');
+    expect(stdout + stderr).not.toMatch(/sk-(first|unused|legacy)/);
+  });
+
+  test('migrate-keys continues past a conflict and leaves the conflicting values intact', async () => {
+    const other = join(dir, 'unused-project');
+    mkdirSync(other);
+    const store = embeddingsKeyStore.createEmbeddingsSecretStore();
+    await store.setForProject(dir, DEFAULT_EMBEDDINGS_BASE_URL, 'sk-native');
+    writeFileSync(
+      join(dir, 'secrets.yml'),
+      stringify({
+        embeddings_projects: {
+          [realpathSync(dir)]: { [DEFAULT_EMBEDDINGS_BASE_URL]: 'sk-conflict' },
+          [realpathSync(other)]: { 'https://custom.example/v1': 'sk-unused' },
+        },
+      }),
+      { mode: 0o600 },
+    );
+    await embeddingsCommand().exitOverride().parseAsync(['migrate-keys'], { from: 'user' });
+    expect(process.exitCode).toBe(1);
+    expect(stdout).toContain('Credential scopes verified: 1. Requiring attention: 1.');
+    expect(stderr).toContain('Set a project-specific key');
+    const file = readFileSync(join(dir, 'secrets.yml'), 'utf8');
+    expect(file).toContain('sk-conflict');
+    expect(file).not.toContain('sk-unused');
+    expect(await store.resolveForProject(other, 'https://custom.example/v1')).toMatchObject({
+      key: 'sk-unused',
+    });
+    expect([...keyring.entries.values()]).toContain('sk-native');
+    expect(stdout + stderr).not.toMatch(/sk-(native|conflict|unused)/);
+  });
+
+  test('migrate-keys preserves recorded identity after a project path becomes a symlink', async () => {
+    const recordedPath = join(dir, 'recorded');
+    const movedPath = join(dir, 'moved');
+    const target = join(dir, 'target');
+    mkdirSync(recordedPath);
+    mkdirSync(target);
+    const recordedKey = realpathSync(recordedPath);
+    const store = embeddingsKeyStore.createEmbeddingsSecretStore();
+    await store.setForProject(target, DEFAULT_EMBEDDINGS_BASE_URL, 'sk-target');
+    writeFileSync(
+      join(dir, 'secrets.yml'),
+      stringify({
+        embeddings_projects: { [recordedKey]: { [DEFAULT_EMBEDDINGS_BASE_URL]: 'sk-recorded' } },
+        OPENAI_API_KEY: 'sk-legacy',
+      }),
+      { mode: 0o600 },
+    );
+    renameSync(recordedPath, movedPath);
+    symlinkSync(target, recordedPath, process.platform === 'win32' ? 'junction' : 'dir');
+    await embeddingsCommand().exitOverride().parseAsync(['migrate-keys'], { from: 'user' });
+    expect(process.exitCode).toBe(0);
+    expect(existsSync(join(dir, 'secrets.yml'))).toBe(false);
+    expect(await store.resolveForProject(target, DEFAULT_EMBEDDINGS_BASE_URL)).toMatchObject({
+      key: 'sk-target',
+    });
+    unlinkSync(recordedPath);
+    renameSync(movedPath, recordedPath);
+    expect(await store.resolveForProject(recordedPath, DEFAULT_EMBEDDINGS_BASE_URL)).toMatchObject({
+      key: 'sk-recorded',
+    });
+    expect(stdout + stderr).not.toMatch(/sk-(target|recorded|legacy)/);
+  });
+
+  test('migrate-keys reports a disappearing scope instead of counting legacy fallback', async () => {
+    const store = embeddingsKeyStore.createEmbeddingsSecretStore();
+    await store.setForProject(dir, DEFAULT_EMBEDDINGS_BASE_URL, 'sk-project');
+    writeFileSync(join(dir, 'secrets.yml'), stringify({ OPENAI_API_KEY: 'sk-legacy' }), {
+      mode: 0o600,
+    });
+    vi.mocked(embeddingsKeyStore.createEmbeddingsSecretStore).mockReturnValue(store);
+    const list = store.listProjects.bind(store);
+    vi.spyOn(store, 'listProjects').mockImplementation(async () => {
+      const entries = await list();
+      await store.clearForProject(dir, DEFAULT_EMBEDDINGS_BASE_URL);
+      return entries;
+    });
+    await embeddingsCommand().exitOverride().parseAsync(['migrate-keys'], { from: 'user' });
+    expect(process.exitCode).toBe(1);
+    expect(stdout).toContain('Credential scopes verified: 1. Requiring attention: 1.');
+    expect(stderr).toContain('Stored scope was not verified');
+  });
+
+  test('migrate-keys does not call file fallback a successful native migration', async () => {
+    keyring.mode = 'unavailable';
+    writeFileSync(join(dir, 'secrets.yml'), stringify({ OPENAI_API_KEY: 'sk-legacy' }), {
+      mode: 0o600,
+    });
+    await embeddingsCommand().exitOverride().parseAsync(['migrate-keys'], { from: 'user' });
+    expect(process.exitCode).toBe(1);
+    expect(stderr).toContain('No OS credential store is available');
+    expect(readFileSync(join(dir, 'secrets.yml'), 'utf8')).toContain('sk-legacy');
+    expect(stdout).not.toContain('Credential scopes verified');
+  });
+
+  test('does not echo credentials when the native credential store fails', async () => {
+    keyring.mode = 'error';
+    vi.spyOn(process, 'stdin', 'get').mockReturnValue(
+      Readable.from([Buffer.from('sk-test-secret')]) as unknown as typeof process.stdin,
+    );
+    await embeddingsCommand().parseAsync(['set-key', '--cwd', dir], { from: 'user' });
+    expect(process.exitCode).toBe(1);
+    expect(stderr).toContain('Embeddings credential store is unavailable or inaccessible');
+    expect(stderr).toContain('[native_set; Error; unknown]');
+    expect(stderr).not.toContain('sk-test-secret');
   });
 });

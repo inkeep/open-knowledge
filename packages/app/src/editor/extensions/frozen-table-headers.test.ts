@@ -137,6 +137,12 @@ describe('buildShiftKeyframes', () => {
   });
 });
 
+function stubCssPercent(): void {
+  (globalThis as { CSS?: unknown }).CSS = {
+    percent: (value: number) => ({ value, unit: 'percent' }),
+  };
+}
+
 describe('anchorScrollDrivenStartTime (deletion guard, not browser-rung coverage)', () => {
   const realCss = (globalThis as { CSS?: unknown }).CSS;
 
@@ -144,10 +150,6 @@ describe('anchorScrollDrivenStartTime (deletion guard, not browser-rung coverage
     (globalThis as { CSS?: unknown }).CSS = realCss;
     vi.restoreAllMocks();
   });
-
-  function stubCssPercent(): void {
-    (globalThis as { CSS?: unknown }).CSS = { percent: (value: number) => ({ percent: value }) };
-  }
 
   it('anchors the replacement at zero progress so it is not left play-pending', () => {
     stubCssPercent();
@@ -160,7 +162,7 @@ describe('anchorScrollDrivenStartTime (deletion guard, not browser-rung coverage
 
     anchorScrollDrivenStartTime(animation);
 
-    expect(assigned).toEqual({ percent: 0 });
+    expect(assigned).toEqual({ value: 0, unit: 'percent' });
   });
 
   it('contains a rejected assignment and reports it once rather than per animation', () => {
@@ -188,7 +190,7 @@ describe('applyViewTimelineFreeze (every animation it creates is anchored)', () 
   });
 
   it('anchors all three tracks, not only the transform', () => {
-    (globalThis as { CSS?: unknown }).CSS = { percent: (value: number) => ({ percent: value }) };
+    stubCssPercent();
     const anchored: unknown[] = [];
     const cell = {
       cellIndex: 0,
@@ -208,11 +210,15 @@ describe('applyViewTimelineFreeze (every animation it creates is anchored)', () 
       timelineLength: 2_000,
     });
 
-    expect(anchored).toEqual([{ percent: 0 }, { percent: 0 }, { percent: 0 }]);
+    expect(anchored).toEqual([
+      { value: 0, unit: 'percent' },
+      { value: 0, unit: 'percent' },
+      { value: 0, unit: 'percent' },
+    ]);
   });
 
   it('keeps its animations when the table only moves in the viewport', () => {
-    (globalThis as { CSS?: unknown }).CSS = { percent: (value: number) => ({ percent: value }) };
+    stubCssPercent();
     let created = 0;
     const cell = {
       animate: () => {
@@ -231,5 +237,31 @@ describe('applyViewTimelineFreeze (every animation it creates is anchored)', () 
     }
 
     expect(created).toBe(3);
+  });
+
+  it('re-anchors an animation whose start time slipped while its freeze is unchanged', () => {
+    stubCssPercent();
+    const animations: { startTime: unknown }[] = [];
+    const cell = {
+      animate: () => {
+        const animation = { startTime: null as unknown, cancel: () => {} };
+        animations.push(animation);
+        return animation as unknown as Animation;
+      },
+    } as unknown as HTMLTableCellElement;
+    const timeline = {} as AnimationTimeline;
+    const freeze = computeWrapperFreeze(1200, 1016, 1208, 1000, 40, 700);
+    if (!freeze) throw new Error('expected a freeze');
+
+    applyViewTimelineFreeze(cell, timeline, freeze);
+    for (const animation of animations) animation.startTime = { value: 7.5, unit: 'percent' };
+    applyViewTimelineFreeze(cell, timeline, freeze);
+
+    expect(animations).toHaveLength(3);
+    expect(animations.map((animation) => animation.startTime)).toEqual([
+      { value: 0, unit: 'percent' },
+      { value: 0, unit: 'percent' },
+      { value: 0, unit: 'percent' },
+    ]);
   });
 });

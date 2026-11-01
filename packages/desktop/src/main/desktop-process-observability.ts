@@ -1,3 +1,5 @@
+import type { SystemMemorySample } from './system-memory-sample.ts';
+
 export const DESKTOP_PROCESS_SAMPLE_INTERVAL_MS = 60_000;
 export const MAX_DESKTOP_PROCESS_SAMPLE_ROWS = 12;
 export const MAX_DESKTOP_WINDOW_SAMPLE_ROWS = 8;
@@ -71,6 +73,7 @@ interface WindowSample {
 
 interface DesktopProcessSample {
   capturedAt: string;
+  systemMemory?: SystemMemorySample;
   processCount: number;
   processesTruncated: number;
   processes: ProcessSample[];
@@ -100,6 +103,7 @@ export interface DesktopProcessObservabilityDeps<IntervalHandle> {
   now(): Date;
   getAppMetrics(): readonly ProcessMetricLike[];
   getAllWindows(): readonly ObservedBrowserWindow[];
+  readSystemMemory?(): SystemMemorySample | null;
   logger: DesktopProcessLogger;
   setInterval(callback: () => void, ms: number): IntervalHandle;
   clearInterval(handle: IntervalHandle): void;
@@ -220,6 +224,18 @@ export function createDesktopProcessObservability<IntervalHandle>(
     return details;
   };
 
+  const readSystemMemory = (): SystemMemorySample | null => {
+    try {
+      return deps.readSystemMemory?.() ?? null;
+    } catch (err) {
+      deps.logger.warn(
+        { event: 'desktop-process-observability.system-memory-failed', err },
+        'desktop system memory read failed',
+      );
+      return null;
+    }
+  };
+
   const capture = (): DesktopProcessSample | null => {
     try {
       const processes = deps
@@ -237,8 +253,10 @@ export function createDesktopProcessObservability<IntervalHandle>(
             (left.windowId ?? Number.MAX_SAFE_INTEGER) -
             (right.windowId ?? Number.MAX_SAFE_INTEGER),
         );
+      const systemMemory = readSystemMemory();
       return {
         capturedAt: deps.now().toISOString(),
+        ...(systemMemory === null ? {} : { systemMemory }),
         processCount: processes.length,
         processesTruncated: Math.max(0, processes.length - MAX_DESKTOP_PROCESS_SAMPLE_ROWS),
         processes: processes.slice(0, MAX_DESKTOP_PROCESS_SAMPLE_ROWS),

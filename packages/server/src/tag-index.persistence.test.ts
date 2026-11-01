@@ -64,6 +64,8 @@ describe('TagIndex persistence', () => {
       const first = newIndex(rig);
       await first.init();
       await first.saveToDisk();
+      const raw = await readFile(rig.snapshotPath, 'utf-8');
+      expect(raw).toBe(JSON.stringify(JSON.parse(raw)));
 
       const second = newIndex(rig);
       expect(await second.loadFromDisk()).toBe(true);

@@ -160,7 +160,13 @@ export default {
       ignoreDependencies: ['@types/shell-quote'],
     },
     'packages/cli': {
-      entry: ['src/**/*.test.ts', 'scripts/*.ts', 'tests/**/*.ts', 'src/parse-worker.ts'],
+      entry: [
+        'src/**/*.test.ts',
+        'scripts/*.ts',
+        'tests/**/*.ts',
+        'src/parse-worker.ts',
+        'src/bin.ts',
+      ],
       ignoreDependencies: ['yjs'],
     },
     'packages/desktop': {

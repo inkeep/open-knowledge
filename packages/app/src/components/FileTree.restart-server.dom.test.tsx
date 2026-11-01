@@ -288,12 +288,11 @@ describe('FileTree unreachable-server restart action', () => {
     installBridge();
     listingFails = true;
     let releaseRestart!: (value: { ok: true }) => void;
-    restartServer.mockImplementationOnce(
-      () =>
-        new Promise<{ ok: true }>((resolve) => {
-          releaseRestart = resolve;
-        }),
-    );
+    restartServer.mockImplementationOnce(() => {
+      const { promise, resolve } = Promise.withResolvers<{ ok: true }>();
+      releaseRestart = resolve;
+      return promise;
+    });
     render(<FileTree />);
 
     const restart = await screen.findByRole('button', { name: RESTART_LABEL });

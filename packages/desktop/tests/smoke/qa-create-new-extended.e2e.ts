@@ -592,17 +592,18 @@ test.describe('QA extended create-new-project', () => {
     const openBtn = navigator.locator('[data-testid="create-banner-nested-open"]');
     await expect(openBtn).toBeVisible({ timeout: 15_000 });
     await expect(openBtn).toHaveText(/Open NestedTarget/);
+    const navigatorClosed = navigator.waitForEvent('close');
     await openBtn.click();
 
     await expect
       .poll(() => countWindowsByMode(app, 'editor'), { timeout: 30_000 })
       .toBeGreaterThanOrEqual(1);
-    const navStillAlive = !navigator.isClosed();
-    if (navStillAlive) {
-      await expect(navigator.locator('[data-testid="create-project-dialog"]')).not.toBeVisible({
+    await Promise.race([
+      navigatorClosed,
+      expect(navigator.locator('[data-testid="create-project-dialog"]')).not.toBeVisible({
         timeout: 5_000,
-      });
-    }
+      }),
+    ]);
   });
 
   test('PRD-7129 — name resolving to a non-empty folder shows inline name-taken error', async ({

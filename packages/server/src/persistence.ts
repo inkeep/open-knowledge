@@ -56,6 +56,7 @@ import {
   type LifecycleView,
   type RemovalLifecycleStatus,
 } from './conflict-kinds.ts';
+import { registerSourceFileExtension } from './content/file-operation-paths.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import type { ContributorEntry } from './contributor-tracker.ts';
 import {
@@ -74,6 +75,7 @@ import { resolveDirectoryRoot, resolveNativePath } from './directory-root.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 import type { FileObservation } from './disk-receipts.ts';
 import { displayPathFor } from './display-path.ts';
+import { isRegisteredMarkdownDocName } from './doc-extensions.ts';
 import {
   assertNeverStorePublishOutcome,
   type DeferredStoreDiscardCause,
@@ -2478,6 +2480,8 @@ export function createPersistenceExtension(options: PersistenceOptions): Persist
         loadManagedArtifactDoc(document, documentName, managedArtifactCtx);
         return;
       }
+      if (!isRegisteredMarkdownDocName(documentName))
+        registerSourceFileExtension(contentDir, documentName);
       options?.assertContentPath?.(safeContentPath(documentName, contentDir));
       if (
         isMermaidDoc(documentName) ||

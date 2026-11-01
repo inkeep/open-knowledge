@@ -1,9 +1,48 @@
 import type { Config } from '@inkeep/open-knowledge-core';
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { act, cleanup, render, waitFor, within } from '@testing-library/react';
 import type { NodeViewProps } from '@tiptap/core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { RawMdxFallbackView } from './RawMdxFallbackCMView';
+
+const appLanguage = vi.hoisted(() => {
+  const english = (text: string) => text;
+  let translate = english;
+  const listeners = new Set<() => void>();
+  return {
+    current: () => translate,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    switchTo(next: (text: string) => string) {
+      translate = next;
+      for (const listener of listeners) listener();
+    },
+    reset() {
+      translate = english;
+    },
+  };
+});
+
+vi.mock('@lingui/react/macro', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@lingui/react/macro')>();
+  const { useSyncExternalStore } = await import('react');
+  const { renderLinguiTemplate } = await import('@/test-utils/lingui-mock');
+  return {
+    ...actual,
+    useLingui: () => {
+      const translate = useSyncExternalStore(appLanguage.subscribe, appLanguage.current);
+      return {
+        ...actual.useLingui(),
+        t: (...args: Parameters<typeof renderLinguiTemplate>) =>
+          translate(renderLinguiTemplate(...args)),
+      };
+    },
+  };
+});
 
 const originalFetch = globalThis.fetch;
 
@@ -101,6 +140,38 @@ describe('RawMdxFallbackView word-wrap preference wiring', () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     cleanup();
+    appLanguage.reset();
+  });
+
+  test('RawMdxFallbackView names the nested CodeMirror textbox', async () => {
+    const props = makeProps();
+    const { container } = render(<Harness props={props} wordWrap={true} />);
+
+    const content = await findCmContent(container);
+    expect(within(container).getByRole('textbox', { name: /\S/ })).toBe(content);
+  });
+
+  test('renames the mounted nested CodeMirror textbox when the app language changes', async () => {
+    const props = makeProps();
+    const { container } = render(<Harness props={props} wordWrap={true} />);
+    const content = await findCmContent(container);
+    expect(
+      within(container).getByRole('textbox', { name: 'Editing broken MDX source: Parse failed' }),
+    ).toBe(content);
+
+    const french: Record<string, string> = {
+      'Editing broken MDX source: Parse failed':
+        'Modification de la source MDX invalide : Parse failed',
+    };
+    act(() => {
+      appLanguage.switchTo((text) => french[text] ?? text);
+    });
+
+    expect(
+      within(container).getByRole('textbox', {
+        name: 'Modification de la source MDX invalide : Parse failed',
+      }),
+    ).toBe(content);
   });
 
   test('applies editor.wordWrap to the nested CodeMirror instance', async () => {

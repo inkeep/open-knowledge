@@ -12,6 +12,7 @@ import { validateGitHostPatch } from './git-host-config.ts';
 import type { Err, Ok, Result } from './result.ts';
 import { type Config, type ConfigPatch, ConfigSchema } from './schema.ts';
 import { CONFIG_SCHEMA_MAJOR_PATH } from './schema-version.ts';
+import { validateSkillSourcePatch } from './skill-source-config.ts';
 import { addConfigSpanEvent, withConfigSpan, withConfigSpanSync } from './telemetry.ts';
 import { validatePatchScopes } from './validate-patch-scopes.ts';
 import { applyPatchToDocument, toConfigIssue } from './yaml-patch.ts';
@@ -101,6 +102,8 @@ async function writeConfigPatchInner(
   }
   const hostViolation = validateGitHostPatch(patch);
   if (hostViolation !== null) return err(hostViolation);
+  const skillSourceViolation = validateSkillSourcePatch(patch);
+  if (skillSourceViolation !== null) return err(skillSourceViolation);
 
   try {
     await mkdir(dirname(absPath), { recursive: true });

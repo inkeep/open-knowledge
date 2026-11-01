@@ -180,7 +180,12 @@ export function applyViewTimelineFreeze(
 ): void {
   const key = `vt|${range.startOffset}|${range.maxShift}|${timelineLength}`;
   const prev = appliedFreezes.get(cell);
-  if (prev?.key === key && prev.timeline === timeline) return;
+  if (prev?.key === key && prev.timeline === timeline) {
+    for (const animation of prev.animations) {
+      if (!anchoredAtTimelineStart(animation)) anchorScrollDrivenStartTime(animation);
+    }
+    return;
+  }
   if (prev) for (const animation of prev.animations) animation.cancel();
 
   const base: ScrollDrivenAnimationOptions = { timeline, fill: 'both', easing: 'linear' };
@@ -193,6 +198,11 @@ export function applyViewTimelineFreeze(
   const animations = [transformAnimation, chromeAnimation, occluderAnimation];
   for (const animation of animations) anchorScrollDrivenStartTime(animation);
   appliedFreezes.set(cell, { key, timeline, animations });
+}
+
+function anchoredAtTimelineStart(animation: Animation): boolean {
+  const start: unknown = animation.startTime;
+  return typeof start === 'object' && start !== null && 'value' in start && start.value === 0;
 }
 
 let scrollDrivenStartTimeRejectionWarned = false;

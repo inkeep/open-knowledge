@@ -19,8 +19,14 @@ import {
   formatIgnoredCommittedKey,
   humanFormat,
 } from '@inkeep/open-knowledge-core';
-import { type Config, ConfigSchema, trustSystemCertificates } from '@inkeep/open-knowledge-server';
+import {
+  type Config,
+  ConfigSchema,
+  loggerFactory,
+  trustSystemCertificates,
+} from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
+import { recordCliEntryPath } from './cli-entry-path.ts';
 import { getCliLogger, initCliLogger } from './cli-logger.ts';
 import { auditCommand } from './commands/audit.ts';
 import { authCommand } from './commands/auth/index.ts';
@@ -60,6 +66,8 @@ import { PACKAGE_VERSION } from './constants.ts';
 import { loadConfig } from './index.ts';
 import { recordInvocationCwd, resolveProjectAnchor } from './project-anchor.ts';
 import { buildVersionNotice } from './version-notice.ts';
+
+recordCliEntryPath(import.meta.url);
 
 const program = new Command();
 
@@ -140,12 +148,25 @@ program
       process.env.OK_CONSOLE_LEVEL = level;
     }
 
+    const actionOpts = actionCommand.opts<{ json?: boolean }>();
+    const actionName = actionCommand.name();
+    if (
+      actionOpts.json === true &&
+      (actionName === 'clone' ||
+        actionName === 'init' ||
+        (actionName === 'status' && actionCommand.parent?.name() === 'embeddings'))
+    ) {
+      loggerFactory.configure({ pinoConfig: { consoleDestination: 2 } });
+    }
+
     const subcommandName = thisCommand.args?.[0];
     const anchorRoot = resolveProjectAnchor(subcommandName, process.cwd());
     if (anchorRoot !== null) {
       recordInvocationCwd(process.cwd());
       process.chdir(anchorRoot);
-      console.error(`[ok] Using OpenKnowledge project at ${anchorRoot}`);
+      if (subcommandName !== 'deinit' || actionCommand.args.length === 0) {
+        console.error(`[ok] Using OpenKnowledge project at ${anchorRoot}`);
+      }
     }
 
     let config: Config;

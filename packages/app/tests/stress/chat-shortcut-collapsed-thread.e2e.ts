@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { ThreadServerFrame } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import type { Page } from '@playwright/test';
 import type { AgentCatalog } from '@/lib/acp/catalog';
 import { dockUnitRect, expect, test, waitForActiveProviderSynced } from './_helpers';
@@ -18,6 +19,36 @@ async function registerFixtureAgent(page: Page, agentId: string): Promise<void> 
       }),
     );
   }, agentId);
+}
+
+function collectBrowserThreadIds(page: Page, fixtureThreadId: string): Set<string> {
+  const threadIds = new Set<string>();
+  page.on('websocket', (socket) => {
+    if (!socket.url().endsWith('/collab/thread')) return;
+    socket.on('framereceived', ({ payload }) => {
+      if (typeof payload !== 'string') return;
+      const frame = JSON.parse(payload) as ThreadServerFrame;
+      if (frame.op === 'threads') {
+        for (const thread of frame.threads) {
+          if (thread.threadId !== fixtureThreadId) threadIds.add(thread.threadId);
+        }
+      }
+      if (frame.op === 'created' && frame.info.threadId !== fixtureThreadId)
+        threadIds.add(frame.info.threadId);
+    });
+  });
+  return threadIds;
+}
+
+async function closeCreatedThreads(
+  fixture: Awaited<ReturnType<typeof startHiddenChatAgent>>,
+  createdThreadIds: Set<string>,
+): Promise<void> {
+  try {
+    for (const id of createdThreadIds) await fixture.closeThread(id);
+  } finally {
+    await fixture.close();
+  }
 }
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/acp/catalog', async (route) => {
@@ -40,6 +71,7 @@ test('Chat shortcut restores a hidden real thread in the same frame', async ({
   await api.seedDocs([{ name: docName, markdown: '# Chat shortcut fixture\n' }]);
   const fixture = await startHiddenChatAgent(workerServer);
   await registerFixtureAgent(page, fixture.agentId);
+  const createdThreadIds = collectBrowserThreadIds(page, fixture.threadId);
   const client = await page.context().newCDPSession(page);
   const frames: string[] = [];
   client.on('Page.screencastFrame', (event) => {
@@ -174,7 +206,7 @@ test('Chat shortcut restores a hidden real thread in the same frame', async ({
     expect(pageErrors).toEqual([]);
   } finally {
     await client.detach();
-    await fixture.close();
+    await closeCreatedThreads(fixture, createdThreadIds);
   }
 });
 
@@ -193,6 +225,7 @@ for (const action of [
     await api.seedDocs([{ name: docName, markdown: '# Chat reveal fixture\n' }]);
     const fixture = await startHiddenChatAgent(workerServer);
     await registerFixtureAgent(page, fixture.agentId);
+    const createdThreadIds = collectBrowserThreadIds(page, fixture.threadId);
     try {
       await page.setViewportSize({ width: 1600, height: 900 });
       await page.goto(`/#/${docName}`);
@@ -310,7 +343,7 @@ for (const action of [
       await threadTab.focus();
       await expect(threadTab).toBeFocused();
     } finally {
-      await fixture.close();
+      await closeCreatedThreads(fixture, createdThreadIds);
     }
   });
 }

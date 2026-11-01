@@ -53,7 +53,7 @@ export function terminalSmokeShellCommands(
       oscTitle: (title, marker) =>
         `[Console]::Write("$([char]27)]0;${title}$([char]7)"); Write-Output ${psQuoteArg(marker)}`,
       output: (value) => `Write-Output ${psQuoteArg(value)}`,
-      processId: (marker) => `Write-Output "${marker}=$PID"`,
+      processId: (marker) => `Write-Output "${marker}=$PID;"`,
       readEnvironment: (name, label) => {
         validateEnvironmentName(name);
         return `Write-Output "${label}=[$env:${name}]"`;
@@ -78,7 +78,7 @@ export function terminalSmokeShellCommands(
     oscTitle: (title, marker) =>
       `printf '\\033]0;${title}\\007'; printf '%s\\n' ${quotePosix(marker)}`,
     output: (value) => `printf '%s\\n' ${quotePosix(value)}`,
-    processId: (marker) => `printf '${marker}=%s\\n' "$$"`,
+    processId: (marker) => `printf '${marker}=%s;\\n' "$$"`,
     readEnvironment: (name, label) => {
       validateEnvironmentName(name);
       return `echo "${label}=[$${name}]"`;
@@ -110,6 +110,22 @@ export function buildInputReadyProbe(
   };
 }
 
+export interface ProcessIdProbe {
+  marker: string;
+  command: string;
+}
+
+export function buildProcessIdProbe(
+  marker: string,
+  platform: NodeJS.Platform = process.platform,
+): ProcessIdProbe {
+  const probeMarker = `${marker}_${randomUUID().replaceAll('-', '')}`;
+  return {
+    marker: probeMarker,
+    command: terminalSmokeShellCommands(platform).processId(probeMarker),
+  };
+}
+
 export const WINDOWS_PRIMARY_PROMPT_AT_END = /PS [^>]*>\s*$/u;
 
 export function windowsPrimaryPromptAfter(marker: string): RegExp {
@@ -126,6 +142,14 @@ export function reportedWorkingDirectory(marker: string, text: string): string |
   const match = /^([^\]\n]*)\]/u.exec(text.slice(start + opening.length));
   if (!match) return null;
   return match[1];
+}
+
+export function readTerminalProcessId(marker: string, text: string): number {
+  const opening = `${marker}=`;
+  const start = text.lastIndexOf(opening);
+  if (start === -1) return 0;
+  const match = /^(\d+);/u.exec(text.slice(start + opening.length));
+  return match ? Number(match[1]) : 0;
 }
 
 interface TerminalSmokeEnvironmentOptions {

@@ -23,7 +23,11 @@ export interface SkillsShSourceRef {
   skill: string;
 }
 
-export { SkillFetchError, SkillSubpathNotFoundError } from './errors.ts';
+export {
+  SkillDestinationPolicyError,
+  SkillFetchError,
+  SkillSubpathNotFoundError,
+} from './errors.ts';
 
 const GIT_FETCH_BUDGET_MS = 60_000;
 

@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { buildManagedServerEntry, EDITOR_TARGETS, type EditorId } from '../commands/editors.ts';
 import {
   applyProjectIntegrations,
@@ -19,21 +19,24 @@ import {
   projectSkillWriter,
 } from './project-integration-writers.ts';
 
-const OWN_MCP_ENTRY = buildManagedServerEntry({
-  mode: 'published',
-  platformName: process.platform,
-});
+let ownMcpEntry: ReturnType<typeof buildManagedServerEntry>;
 
 let tmpRoot: string;
 let projectDir: string;
 
 beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
+  ownMcpEntry = buildManagedServerEntry({
+    mode: 'published',
+    platformName: process.platform,
+  });
   tmpRoot = realpathSync(mkdtempSync(resolve(tmpdir(), 'ok-project-integration-writers-')));
   projectDir = resolve(tmpRoot, 'proj');
   mkdirSync(projectDir, { recursive: true });
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
@@ -169,7 +172,7 @@ describe('projectSkillWriter', () => {
     writeFileSync(
       join(copilotHome, 'mcp-config.json'),
       JSON.stringify({
-        mcpServers: { 'open-knowledge': OWN_MCP_ENTRY },
+        mcpServers: { 'open-knowledge': ownMcpEntry },
       }),
     );
 
@@ -244,7 +247,7 @@ describe('projectSkillWriter', () => {
     writeFileSync(
       join(projectDir, '.mcp.json'),
       JSON.stringify({
-        mcpServers: { 'open-knowledge': { ...OWN_MCP_ENTRY, enabled: false } },
+        mcpServers: { 'open-knowledge': { ...ownMcpEntry, enabled: false } },
       }),
     );
 
@@ -275,7 +278,7 @@ describe('projectSkillWriter', () => {
     writeFileSync(
       join(projectDir, '.mcp.json'),
       JSON.stringify({
-        mcpServers: { 'open-knowledge': OWN_MCP_ENTRY },
+        mcpServers: { 'open-knowledge': ownMcpEntry },
       }),
     );
 

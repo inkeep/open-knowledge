@@ -18,10 +18,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 describe('fetchDocumentListShared', () => {
   test('coalesces concurrent callers onto a single in-flight request', async () => {
     let calls = 0;
-    let release: () => void = () => {};
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     globalThis.fetch = (async () => {
       calls += 1;
       await gate;

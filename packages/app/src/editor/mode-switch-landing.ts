@@ -57,11 +57,12 @@ export function requestViewInSource(params: {
   editor: Editor;
   docName: string;
   ytext: Y.Text;
+  pmPosition?: number;
 }): void {
   const { editor, docName, ytext } = params;
   const view = getEditorView(editor);
   if (!view) return;
-  const pos = view.state.selection.from;
+  const pos = params.pmPosition ?? view.state.selection.from;
   const nav = buildSourceLandingNav(view.state.doc, pos, ytext, getSharedResolver(), 'jump');
   if (nav) rememberPendingSourceNavigation(docName, nav);
   window.dispatchEvent(

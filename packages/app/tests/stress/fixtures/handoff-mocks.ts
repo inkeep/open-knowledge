@@ -143,10 +143,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
       dockStateRequests: number;
       releaseDockState: () => void;
     }
-    let releaseDockState = (): void => {};
-    const dockStateReleased = new Promise<void>((resolve) => {
-      releaseDockState = resolve;
-    });
+    const { promise: dockStateReleased, resolve: releaseDockState } = Promise.withResolvers<void>();
     const mocks: HandoffMocksState = {
       anchorClicks: [],
       openExternalCalls: [],

@@ -48,7 +48,7 @@ describe('upload-asset envelope (RFC 9457)', () => {
     expect(parsed.success).toBe(true);
     if (parsed.success) {
       expect(parsed.data.src).toBe('shot-success.png');
-      expect(parsed.data.path).toBe('docs/shot-success.png');
+      expect(parsed.data.path).toBe('docs/guide.assets/shot-success.png');
       expect(parsed.data.deduped).toBe(false);
     }
 

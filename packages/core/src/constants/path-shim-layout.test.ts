@@ -26,3 +26,28 @@ describe('path shim layout', () => {
     expect(pathShimFishConfFileName('beta')).toBe('open-knowledge-beta.fish');
   });
 });
+
+describe('Stable Linux marker layout', () => {
+  test.each([
+    [undefined, '/home/a/.config/OpenKnowledge/path-install.json'],
+    ['', '/home/a/.config/OpenKnowledge/path-install.json'],
+    ['relative', '/home/a/.config/OpenKnowledge/path-install.json'],
+    ['../relative', '/home/a/.config/OpenKnowledge/path-install.json'],
+    ['/settings', '/settings/OpenKnowledge/path-install.json'],
+    ['/settings/', '/settings/OpenKnowledge/path-install.json'],
+  ])('uses the Linux config directory for XDG_CONFIG_HOME=%s', (xdg, expected) => {
+    expect(pathShimMarkerPath('stable', '/home/a', 'linux', xdg)).toBe(expected);
+  });
+
+  test('leaves macOS and isolated channels unchanged', () => {
+    expect(pathShimMarkerPath('stable', '/Users/a', 'darwin', '/settings')).toBe(
+      '/Users/a/Library/Application Support/OpenKnowledge/path-install.json',
+    );
+    expect(pathShimMarkerPath('beta', '/home/a', 'linux', '/settings')).toBe(
+      '/home/a/.ok-beta/path-install.json',
+    );
+    expect(pathShimMarkerPath('dev', '/home/a', 'linux', '/settings')).toBe(
+      '/home/a/.ok-dev/path-install.json',
+    );
+  });
+});

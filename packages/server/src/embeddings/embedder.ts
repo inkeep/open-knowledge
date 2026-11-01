@@ -8,6 +8,7 @@ import {
   isLoopbackEmbeddingsUrl,
 } from '@inkeep/open-knowledge-core';
 import { getLogger } from '../logger.ts';
+import { EmbeddingsSecretStoreError } from './credential-errors.ts';
 import {
   type EmbeddingErrorReason,
   recordEmbeddingProviderError,
@@ -340,14 +341,35 @@ export interface ResolvedEmbeddingsCredential {
   source: EmbeddingsCredentialSource;
 }
 
+export class EmbeddingsCredentialStoreError extends EmbeddingsSecretStoreError {
+  constructor(
+    code: EmbeddingsSecretStoreError['code'] = 'native_access',
+    diagnostic?: EmbeddingsSecretStoreError['cause'],
+  ) {
+    super(code, diagnostic?.phase, diagnostic);
+    this.name = 'EmbeddingsCredentialStoreError';
+  }
+}
+
 export async function resolveEmbeddingsCredential(
   keyStore: EmbeddingsKeyStore | null,
   projectDir: string,
   baseUrl: string,
 ): Promise<ResolvedEmbeddingsCredential> {
+  let failureCode: EmbeddingsSecretStoreError['code'] | null = null;
+  let failureDiagnostic: EmbeddingsSecretStoreError['cause'];
   const resolved = keyStore
-    ? await keyStore.resolveForProject(projectDir, baseUrl).catch((err) => {
-        log.warn({ err }, '[embeddings] failed to read the stored key — treating as unset');
+    ? await keyStore.resolveForProject(projectDir, baseUrl).catch((error: unknown) => {
+        const failure =
+          error instanceof EmbeddingsSecretStoreError
+            ? error
+            : new EmbeddingsSecretStoreError('native_access', 'native_get', error);
+        failureCode = failure.code;
+        failureDiagnostic = failure.cause;
+        log.warn(
+          { reason: failureCode, diagnostic: failureDiagnostic },
+          '[embeddings] stored credentials could not be read',
+        );
         return null;
       })
     : null;
@@ -360,6 +382,9 @@ export async function resolveEmbeddingsCredential(
     if (env) return { apiKey: env, keyless: false, source: 'env' };
   }
   if (isLoopbackEmbeddingsUrl(baseUrl)) return { apiKey: null, keyless: true, source: 'none' };
+  if (failureCode) {
+    throw new EmbeddingsCredentialStoreError(failureCode, failureDiagnostic);
+  }
   return { apiKey: null, keyless: false, source: 'none' };
 }
 

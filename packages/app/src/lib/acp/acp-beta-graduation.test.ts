@@ -4,9 +4,14 @@ import { fileURLToPath } from 'node:url';
 import { SUPPORTED_LOCALES } from '@inkeep/open-knowledge-core';
 import { describe, expect, it } from 'vitest';
 import { messageOrigins } from '../../../scripts/lingui-message-origins.mjs';
+import {
+  ACP_SCAN_APP_ROOT,
+  ACP_SCAN_LOCALES_DIR,
+  ACP_SCAN_SOURCE_DIR,
+} from './acp-beta-graduation.reads';
 
-const APP_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
-const LOCALES_DIR = fileURLToPath(new URL('../../locales', import.meta.url));
+const APP_ROOT = join(fileURLToPath(new URL('../../../../..', import.meta.url)), ACP_SCAN_APP_ROOT);
+const LOCALES_DIR = join(APP_ROOT, ACP_SCAN_LOCALES_DIR);
 
 const LOCALES: readonly string[] = [...SUPPORTED_LOCALES].sort();
 
@@ -19,7 +24,7 @@ function hasMsgid(po: string, id: string): boolean {
 }
 
 function sourceFilesMentioning(text: string): string[] {
-  const srcDir = join(APP_ROOT, 'src');
+  const srcDir = join(APP_ROOT, ACP_SCAN_SOURCE_DIR);
   return readdirSync(srcDir, { recursive: true, encoding: 'utf8' })
     .filter((path) => /\.tsx?$/.test(path) && !/\.(test|e2e|stories)\./.test(path))
     .map((path) => `src/${path.replaceAll('\\', '/')}`)

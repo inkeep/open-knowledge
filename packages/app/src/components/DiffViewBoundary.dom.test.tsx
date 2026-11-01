@@ -335,10 +335,7 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
   });
 
   test('resolve buttons disable while a dispatch is in flight', async () => {
-    let release: (() => void) | undefined;
-    const pending = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: pending, resolve: release } = Promise.withResolvers<void>();
     strategyFetch('foo.md', 'delete-modify', { resolvePending: pending });
     render(<DiffViewBoundary docName="foo" conflict={entry('foo.md')} />);
 
@@ -355,7 +352,7 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
     await waitFor(() => expect(keep.disabled).toBe(true));
     expect(restore.disabled).toBe(true);
 
-    release?.();
+    release();
   });
 
   test('delete-modify (DU) renders header / content / footer with no collapsible-preview chrome', async () => {
@@ -464,10 +461,7 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
   });
 
   test('resolve buttons come back after a dispatch that succeeds without unmounting', async () => {
-    let release: (() => void) | undefined;
-    const pending = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: pending, resolve: release } = Promise.withResolvers<void>();
     strategyFetch('foo.md', 'delete-modify', { resolvePending: pending });
     render(<DiffViewBoundary docName="foo" conflict={entry('foo.md')} />);
 
@@ -481,7 +475,7 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
     fireEvent.click(keep);
     await waitFor(() => expect(keep.disabled).toBe(true));
 
-    release?.();
+    release();
 
     await waitFor(() => expect(keep.disabled).toBe(false));
     expect(restore.disabled).toBe(false);

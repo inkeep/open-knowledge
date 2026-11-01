@@ -1,11 +1,14 @@
 import { spawn as nodeSpawn } from 'node:child_process';
 import {
+  constants as fsConstants,
+  copyFileSync as fsCopyFileSync,
   existsSync as fsExistsSync,
   lstatSync as fsLstatSync,
   mkdirSync as fsMkdirSync,
   readFileSync as fsReadFileSync,
   readlinkSync as fsReadlinkSync,
   renameSync as fsRenameSync,
+  rmdirSync as fsRmdirSync,
   rmSync as fsRmSync,
   symlinkSync as fsSymlinkSync,
   unlinkSync as fsUnlinkSync,
@@ -44,14 +47,26 @@ const BLOCK_RE = new RegExp(
   'm',
 );
 
-export function pathInstallMarkerPath(home: string): string {
-  return pathShimMarkerPath(CHANNEL, home);
+export function pathInstallMarkerPath(
+  home: string,
+  platform: string = process.platform,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  return pathShimMarkerPath(CHANNEL, home, platform, env.XDG_CONFIG_HOME);
 }
 
-function legacyMarkerPath(home: string, fs: PathInstallFsOps): string | null {
-  if (LEGACY_CLI_HOME_PREFIX === null) return null;
-  const path = join(home, LEGACY_CLI_HOME_PREFIX, 'path-install.json');
-  return fs.existsSync(path) ? path : null;
+function legacyMarkerPath(
+  home: string,
+  fs: PathInstallFsOps,
+  platform: string = process.platform,
+): string | null {
+  const path =
+    CHANNEL === 'stable' && platform === 'linux'
+      ? pathShimMarkerPath(CHANNEL, home)
+      : LEGACY_CLI_HOME_PREFIX === null
+        ? null
+        : join(home, LEGACY_CLI_HOME_PREFIX, 'path-install.json');
+  return path !== null && fs.existsSync(path) ? path : null;
 }
 
 function removeLegacyCliHome(home: string, fs: PathInstallFsOps, logger: PathInstallLogger): void {
@@ -70,7 +85,15 @@ function removeLegacyCliHome(home: string, fs: PathInstallFsOps, logger: PathIns
   }
 }
 
+interface PathMarkerLocation {
+  home: string;
+  platform?: string;
+  env?: Record<string, string | undefined>;
+}
+
 interface PathInstallFsOps {
+  copyFileSync(source: string, destination: string, flags: number): void;
+  rmdirSync(path: string): void;
   existsSync(path: string): boolean;
   readFileSync(path: string, encoding: 'utf8'): string;
   writeFileSync(path: string, content: string): void;
@@ -84,6 +107,8 @@ interface PathInstallFsOps {
 }
 
 const defaultFsOps: PathInstallFsOps = {
+  copyFileSync: (source, destination, flags) => fsCopyFileSync(source, destination, flags),
+  rmdirSync: (path) => fsRmdirSync(path),
   existsSync: (path) => fsExistsSync(path),
   readFileSync: (path, encoding) => fsReadFileSync(path, encoding),
   writeFileSync: (path, content) => fsWriteFileSync(path, content),
@@ -156,12 +181,13 @@ interface EnsureCliOnPathOpts {
 }
 
 function readMarker(
-  home: string,
+  location: PathMarkerLocation,
   fs: PathInstallFsOps,
   logger: PathInstallLogger,
 ): PathInstallMarker | null {
-  const current = pathInstallMarkerPath(home);
-  const path = fs.existsSync(current) ? current : legacyMarkerPath(home, fs);
+  const { home, platform, env } = location;
+  const current = pathInstallMarkerPath(home, platform, env);
+  const path = fs.existsSync(current) ? current : legacyMarkerPath(home, fs, platform);
   if (path === null) return null;
   try {
     const parsed = JSON.parse(fs.readFileSync(path, 'utf8')) as PathInstallMarker;
@@ -187,10 +213,61 @@ function readMarker(
   }
 }
 
-function writeMarker(home: string, marker: PathInstallMarker, fs: PathInstallFsOps): void {
-  const path = pathInstallMarkerPath(home);
+function writeMarker(
+  location: PathMarkerLocation,
+  marker: PathInstallMarker,
+  fs: PathInstallFsOps,
+): void {
+  const path = pathInstallMarkerPath(location.home, location.platform, location.env);
   fs.mkdirSync(dirname(path), { recursive: true });
   fs.writeFileSync(path, `${JSON.stringify(marker, null, 2)}\n`);
+}
+
+function migrateLinuxMarker(
+  location: PathMarkerLocation,
+  fs: PathInstallFsOps,
+  logger: PathInstallLogger,
+): void {
+  if (CHANNEL !== 'stable' || location.platform !== 'linux') return;
+  const { home, platform, env } = location;
+  const current = pathInstallMarkerPath(home, platform, env);
+  if (fs.existsSync(current)) return;
+  const legacy = legacyMarkerPath(home, fs, platform);
+  if (legacy === null || readMarker(location, fs, logger) === null) return;
+  fs.mkdirSync(dirname(current), { recursive: true });
+  try {
+    fs.copyFileSync(legacy, current, fsConstants.COPYFILE_EXCL);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return;
+    throw error;
+  }
+  try {
+    fs.unlinkSync(legacy);
+  } catch (error) {
+    logger.event({
+      event: 'path-install-legacy-marker-retained',
+      path: legacy,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+  for (const directory of [
+    join(home, 'Library', 'Application Support', 'OpenKnowledge'),
+    join(home, 'Library', 'Application Support'),
+    join(home, 'Library'),
+  ]) {
+    try {
+      fs.rmdirSync(directory);
+    } catch (error) {
+      logger.event({
+        event: 'path-install-legacy-marker-directory-retained',
+        path: directory,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      break;
+    }
+  }
+  logger.event({ event: 'path-install-marker-migrated' });
 }
 
 function okBin(home: string): string {
@@ -479,8 +556,16 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
   if (shape.kind === 'unsupported') return { status: 'skipped', reason: 'bad-executable-path' };
 
   const wrapper = shape.wrapperPath;
-  const prior = readMarker(home, fs, logger);
-  const priorIsLegacy = prior !== null && !fs.existsSync(pathInstallMarkerPath(home));
+  try {
+    migrateLinuxMarker(opts, fs, logger);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.event({ event: 'path-install-marker-migration-failed', error: message });
+    return { status: 'failed-all', error: message };
+  }
+  const prior = readMarker(opts, fs, logger);
+  const priorIsLegacy =
+    prior !== null && !fs.existsSync(pathInstallMarkerPath(home, platform, opts.env));
   const explicitDecision = opts.consentDecision !== undefined;
   if (
     prior &&
@@ -494,7 +579,7 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
         consent: { status: 'granted', at: (opts.now?.() ?? new Date()).toISOString() },
       };
       try {
-        writeMarker(home, marker, fs);
+        writeMarker(opts, marker, fs);
       } catch (err) {
         logger.event({
           event: 'path-install-consent-stamp-failed',
@@ -595,7 +680,7 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
       extraSymlinks: cleanup.remaining,
       ...(consent ? { consent } : {}),
     };
-    writeMarker(home, marker, fs);
+    writeMarker(opts, marker, fs);
     removeLegacyCliHome(home, fs, logger);
     if (consent && consent.status !== prior?.consent?.status) {
       logger.event({
@@ -641,7 +726,7 @@ export function computePathInstallDescriptor(opts: {
   logger?: PathInstallLogger;
 }): McpWiringPathInstallDescriptor {
   const { home, fs = defaultFsOps, logger = DEFAULT_LOGGER } = opts;
-  const marker = readMarker(home, fs, logger);
+  const marker = readMarker(opts, fs, logger);
   const rcOptOuts = marker?.rcOptOuts ?? [];
   const targets = rcTargets(home, (opts.env ?? process.env).SHELL, fs, opts.platform).filter(
     (target) => !rcOptOuts.includes(target.path),
@@ -666,7 +751,7 @@ export function isPathShimInstalled(opts: {
   logger?: PathInstallLogger;
 }): boolean {
   const { home, fs = defaultFsOps, logger = DEFAULT_LOGGER } = opts;
-  const marker = readMarker(home, fs, logger);
+  const marker = readMarker(opts, fs, logger);
   const candidates = new Set<string>([
     ...rcTargets(home, (opts.env ?? process.env).SHELL, fs, opts.platform).map(
       (target) => target.path,
@@ -690,7 +775,7 @@ export function removePathShimFromRcFiles(opts: {
   now?: () => Date;
 }): RemovePathShimResult {
   const { home, fs = defaultFsOps, logger = DEFAULT_LOGGER } = opts;
-  const marker = readMarker(home, fs, logger);
+  const marker = readMarker(opts, fs, logger);
   const okOwnedFishConf = join(home, '.config', 'fish', 'conf.d', FISH_CONF_NAME);
   const candidates = new Set<string>([
     ...rcTargets(home, (opts.env ?? process.env).SHELL, fs, opts.platform).map(
@@ -718,7 +803,7 @@ export function removePathShimFromRcFiles(opts: {
     const consentAlreadyDeclined = marker?.consent?.status === 'declined';
     if (marker && (strippedFiles.length > 0 || !consentAlreadyDeclined)) {
       writeMarker(
-        home,
+        opts,
         {
           ...marker,
           rcFiles: [],

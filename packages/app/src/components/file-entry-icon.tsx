@@ -107,6 +107,8 @@ export function fileEntryPathIconToSvgString(path: string): string {
   return iconSvgForExt(normalizedExt);
 }
 
+const MAX_EXTENSION_BADGE_LENGTH = 4;
+
 export function FileEntryIcon({
   kind,
   path,
@@ -159,7 +161,7 @@ export function FileEntryIcon({
       ) : (
         <File aria-hidden="true" className={iconClassName} data-testid="file-entry-icon-file" />
       )}
-      {badge ? (
+      {badge && badge.length <= MAX_EXTENSION_BADGE_LENGTH ? (
         <span
           aria-hidden="true"
           className="-right-1 -bottom-1 absolute rounded-sm bg-background px-0.5 font-medium text-[0.5rem] text-muted-foreground leading-none"

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   classifyMcpLauncherEntry,
   DEFAULT_MCP_LAUNCHER_REVISION_CATALOG,
@@ -94,6 +94,14 @@ const SHAPES = [
 ] as const;
 
 describe('classifyMcpLauncherEntry', () => {
+  beforeEach(() => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   test('keeps the current Unix launcher and describes its recognized contract', () => {
     expect(
       classifyMcpLauncherEntry({

@@ -63,6 +63,7 @@ test.describe('asset-embed — drop UX (SPEC §6 FR-1, FR-1a, FR-2, FR-8)', () =
   let docName: string;
   let runId: string;
   let tinyPng: number[];
+  const assetSrc = (name: string) => escapeRegExp(`${docName}.assets/${name}`);
 
   test.beforeEach(async ({ page, api }) => {
     runId = randomUUID().slice(0, 8);
@@ -107,7 +108,7 @@ test.describe('asset-embed — drop UX (SPEC §6 FR-1, FR-1a, FR-2, FR-8)', () =
     await dropFileIntoEditor(page, tinyPng, pngName, 'image/png');
     await expect
       .poll(async () => await getSourceText(page), { timeout: 5_000 })
-      .toMatch(new RegExp(`<img\\s+src="/?${escapeRegExp(pngName)}"`));
+      .toMatch(new RegExp(`<img\\s+src="/?${assetSrc(pngName)}"`));
 
     await dropFileIntoEditor(page, tinyPng, pngName, 'image/png');
 
@@ -115,9 +116,8 @@ test.describe('asset-embed — drop UX (SPEC §6 FR-1, FR-1a, FR-2, FR-8)', () =
       .poll(
         async () => {
           const text = await getSourceText(page);
-          return (
-            text.match(new RegExp(`<img\\s+[^>]*src="/?${escapeRegExp(pngName)}"`, 'g')) ?? []
-          ).length;
+          return (text.match(new RegExp(`<img\\s+[^>]*src="/?${assetSrc(pngName)}"`, 'g')) ?? [])
+            .length;
         },
         { timeout: 5_000 },
       )
@@ -152,7 +152,7 @@ test.describe('asset-embed — drop UX (SPEC §6 FR-1, FR-1a, FR-2, FR-8)', () =
 
     await expect
       .poll(async () => await getSourceText(page), { timeout: 5_000 })
-      .toMatch(new RegExp(`<img\\s+src="/?${escapeRegExp(pngName)}"`));
+      .toMatch(new RegExp(`<img\\s+src="/?${assetSrc(pngName)}"`));
   });
 
   test('SVG drop emits as <img> JSX (image extension; NFR-3 sniff-fallback path)', async ({
@@ -165,6 +165,6 @@ test.describe('asset-embed — drop UX (SPEC §6 FR-1, FR-1a, FR-2, FR-8)', () =
     await dropFileIntoEditor(page, svgBytes, svgName, 'image/svg+xml');
     await expect
       .poll(async () => await getSourceText(page), { timeout: 5_000 })
-      .toMatch(new RegExp(`<img\\s+src="/?${escapeRegExp(svgName)}"`));
+      .toMatch(new RegExp(`<img\\s+src="/?${assetSrc(svgName)}"`));
   });
 });

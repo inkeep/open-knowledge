@@ -17,7 +17,7 @@ import {
   type EditorMcpTarget,
   type McpEntryClassification,
 } from '@inkeep/open-knowledge';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   classifyExistingMcpEntry as classifyWithOverridableEngine,
   writeUserMcpConfigs,
@@ -65,6 +65,14 @@ function memoryFs(
 }
 
 const PACKAGED_EXE = '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge';
+
+beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function fakeTarget(id: McpWiringEditorId): EditorMcpTarget {
   return {

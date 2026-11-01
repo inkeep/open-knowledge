@@ -89,8 +89,14 @@ export function skillsCommand(): Command {
       }
       const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       if (!res.ok) {
-        const detail = (body.detail as string) ?? (body.title as string) ?? `HTTP ${res.status}`;
-        process.stderr.write(`${errorColor('Import failed:')} ${detail}\n`);
+        const title = typeof body.title === 'string' ? body.title : undefined;
+        const detail = typeof body.detail === 'string' ? body.detail : undefined;
+        const message = title
+          ? detail
+            ? `${title} (${detail})`
+            : title
+          : (detail ?? `HTTP ${res.status}`);
+        process.stderr.write(`${errorColor('Import failed:')} ${message}\n`);
         process.exitCode = 1;
         return;
       }

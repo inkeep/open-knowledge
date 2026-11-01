@@ -1,12 +1,14 @@
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { okProjectLogsDir } from '@inkeep/open-knowledge-core/server';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { collectBundle, SECRET_SCRUB_EXTENSIONS } from './bundle.ts';
 import { CONTENT_SUBDIRS_MASKED } from './bundle-redact.ts';
 
 const tmpDirs: string[] = [];
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const d of tmpDirs) rmSync(d, { recursive: true, force: true });
   tmpDirs.length = 0;
 });
@@ -18,6 +20,7 @@ describe('staged-content coverage', () => {
     process: 'masked',
     'diagnostic-reports': 'masked',
     state: 'masked-separately',
+    legacy: 'masked-separately',
     extra: 'raw-bytes-by-design',
   } as const;
 
@@ -68,6 +71,22 @@ describe('staged-content coverage', () => {
     const contentDir = mkdtempSync(resolve(tmpdir(), 'ok-staging-coverage-'));
     tmpDirs.push(contentDir);
     writeFileSync(join(contentDir, 'note.md'), '# note\n');
+    const home = mkdtempSync(resolve(tmpdir(), 'ok-staging-coverage-home-'));
+    tmpDirs.push(home);
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('USERPROFILE', home);
+    const currentDir = okProjectLogsDir(contentDir);
+    mkdirSync(currentDir, { recursive: true });
+    const diagnosticFamilies = [
+      ['server-current.jsonl', join(contentDir, '.ok', 'local', 'logs')],
+      ['spans-current.jsonl', join(contentDir, '.ok', 'local', 'telemetry')],
+      ['last-spawn-error.log', join(contentDir, '.ok', 'local')],
+    ] as const;
+    for (const [filename, legacyDir] of diagnosticFamilies) {
+      mkdirSync(legacyDir, { recursive: true });
+      writeFileSync(join(currentDir, filename), '{"source":"current"}\n');
+      writeFileSync(join(legacyDir, filename), '{"source":"legacy"}\n');
+    }
 
     const reportsDir = mkdtempSync(resolve(tmpdir(), 'ok-staging-coverage-reports-'));
     tmpDirs.push(reportsDir);
@@ -119,6 +138,7 @@ describe('staged-content coverage', () => {
       expect(produced).toContain('diagnostic-reports');
       expect(produced).toContain('process');
       expect(produced).toContain('extra');
+      expect(produced).toContain('legacy');
       for (const dir of produced) {
         expect(Object.keys(TOP_LEVEL), `staged directory "${dir}" is undeclared`).toContain(dir);
       }

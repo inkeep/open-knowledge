@@ -7,31 +7,15 @@ import type {
 import { describe, expect, test, vi } from 'vitest';
 import { createIpcUserConfigBinding } from './ipc-user-config-binding';
 
-interface Deferred<T> {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-  reject: (error: unknown) => void;
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-
 function fakeTransport(initialText: string) {
-  const read = deferred<OkUserConfigSnapshot>();
+  const read = Promise.withResolvers<OkUserConfigSnapshot>();
   const changeListeners = new Set<(snapshot: OkUserConfigSnapshot) => void>();
-  const patchResponses: Array<Deferred<OkUserConfigPatchResult>> = [];
+  const patchResponses: Array<PromiseWithResolvers<OkUserConfigPatchResult>> = [];
   const patches: ConfigPatch[] = [];
   let readCount = 0;
   let diskText = initialText;
   let readError: Error | null = null;
-  let heldRead: Deferred<OkUserConfigSnapshot> | null = null;
+  let heldRead: PromiseWithResolvers<OkUserConfigSnapshot> | null = null;
   const transport: OkUserConfigBridge = {
     read: () => {
       readCount += 1;
@@ -45,7 +29,7 @@ function fakeTransport(initialText: string) {
     },
     patch: (patch) => {
       patches.push(patch);
-      const response = deferred<OkUserConfigPatchResult>();
+      const response = Promise.withResolvers<OkUserConfigPatchResult>();
       patchResponses.push(response);
       return response.promise;
     },
@@ -71,7 +55,7 @@ function fakeTransport(initialText: string) {
     },
     readCount: () => readCount,
     holdNextRead: () => {
-      const held = deferred<OkUserConfigSnapshot>();
+      const held = Promise.withResolvers<OkUserConfigSnapshot>();
       heldRead = held;
       return held;
     },

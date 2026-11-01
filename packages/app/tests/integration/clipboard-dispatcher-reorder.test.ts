@@ -35,15 +35,18 @@ function fakeDT(data: Record<string, string>): ClipboardEvent {
 
 function fakeView() {
   const captured: CapturedDispatch = { branch: 'none' };
+  const parent = { type: { name: 'paragraph' }, isTextblock: true };
   const $from = {
     depth: 1,
-    node: (_d: number) => ({ type: { name: 'paragraph' } }),
+    parent,
+    node: (_d: number) => parent,
+    sameParent: (other: { parent: unknown }) => other.parent === parent,
   };
   return {
     captured,
     view: {
       state: {
-        selection: { $from },
+        selection: { $from, $to: $from },
         schema,
         tr: {
           replaceSelection(slice: { content: { firstChild?: { toJSON: () => JSONContent } } }) {

@@ -182,13 +182,10 @@ describe('WorktreeInventoryService', () => {
 
   test('deduplicates concurrent raw snapshots and reuses a successful snapshot within the TTL', async () => {
     let reads = 0;
-    let release: ((result: { ok: true; entries: readonly BridgeWorktreeEntry[] }) => void) | null =
-      null;
-    const pending = new Promise<{ ok: true; entries: readonly BridgeWorktreeEntry[] }>(
-      (resolve) => {
-        release = resolve;
-      },
-    );
+    const { promise: pending, resolve: release } = Promise.withResolvers<{
+      ok: true;
+      entries: readonly BridgeWorktreeEntry[];
+    }>();
     const service = new WorktreeInventoryService({
       classifyProject: async () => ({
         gitCommonDir: '/repo/.git',
@@ -211,7 +208,7 @@ describe('WorktreeInventoryService', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(reads).toBe(1);
-    release?.({
+    release({
       ok: true,
       entries: [
         {

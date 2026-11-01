@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProblemType } from '@inkeep/open-knowledge-core';
@@ -27,7 +27,6 @@ import {
   prepareViteCacheDir,
   requireBoundMs,
   type ServerLog,
-  tailServerLog,
   type ViteStartupRequest,
   waitForBoundViteEndpoint,
   waitForHttpReady,
@@ -483,6 +482,31 @@ async function waitForSeededPagesSettled(baseURL: string, seededNames: string[])
   );
 }
 
+export const SERVER_LOG_TAIL_LINES = 40;
+const WORKER_SERVER_LIFETIME_RECORD = '[worker-server-lifetime] ';
+
+export interface ServerLogTail {
+  readonly report: () => string;
+  readonly close: () => void;
+}
+
+export function holdServerLogTail(serverLog: ServerLog): ServerLogTail {
+  const fd = openSync(serverLog.path, 'r');
+  const chunks: Buffer[] = [];
+  return {
+    report: () => {
+      chunks.push(readFileSync(fd));
+      const lines = Buffer.concat(chunks).toString('utf-8').split('\n');
+      const tail = `--- dev server log tail (${serverLog.path}) ---\n${lines.slice(-SERVER_LOG_TAIL_LINES).join('\n')}`;
+      const records = lines.filter((line) => line.startsWith(WORKER_SERVER_LIFETIME_RECORD));
+      return records.length === 0
+        ? tail
+        : `--- worker server lifetime records ---\n${records.join('\n')}\n${tail}`;
+    },
+    close: () => closeSync(fd),
+  };
+}
+
 export function seedRequiredFixtureFiles(contentDir: string): void {
   writeFileSync(join(contentDir, 'test-doc.md'), '', 'utf-8');
   mkdirSync(join(contentDir, 'sidebar-folder'), { recursive: true });
@@ -552,7 +576,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         WORKER_SERVER_BUDGET_RESERVES.setupOverhead,
       );
       const releaseSetupResources: Array<() => void | Promise<void>> = [];
-      let openedServerLog: ServerLog | undefined;
+      let serverLogTail: ServerLogTail | undefined;
       let started: StartedWorkerServer | undefined;
       let ownedProc: WorkerServerProcess | undefined;
       let endpoint: BoundViteEndpoint;
@@ -573,8 +597,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           if (serving.kind === 'production-shell') initProductionShellContent(contentDir);
 
           const serverLog = openServerLog(`w${workerInfo.workerIndex}`);
-          openedServerLog = serverLog;
           releaseSetupResources.push(() => closeServerLog(serverLog));
+          const heldTail = holdServerLogTail(serverLog);
+          serverLogTail = heldTail;
+          releaseSetupResources.push(heldTail.close);
 
           const proc = spawnWorkerDevServer(
             request,
@@ -617,6 +643,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         refuseStarvedBudgetSlot(setupOverhead, Date.now() - fixtureStartedAt, residue);
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
+        const tail =
+          serverLogTail === undefined
+            ? '--- no dev server log was open when this failure ended the setup ---'
+            : serverLogTail.report();
         const borrowed = budgetPhaseOverrunMessage(
           setupOverhead,
           'this failure reaps the dev server and removes the dirs the setup had created',
@@ -627,10 +657,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         } catch (cleanupErr) {
           drainFailure = `--- cleanup after this failure did not complete: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)} ---`;
         }
-        const tail =
-          openedServerLog === undefined
-            ? '--- no dev server log was open when this failure ended the setup ---'
-            : `--- dev server log tail (${openedServerLog.path}) ---\n${tailServerLog(openedServerLog)}`;
         try {
           if (ownedProc !== undefined) await completeWorkerServerRelease(ownedProc);
         } catch (cleanupErr) {
@@ -646,6 +672,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         );
       }
 
+      serverLogTail?.close();
       const { contentDir, viteCacheDir, serverLog, proc, pending, serving } = started;
 
       await use({

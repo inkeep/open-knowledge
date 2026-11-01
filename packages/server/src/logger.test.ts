@@ -1,6 +1,6 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { context, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import { BasicTracerProvider } from '@opentelemetry/sdk-trace-base';
@@ -107,12 +107,18 @@ describe('Logger', () => {
   });
 
   describe('PinoFileSink wiring', () => {
+    let fixtureDir: string;
     let tmp: string;
     beforeEach(() => {
-      tmp = mkdtempSync(join(tmpdir(), 'ok-logger-test-'));
+      fixtureDir = mkdtempSync(join(tmpdir(), 'ok-logger-test-'));
+      tmp = join(fixtureDir, 'project');
+      mkdirSync(tmp);
+      vi.stubEnv('HOME', join(fixtureDir, 'home'));
+      vi.stubEnv('USERPROFILE', join(fixtureDir, 'home'));
     });
     afterEach(() => {
-      if (tmp) rmSync(tmp, { recursive: true, force: true });
+      vi.unstubAllEnvs();
+      if (fixtureDir) rmSync(fixtureDir, { recursive: true, force: true });
     });
 
     interface ParsedLogRecord {
@@ -172,13 +178,14 @@ describe('Logger', () => {
         options: { level: 'info' },
         fileSink: { projectDir: tmp, maxBytes: 1_000_000 },
       });
-      const logsDir = join(tmp, '.ok', 'local', 'logs');
+      const logsDir = dirname(logsCurrentPath(tmp));
       expect(existsSync(logsDir)).toBe(false);
 
       logger.info({}, 'first-record');
       await logger.flushFileSink();
 
       expect(existsSync(logsDir)).toBe(true);
+      if (process.platform !== 'win32') expect(statSync(logsDir).mode & 0o777).toBe(0o700);
       expect(existsSync(logsCurrentPath(tmp))).toBe(true);
     });
 
@@ -304,11 +311,11 @@ describe('Logger', () => {
       expect(existsSync(logsCurrentPath(tmp))).toBe(false);
     });
 
-    it('omits file destination when fileSink config is absent (no .ok/local/logs created)', async () => {
+    it('omits file destination when fileSink config is absent', async () => {
       const logger = new PinoLogger('test', {
         options: { level: 'info' },
       });
-      const logsDir = join(tmp, '.ok', 'local', 'logs');
+      const logsDir = dirname(logsCurrentPath(tmp));
 
       logger.info({}, 'no-file-sink-here');
       await logger.flushFileSink();

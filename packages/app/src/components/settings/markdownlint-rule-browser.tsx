@@ -316,7 +316,7 @@ function RuleRow({
               onClick={(e) => dispatchExternalLinkClick(e, rule.docUrl)}
               onAuxClick={(e) => dispatchExternalLinkClick(e, rule.docUrl)}
               aria-label={t`Documentation for ${rule.id} (opens in browser)`}
-              className="inline-flex items-center gap-0.5 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              className="inline-flex items-center gap-0.5 text-primary underline-offset-2 hover:underline"
             >
               <Trans>Documentation</Trans>
               <ArrowUpRight aria-hidden className="size-3" />

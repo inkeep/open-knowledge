@@ -293,6 +293,7 @@ import {
   StructuralDiskReadError,
 } from './persistence-staleness-watchdog.ts';
 import { loadPrincipal } from './principal.ts';
+import { createPrivateSkillTrustAdmission } from './private-skill-trust-admission.ts';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';
 import { type ReconcileOutcome, reconcile } from './reconciliation.ts';
 import { reconcileRecoveredFileTarget } from './recovered-file-target.ts';
@@ -337,6 +338,7 @@ import {
   registerLoadedDocsProvider,
   registerPersistenceQueueDepthProvider,
 } from './server-workload-telemetry.ts';
+import { AttachmentFolderPathConfigError } from './services/assets.ts';
 import { shadowOpGateFor } from './shadow-op-gate.ts';
 import {
   buildWipTree,
@@ -896,8 +898,7 @@ export function createServer(options: ServerOptions): ServerInstance {
             )
           : [];
       if (attachmentIssues.length > 0) {
-        const details = attachmentIssues.map((issue) => issue.message).join('; ');
-        throw new Error(`Invalid content.attachmentFolderPath in project config: ${details}`);
+        throw new AttachmentFolderPathConfigError(attachmentIssues.map((issue) => issue.message));
       }
       if (options?.requireValid) {
         throw new Error('Project config is invalid', { cause: project.error });
@@ -1302,12 +1303,11 @@ export function createServer(options: ServerOptions): ServerInstance {
   let forceUnloadDocument!: (document: Document, isCurrent?: () => boolean) => Promise<void>;
   let defaultShouldUnloadDocument!: (document: Document) => boolean;
 
-  let resolveReady!: () => void;
-  let rejectReady!: (err: unknown) => void;
-  const ready = new Promise<void>((res, rej) => {
-    resolveReady = res;
-    rejectReady = rej;
-  });
+  const {
+    promise: ready,
+    resolve: resolveReady,
+    reject: rejectReady,
+  } = Promise.withResolvers<void>();
   let readyForNotices = false;
   void ready.then(
     () => {
@@ -1353,10 +1353,8 @@ export function createServer(options: ServerOptions): ServerInstance {
   });
   const offlineRemovalsReconciled = Promise.withResolvers<void>();
 
-  let resolveBranchScopeAligned!: () => void;
-  const branchScopeAligned = new Promise<void>((res) => {
-    resolveBranchScopeAligned = res;
-  });
+  const { promise: branchScopeAligned, resolve: resolveBranchScopeAligned } =
+    Promise.withResolvers<void>();
 
   const BRANCH_SCOPE_GATE_TIMEOUT_MS = 10_000;
 
@@ -1410,10 +1408,8 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   let generatedIndexSweepSettled = false;
   let generatedIndexBootSweepCount = 0;
-  let resolveGeneratedIndexSweep!: (result: GeneratedIndexSweepResult) => void;
-  const generatedIndexSweepReady = new Promise<GeneratedIndexSweepResult>((resolve) => {
-    resolveGeneratedIndexSweep = resolve;
-  });
+  const { promise: generatedIndexSweepReady, resolve: resolveGeneratedIndexSweep } =
+    Promise.withResolvers<GeneratedIndexSweepResult>();
 
   function settleGeneratedIndexSweep(result: GeneratedIndexSweepResult): void {
     if (generatedIndexSweepSettled) return;
@@ -2141,7 +2137,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     } catch (err) {
       log.warn(
         { err },
-        '[content-filter] invalid attachment folder at boot — using sibling admission',
+        '[content-filter] invalid attachment folder at boot — using default attachment placement',
       );
     }
     lastAppliedAttachmentFolderPath = initialAttachmentFolderPath;
@@ -2617,6 +2613,14 @@ export function createServer(options: ServerOptions): ServerInstance {
       },
     };
     hocuspocus.configuration.extensions.push(configDocAdmissionGuard);
+    hocuspocus.configuration.extensions.push(
+      createPrivateSkillTrustAdmission((rejectionClass) =>
+        logAuthRejection('config-doc-admission-denied', CONFIG_DOC_NAME_USER, {
+          check: 'private-skill-trust',
+          rejectionClass,
+        }),
+      ),
+    );
 
     const removalRedirectGuard: Extension & { __kind: 'removal-redirect-guard' } = {
       __kind: 'removal-redirect-guard',
@@ -4502,6 +4506,42 @@ export function createServer(options: ServerOptions): ServerInstance {
   }
   let syncEngine: SyncEngine | null = null;
   let inflightDestroy: Promise<void> | null = null;
+  let retirementStarted = false;
+  let watcherReleaseState: {
+    phaseErrors: Array<{ phase: string; error: string }>;
+    authorityGateReached: boolean;
+  } | null = null;
+
+  function recordWatcherReleaseFailure(watched: 'head' | 'content', err: unknown): void {
+    const state = watcherReleaseState;
+    if (state === null || state.authorityGateReached) {
+      log.error({ err, watched }, '[server] late watcher release failed after shutdown');
+      return;
+    }
+    state.phaseErrors.push({
+      phase: 'watcher-unsubscribe',
+      error: err instanceof Error ? err.message : String(err),
+    });
+    log.error({ err, watched }, '[server] shutdown phase-1 watcher unsubscribe failed');
+  }
+
+  async function adoptWatcher<T extends { unsubscribe(): Promise<void> }>(
+    start: () => Promise<T>,
+    publish: (handle: T) => void,
+    watched: 'head' | 'content',
+  ): Promise<void> {
+    if (retirementStarted) return;
+    const handle = await start();
+    if (retirementStarted) {
+      try {
+        await handle.unsubscribe();
+      } catch (err) {
+        recordWatcherReleaseFailure(watched, err);
+      }
+      return;
+    }
+    publish(handle);
+  }
 
   const rescueDocToShadowBuffer = (
     docName: string,
@@ -4748,10 +4788,13 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   async function destroy(): Promise<void> {
     if (inflightDestroy) return inflightDestroy;
+    retirementStarted = true;
 
     inflightDestroy = (async () => {
       const t0 = Date.now();
       const phaseErrors: Array<{ phase: string; error: string }> = [];
+      const releaseState = { phaseErrors, authorityGateReached: false };
+      watcherReleaseState = releaseState;
       const graceShareMs = Math.min(destroyTimeoutMs, DEFAULT_SIGTERM_GRACE_MS / 5);
       const preludeDeadline = Date.now() + graceShareMs;
       const preludeRemaining = () => Math.max(1, preludeDeadline - Date.now());
@@ -4907,11 +4950,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         try {
           await release.unsubscribe();
         } catch (err) {
-          phaseErrors.push({
-            phase: 'watcher-unsubscribe',
-            error: err instanceof Error ? err.message : String(err),
-          });
-          log.error({ err, watched }, '[server] shutdown phase-1 watcher unsubscribe failed');
+          recordWatcherReleaseFailure(watched, err);
         }
       };
 
@@ -5115,6 +5154,7 @@ export function createServer(options: ServerOptions): ServerInstance {
             log.error({ err: reason }, '[server] shutdown local-op subprocess drain failed');
           }
           const durationMs = Date.now() - t0;
+          releaseState.authorityGateReached = true;
           if (phaseErrors.length === 0) {
             authorityRetired = true;
             try {
@@ -5152,6 +5192,7 @@ export function createServer(options: ServerOptions): ServerInstance {
             error: err instanceof Error ? err.message : String(err),
           });
         }
+        if (watcherReleaseState === releaseState) watcherReleaseState = null;
       }
       if (authResult?.status === 'rejected') throw authResult.reason;
     })();
@@ -5671,18 +5712,25 @@ export function createServer(options: ServerOptions): ServerInstance {
             }
           }, IN_PLACE_RESCAN_DEBOUNCE_MS);
         };
-        watcher = await withSpan('ok.boot.seed-walk', undefined, async () =>
-          startWatcher(canonicalContentDir, onDiskEvent, contentFilter, {
-            onRawBatch,
-            onRecoveryComplete: () => derivedDocumentIndex.recordInventoryReconciled(),
-            onRecoveryPassCompleted: (pass, whole) => settleVanishedDocuments(pass, whole),
-            nativeBackend: options.watcherBackend,
-            clock: options.watcherClock,
-            freshnessIntervalMs:
-              options.freshnessIntervalMs === undefined
-                ? FRESHNESS_BASE_INTERVAL_MS
-                : options.freshnessIntervalMs,
-          }),
+        await adoptWatcher(
+          () =>
+            withSpan('ok.boot.seed-walk', undefined, async () =>
+              startWatcher(canonicalContentDir, onDiskEvent, contentFilter, {
+                onRawBatch,
+                onRecoveryComplete: () => derivedDocumentIndex.recordInventoryReconciled(),
+                onRecoveryPassCompleted: (pass, whole) => settleVanishedDocuments(pass, whole),
+                nativeBackend: options.watcherBackend,
+                clock: options.watcherClock,
+                freshnessIntervalMs:
+                  options.freshnessIntervalMs === undefined
+                    ? FRESHNESS_BASE_INTERVAL_MS
+                    : options.freshnessIntervalMs,
+              }),
+            ),
+          (handle) => {
+            watcher = handle;
+          },
+          'content',
         );
         void resyncRecordedSkillCopies(projectDir, contentDir)
           .then((n) => {
@@ -5780,277 +5828,284 @@ export function createServer(options: ServerOptions): ServerInstance {
 
     let releaseHeadBatchAdmission = () => {};
     try {
-      headWatcher = await startHeadWatcher(
-        projectDir,
-        async ({ trigger }) => {
-          log.info({ trigger }, `[batch] begin trigger=${trigger}`);
-          incrementBatch();
-          hocuspocus.flushPendingStores();
-          await persistence.flushPendingGitCommit();
+      await adoptWatcher(
+        () =>
+          startHeadWatcher(
+            projectDir,
+            async ({ trigger }) => {
+              log.info({ trigger }, `[batch] begin trigger=${trigger}`);
+              incrementBatch();
+              hocuspocus.flushPendingStores();
+              await persistence.flushPendingGitCommit();
 
-          holdBatch('head-watcher');
-          releaseHeadBatchAdmission();
-          releaseHeadBatchAdmission = durabilityState.holdWriteAdmission();
+              holdBatch('head-watcher');
+              releaseHeadBatchAdmission();
+              releaseHeadBatchAdmission = durabilityState.holdWriteAdmission();
 
-          if (shadowRef.current) {
-            const currentBranch = getActiveBranch();
-            const newBranch = readProjectHeadState(projectDir).branch ?? currentBranch;
-            const docs: ParkableDoc[] = [];
-            let absentBaseParkSkips = 0;
-            for (const [docName, document] of hocuspocus.documents) {
-              if (isReservedForUserTree(docName)) continue;
-              let markdown: string | null = null;
-              document.transact(() => {
-                markdown = serializeDoc(docName);
-              }, PARK_SNAPSHOT_ORIGIN);
-              if (markdown === null) continue;
-              const diskSnapshot = getReconciledBase(docName);
-              if (diskSnapshot === undefined) {
-                absentBaseParkSkips++;
-                continue;
-              }
-              docs.push({ docName, markdown, diskSnapshot });
-            }
-            if (absentBaseParkSkips > 0) {
-              log.warn(
-                { count: absentBaseParkSkips, branch: currentBranch },
-                `[history] skipped parking ${absentBaseParkSkips} doc(s) with no reconciled base; their content was not parked to the shadow history`,
-              );
-            }
-            if (docs.length > 0) {
-              try {
-                const sha = await parkBranch(
-                  shadowRef.current,
-                  currentBranch,
-                  SERVICE_WRITER.id,
-                  docs,
-                  newBranch,
-                );
-                if (sha) {
-                  incrementPark();
-                  log.info(
-                    { count: docs.length, branch: currentBranch, sha: sha.slice(0, 8) },
-                    `[history] parked ${docs.length} docs on ${currentBranch} → ${sha.slice(0, 8)}`,
+              if (shadowRef.current) {
+                const currentBranch = getActiveBranch();
+                const newBranch = readProjectHeadState(projectDir).branch ?? currentBranch;
+                const docs: ParkableDoc[] = [];
+                let absentBaseParkSkips = 0;
+                for (const [docName, document] of hocuspocus.documents) {
+                  if (isReservedForUserTree(docName)) continue;
+                  let markdown: string | null = null;
+                  document.transact(() => {
+                    markdown = serializeDoc(docName);
+                  }, PARK_SNAPSHOT_ORIGIN);
+                  if (markdown === null) continue;
+                  const diskSnapshot = getReconciledBase(docName);
+                  if (diskSnapshot === undefined) {
+                    absentBaseParkSkips++;
+                    continue;
+                  }
+                  docs.push({ docName, markdown, diskSnapshot });
+                }
+                if (absentBaseParkSkips > 0) {
+                  log.warn(
+                    { count: absentBaseParkSkips, branch: currentBranch },
+                    `[history] skipped parking ${absentBaseParkSkips} doc(s) with no reconciled base; their content was not parked to the shadow history`,
                   );
                 }
-              } catch (e) {
-                log.error({ err: e }, '[shadow] park failed');
+                if (docs.length > 0) {
+                  try {
+                    const sha = await parkBranch(
+                      shadowRef.current,
+                      currentBranch,
+                      SERVICE_WRITER.id,
+                      docs,
+                      newBranch,
+                    );
+                    if (sha) {
+                      incrementPark();
+                      log.info(
+                        { count: docs.length, branch: currentBranch, sha: sha.slice(0, 8) },
+                        `[history] parked ${docs.length} docs on ${currentBranch} → ${sha.slice(0, 8)}`,
+                      );
+                    }
+                  } catch (e) {
+                    log.error({ err: e }, '[shadow] park failed');
+                  }
+                }
               }
-            }
-          }
-        },
-        async (info) => {
-          const bufferedCount = eventBuffer.length;
-          const newBranch = info.newBranch ?? 'main';
-
-          log.info(
-            {
-              kind: info.batchKind,
-              headMoved: info.headMoved,
-              docs: bufferedCount,
-              timeout: !!info.timeout,
             },
-            `[batch] end kind=${info.batchKind} headMoved=${info.headMoved} docs=${bufferedCount}${info.timeout ? ' timeout' : ''}`,
-          );
+            async (info) => {
+              const bufferedCount = eventBuffer.length;
+              const newBranch = info.newBranch ?? 'main';
 
-          if (info.batchKind === 'within-branch') {
-            try {
-              try {
-                await drainEventBuffer();
-              } finally {
-                disposeBufferedRemovalScopes();
-              }
-
-              if (info.headMoved && info.newHead) {
-                const changes = resolveUpstreamChanges(
-                  projectDir,
-                  resolve(contentDir),
-                  info.oldHead,
-                  info.newHead,
-                );
-                if (changes.size > 0) {
-                  dropPendingDocs(changes.keys());
-                  for (const [docName, author] of changes) {
-                    recordContributor(
-                      docName,
-                      gitAuthorWriterId(author.email),
-                      author.name,
-                      author.email,
-                      formatReconcileSubject(docName),
-                    );
-                  }
-                  await persistence.flushContributors();
-                }
-              }
-            } finally {
-              try {
-                if (releaseBatchHold('head-watcher')) await finishBatch();
-              } finally {
-                releaseHeadBatchAdmission();
-              }
-            }
-            try {
-              await conflicts.pruneMergeNativeAgainstGit();
-            } catch (err) {
-              log.warn({ err }, '[head-watcher] conflict prune against git failed');
-            }
-          } else {
-            incrementBranchSwitch();
-            supersedeBranchSwitchFollowUps();
-            let batchReleased = false;
-            let switchPassFellShort = false;
-            let branchTransition: DerivedDocumentIndexBranchTransition | undefined;
-            try {
-              switchReconciledBaseScope(newBranch);
-              conflicts.setBranch(newBranch);
-              hydrateStaleExternalWrites();
-              branchTransition = await derivedDocumentIndex.beginBranchSwitch(newBranch);
-
-              contentFilter.rebuildDirCount();
-
-              try {
-                let reseedSkipCount = 0;
-                basenameIndex.clear();
-                await seedBasenameIndex({
-                  contentDir,
-                  contentFilter,
-                  basenameIndex,
-                  onSkip: (reason, code, path) => {
-                    reseedSkipCount++;
-                    log.warn(
-                      { reason, code, path, branch: newBranch },
-                      `[basename-index] skipped entry during branch-switch reseed (${reason}${code ? ` ${code}` : ''})`,
-                    );
-                  },
-                });
-                if (reseedSkipCount > 0) {
-                  log.warn(
-                    { count: reseedSkipCount, branch: newBranch },
-                    `[basename-index] branch-switch reseed completed with ${reseedSkipCount} skipped entries — embeds under inaccessible subtrees will not resolve on this branch`,
-                  );
-                  if (!degraded.includes('basename-index-partial')) {
-                    degraded.push('basename-index-partial');
-                  }
-                }
-              } catch (err) {
-                log.error(
-                  { err, branch: newBranch },
-                  '[basename-index] branch-switch reseed failed',
-                );
-              }
-
-              try {
-                await derivedDocumentIndex.settleBranchFromDisk(branchTransition);
-              } catch (err) {
-                derivedDocumentIndex.abortBranchSwitch(branchTransition);
-                log.error(
-                  { err, branch: newBranch },
-                  '[derived-index] branch-switch rebuild failed; relationship views may be stale',
-                );
-              }
-
-              try {
-                await drainEventBuffer();
-                const switchPass = await watcher?.recheck('full');
-                if (switchPass && (switchPass.status !== 'completed' || switchPass.partial)) {
-                  switchPassFellShort = true;
-                  incrementBranchSwitchRecheckShortfalls();
-                  log.warn(
-                    {
-                      branch: newBranch,
-                      status: switchPass.status,
-                      partial: switchPass.partial === true,
-                    },
-                    `[branch-switch] the re-check after switching to ${newBranch} did not observe the whole tree; another one runs once the switch ends`,
-                  );
-                }
-                await drainEventBuffer();
-              } finally {
-                disposeBufferedRemovalScopes();
-              }
-              tombstoneResidentsResolvingIntoPrivateState(newBranch);
-              log.info(
-                { branch: newBranch, docCount: hocuspocus.documents.size },
-                `[branch-switch] loaded branch ${newBranch} (${hocuspocus.documents.size} docs)`,
-              );
-
-              if (info.oldBranch?.startsWith('detached-') && shadowRef.current) {
-                try {
-                  const sg = shadowGit(shadowRef.current);
-                  const refs = (
-                    await sg.raw(
-                      'for-each-ref',
-                      `refs/wip/${info.oldBranch}/`,
-                      '--format=%(refname)',
-                    )
-                  ).trim();
-                  if (refs) {
-                    await shadowOpGateFor(shadowRef.current).withMutator(async () => {
-                      for (const ref of refs.split('\n')) {
-                        if (ref) {
-                          await sg.raw('update-ref', '-d', ref);
-                        }
-                      }
-                    });
-                    log.info(
-                      { context: info.oldBranch },
-                      `[branch-switch] cleaned up detached context ${info.oldBranch}`,
-                    );
-                  }
-                } catch (e) {
-                  log.error({ err: e }, '[branch-switch] detached cleanup failed');
-                }
-              }
-
-              batchReleased = true;
-              if (releaseBatchHold('head-watcher')) await finishBatch();
-              cc1Broadcaster?.emitBranchSwitched(newBranch);
-              if (switchPassFellShort) followUpBranchSwitchRecheck(newBranch);
-            } finally {
-              try {
-                derivedDocumentIndex.abortBranchSwitch(branchTransition);
-                if (!batchReleased && releaseBatchHold('head-watcher')) await finishBatch();
-              } finally {
-                releaseHeadBatchAdmission();
-              }
-            }
-          }
-
-          if (info.headMoved && info.newHead && shadowRef.current && bufferedCount > 0) {
-            const contentRootForShadow = contentRoot ?? '.';
-            try {
-              const sha = await commitUpstreamImport(
-                shadowRef.current,
-                contentRootForShadow,
-                info.oldHead,
-                info.newHead,
-                newBranch,
-              );
-              incrementUpstreamImport();
               log.info(
                 {
-                  oldHead: info.oldHead?.slice(0, 8) ?? 'null',
-                  newHead: info.newHead.slice(0, 8),
-                  sha: sha.slice(0, 8),
+                  kind: info.batchKind,
+                  headMoved: info.headMoved,
+                  docs: bufferedCount,
+                  timeout: !!info.timeout,
                 },
-                `[history] upstream-import from ${info.oldHead?.slice(0, 8) ?? 'null'}..${info.newHead.slice(0, 8)} → ${sha.slice(0, 8)}`,
+                `[batch] end kind=${info.batchKind} headMoved=${info.headMoved} docs=${bufferedCount}${info.timeout ? ' timeout' : ''}`,
               );
-            } catch (e) {
-              log.error({ err: e }, '[shadow] upstream-import failed');
-            }
-          }
+
+              if (info.batchKind === 'within-branch') {
+                try {
+                  try {
+                    await drainEventBuffer();
+                  } finally {
+                    disposeBufferedRemovalScopes();
+                  }
+
+                  if (info.headMoved && info.newHead) {
+                    const changes = resolveUpstreamChanges(
+                      projectDir,
+                      resolve(contentDir),
+                      info.oldHead,
+                      info.newHead,
+                    );
+                    if (changes.size > 0) {
+                      dropPendingDocs(changes.keys());
+                      for (const [docName, author] of changes) {
+                        recordContributor(
+                          docName,
+                          gitAuthorWriterId(author.email),
+                          author.name,
+                          author.email,
+                          formatReconcileSubject(docName),
+                        );
+                      }
+                      await persistence.flushContributors();
+                    }
+                  }
+                } finally {
+                  try {
+                    if (releaseBatchHold('head-watcher')) await finishBatch();
+                  } finally {
+                    releaseHeadBatchAdmission();
+                  }
+                }
+                try {
+                  await conflicts.pruneMergeNativeAgainstGit();
+                } catch (err) {
+                  log.warn({ err }, '[head-watcher] conflict prune against git failed');
+                }
+              } else {
+                incrementBranchSwitch();
+                supersedeBranchSwitchFollowUps();
+                let batchReleased = false;
+                let switchPassFellShort = false;
+                let branchTransition: DerivedDocumentIndexBranchTransition | undefined;
+                try {
+                  switchReconciledBaseScope(newBranch);
+                  conflicts.setBranch(newBranch);
+                  hydrateStaleExternalWrites();
+                  branchTransition = await derivedDocumentIndex.beginBranchSwitch(newBranch);
+
+                  contentFilter.rebuildDirCount();
+
+                  try {
+                    let reseedSkipCount = 0;
+                    basenameIndex.clear();
+                    await seedBasenameIndex({
+                      contentDir,
+                      contentFilter,
+                      basenameIndex,
+                      onSkip: (reason, code, path) => {
+                        reseedSkipCount++;
+                        log.warn(
+                          { reason, code, path, branch: newBranch },
+                          `[basename-index] skipped entry during branch-switch reseed (${reason}${code ? ` ${code}` : ''})`,
+                        );
+                      },
+                    });
+                    if (reseedSkipCount > 0) {
+                      log.warn(
+                        { count: reseedSkipCount, branch: newBranch },
+                        `[basename-index] branch-switch reseed completed with ${reseedSkipCount} skipped entries — embeds under inaccessible subtrees will not resolve on this branch`,
+                      );
+                      if (!degraded.includes('basename-index-partial')) {
+                        degraded.push('basename-index-partial');
+                      }
+                    }
+                  } catch (err) {
+                    log.error(
+                      { err, branch: newBranch },
+                      '[basename-index] branch-switch reseed failed',
+                    );
+                  }
+
+                  try {
+                    await derivedDocumentIndex.settleBranchFromDisk(branchTransition);
+                  } catch (err) {
+                    derivedDocumentIndex.abortBranchSwitch(branchTransition);
+                    log.error(
+                      { err, branch: newBranch },
+                      '[derived-index] branch-switch rebuild failed; relationship views may be stale',
+                    );
+                  }
+
+                  try {
+                    await drainEventBuffer();
+                    const switchPass = await watcher?.recheck('full');
+                    if (switchPass && (switchPass.status !== 'completed' || switchPass.partial)) {
+                      switchPassFellShort = true;
+                      incrementBranchSwitchRecheckShortfalls();
+                      log.warn(
+                        {
+                          branch: newBranch,
+                          status: switchPass.status,
+                          partial: switchPass.partial === true,
+                        },
+                        `[branch-switch] the re-check after switching to ${newBranch} did not observe the whole tree; another one runs once the switch ends`,
+                      );
+                    }
+                    await drainEventBuffer();
+                  } finally {
+                    disposeBufferedRemovalScopes();
+                  }
+                  tombstoneResidentsResolvingIntoPrivateState(newBranch);
+                  log.info(
+                    { branch: newBranch, docCount: hocuspocus.documents.size },
+                    `[branch-switch] loaded branch ${newBranch} (${hocuspocus.documents.size} docs)`,
+                  );
+
+                  if (info.oldBranch?.startsWith('detached-') && shadowRef.current) {
+                    try {
+                      const sg = shadowGit(shadowRef.current);
+                      const refs = (
+                        await sg.raw(
+                          'for-each-ref',
+                          `refs/wip/${info.oldBranch}/`,
+                          '--format=%(refname)',
+                        )
+                      ).trim();
+                      if (refs) {
+                        await shadowOpGateFor(shadowRef.current).withMutator(async () => {
+                          for (const ref of refs.split('\n')) {
+                            if (ref) {
+                              await sg.raw('update-ref', '-d', ref);
+                            }
+                          }
+                        });
+                        log.info(
+                          { context: info.oldBranch },
+                          `[branch-switch] cleaned up detached context ${info.oldBranch}`,
+                        );
+                      }
+                    } catch (e) {
+                      log.error({ err: e }, '[branch-switch] detached cleanup failed');
+                    }
+                  }
+
+                  batchReleased = true;
+                  if (releaseBatchHold('head-watcher')) await finishBatch();
+                  cc1Broadcaster?.emitBranchSwitched(newBranch);
+                  if (switchPassFellShort) followUpBranchSwitchRecheck(newBranch);
+                } finally {
+                  try {
+                    derivedDocumentIndex.abortBranchSwitch(branchTransition);
+                    if (!batchReleased && releaseBatchHold('head-watcher')) await finishBatch();
+                  } finally {
+                    releaseHeadBatchAdmission();
+                  }
+                }
+              }
+
+              if (info.headMoved && info.newHead && shadowRef.current && bufferedCount > 0) {
+                const contentRootForShadow = contentRoot ?? '.';
+                try {
+                  const sha = await commitUpstreamImport(
+                    shadowRef.current,
+                    contentRootForShadow,
+                    info.oldHead,
+                    info.newHead,
+                    newBranch,
+                  );
+                  incrementUpstreamImport();
+                  log.info(
+                    {
+                      oldHead: info.oldHead?.slice(0, 8) ?? 'null',
+                      newHead: info.newHead.slice(0, 8),
+                      sha: sha.slice(0, 8),
+                    },
+                    `[history] upstream-import from ${info.oldHead?.slice(0, 8) ?? 'null'}..${info.newHead.slice(0, 8)} → ${sha.slice(0, 8)}`,
+                  );
+                } catch (e) {
+                  log.error({ err: e }, '[shadow] upstream-import failed');
+                }
+              }
+            },
+            {
+              nativeBackend: options.watcherBackend,
+              clock: options.watcherClock,
+              onGaveUp: () => {
+                if (!degraded.includes('head-watcher')) degraded.push('head-watcher');
+              },
+              onBack: () => {
+                const at = degraded.indexOf('head-watcher');
+                if (at !== -1) degraded.splice(at, 1);
+              },
+            },
+          ),
+        (handle) => {
+          headWatcher = handle;
         },
-        {
-          nativeBackend: options.watcherBackend,
-          clock: options.watcherClock,
-          onGaveUp: () => {
-            if (!degraded.includes('head-watcher')) degraded.push('head-watcher');
-          },
-          onBack: () => {
-            const at = degraded.indexOf('head-watcher');
-            if (at !== -1) degraded.splice(at, 1);
-          },
-        },
+        'head',
       );
     } catch (err) {
       log.error({ err }, '[server] HEAD watcher failed to start');

@@ -21,6 +21,7 @@ import {
   MIN_EMBEDDINGS_MAX_BATCH_CHARS,
   MIN_EMBEDDINGS_MAX_BATCH_SIZE,
 } from './schema.ts';
+import { TrustedPrivateOriginsSchema } from './skill-source-config.ts';
 import { locateIssue } from './source-locator.ts';
 
 export interface ReadConfigSafelyOptions {
@@ -194,6 +195,38 @@ function detectAutolinkFallbacks(input: {
   return [{ code: 'VALUE_FALLBACK', issues }];
 }
 
+function detectSkillSourceFallbacks(input: {
+  rawConfig: unknown;
+  doc: Document;
+  source: string;
+  absPath: string;
+}): ValueFallbackDiagnostic[] {
+  const origins = rawValueAtPath(input.rawConfig, ['skills', 'trustedPrivateOrigins']);
+  if (origins === undefined) return [];
+  const parsed = TrustedPrivateOriginsSchema.safeParse(origins);
+  if (parsed.success) return [];
+  const issues = parsed.error.issues.map((issue) => {
+    const path = ['skills', 'trustedPrivateOrigins', ...issue.path.map(String)];
+    const located = locateIssue({
+      file: input.absPath,
+      source: input.source,
+      doc: input.doc,
+      path,
+    });
+    return {
+      path,
+      message:
+        issue.path.length === 0
+          ? `${issue.message}; ignoring the trusted website origins list.`
+          : `${issue.message}; ignoring this trusted website origin.`,
+      ...(located !== undefined
+        ? { source: { file: located.file, line: located.line, column: located.column } }
+        : {}),
+    };
+  });
+  return [{ code: 'VALUE_FALLBACK', issues }];
+}
+
 export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSafelyResult {
   const { absPath, sideline = true, timestamp = new Date().toISOString() } = options;
   const warn = options.warn ?? ((msg: string) => console.warn(msg));
@@ -243,6 +276,7 @@ export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSa
   const valueFallbackDiagnostics = [
     ...detectGitHostFallbacks({ rawConfig: cleaned, doc, source, absPath }),
     ...detectAutolinkFallbacks({ rawConfig: cleaned, doc, source, absPath }),
+    ...detectSkillSourceFallbacks({ rawConfig: cleaned, doc, source, absPath }),
   ];
   for (const diagnostic of valueFallbackDiagnostics) {
     for (const issue of diagnostic.issues) {
@@ -255,10 +289,16 @@ export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSa
     const error = buildSchemaInvalidError(parsed, doc, source, absPath);
     const git =
       ConfigSchema.shape.git.safeParse(rawValueAtPath(cleaned, ['git'])).data ?? defaults.git;
-    const fallback =
+    const skills =
+      ConfigSchema.shape.skills.safeParse(rawValueAtPath(cleaned, ['skills'])).data ??
+      defaults.skills;
+    let fallback =
       Object.keys(git.hosts).length > 0
         ? 'Using schema defaults while preserving valid git-host declarations.'
         : 'Using schema defaults.';
+    if (skills.trustedPrivateOrigins.some((origin) => origin !== null)) {
+      fallback += ' Valid website-origin approvals were preserved.';
+    }
     warn(
       `[config] ${absPath} fails schema validation (${parsed.error.issues.length} issue(s)). ${fallback}` +
         (sideline ? '' : ' Pass-through mode: file left in place.'),
@@ -274,6 +314,7 @@ export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSa
       value: {
         ...defaults,
         git,
+        skills,
       },
       error,
       diagnostics,

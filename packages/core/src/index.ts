@@ -316,6 +316,14 @@ export {
 } from './config/resolve-server-config.ts';
 export type { Err, Ok, Result } from './config/result.ts';
 export {
+  ATTACHMENT_FOLDER_PATH_VARIABLES,
+  type AttachmentFolderPathInputIssue,
+  type AttachmentFolderPathPart,
+  type AttachmentFolderPathVariableIssue,
+  attachmentFolderForDocument,
+  attachmentFolderPathInputIssue,
+  attachmentFolderPathVariableIssue,
+  attachmentFolderSegmentMatcher,
   type Config,
   type ConfigPatch,
   ConfigSchema,
@@ -330,6 +338,7 @@ export {
   DEFAULT_SPANS_MAX_BYTES,
   DEFAULT_TELEMETRY_ATTRIBUTE_DENYLIST,
   DEFAULT_TUNNEL_PORT,
+  describeAttachmentFolderPathVariableIssue,
   IDLE_SHUTDOWN_DURATION_RE,
   isLoopbackEmbeddingsUrl,
   isValidAttachmentFolderPath,
@@ -340,6 +349,7 @@ export {
   MIN_EMBEDDINGS_MAX_BATCH_CHARS,
   MIN_EMBEDDINGS_MAX_BATCH_SIZE,
   normalizeAttachmentFolderPath,
+  parseAttachmentFolderPath,
 } from './config/schema.ts';
 export { getLeafFieldMeta, resolveLeafSchema } from './config/schema-leaf.ts';
 export { CONFIG_SCHEMA_MAJOR, CONFIG_SCHEMA_MAJOR_PATH } from './config/schema-version.ts';
@@ -483,6 +493,7 @@ export {
   DEFAULT_SIGTERM_GRACE_MS,
   DEFAULT_SIGTERM_POLL_MS,
   formatSpawnAttemptHeader,
+  PROJECT_DIAGNOSTIC_FILES,
   SERVER_CRASH_LOG,
   SERVER_EXIT_LOG,
   SPAWN_ATTEMPT_MARKER,
@@ -633,6 +644,7 @@ export {
   ALLOWED_VIDEO_MIME_TYPES,
   ASSET_EXTENSIONS,
   AUDIO_EXTENSIONS,
+  BESIDE_DOCUMENT_ATTACHMENT_FOLDER_PATH,
   CODE_FILE_EXTENSIONS,
   DEFAULT_ATTACHMENT_FOLDER_PATH,
   DEFAULT_DEDUP_MODE,
@@ -1174,6 +1186,7 @@ export {
   builtInComponents,
   type ComponentRegistry,
   createRegistry,
+  propDescription,
   wildcardMeta,
 } from './registry/index.ts';
 export { JSX_SRC_REF_TAGS, type JsxSrcRefTagSpec } from './registry/jsx-src-ref-tags.ts';
@@ -1263,6 +1276,8 @@ export {
   type Anchor,
   type ApiConfigSuccess,
   ApiConfigSuccessSchema,
+  type AttachmentFolderUploadIssue,
+  AttachmentFolderUploadIssueSchema,
   agentWriteOutcomeWireFields,
   assertNeverProblemType,
   assertNeverSemanticProviderErrorReason,

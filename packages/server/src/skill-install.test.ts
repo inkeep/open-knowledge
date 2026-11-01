@@ -1,4 +1,5 @@
-import type { SpawnOptions } from 'node:child_process';
+import { type SpawnOptions, spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -40,6 +41,12 @@ function makeRecordingLogger(): { logger: SkillInstallLogger; records: RecordedL
 
 function freshHome(): string {
   return makeTempDir('ok-skill-install-');
+}
+
+function spawnedChild(): ReturnType<SpawnLike> {
+  const child = Object.assign(new EventEmitter(), { unref: () => {} });
+  queueMicrotask(() => child.emit('spawn'));
+  return child as unknown as ReturnType<SpawnLike>;
 }
 
 function installHost(home: string, hostDir: string): void {
@@ -533,7 +540,7 @@ describe('buildAndOpenSkill', () => {
       capture.command = command;
       capture.args = args;
       capture.opts = opts;
-      return { unref: () => {} } as ReturnType<SpawnLike>;
+      return spawnedChild();
     }) as SpawnLike;
   }
 
@@ -640,6 +647,52 @@ describe('buildAndOpenSkill', () => {
     expect(result.handoffError?.message).toContain('EACCES');
     expect(result.outputPath).toBeDefined();
   });
+
+  test('a missing opener fails asynchronously: status="built" with handoffError reason=spawn-error', async () => {
+    const home = freshHome();
+    const missingOpener = join(home, 'no-such-opener');
+    const spawned: string[] = [];
+
+    const result = await buildAndOpenSkill({
+      home,
+      out: join(home, 'missing-opener.skill'),
+      platformName: 'linux',
+      spawnFn: ((command: string, args: readonly string[], opts: SpawnOptions) => {
+        spawned.push(command);
+        return spawn(missingOpener, args, opts);
+      }) as SpawnLike,
+    });
+
+    expect(spawned).toEqual(['xdg-open']);
+    expect(result).toMatchObject({
+      status: 'built',
+      outputPath: join(home, 'missing-opener.skill'),
+      handoffError: {
+        reason: 'spawn-error',
+        message: expect.stringMatching(/^No system file opener \(xdg-open\) was found: .*ENOENT/),
+      },
+    });
+  });
+
+  test('an opener that exists but cannot run is reported with its own error, not as missing', async (ctx) => {
+    ctx.skip(process.platform === 'win32', 'exec permission bits are POSIX-only');
+    const home = freshHome();
+    const unrunnableOpener = join(home, 'unrunnable-opener');
+    writeFileSync(unrunnableOpener, 'not a program\n', { mode: 0o644 });
+
+    const result = await buildAndOpenSkill({
+      home,
+      out: join(home, 'unrunnable-opener.skill'),
+      platformName: 'linux',
+      spawnFn: ((_command: string, args: readonly string[], opts: SpawnOptions) =>
+        spawn(unrunnableOpener, args, opts)) as SpawnLike,
+    });
+
+    expect(result.status).toBe('built');
+    expect(result.handoffError?.reason).toBe('spawn-error');
+    expect(result.handoffError?.message).toContain(unrunnableOpener);
+    expect(result.handoffError?.message).not.toMatch(/^No system file opener/);
+  });
 });
 
 describe('buildAndOpenSkill — install-state gate', () => {
@@ -711,10 +764,8 @@ describe('buildAndOpenSkill — install-state gate', () => {
       spawnFn: ((command: string, args: readonly string[]) => {
         capture.command = command;
         capture.args = args;
-        return {
-          unref: () => {},
-        } as unknown as ReturnType<Parameters<SpawnLike>[2] extends never ? never : SpawnLike>;
-      }) as unknown as SpawnLike,
+        return spawnedChild();
+      }) as SpawnLike,
       force: true,
     });
 

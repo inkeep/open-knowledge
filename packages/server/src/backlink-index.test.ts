@@ -774,6 +774,11 @@ describe('BacklinkIndex', () => {
       const index = new BacklinkIndex({ projectDir, contentDir });
       index.updateDocumentFromMarkdown('alpha', '# Alpha\n\nSee [[ghost]].\n');
       await index.saveToDisk();
+      const raw = readFileSync(
+        join(projectDir, '.ok', LOCAL_DIR, 'cache', 'main', 'backlinks.json'),
+        'utf-8',
+      );
+      expect(raw).toBe(JSON.stringify(JSON.parse(raw)));
 
       const reloaded = new BacklinkIndex({ projectDir, contentDir });
       expect(await reloaded.loadFromDisk()).toBe(true);

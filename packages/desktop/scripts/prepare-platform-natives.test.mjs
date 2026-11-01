@@ -131,6 +131,7 @@ const run = (root, overrides = {}) => {
     registry,
     extract: extractWithTar('tar'),
     log: (line) => lines.push(line),
+    sleepImpl: async () => {},
     ...overrides,
   }).then(() => lines);
 };
@@ -187,15 +188,135 @@ describe('prepare-platform-natives', () => {
 
   test('names an HTTP failure by its status', async () => {
     const root = fixtureRoot();
+    const before = hits;
     mode = 'unavailable';
     await expect(run(root)).rejects.toThrow(/→ HTTP 503 Service Unavailable/);
+    expect(hits).toBe(before + 2);
     expect(existsSync(arm64Dir(root))).toBe(false);
+  });
+
+  test('retries an HTTP 5xx response once before succeeding', async () => {
+    const root = fixtureRoot();
+    let attempts = 0;
+    const lines = await run(root, {
+      fetchImpl: async () => {
+        attempts += 1;
+        if (attempts === 1) return new Response('unavailable', { status: 503 });
+        return new Response(archive, { status: 200 });
+      },
+    });
+    expect(attempts).toBe(2);
+    expect(lines.join('\n')).toContain('failed on attempt 1: HTTP 503');
+    expect(lines.join('\n')).toContain('on attempt 2');
+    expect(readFileSync(join(arm64Dir(root), 'keyring.win32-arm64-msvc.node'))).toEqual(
+      nativeBytes,
+    );
   });
 
   test('names a dropped connection by its cause code', async () => {
     const root = fixtureRoot();
     mode = 'drop';
     await expect(run(root)).rejects.toThrow(/failed: (UND_ERR_SOCKET|ECONNRESET)/);
+  });
+
+  test('retries a transient connection error once before succeeding', async () => {
+    const root = fixtureRoot();
+    let attempts = 0;
+    const lines = await run(root, {
+      fetchImpl: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          const error = new Error('connection timed out');
+          error.cause = { code: 'UND_ERR_CONNECT_TIMEOUT', message: 'connection timed out' };
+          throw error;
+        }
+        return new Response(archive, { status: 200 });
+      },
+    });
+    expect(attempts).toBe(2);
+    expect(lines.join('\n')).toContain(`${ARM64}@${VERSION} fetched `);
+    expect(lines.join('\n')).toContain('on attempt 2');
+    expect(readFileSync(join(arm64Dir(root), 'keyring.win32-arm64-msvc.node'))).toEqual(
+      nativeBytes,
+    );
+  });
+
+  test('fails after one retry when a transient connection error persists', async () => {
+    const root = fixtureRoot();
+    let attempts = 0;
+    const failure = await run(root, {
+      fetchImpl: async () => {
+        attempts += 1;
+        const error = new Error('connection timed out');
+        error.cause = { code: 'UND_ERR_CONNECT_TIMEOUT', message: 'connection timed out' };
+        throw error;
+      },
+    }).catch((error) => error);
+    expect(attempts).toBe(2);
+    expect(failure).toBeInstanceOf(NativesError);
+    expect(failure.message).toContain(`${ARM64}@${VERSION}`);
+    expect(failure.message).toContain(`keyring-win32-arm64-msvc-${VERSION}.tgz`);
+    expect(failure.message).toContain('attempts: 2');
+  });
+
+  test('fails a not-found response without retrying', async () => {
+    const root = fixtureRoot();
+    let attempts = 0;
+    const failure = await run(root, {
+      fetchImpl: async () => {
+        attempts += 1;
+        return new Response('missing', { status: 404, statusText: 'Not Found' });
+      },
+    }).catch((error) => error);
+    expect(attempts).toBe(1);
+    expect(failure).toBeInstanceOf(NativesError);
+    expect(failure.message).toContain(`${ARM64}@${VERSION}`);
+    expect(failure.message).toContain(`keyring-win32-arm64-msvc-${VERSION}.tgz`);
+    expect(failure.message).toContain('attempts: 1');
+  });
+
+  test('fails a checksum mismatch without retrying', async () => {
+    const root = fixtureRoot();
+    let attempts = 0;
+    const failure = await run(root, {
+      fetchImpl: async () => {
+        attempts += 1;
+        return new Response(Buffer.from('tampered archive'), { status: 200 });
+      },
+    }).catch((error) => error);
+    expect(attempts).toBe(1);
+    expect(failure).toBeInstanceOf(NativesError);
+    expect(failure.message).toContain(`${ARM64}@${VERSION}`);
+    expect(failure.message).toContain(`keyring-win32-arm64-msvc-${VERSION}.tgz`);
+    expect(failure.message).toContain('sha512 hash mismatch');
+    expect(failure.message).toContain('attempts: 1');
+  });
+
+  test('retries a transient body timeout once before succeeding', async () => {
+    const root = fixtureRoot();
+    let attempts = 0;
+    const lines = await run(root, {
+      fetchImpl: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          const error = new Error('response body timed out');
+          error.cause = { code: 'UND_ERR_BODY_TIMEOUT', message: 'response body timed out' };
+          return {
+            ok: true,
+            arrayBuffer: async () => {
+              throw error;
+            },
+          };
+        }
+        return new Response(archive, { status: 200 });
+      },
+    });
+    expect(attempts).toBe(2);
+    expect(lines.join('\n')).toContain('body read failed on attempt 1');
+    expect(lines.join('\n')).toContain('on attempt 2');
+    expect(readFileSync(join(arm64Dir(root), 'keyring.win32-arm64-msvc.node'))).toEqual(
+      nativeBytes,
+    );
   });
 
   test('rebuilds a partial install from verified bytes', async () => {

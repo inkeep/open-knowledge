@@ -631,9 +631,12 @@ async function handleAsset(
       : {
           ok: false,
           status,
-          error:
-            (data && (typeof data.title === 'string' ? data.title : (data.error as string))) ||
-            `Upload failed (HTTP ${status}).`,
+          error: requestFailureText({
+            error:
+              (data && (typeof data.title === 'string' ? data.title : (data.error as string))) ||
+              `Upload failed (HTTP ${status}).`,
+            detail: data?.detail,
+          }),
         };
   if (!resBody.ok) return textResult(`Error: ${resBody.error}`, true);
 
@@ -1112,7 +1115,7 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
             path: z
               .string()
               .describe(
-                'Asset path incl. extension — the slashes are the folder. Example: "images/diagram.png". A bare file name (no folder) goes to the attachment folder (`content.attachmentFolderPath`; by default the content root).',
+                'Asset path incl. extension — the slashes are the folder. Example: "images/diagram.png". A bare file name (no folder) goes to the attachment folder (`content.attachmentFolderPath`; by default the content root). It has no parent document, so a setting that uses `{{filename}}` puts it in the content root.',
               ),
             content: z.string().optional().describe('Base64 of the binary. Use for small files.'),
             source: z

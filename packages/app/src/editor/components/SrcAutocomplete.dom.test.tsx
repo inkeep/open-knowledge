@@ -54,7 +54,7 @@ afterEach(() => {
 });
 
 function getOptions(): HTMLButtonElement[] {
-  return screen.queryAllByTestId('src-autocomplete-option') as HTMLButtonElement[];
+  return screen.queryAllByTestId('suggestion-option') as HTMLButtonElement[];
 }
 
 describe('SrcAutocomplete — open behavior', () => {
@@ -267,7 +267,7 @@ describe('SrcAutocomplete — popover width tracks the trigger', () => {
     const input = document.getElementById('prop-src') as HTMLInputElement;
     fireEvent.click(input);
 
-    const option = screen.getAllByTestId('src-autocomplete-option')[0];
+    const option = screen.getAllByTestId('suggestion-option')[0];
     expect(option).toBeDefined();
     const content = option?.closest('[data-slot="popover-content"]') as HTMLElement | null;
     expect(content).not.toBeNull();

@@ -50,6 +50,7 @@ async function bootOnMainWithFeatureBranch(): Promise<{
 }> {
   const contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-branch-switch-agent-write-')));
   cleanups.push(() => rmSync(contentDir, { recursive: true, force: true }));
+  git(contentDir, 'init --initial-branch=main');
   await ensureProjectGit(contentDir);
   configureTestGitRepository(contentDir);
   git(contentDir, 'config user.name test');
@@ -97,10 +98,7 @@ describe('agent writes during a git branch switch', () => {
   test.runIf(process.platform !== 'win32')(
     'a patch sent while the switch settles is held, then written to the new branch',
     async () => {
-      let releaseSettle: () => void = () => {};
-      const settleHeld = new Promise<void>((resolve) => {
-        releaseSettle = resolve;
-      });
+      const { promise: settleHeld, resolve: releaseSettle } = Promise.withResolvers<void>();
       const settleBranchFromDisk = DerivedDocumentIndex.prototype.settleBranchFromDisk;
       const settleSpy = vi
         .spyOn(DerivedDocumentIndex.prototype, 'settleBranchFromDisk')

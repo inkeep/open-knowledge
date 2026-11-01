@@ -24,6 +24,7 @@ import {
   type ProcessStart,
   parseProcessStartToken,
   processStartToken,
+  readBootStartedAtMs,
   readProcessStart,
   readPsProcessStart,
   registerNativeProcessStartReader,
@@ -45,6 +46,12 @@ function lockWrittenAt(extra: Partial<LockHolderIdentity> = {}): LockHolderIdent
 function creationStart(offsetFromWrittenMs: number): ProcessStart {
   return { startedAtMs: WRITTEN_AT_MS + offsetFromWrittenMs, clock: 'creation' };
 }
+
+function bootedAt(offsetFromWrittenMs: number): () => number {
+  return () => WRITTEN_AT_MS + offsetFromWrittenMs;
+}
+
+const BOOTED_BEFORE_LOCK = bootedAt(-THIRTY_SIX_HOURS_MS);
 
 function bootDerivedStart(
   offsetFromWrittenMs: number,
@@ -293,6 +300,7 @@ describe('assessLockHolder', () => {
           {
             isAlive: () => true,
             readProcessStart: () => live,
+            readBootInstant: BOOTED_BEFORE_LOCK,
             sameMachine: true,
             refuseHolderStartedAfterLock,
           },
@@ -398,6 +406,129 @@ describe('assessLockHolder', () => {
       }),
     ).toEqual({ verdict: 'gone' });
   });
+
+  test('an unreadable holder of a lock written before this machine booted is replaced', () => {
+    expect(
+      assessLockHolder(lockWrittenAt({ machineId: getMachineId() }), {
+        isAlive: () => true,
+        readProcessStart: () => null,
+        platform: 'win32',
+        readBootInstant: bootedAt(THIRTY_SIX_HOURS_MS),
+      }),
+    ).toEqual({ verdict: 'replaced' });
+  });
+
+  test('an unreadable holder of a lock naming only this hostname written before boot is replaced', () => {
+    expect(
+      assessLockHolder(lockWrittenAt({ hostname: hostname() }), {
+        isAlive: () => true,
+        readProcessStart: () => null,
+        platform: 'win32',
+        readBootInstant: bootedAt(THIRTY_SIX_HOURS_MS),
+      }),
+    ).toEqual({ verdict: 'replaced' });
+  });
+
+  test('a lock whose recorded process start is after boot is not dated by an earlier startedAt', () => {
+    expect(
+      assessLockHolder(
+        lockWrittenAt({
+          machineId: getMachineId(),
+          processStart: { startedAtMs: WRITTEN_AT_MS + 2 * THIRTY_SIX_HOURS_MS },
+        }),
+        {
+          isAlive: () => true,
+          readProcessStart: () => null,
+          platform: 'win32',
+          readBootInstant: bootedAt(THIRTY_SIX_HOURS_MS),
+        },
+      ),
+    ).toEqual({ verdict: 'unverified', cause: 'process-start-unreadable' });
+  });
+
+  test('an unreadable holder of a lock written minutes before boot stays unverified', () => {
+    expect(
+      assessLockHolder(lockWrittenAt({ machineId: getMachineId() }), {
+        isAlive: () => true,
+        readProcessStart: () => null,
+        platform: 'win32',
+        readBootInstant: bootedAt(60_000),
+      }),
+    ).toEqual({ verdict: 'unverified', cause: 'process-start-unreadable' });
+  });
+
+  test('an unreadable holder of a lock that records no write time stays unverified', () => {
+    expect(
+      assessLockHolder(
+        { pid: HOLDER_PID, machineId: getMachineId() },
+        {
+          isAlive: () => true,
+          readProcessStart: () => null,
+          platform: 'win32',
+          readBootInstant: bootedAt(THIRTY_SIX_HOURS_MS),
+        },
+      ),
+    ).toEqual({ verdict: 'unverified', cause: 'process-start-unreadable' });
+  });
+
+  test('an unreadable holder stays unverified when the boot time cannot be read', () => {
+    expect(
+      assessLockHolder(lockWrittenAt({ machineId: getMachineId() }), {
+        isAlive: () => true,
+        readProcessStart: () => null,
+        platform: 'win32',
+        readBootInstant: () => null,
+      }),
+    ).toEqual({ verdict: 'unverified', cause: 'process-start-unreadable' });
+  });
+
+  test('a lock from another machine written before this machine booted still names that machine', () => {
+    expect(
+      assessLockHolder(lockWrittenAt({ machineId: 'another-machine-0000' }), {
+        isAlive: () => true,
+        readProcessStart: () => null,
+        platform: 'win32',
+        readBootInstant: bootedAt(THIRTY_SIX_HOURS_MS),
+      }),
+    ).toEqual({ verdict: 'unverified', cause: 'foreign-host' });
+  });
+
+  test.each(['linux', 'darwin'] as const)(
+    'on %s an unreadable holder of a lock written before this machine booted stays unverified',
+    (platform) => {
+      expect(
+        assessLockHolder(lockWrittenAt({ machineId: getMachineId() }), {
+          isAlive: () => true,
+          readProcessStart: () => null,
+          platform,
+          readBootInstant: bootedAt(THIRTY_SIX_HOURS_MS),
+        }),
+      ).toEqual({ verdict: 'unverified', cause: 'process-start-unreadable' });
+    },
+  );
+});
+
+describe('readBootStartedAtMs', () => {
+  test('dates the boot by subtracting uptime from now', () => {
+    expect(readBootStartedAtMs(1_000_000_000, () => 120.4)).toBe(1_000_000_000 - 120_400);
+  });
+
+  test('an unusable uptime fails open to null rather than throwing', () => {
+    expect(readBootStartedAtMs(1_000_000_000, () => 0)).toBeNull();
+    expect(readBootStartedAtMs(1_000_000_000, () => Number.NaN)).toBeNull();
+    expect(
+      readBootStartedAtMs(1_000_000_000, () => {
+        throw new Error('uptime unavailable');
+      }),
+    ).toBeNull();
+  });
+
+  test('the live boot instant precedes now', () => {
+    const now = Date.now();
+    const bootStartedAtMs = readBootStartedAtMs(now);
+    expect(bootStartedAtMs).not.toBeNull();
+    expect(bootStartedAtMs).toBeLessThan(now);
+  });
 });
 
 describe('classifyLockHolder', () => {
@@ -418,6 +549,7 @@ describe('classifyLockHolder', () => {
       classifyLockHolder(lockWrittenAt({ machineId: getMachineId() }), {
         isAlive: () => true,
         readProcessStart: () => null,
+        readBootInstant: BOOTED_BEFORE_LOCK,
       }),
     ).toBe('unverified');
   });

@@ -1,4 +1,9 @@
 import { incrementJsxRenderFailure } from '@inkeep/open-knowledge-core/metrics/parse-health';
+import {
+  COMPONENT_PROPS_BUDGET_ERROR,
+  componentPropsBudgetError,
+  resolveLegacyProps,
+} from '@inkeep/open-knowledge-core/registry';
 import type { Editor } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import type { ErrorInfo } from 'react';
@@ -10,17 +15,44 @@ import { normalizeDocRelativeMediaRenderProps } from './media-render-props.ts';
 
 export const JSX_WRAPPER_CLASS = 'jsx-component-wrapper my-2';
 
+type JsxPropsDescriptor = Pick<JsxComponentDescriptor, 'props' | 'reactNodePropNames'>;
+
 export function extractPrimitiveProps(
   attrs: Record<string, unknown>,
-  reactNodeNames: ReadonlySet<string>,
+  descriptor: JsxPropsDescriptor,
+  includeTextChildren = false,
 ): Record<string, unknown> {
-  const propsObj = (attrs.props ?? {}) as Record<string, unknown>;
+  const propsObj = resolveLegacyProps(
+    descriptor.props,
+    (attrs.props ?? {}) as Record<string, unknown>,
+  );
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(propsObj)) {
-    if (reactNodeNames.has(key)) continue;
+    if (
+      descriptor.reactNodePropNames.has(key) &&
+      !(includeTextChildren && key === 'children' && typeof value === 'string' && value !== '')
+    )
+      continue;
     result[key] = value;
   }
   return sanitizeComponentProps(result);
+}
+
+export function prepareJsxProps(
+  attrs: Record<string, unknown>,
+  descriptor: JsxPropsDescriptor,
+  includeTextChildren = false,
+): { props: Record<string, unknown>; error: string | null } {
+  const error = componentPropsBudgetError(attrs.props);
+  if (error) return { props: {}, error };
+  try {
+    return { props: extractPrimitiveProps(attrs, descriptor, includeTextChildren), error: null };
+  } catch (error) {
+    if (error instanceof RangeError && error.message === COMPONENT_PROPS_BUDGET_ERROR) {
+      return { props: {}, error: error.message };
+    }
+    throw error;
+  }
 }
 
 export function resolveJsxSourceDocName(extensionOptions: unknown, editor: Editor): string | null {

@@ -99,10 +99,7 @@ async function awaitReceipt(runDir: string, child: ChildProcess): Promise<Receip
 }
 
 function watchScratchGone(runDir: string): { result: Promise<boolean>; stop: () => void } {
-  let finishResult: (gone: boolean) => void = () => {};
-  const result = new Promise<boolean>((resolve) => {
-    finishResult = resolve;
-  });
+  const { promise: result, resolve: finishResult } = Promise.withResolvers<boolean>();
   let watcher: ReturnType<typeof watch> | undefined;
   let bound: ReturnType<typeof setTimeout> | undefined;
   let settled = false;

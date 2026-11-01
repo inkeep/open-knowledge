@@ -13,6 +13,67 @@ const RELEASE_VERSION_RE = /^v?(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/;
 
 const RELEASES_URL = 'https://github.com/inkeep/open-knowledge/releases';
 
+const CONTACT_EMAIL_LINE_RE = /^ {0,3}[-*+]\s+Contact email:(.*)$/i;
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
+const ADDRESS_RE = /^[^\s@<>()[\]:]+@[^\s@<>()[\]]+\.[^\s@<>()[\].]+$/;
+const ADDRESS_IN_TEXT_RE = /[^\s@<>()[\]:]+@[^\s@<>()[\]]+\.[^\s@<>()[\].]+/;
+const INTERNAL_DOMAIN_RE = /(?:^|\.)inkeep\.[a-z]{2,}$/i;
+
+export function parseContactEmail(description) {
+  let fence = null;
+  for (const line of String(description ?? '').split(/\r?\n/)) {
+    const marker = FENCE_RE.exec(line)?.[1];
+    if (fence) {
+      if (
+        marker &&
+        marker[0] === fence[0] &&
+        marker.length >= fence.length &&
+        !line.trim().slice(marker.length)
+      )
+        fence = null;
+      continue;
+    }
+    if (marker) {
+      fence = marker;
+      continue;
+    }
+    const field = CONTACT_EMAIL_LINE_RE.exec(line);
+    if (field) return addressFromField(field[1]);
+  }
+  return null;
+}
+
+function addressFromField(raw) {
+  const value = raw.replace(/\\([!-/:-@[-`{-~])/g, '$1');
+  const mailto = /mailto:([^\s<>()]+)/i.exec(value)?.[1];
+  let address = mailto ?? ADDRESS_IN_TEXT_RE.exec(value)?.[0] ?? '';
+  try {
+    address = decodeURIComponent(address);
+  } catch {
+    return null;
+  }
+  return ADDRESS_RE.test(address) ? address : null;
+}
+
+export function isInternalContactEmail(address) {
+  return INTERNAL_DOMAIN_RE.test(
+    String(address ?? '')
+      .split('@')
+      .at(-1),
+  );
+}
+
+export function contactEmailOrigin(address, reportIdentifier, reportKind = 'bug-report') {
+  return {
+    kind: 'repliable-origin',
+    channel: 'email',
+    url: `mailto:${address.toLowerCase()}`,
+    address,
+    reportIdentifier,
+    reportKind,
+  };
+}
+
 export function classifyAttachment(rawUrl) {
   const url = String(rawUrl ?? '').trim();
   if (!url) return { kind: 'unknown', url };
@@ -250,16 +311,47 @@ export function composeReply({
           '',
         ]
       : []),
-    openingLine(channel, normalizedVersion),
+    openingLine(channel, normalizedVersion, originChannel),
   ];
 
-  if (coverage.length > 0) {
+  if (coverage.length > 0 && originChannel !== 'email') {
     lines.push('', `Covers ${[...coverage].sort().join(', ')}.`);
   }
 
   lines.push('', updateInstruction(originChannel, channel, normalizedVersion));
 
+  if (originChannel === 'email') {
+    lines.push(
+      '',
+      'You are getting this email because you left this address when you sent the ' +
+        'Open Knowledge team a report or feedback. Reply to reach the team.',
+    );
+  }
+
   return lines.join('\n');
+}
+
+export function composeEmailSubject({
+  identifier,
+  version,
+  channel = 'stable',
+  correction = false,
+  reportKind = 'bug-report',
+}) {
+  const v = String(version ?? '')
+    .trim()
+    .replace(/^v/, '');
+  const subject =
+    reportKind === 'feedback'
+      ? 'what you told us about Open Knowledge'
+      : `your Open Knowledge report ${identifier}`;
+  if (channel === 'beta') {
+    return `${correction ? 'Correction: a' : 'A'} fix for ${subject} is in beta v${v}`;
+  }
+  const sentence = `${subject} is fixed in v${v}`;
+  return correction
+    ? `Correction: ${sentence}`
+    : `${sentence[0].toUpperCase()}${sentence.slice(1)}`;
 }
 
 function updateInstruction(originChannel, channel, version) {
@@ -271,16 +363,25 @@ function updateInstruction(originChannel, channel, version) {
   if (originChannel === 'discord-thread') {
     return `${lead} <${url}>.`;
   }
+  if (originChannel === 'email') {
+    return channel === 'beta'
+      ? `Read the notes and download the beta at ${url}`
+      : `To pick it up, get the latest Open Knowledge. The notes are at ${url}`;
+  }
   return `${lead} [the release page](${url}).`;
 }
 
-function openingLine(channel, version) {
+function openingLine(channel, version, originChannel) {
   if (channel === 'beta') {
     return (
       `This fix is available in Open Knowledge beta v${version}. ` +
-      'Thanks for the report. It will reach the stable channel in an upcoming release, ' +
-      'and we will follow up here when it does.'
+      `${thanks(originChannel)} It will reach the stable channel in an upcoming release, ` +
+      `and we will ${originChannel === 'email' ? 'email you again' : 'follow up here'} when it does.`
     );
   }
-  return `This shipped in Open Knowledge v${version}. Thanks for the report.`;
+  return `This shipped in Open Knowledge v${version}. ${thanks(originChannel)}`;
+}
+
+function thanks(originChannel) {
+  return originChannel === 'email' ? 'Thanks for telling us.' : 'Thanks for the report.';
 }

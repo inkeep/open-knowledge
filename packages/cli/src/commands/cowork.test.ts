@@ -1,4 +1,5 @@
 import type { spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,7 +15,9 @@ function makeFakeSpawn(capture: {
     if (capture.threw) throw capture.threw;
     capture.command = command;
     capture.args = args;
-    return { unref: () => {} } as unknown as ReturnType<typeof spawn>;
+    const child = Object.assign(new EventEmitter(), { unref: () => {} });
+    queueMicrotask(() => child.emit('spawn'));
+    return child as unknown as ReturnType<typeof spawn>;
   }) as unknown as typeof spawn;
 }
 

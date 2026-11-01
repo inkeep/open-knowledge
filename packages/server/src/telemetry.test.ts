@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { context, metrics, propagation, trace } from '@opentelemetry/api';
@@ -7,7 +7,7 @@ import {
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getMeter,
   getTracer,
@@ -28,6 +28,7 @@ function makeLocalSinkOpts(projectDir: string): LocalSinkOptions {
 }
 
 describe('Telemetry', () => {
+  let fixtureDir: string;
   let tmp: string;
   beforeEach(async () => {
     await shutdownTelemetry();
@@ -36,7 +37,11 @@ describe('Telemetry', () => {
     context.disable();
     delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
     delete process.env.OTEL_EXPORTER_OTLP_TIMEOUT;
-    tmp = mkdtempSync(join(tmpdir(), 'ok-telemetry-test-'));
+    fixtureDir = mkdtempSync(join(tmpdir(), 'ok-telemetry-test-'));
+    tmp = join(fixtureDir, 'project');
+    mkdirSync(tmp);
+    vi.stubEnv('HOME', join(fixtureDir, 'home'));
+    vi.stubEnv('USERPROFILE', join(fixtureDir, 'home'));
   });
 
   afterEach(async () => {
@@ -44,7 +49,8 @@ describe('Telemetry', () => {
     trace.disable();
     metrics.disable();
     context.disable();
-    if (tmp) rmSync(tmp, { recursive: true, force: true });
+    vi.unstubAllEnvs();
+    if (fixtureDir) rmSync(fixtureDir, { recursive: true, force: true });
   });
 
   describe('Gate combination 1 — both off (file sink absent + push disabled)', () => {

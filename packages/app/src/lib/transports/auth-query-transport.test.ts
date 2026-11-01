@@ -75,10 +75,7 @@ describe('httpAuthQueryTransport().status', () => {
   });
 
   it('coalesces concurrent same-host checks across transport instances', async () => {
-    let resolveFetch: ((response: Response) => void) | undefined;
-    const pendingResponse = new Promise<Response>((resolve) => {
-      resolveFetch = resolve;
-    });
+    const { promise: pendingResponse, resolve: resolveFetch } = Promise.withResolvers<Response>();
     stubFetch(() => pendingResponse);
 
     const a = httpAuthQueryTransport().status();
@@ -87,7 +84,7 @@ describe('httpAuthQueryTransport().status', () => {
     expect(fetchCalls).toHaveLength(1);
     expect(fetchCalls[0]?.url).toBe('/api/local-op/auth/status');
 
-    resolveFetch?.(
+    resolveFetch(
       new Response(JSON.stringify({ authenticated: true, host: 'github.com', login: 'octocat' }), {
         status: 200,
       }),
@@ -104,16 +101,9 @@ describe('httpAuthQueryTransport().status', () => {
   });
 
   it('keeps concurrent different-host checks isolated', async () => {
-    let resolveGithub: ((response: Response) => void) | undefined;
-    let resolveGitlab: ((response: Response) => void) | undefined;
-    const pendingResponses = [
-      new Promise<Response>((resolve) => {
-        resolveGithub = resolve;
-      }),
-      new Promise<Response>((resolve) => {
-        resolveGitlab = resolve;
-      }),
-    ];
+    const { promise: githubResponse, resolve: resolveGithub } = Promise.withResolvers<Response>();
+    const { promise: gitlabResponse, resolve: resolveGitlab } = Promise.withResolvers<Response>();
+    const pendingResponses = [githubResponse, gitlabResponse];
     stubFetch(() => {
       const response = pendingResponses.shift();
       if (!response) throw new Error('unexpected extra fetch');
@@ -129,10 +119,10 @@ describe('httpAuthQueryTransport().status', () => {
       'gitlab.com',
     ]);
 
-    resolveGithub?.(
+    resolveGithub(
       new Response(JSON.stringify({ authenticated: true, host: 'github.com', login: 'octocat' })),
     );
-    resolveGitlab?.(new Response(JSON.stringify({ authenticated: false, host: 'gitlab.com' })));
+    resolveGitlab(new Response(JSON.stringify({ authenticated: false, host: 'gitlab.com' })));
 
     await expect(githubStatus).resolves.toEqual({
       authenticated: true,

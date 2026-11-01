@@ -3,9 +3,9 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
+  clearHashWithoutNavigation,
   hashFromDocName,
   pushHashWithoutNavigation,
-  replaceHashWithoutNavigation,
 } from '@/lib/doc-hash';
 import { matchesKeyboardShortcut, type ShortcutEventLike } from '@/lib/keyboard-shortcuts';
 import {
@@ -717,8 +717,8 @@ describe('App runtime wiring', () => {
       );
     });
 
-    pushHashWithoutNavigation('#/page-b');
-    pushHashWithoutNavigation('#/page-c');
+    pushHashWithoutNavigation('#/page-b', 'permanent');
+    pushHashWithoutNavigation('#/page-c', 'permanent');
     openTargetTransitionMock.mockClear();
 
     window.history.back();
@@ -778,6 +778,97 @@ describe('App runtime wiring', () => {
     });
   });
 
+  test('a traversal whose open changed nothing opens as a preview again on the next render', async () => {
+    setHash('#/page-a');
+    const view = renderApp();
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        { kind: 'doc', target: 'page-a', docName: 'page-a' },
+        expect.objectContaining({ disposition: 'permanent' }),
+      );
+    });
+
+    pushHashWithoutNavigation('#/page-b', 'permanent');
+    pushHashWithoutNavigation('#/page-c', 'permanent');
+    openTargetTransitionMock.mockClear();
+
+    window.history.back();
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe('#/page-b');
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        { kind: 'doc', target: 'page-b', docName: 'page-b' },
+        expect.objectContaining({ disposition: 'preview' }),
+      );
+    });
+    expect(openTargetTransitionMock).toHaveBeenCalledTimes(1);
+
+    const retryTransitionMock = vi.fn(
+      (
+        _: NavigationTarget,
+        _options: { disposition: 'preview' | 'permanent'; consumeActiveNewTab: boolean },
+      ) => {},
+    );
+    openTargetTransitionMock = retryTransitionMock;
+    view.rerender(<App />);
+
+    await waitFor(() => expect(retryTransitionMock).toHaveBeenCalledTimes(1));
+    expect(retryTransitionMock).toHaveBeenCalledWith(
+      { kind: 'doc', target: 'page-b', docName: 'page-b' },
+      expect.objectContaining({ disposition: 'preview' }),
+    );
+
+    activeTarget = { kind: 'doc', target: 'page-b', docName: 'page-b' };
+    view.rerender(<App />);
+    retryTransitionMock.mockClear();
+
+    window.location.hash = '#/page-c';
+    await waitFor(() => {
+      expect(retryTransitionMock).toHaveBeenCalledWith(
+        { kind: 'doc', target: 'page-c', docName: 'page-c' },
+        expect.objectContaining({ disposition: 'permanent' }),
+      );
+    });
+  });
+
+  test('a traversal deferred while the page list loads opens as a preview once it loads', async () => {
+    setHash('#/page-a');
+    const view = renderApp();
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        { kind: 'doc', target: 'page-a', docName: 'page-a' },
+        expect.objectContaining({ disposition: 'permanent' }),
+      );
+    });
+
+    pushHashWithoutNavigation('#/page-b', 'permanent');
+    pushHashWithoutNavigation('#/page-c', 'permanent');
+    loading = true;
+    view.rerender(<App />);
+    openTargetTransitionMock.mockClear();
+
+    const traversalHandled = new Promise<void>((resolve) => {
+      window.addEventListener('hashchange', () => resolve(), { once: true });
+    });
+    window.history.back();
+    await traversalHandled;
+
+    expect(window.location.hash).toBe('#/page-b');
+    expect(openTargetTransitionMock).not.toHaveBeenCalled();
+
+    loading = false;
+    view.rerender(<App />);
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        { kind: 'doc', target: 'page-b', docName: 'page-b' },
+        expect.objectContaining({ disposition: 'preview' }),
+      );
+    });
+  });
+
   test('direct hash navigation preserves the active tab', async () => {
     setHash('#/page-a');
     renderApp();
@@ -814,6 +905,43 @@ describe('App runtime wiring', () => {
           disposition: 'permanent',
           consumeActiveNewTab: true,
         },
+      );
+    });
+  });
+
+  test('keeps a sidebar preview disposition while the active workspace publication lags', async () => {
+    activeTarget = { kind: 'doc', target: 'page-a', docName: 'page-a' };
+    openTabs = ['page-a'];
+    setHash('#/page-a');
+    const view = renderApp();
+
+    await Promise.resolve();
+    openTargetTransitionMock.mockClear();
+
+    pushHashWithoutNavigation('#/page-b', 'preview');
+    openTabs = ['page-a', 'page-b'];
+    view.rerender(<App />);
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        { kind: 'doc', target: 'page-b', docName: 'page-b' },
+        expect.objectContaining({ disposition: 'preview' }),
+      );
+    });
+  });
+
+  test('opens a stored preview hash entry as a permanent tab while preview tabs are disabled', async () => {
+    mergedConfig = { editor: { previewTabs: false } };
+    activeTarget = { kind: 'doc', target: 'page-a', docName: 'page-a' };
+    openTabs = ['page-a', 'page-b'];
+    setHash('#/page-a');
+    pushHashWithoutNavigation('#/page-b', 'preview');
+    renderApp();
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        { kind: 'doc', target: 'page-b', docName: 'page-b' },
+        expect.objectContaining({ disposition: 'permanent' }),
       );
     });
   });
@@ -866,7 +994,7 @@ describe('App runtime wiring', () => {
 
     window.location.hash = '#install-claude-desktop';
     await waitFor(() => expect(window.location.hash).toBe('#install-claude-desktop'));
-    replaceHashWithoutNavigation('');
+    clearHashWithoutNavigation();
     window.location.hash = '#/page-b';
 
     await waitFor(() => {
@@ -879,11 +1007,11 @@ describe('App runtime wiring', () => {
 
   test('the first Back after the install dialog closes is a deliberate open', async () => {
     await renderOnPageA();
-    pushHashWithoutNavigation('#/page-b');
+    pushHashWithoutNavigation('#/page-b', 'permanent');
 
     window.location.hash = '#install-claude-desktop';
     await waitFor(() => expect(window.location.hash).toBe('#install-claude-desktop'));
-    replaceHashWithoutNavigation('');
+    clearHashWithoutNavigation();
     window.history.back();
 
     await waitFor(() => {

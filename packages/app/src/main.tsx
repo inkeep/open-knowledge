@@ -4,6 +4,7 @@ initFrontendTelemetry();
 void import('./telemetry-startup').then((m) => m.initStartupTrace());
 
 import '@/lib/perf/scheduler-polyfill-shim';
+import '@/lib/promise-with-resolvers-polyfill';
 
 import { I18nProvider } from '@lingui/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

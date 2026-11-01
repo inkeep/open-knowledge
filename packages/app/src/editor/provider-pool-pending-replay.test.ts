@@ -140,10 +140,7 @@ describe('ProviderPool pending replay', () => {
       { branch: UNKNOWN_BRANCH_SENTINEL, docName, namespace: null },
       { delta, fullState },
     );
-    let releaseClaim: () => void = () => {};
-    const claimGate = new Promise<void>((resolve) => {
-      releaseClaim = resolve;
-    });
+    const { promise: claimGate, resolve: releaseClaim } = Promise.withResolvers<void>();
     const actual = await vi.importActual<typeof import('./replay-outbox')>('./replay-outbox');
     vi.mocked(consumeReplayOutboxEntry).mockImplementationOnce(async (key) => {
       await claimGate;
@@ -172,10 +169,7 @@ describe('ProviderPool pending replay', () => {
       { branch: UNKNOWN_BRANCH_SENTINEL, docName, namespace: null },
       { delta, fullState },
     );
-    let releaseClaim: () => void = () => {};
-    const claimGate = new Promise<void>((resolve) => {
-      releaseClaim = resolve;
-    });
+    const { promise: claimGate, resolve: releaseClaim } = Promise.withResolvers<void>();
     vi.mocked(consumeReplayOutboxEntry).mockImplementationOnce(async () => {
       await claimGate;
       return false;

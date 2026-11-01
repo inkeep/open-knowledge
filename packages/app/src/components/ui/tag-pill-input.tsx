@@ -164,7 +164,7 @@ function TagPillInput({
               type="button"
               onClick={() => removeAt(i)}
               aria-label={t`Remove ${tag}`}
-              className="rounded-sm p-0.5 hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="rounded-sm p-0.5 hover:bg-background/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/50"
               disabled={disabled}
             >
               <XIcon className="size-3" aria-hidden="true" />

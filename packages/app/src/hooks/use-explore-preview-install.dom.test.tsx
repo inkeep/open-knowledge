@@ -20,29 +20,21 @@ describe('useExplorePreviewInstall', () => {
   });
 
   test('serializes rapid target changes and finishes with the latest intended set', async () => {
-    let resolveFirstInstall:
-      | ((value: {
-          ok: true;
-          hosts: string[];
-          scripts: false;
-          warnings: [];
-          warningCodes: [];
-        }) => void)
-      | undefined;
+    const { promise: firstInstall, resolve: resolveFirstInstall } = Promise.withResolvers<{
+      ok: true;
+      hosts: string[];
+      scripts: false;
+      warnings: [];
+      warningCodes: [];
+    }>();
     importSkill.mockResolvedValue({ ok: true, name: 'example' });
-    installSkill
-      .mockReturnValueOnce(
-        new Promise((resolve) => {
-          resolveFirstInstall = resolve;
-        }),
-      )
-      .mockResolvedValueOnce({
-        ok: true,
-        hosts: ['claude', 'codex'],
-        scripts: false,
-        warnings: [],
-        warningCodes: [],
-      });
+    installSkill.mockReturnValueOnce(firstInstall).mockResolvedValueOnce({
+      ok: true,
+      hosts: ['claude', 'codex'],
+      scripts: false,
+      warnings: [],
+      warningCodes: [],
+    });
 
     const { result } = renderHook(() =>
       useExplorePreviewInstall({
@@ -62,7 +54,7 @@ describe('useExplorePreviewInstall', () => {
     expect(installSkill.mock.calls[0]?.[0].targets).toEqual(['claude']);
 
     await act(async () => {
-      resolveFirstInstall?.({
+      resolveFirstInstall({
         ok: true,
         hosts: ['claude'],
         scripts: false,
@@ -77,12 +69,11 @@ describe('useExplorePreviewInstall', () => {
   });
 
   test('imports once when multiple targets change before acquisition finishes', async () => {
-    let resolveImport: ((value: { ok: true; name: string }) => void) | undefined;
-    importSkill.mockReturnValue(
-      new Promise((resolve) => {
-        resolveImport = resolve;
-      }),
-    );
+    const { promise: pendingImport, resolve: resolveImport } = Promise.withResolvers<{
+      ok: true;
+      name: string;
+    }>();
+    importSkill.mockReturnValue(pendingImport);
     installSkill.mockResolvedValue({
       ok: true,
       hosts: ['claude', 'cursor'],
@@ -106,7 +97,7 @@ describe('useExplorePreviewInstall', () => {
     expect(importSkill).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      resolveImport?.({ ok: true, name: 'example' });
+      resolveImport({ ok: true, name: 'example' });
     });
 
     await waitFor(() =>

@@ -624,22 +624,31 @@ body[style*="pointer-events: none"] .corner-card-column .floating-card-surface {
   animation-delay: 60ms;
 }
 
-/* Reduced motion — keep opacity/color transition for comprehension, remove movement.
-   Static terracotta left accent bar fades in and out, no transform, no background tint. */
+/* Reduced motion — keep a color fade for comprehension, remove movement.
+   Static terracotta left accent bar fades in, no transform, no background tint.
+   The fade is an animation, not a transition: these blocks keep `transition`
+   for the `.ok-chunk-wrapper` content-visibility deferral, and a `transition`
+   here would replace it while the flash lasts. */
+@keyframes ok-agent-flash-bar {
+  from {
+    box-shadow: none;
+  }
+  to {
+    box-shadow: inset 3px 0 0 var(--color-agent);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   [data-agent-flash-state="editing"][data-agent-flash-position="append"]
     .ProseMirror
     > *:nth-last-child(-n + 3 of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)) {
-    animation: none;
+    animation: ok-agent-flash-bar 2s ease forwards;
     box-shadow: inset 3px 0 0 var(--color-agent);
-    transition: box-shadow 2s ease;
   }
   [data-agent-flash-state="editing"][data-agent-flash-position="prepend"]
     .ProseMirror
     > *:nth-child(-n + 3) {
-    animation: none;
+    animation: ok-agent-flash-bar 2s ease forwards;
     box-shadow: inset 3px 0 0 var(--color-agent);
-    transition: box-shadow 2s ease;
   }
 }
 
@@ -2499,25 +2508,35 @@ section[data-editor-pane-id] {
   z-index: 4;
 }
 
-/* Occluder above the frozen header (frozen-table-headers.ts): scrolled-past
-   rows must not show in the translucent toolbar-fade slot above the pinned
-   header. An opaque block riding each header cell's composited layer tracks
-   the frozen header's transform pixel-for-pixel — unlike a scroll-driven
-   clip-path on the wrapper, which updates on the main thread and trails the
-   compositor during scroll. Hidden until the extension's scroll-driven
-   opacity flip reveals it while frozen. The wrapper's own overflow clips the
-   block at the table's top edge, so it never covers content above the table.
-   ±1px horizontal overlap closes the seams over collapsed cell borders.
-   height must stay >= TOOLBAR_HEIGHT (56px, frozen-table-headers.ts) so the
-   block spans the whole toolbar-fade slot; 80px adds margin. */
+/* Occluder behind the frozen header (frozen-table-headers.ts). It rides each
+   header cell's composited layer, so it tracks the freeze transform
+   pixel-for-pixel; a scroll-driven clip-path on the wrapper would update on
+   the main thread and trail the compositor. The extension's scroll-driven
+   opacity flip shows it only while frozen, and the wrapper's overflow clips
+   it at the table's top edge.
+   - Top 80px (keep >= TOOLBAR_HEIGHT, 56px): hides scrolled-past rows in the
+     translucent toolbar-fade slot. ±1px overlap closes the seams over
+     collapsed cell borders.
+   - Below that: the cell's own background, behind its content, so no seam
+     opens where the slot meets the cell.
+   - Bottom border: the table paints a collapsed border where the row sat
+     before the freeze moved it, so this redraws the header's bottom border
+     over an opaque strip, because --border is translucent in the dark theme.
+     Without both, body text shows through at the header's bottom edge. The
+     side borders stay transparent so the column borders still show. */
 .ProseMirror .tableWrapper > table > tbody > tr:first-child:has(> th) > :is(th, td)::before {
   content: "";
   position: absolute;
-  left: -1px;
-  right: -1px;
-  bottom: 100%;
-  height: 80px;
-  background: var(--background);
+  z-index: -1;
+  inset: -80px -1px -1px;
+  border-style: solid;
+  border-width: 0 1px 1px;
+  border-color: transparent transparent var(--border);
+  background:
+    linear-gradient(var(--background) 0 0) top / 100% 80px no-repeat border-box,
+    linear-gradient(var(--background) 0 0) bottom / 100% 1px no-repeat border-box,
+    linear-gradient(transparent 0 0) padding-box;
+  background-color: inherit;
   opacity: 0;
   pointer-events: none;
 }
@@ -3459,7 +3478,7 @@ button:active:not(:disabled) {
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: oklch(0.545 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.49 0.21 27.518);
@@ -3472,7 +3491,7 @@ button:active:not(:disabled) {
   --identity-4: oklch(0.718 0.202 349.761);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --ring: oklch(0.26 0 0);
   /* Soft "this block is in your range" halo for JSX wrappers that the
    * browser's native text-selection paint can't reach (their chrome is
    * contentEditable=false). Top-level color token consumed by the soft-
@@ -3528,7 +3547,7 @@ button:active:not(:disabled) {
   --sidebar-selected-muted-foreground: #6c6c6c;
   --sidebar-selected-destructive-foreground: var(--destructive);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: oklch(0.64 0 0);
 
   --syntax-keyword: var(--color-purple-700, #6f42c1);
   --syntax-tag: var(--color-red-700, #b31d28);
@@ -3613,7 +3632,7 @@ button:active:not(:disabled) {
   --info: oklch(0.729 0.165 254.624);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: oklch(0.79 0 0);
   /* Dark-mode soft range halo — slightly brighter + higher alpha so the
    * 18%-on-white equivalent reads cleanly on dark backgrounds. */
   --selection-soft: oklch(0.72 0.16 259 / 0.32);
@@ -5933,17 +5952,21 @@ html [data-editor-file-list-slot] [data-slot="sidebar-inner"] {
   }
 }
 
-.dark
-  [data-agent-flash-state="editing"][data-agent-flash-position="append"]
-  .ProseMirror
-  > *:nth-last-child(-n + 3 of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)) {
-  animation-name: agent-flash-dark;
-}
-.dark
-  [data-agent-flash-state="editing"][data-agent-flash-position="prepend"]
-  .ProseMirror
-  > *:nth-child(-n + 3) {
-  animation-name: agent-flash-dark;
+/* Full motion only: under reduced motion the agent flash is the accent-bar
+   fade in both themes. */
+@media (prefers-reduced-motion: no-preference) {
+  .dark
+    [data-agent-flash-state="editing"][data-agent-flash-position="append"]
+    .ProseMirror
+    > *:nth-last-child(-n + 3 of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)) {
+    animation-name: agent-flash-dark;
+  }
+  .dark
+    [data-agent-flash-state="editing"][data-agent-flash-position="prepend"]
+    .ProseMirror
+    > *:nth-child(-n + 3) {
+    animation-name: agent-flash-dark;
+  }
 }
 
 .dark [data-presence-badge="agent"][data-presence-mode="editing"] {
@@ -6401,19 +6424,41 @@ html [data-editor-file-list-slot] [data-slot="sidebar-inner"] {
    result and reading a caret out of it.
 
    What actually protects this site is the selection pin: a click places the
-   caret in the block, and cv:auto keeps a selection-containing element
-   relevant to the user, so the clicked wrapper cannot acquire the lock that
-   would make the CHECK reachable. That is Chromium behavior, not ours, and it
-   is pinned by `tests/stress/cv-auto-paint-lock-click.e2e.ts` — which fails if
-   a future Chromium drops it.
+   caret in the block, so the clicked wrapper cannot acquire the lock that
+   would make the CHECK reachable. Two things hold the pin. Chromium keeps a
+   selection-containing cv:auto element relevant to the user, and the
+   `data-ok-selection-block` rule below makes the wrapper that holds the caret
+   `visible`. `tests/stress/cv-auto-paint-lock-click.e2e.ts` pins the clicked
+   wrapper staying unlocked, so it fails only if both are lost.
 
    Do not replace `auto` with `hidden` here without the same deferred-lock +
    visibility pair `.ok-mode-hidden` carries — an undeferred paint lock over
    hit-testable editor content trips Blink's display-lock CHECK (see the
-   `.ok-mode-hidden` comment above). */
+   `.ok-mode-hidden` comment above).
+
+   Chromium's pin does not cover typing into a block made in the same frame
+   as its caret. Enter creates a new wrapper and moves the caret into it; the
+   wrapper locks at its first style recalc and unlocks only at the next
+   rendering update. A key typed before that update is inserted without
+   layout, so Chromium leaves the caret before the typed character and keeps
+   the placeholder `<br>`. The decoration therefore marks the top-level block
+   holding each selection end with `data-ok-selection-block`, which stays
+   `visible`. A block the caret leaves takes `auto` back through the
+   `.ok-mode-hidden` deferring transition, because a caret that moves back in
+   during the same frame (ArrowUp right after Enter) would otherwise land at
+   the start of a locked line. Any other rule that sets `transition` on a
+   top-level block replaces this deferral, which is why the reduced-motion
+   agent flash fades with an animation. Pinned by
+   `tests/stress/new-block-caret.e2e.ts`. */
 .ProseMirror .ok-chunk-wrapper {
   content-visibility: auto;
   contain-intrinsic-size: 0 var(--ok-cv-h, 80px);
+  transition: content-visibility 0s 32ms allow-discrete;
+}
+
+.ProseMirror .ok-chunk-wrapper[data-ok-selection-block] {
+  content-visibility: visible;
+  transition: none;
 }
 
 /* Code-block wrapper needs an unclipped paint area — the block's chrome

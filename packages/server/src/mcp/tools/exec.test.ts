@@ -154,6 +154,45 @@ describe('exec — happy path', () => {
     expect(paths).not.toContain('articles/c.md');
   });
 
+  test.each([
+    ['-e Request -e dominance', ['requests/R001.md']],
+    ['-e dominance -e Request', ['requests/R001.md']],
+    ['-e Request -e other', ['requests/R001.md', 'requests/R002.md']],
+    ["-e '^Request$' -e '^other$'", ['requests/R001.md', 'requests/R002.md']],
+  ])(
+    'grep %s preserves every pattern and attributes only matched files',
+    async (patterns, paths) => {
+      const project = await bootstrap();
+      mkdirSync(resolve(project, 'requests'));
+      const sources: Record<string, string> = {
+        'requests/R001.md': 'Request\n',
+        'requests/R002.md': 'other\n',
+        'requests/R003.md': 'unrelated\n',
+      };
+      for (const [path, source] of Object.entries(sources)) {
+        writeFileSync(resolve(project, path), source);
+      }
+
+      const result = (await buildExecResult(
+        { command: `grep -rn ${patterns} requests` },
+        { resolveCwd: async () => project, serverUrl: undefined, config: DEFAULT_CONFIG },
+      )) as ExecResult;
+
+      expect(result.isError).toBeFalsy();
+      for (const path of paths) {
+        expect(result.content[0].text).toContain(`${path}:1:${sources[path]}`);
+      }
+      expect(
+        fileEntries(structured(result))
+          .map((entry) => entry.path)
+          .sort(),
+      ).toEqual(paths);
+      for (const [path, source] of Object.entries(sources)) {
+        expect(readFileSync(resolve(project, path), 'utf8')).toBe(source);
+      }
+    },
+  );
+
   test('ls surfaces directory entries with folder metadata', async () => {
     const project = await bootstrap();
     const specs = resolve(project, 'specs');

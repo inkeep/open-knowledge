@@ -3,6 +3,7 @@ import type { WriteAdvisoryTargets } from './write-advisory-links.ts';
 const fileCapabilities = {
   fileExists: () => false,
   fileExcluded: () => false,
+  imagePathExcluded: () => false,
   resolveWikiFile: () => undefined,
   resolveFileByBasename: () => undefined,
 };
@@ -14,6 +15,7 @@ const _optsOutOfFiles: WriteAdvisoryTargets = {
   fileExists: null,
   folderExists: () => false,
   fileExcluded: null,
+  imagePathExcluded: null,
   resolveWikiFile: null,
   resolveFileByBasename: null,
 };

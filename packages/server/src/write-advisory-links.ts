@@ -23,6 +23,7 @@ export interface WriteAdvisoryTargets {
   fileExists: ((contentRootRelativePath: string) => boolean) | null;
   folderExists: ((folderPath: string) => boolean) | null;
   fileExcluded: ((contentRootRelativePath: string) => boolean) | null;
+  imagePathExcluded: ((contentRootRelativePath: string) => boolean) | null;
   resolveWikiFile: ((contentRootRelativePath: string) => string | undefined) | null;
   resolveFileByBasename: ((basename: string, sourceDocName: string) => string | undefined) | null;
 }
@@ -109,9 +110,19 @@ export function computeWriteAdvisoryLinks(
   const seenRepairSites = new Set<string>();
 
   for (const assessment of assessments) {
-    if (assessment.reason === null) continue;
+    let reason = assessment.reason;
+    if (
+      reason === null &&
+      assessment.targetKind === 'file' &&
+      assessment.occurrence.role === 'image' &&
+      assessment.resolvedTarget !== null &&
+      targets.imagePathExcluded?.(assessment.resolvedTarget) === true
+    ) {
+      reason = 'no-such-file';
+    }
+    if (reason === null) continue;
     const verdict = hasVerdict(targets, {
-      reason: assessment.reason,
+      reason,
       targetKind: assessment.targetKind,
       wikiAsset: wikiAssetName(assessment.occurrence) !== null,
       mayNameFile: !isWikiForm(assessment.occurrence.sourceForm),
@@ -119,7 +130,7 @@ export function computeWriteAdvisoryLinks(
     if (!verdict) continue;
     const { href, role, sourceForm, range, reference } = assessment.occurrence;
     if (role === 'link' && sourceForm === 'markdown-inline' && graphHrefs.has(href)) continue;
-    const localTarget = buildLocalTargetEvidence(assessment, assessment.reason);
+    const localTarget = buildLocalTargetEvidence(assessment, reason);
     if (localTarget === null) continue;
     const repairRange = reference?.definition.repairRange ?? range;
     const repairSite = `${repairRange.start}:${repairRange.end}`;
@@ -128,7 +139,7 @@ export function computeWriteAdvisoryLinks(
     links.push({
       href,
       resolvedTo: assessment.resolvedTarget,
-      reason: assessment.reason,
+      reason,
       localTarget,
     });
   }

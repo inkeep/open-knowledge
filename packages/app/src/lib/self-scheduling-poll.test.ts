@@ -29,10 +29,10 @@ function makePollController() {
   return {
     poll: (_signal: AbortSignal) => {
       calls += 1;
-      return new Promise<PollOutcome>((res, rej) => {
-        resolveLatest = res;
-        rejectLatest = rej;
-      });
+      const { promise, resolve, reject } = Promise.withResolvers<PollOutcome>();
+      resolveLatest = resolve;
+      rejectLatest = reject;
+      return promise;
     },
     get calls() {
       return calls;

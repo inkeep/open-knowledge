@@ -39,6 +39,10 @@ name: Reporter Write-Back
 #   without performing a single write. Live posting therefore needs two
 #   deliberate operator actions, so wiring up credentials cannot arm
 #   reporter-facing posts by accident. Both steps are in RELEASES.md.
+#   Email has its own pair on top of those: with no RESEND_API_KEY contact
+#   emails are read but never used as a reply channel; with the key they are
+#   previewed; they are sent only when WRITE_BACK_EMAIL_MODE is also live
+#   alongside WRITE_BACK_MODE.
 
 on:
   schedule:
@@ -145,4 +149,6 @@ jobs:
           WRITE_BACK_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'dry-run' || vars.WRITE_BACK_MODE }}
           DISCORD_NOTIFY_URL: ${{ secrets.DISCORD_NOTIFY_URL }}
           DISCORD_NOTIFY_TOKEN: ${{ secrets.DISCORD_NOTIFY_TOKEN }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          WRITE_BACK_EMAIL_MODE: ${{ vars.WRITE_BACK_EMAIL_MODE }}
         run: node .github/scripts/write-back.mjs

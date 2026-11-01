@@ -2,9 +2,14 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
+import {
+  OVERLAY_SCAN_EXTENSION,
+  OVERLAY_SCAN_ROOT,
+} from './fullscreen-overlay-safe-area-coverage.reads';
 
-const APP_SRC = join(import.meta.dir, '..', '..', 'src');
-const REPO_RELATIVE_PREFIX = 'packages/app/src';
+const OK_ROOT = join(import.meta.dir, '..', '..', '..', '..');
+const APP_SRC = join(OK_ROOT, OVERLAY_SCAN_ROOT);
+const REPO_RELATIVE_PREFIX = OVERLAY_SCAN_ROOT;
 
 interface ClassPattern {
   readonly id: 'P1-fixed-inset-0' | 'P2-near-fullscreen-vw' | 'P3-top-banner';
@@ -80,7 +85,7 @@ function* walkSourceFiles(dir: string): Generator<string> {
     const stat = statSync(full);
     if (stat.isDirectory()) {
       yield* walkSourceFiles(full);
-    } else if (entry.endsWith('.tsx') && !isTestOnlySourceFile(entry)) {
+    } else if (entry.endsWith(OVERLAY_SCAN_EXTENSION) && !isTestOnlySourceFile(entry)) {
       yield full;
     }
   }

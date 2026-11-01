@@ -6,6 +6,7 @@ import { toMarkdown } from 'mdast-util-to-markdown';
 import { mdx } from 'micromark-extension-mdx';
 import { propToMdxJsxAttribute } from '../markdown/serialize-helpers.ts';
 import { builtInComponents } from './built-ins.ts';
+import { propDescription } from './legacy-props.ts';
 import type { JsxComponentMeta, PropDef } from './types.ts';
 
 const MICROMARK_MDX_EXT = mdx();
@@ -158,7 +159,8 @@ function projectParams(descriptor: JsxComponentMeta): ComponentParam[] {
       type: prop.type,
       required: prop.required,
     };
-    if (prop.description !== undefined) entry.description = prop.description;
+    const description = propDescription(prop);
+    if (description !== undefined) entry.description = description;
     if (prop.advanced === true) entry.advanced = true;
     if (prop.omitOnDefault === true) entry.omitOnDefault = true;
     if (prop.type === 'enum') {

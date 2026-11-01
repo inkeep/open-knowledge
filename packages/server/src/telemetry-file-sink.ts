@@ -2,6 +2,8 @@ import { statSync } from 'node:fs';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Writable } from 'node:stream';
+import { PROJECT_DIAGNOSTIC_FILES } from '@inkeep/open-knowledge-core';
+import { okProjectLogsDir } from '@inkeep/open-knowledge-core/server';
 import type { Context } from '@opentelemetry/api';
 import type { ExportResult } from '@opentelemetry/core';
 import { ExportResultCode } from '@opentelemetry/core';
@@ -60,10 +62,18 @@ export class RotatingAppender {
 
   async #doAppend(data: string | Uint8Array): Promise<void> {
     if (!this.#state.parentDirEnsured) {
-      await mkdir(dirname(this.#currentPath), { recursive: true });
+      await mkdir(dirname(this.#currentPath), { recursive: true, mode: 0o700 });
       this.#state.parentDirEnsured = true;
     }
-    await writeFile(this.#currentPath, data, { flag: 'a' });
+    try {
+      await writeFile(this.#currentPath, data, { flag: 'a' });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      this.#state.parentDirEnsured = false;
+      await mkdir(dirname(this.#currentPath), { recursive: true, mode: 0o700 });
+      this.#state.parentDirEnsured = true;
+      await writeFile(this.#currentPath, data, { flag: 'a' });
+    }
     let size: number;
     try {
       size = statSync(this.#currentPath).size;
@@ -86,16 +96,12 @@ export interface FileSpanExporterOpts {
   maxBytes: number;
 }
 
-const TELEMETRY_SUBDIR = ['.ok', 'local', 'telemetry'] as const;
-const CURRENT_FILENAME = 'spans-current.jsonl';
-const PREVIOUS_FILENAME = 'spans-prev.jsonl';
-
 export function spansCurrentPath(projectDir: string): string {
-  return join(projectDir, ...TELEMETRY_SUBDIR, CURRENT_FILENAME);
+  return join(okProjectLogsDir(projectDir), PROJECT_DIAGNOSTIC_FILES.spansCurrent);
 }
 
 export function spansPreviousPath(projectDir: string): string {
-  return join(projectDir, ...TELEMETRY_SUBDIR, PREVIOUS_FILENAME);
+  return join(okProjectLogsDir(projectDir), PROJECT_DIAGNOSTIC_FILES.spansPrevious);
 }
 
 export class FileSpanExporter implements SpanExporter {
@@ -235,16 +241,12 @@ export class ScrubbingSpanProcessor implements SpanProcessor {
   async shutdown(): Promise<void> {}
 }
 
-const LOGS_SUBDIR = ['.ok', 'local', 'logs'] as const;
-const LOGS_CURRENT_FILENAME = 'server-current.jsonl';
-const LOGS_PREVIOUS_FILENAME = 'server-prev.jsonl';
-
 export function logsCurrentPath(projectDir: string): string {
-  return join(projectDir, ...LOGS_SUBDIR, LOGS_CURRENT_FILENAME);
+  return join(okProjectLogsDir(projectDir), PROJECT_DIAGNOSTIC_FILES.logsCurrent);
 }
 
 export function logsPreviousPath(projectDir: string): string {
-  return join(projectDir, ...LOGS_SUBDIR, LOGS_PREVIOUS_FILENAME);
+  return join(okProjectLogsDir(projectDir), PROJECT_DIAGNOSTIC_FILES.logsPrevious);
 }
 
 export interface PinoFileSinkOpts {

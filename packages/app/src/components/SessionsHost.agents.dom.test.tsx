@@ -422,10 +422,11 @@ describe('SessionsHost — agents desktop order-restore gate', () => {
     const setDockState = vi.fn(() => ({ ok: true as const }));
     const bridge = {
       terminal: {
-        getDockState: () =>
-          new Promise((resolve) => {
-            resolveDockState = resolve;
-          }),
+        getDockState: () => {
+          const { promise, resolve } = Promise.withResolvers();
+          resolveDockState = resolve;
+          return promise;
+        },
         setDockState,
       },
       editor: { notifyViewMenuStateChanged: vi.fn() },
@@ -529,10 +530,11 @@ describe('SessionsHost — agents desktop order-restore gate', () => {
     const setDockState = vi.fn(() => ({ ok: true as const }));
     const bridge = {
       terminal: {
-        getDockState: () =>
-          new Promise((resolve) => {
-            resolveDockState = resolve;
-          }),
+        getDockState: () => {
+          const { promise, resolve } = Promise.withResolvers();
+          resolveDockState = resolve;
+          return promise;
+        },
         setDockState,
       },
       editor: { notifyViewMenuStateChanged: vi.fn() },
@@ -565,10 +567,11 @@ describe('SessionsHost — agents desktop order-restore gate', () => {
     let resolveDockState: (state: unknown) => void = () => {};
     const bridge = {
       terminal: {
-        getDockState: () =>
-          new Promise((resolve) => {
-            resolveDockState = resolve;
-          }),
+        getDockState: () => {
+          const { promise, resolve } = Promise.withResolvers();
+          resolveDockState = resolve;
+          return promise;
+        },
         setDockState: vi.fn(() => ({ ok: true as const })),
       },
       editor: { notifyViewMenuStateChanged: vi.fn() },
@@ -598,10 +601,11 @@ describe('SessionsHost — agents desktop order-restore gate', () => {
     const setDockState = vi.fn(() => ({ ok: true as const }));
     const bridge = {
       terminal: {
-        getDockState: () =>
-          new Promise((resolve) => {
-            resolveDockState = resolve;
-          }),
+        getDockState: () => {
+          const { promise, resolve } = Promise.withResolvers();
+          resolveDockState = resolve;
+          return promise;
+        },
         setDockState,
       },
       editor: { notifyViewMenuStateChanged: vi.fn() },
@@ -696,10 +700,11 @@ describe('SessionsHost — agents desktop order-restore gate', () => {
     const setDockState = vi.fn(() => ({ ok: true as const }));
     const bridge = {
       terminal: {
-        getDockState: () =>
-          new Promise((resolve) => {
-            resolveDockState = resolve;
-          }),
+        getDockState: () => {
+          const { promise, resolve } = Promise.withResolvers();
+          resolveDockState = resolve;
+          return promise;
+        },
         setDockState,
       },
       editor: { notifyViewMenuStateChanged: vi.fn() },
@@ -2798,12 +2803,11 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       setInitialRosterIds(new Set());
       let settleTrackedLaunch: (outcome: 'failed') => void = () => {};
       launchAgentThread
-        .mockImplementationOnce(
-          () =>
-            new Promise((resolve) => {
-              settleTrackedLaunch = resolve;
-            }),
-        )
+        .mockImplementationOnce(() => {
+          const { promise, resolve } = Promise.withResolvers<'failed'>();
+          settleTrackedLaunch = resolve;
+          return promise;
+        })
         .mockResolvedValueOnce('deduped');
       render(<Harness initialVisible />);
       await waitFor(() => expect(launchAgentThread).toHaveBeenCalledTimes(1));

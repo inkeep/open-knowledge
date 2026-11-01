@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterAll, describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, onTestFinished, test, vi } from 'vitest';
 import { configureTestGitRepository } from '../test-support/configure-git-fixture.test-helper.ts';
 import { okVitestBase } from '../test-support/vitest.base.ts';
 import { ISSUE_URL_RULE } from './deviations/contract.mjs';
@@ -399,6 +399,88 @@ describe('known-reds scanner: CI-keyed skips', () => {
 describe('known-reds feed: gate atoms and title chains', () => {
   const atomsOf = (source) =>
     scanSource('packages/server/src/a.test.ts', source).gates.map((gate) => gate.atoms);
+
+  test.each(['shared', 'distinct'])(
+    'resolves %s aliases with statement work proportional to source size',
+    async (aliasKind) => {
+      let statementReads = 0;
+      onTestFinished(() => {
+        vi.doUnmock('node:module');
+        vi.resetModules();
+      });
+      vi.resetModules();
+      vi.doMock('node:module', async (importOriginal) => {
+        const original = await importOriginal();
+        return {
+          ...original,
+          createRequire: (...args) =>
+            new Proxy(original.createRequire(...args), {
+              apply(require, receiver, operands) {
+                const loaded = Reflect.apply(require, receiver, operands);
+                if (operands[0] !== 'typescript') return loaded;
+                return new Proxy(loaded, {
+                  get(ts, name, receiver) {
+                    if (name !== 'createSourceFile') return Reflect.get(ts, name, receiver);
+                    return (...args) => {
+                      const sourceFile = ts.createSourceFile(...args);
+                      const observe = (node) => {
+                        ts.forEachChild(node, observe);
+                        if (Array.isArray(node.statements)) {
+                          node.statements = new Proxy(node.statements, {
+                            get(statements, key, receiver) {
+                              if (typeof key === 'string' && /^(0|[1-9]\d*)$/.test(key))
+                                statementReads++;
+                              return Reflect.get(statements, key, receiver);
+                            },
+                          });
+                        }
+                      };
+                      observe(sourceFile);
+                      return sourceFile;
+                    };
+                  },
+                });
+              },
+            }),
+        };
+      });
+      const scanner = await import('./known-reds.mjs');
+      const samples = [16, 32, 64, 128].map((size) => {
+        const alias = (index) => (aliasKind === 'shared' ? 'FLAG' : `FLAG_${index}`);
+        const declarations = Array.from(
+          { length: aliasKind === 'shared' ? 1 : size },
+          (_, index) => `const ${alias(index)} = process.env.CI;`,
+        );
+        const source = [
+          ...Array.from({ length: size }, (_, index) => `const value_${index} = ${index};`),
+          ...declarations,
+          ...Array.from(
+            { length: size },
+            (_, index) => `test.skipIf(${alias(index)})('case ${index}', () => {});`,
+          ),
+        ].join('\n');
+        statementReads = 0;
+        const scan = scanner.scanSource('packages/server/src/work.test.ts', source);
+        expect(scan.problems).toEqual([]);
+        expect(scan.gates.map(({ ci, atoms }) => ({ ci, atoms }))).toEqual(
+          Array.from({ length: size }, () => ({
+            ci: 'skips-on-ci',
+            atoms: [{ kind: 'ci', name: 'CI', text: 'process.env.CI' }],
+          })),
+        );
+        return { size, statementReads };
+      });
+      console.info(`known-reds ${aliasKind} alias work: ${JSON.stringify(samples)}`);
+      expect(samples.every((sample) => sample.statementReads > 0)).toBe(true);
+      for (let index = 1; index < samples.length; index++) {
+        const previous = samples[index - 1];
+        const current = samples[index];
+        expect(current.statementReads * previous.size).toBeLessThanOrEqual(
+          previous.statementReads * current.size,
+        );
+      }
+    },
+  );
 
   test.each([
     [

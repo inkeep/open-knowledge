@@ -271,21 +271,13 @@ describe('startFirstRunHandshake', () => {
     expect(token).toHaveLength(3984);
 
     let server: HttpServer | undefined;
-    let resolveContinueUrl: ((url: string) => void) | undefined;
-    let resolveRoutedUrl: ((url: string) => void) | undefined;
-    const continueUrl = new Promise<string>((resolve) => {
-      resolveContinueUrl = resolve;
-    });
-    const routedUrl = new Promise<string>((resolve) => {
-      resolveRoutedUrl = resolve;
-    });
+    const { promise: continueUrl, resolve: resolveContinueUrl } = Promise.withResolvers<string>();
+    const { promise: routedUrl, resolve: resolveRoutedUrl } = Promise.withResolvers<string>();
     const outcomes: HandoffOutcome[] = [];
     const normalizedShares: ShareUrlPayload[] = [];
     const parsedResults: Array<ShareParseResult | null> = [];
-    let resolveRoutedResult!: (result: ShareNavigatorPayload) => void;
-    const routedResult = new Promise<ShareNavigatorPayload>((resolve) => {
-      resolveRoutedResult = resolve;
-    });
+    const { promise: routedResult, resolve: resolveRoutedResult } =
+      Promise.withResolvers<ShareNavigatorPayload>();
     const protocolControl = registerProtocolHandler({
       app: {
         on: () => {},
@@ -313,9 +305,9 @@ describe('startFirstRunHandshake', () => {
         server = createHttpServer(handler);
         return server;
       },
-      openExternal: (url) => resolveContinueUrl?.(url),
+      openExternal: (url) => resolveContinueUrl(url),
       routeShareUrl: (url) => {
-        resolveRoutedUrl?.(url);
+        resolveRoutedUrl(url);
         parsedResults.push(parseShareUrl(url));
         protocolControl.routeUrl(url);
       },

@@ -453,14 +453,8 @@ describe('SemanticSearchService', () => {
     const info = vi.spyOn(getLogger('embeddings'), 'info');
     try {
       const inner = createConceptEmbedder({ concepts });
-      let release: (() => void) | null = null;
-      let signalEntered: (() => void) | null = null;
-      const enteredEmbed = new Promise<void>((r) => {
-        signalEntered = r;
-      });
-      const gate = new Promise<void>((r) => {
-        release = r;
-      });
+      const { promise: enteredEmbed, resolve: signalEntered } = Promise.withResolvers<void>();
+      const { promise: gate, resolve: release } = Promise.withResolvers<void>();
       let blockNextDocEmbed = false;
       const gated: Embedder = {
         providerId: inner.providerId,
@@ -469,7 +463,7 @@ describe('SemanticSearchService', () => {
         async embed(texts, opts) {
           if (opts.role === 'document' && blockNextDocEmbed) {
             blockNextDocEmbed = false;
-            signalEntered?.();
+            signalEntered();
             await gate;
           }
           return inner.embed(texts, opts);
@@ -504,7 +498,7 @@ describe('SemanticSearchService', () => {
         },
         '[embeddings] resetting embedder',
       );
-      release?.();
+      release();
       await pending;
       expect(info).toHaveBeenCalledWith(
         {

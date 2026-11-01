@@ -1,5 +1,6 @@
 import { isRelativeUrl, SAFE_URL_SCHEMES } from '@inkeep/open-knowledge-core/markdown/safe-url';
 import { incrementJsxPropDropped } from '@inkeep/open-knowledge-core/metrics/parse-health';
+import { componentPropsBudgetError } from '@inkeep/open-knowledge-core/registry';
 
 const URL_SCHEME_ALLOWLIST = new Set(SAFE_URL_SCHEMES.map((s) => `${s}:`));
 
@@ -137,6 +138,8 @@ function sanitizeNested(value: unknown): unknown {
 }
 
 export function sanitizeComponentProps(props: Record<string, unknown>): Record<string, unknown> {
+  const budgetError = componentPropsBudgetError(props);
+  if (budgetError) throw new RangeError(budgetError);
   let changed = false;
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(props)) {

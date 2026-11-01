@@ -15,6 +15,7 @@ import {
   rmSync,
   symlinkSync,
   unlinkSync,
+  utimesSync,
   writeFileSync,
   writeSync,
 } from 'node:fs';
@@ -61,6 +62,11 @@ function buildAttrs(operation: string, path: string, extra?: Attributes): Attrib
 export const tracedChmodSync: typeof chmodSync = (path, mode) =>
   withSpanSync('fs.chmodSync', { attributes: buildAttrs('chmodSync', String(path)) }, () =>
     chmodSync(path, mode),
+  );
+
+export const tracedUtimesSync: typeof utimesSync = (path, atime, mtime) =>
+  withSpanSync('fs.utimesSync', { attributes: buildAttrs('utimesSync', String(path)) }, () =>
+    utimesSync(path, atime, mtime),
   );
 
 function byteLength(data: string | Uint8Array | ArrayBufferView): number {

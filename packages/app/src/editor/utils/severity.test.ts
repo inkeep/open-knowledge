@@ -2,6 +2,10 @@ import { describe, expect, test } from 'vitest';
 import { classifySeverity, SEVERITY_STYLES } from './severity';
 
 describe('classifySeverity', () => {
+  test('rendering-budget fallback is a size limit rather than a parse error', () => {
+    expect(classifySeverity('Component props exceed the rendering budget')).toBe('limit');
+    expect(SEVERITY_STYLES.limit.label).toBe('size limit');
+  });
   test('unregistered-component reasons classify as info', () => {
     expect(classifySeverity('Unregistered component: DataViz')).toBe('info');
     expect(classifySeverity('Unregistered component: SomethingElse')).toBe('info');

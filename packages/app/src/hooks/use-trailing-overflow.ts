@@ -12,6 +12,7 @@ export interface TrailingOverflowOptions {
   trailing: HTMLElement | null;
   centre?: HTMLElement | null;
   signature: string;
+  deferRemeasure: boolean;
   slack: number;
   measureTrailingWidth: (elements: TrailingOverflowElements) => number;
   measureAvailableWidth: (
@@ -20,58 +21,60 @@ export interface TrailingOverflowOptions {
   ) => number;
 }
 
+export interface TrailingOverflow {
+  readonly overflowed: boolean;
+  readonly remeasuring: boolean;
+}
+
 export function useTrailingOverflow({
   header,
   leading,
   trailing,
   centre = null,
   signature,
+  deferRemeasure,
   slack,
   measureTrailingWidth,
   measureAvailableWidth,
-}: TrailingOverflowOptions): boolean {
-  const [overflowed, setOverflowed] = useState(false);
-  const overflowedRef = useRef(false);
-  const measuredSignatureRef = useRef<string | null>(null);
+}: TrailingOverflowOptions): TrailingOverflow {
+  const [fit, setFit] = useState({ signature, overflowed: false });
+  const remeasuring = fit.overflowed && !deferRemeasure && fit.signature !== signature;
+  const overflowed = fit.overflowed && !remeasuring;
   const latchedTrailingWidthRef = useRef(0);
-  const measureRef = useRef({ measureTrailingWidth, measureAvailableWidth });
+  const updateRef = useRef(() => {});
 
   useLayoutEffect(() => {
-    measureRef.current = { measureTrailingWidth, measureAvailableWidth };
+    if (!header || !leading || !trailing) return;
+
+    updateRef.current = () => {
+      if (header.offsetWidth <= 0) return;
+      const elements = { header, leading, trailing };
+      if (!overflowed) {
+        latchedTrailingWidthRef.current = measureTrailingWidth(elements);
+      }
+      const available = measureAvailableWidth(elements, latchedTrailingWidthRef.current);
+      const next = latchedTrailingWidthRef.current + slack > available;
+      setFit((previous) => {
+        const measuredSignature = overflowed ? previous.signature : signature;
+        return previous.overflowed === next && previous.signature === measuredSignature
+          ? previous
+          : { signature: measuredSignature, overflowed: next };
+      });
+    };
+    updateRef.current();
   });
 
   useLayoutEffect(() => {
     if (!header || !leading || !trailing) return;
 
-    if (measuredSignatureRef.current !== signature) {
-      measuredSignatureRef.current = signature;
-      overflowedRef.current = false;
-      latchedTrailingWidthRef.current = 0;
-    }
-
-    const update = () => {
-      if (header.offsetWidth <= 0) return;
-      const elements = { header, leading, trailing };
-      if (!overflowedRef.current) {
-        latchedTrailingWidthRef.current = measureRef.current.measureTrailingWidth(elements);
-      }
-      const available = measureRef.current.measureAvailableWidth(
-        elements,
-        latchedTrailingWidthRef.current,
-      );
-      const next = latchedTrailingWidthRef.current + slack > available;
-      overflowedRef.current = next;
-      setOverflowed(next);
-    };
-    update();
-
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    const observer =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => updateRef.current());
     observer?.observe(header);
     observer?.observe(leading);
     observer?.observe(trailing);
     if (centre) observer?.observe(centre);
     return () => observer?.disconnect();
-  }, [header, leading, trailing, centre, signature, slack]);
+  }, [header, leading, trailing, centre]);
 
-  return overflowed;
+  return { overflowed, remeasuring };
 }

@@ -20,7 +20,7 @@ describe('worker entry ships in every bundle shape', () => {
         Object.hasOwn(config.entry, 'cli'),
     );
     expect(standalone?.entry).toMatchObject({
-      cli: 'src/cli.ts',
+      cli: 'src/bin.ts',
       'parse-worker': 'src/parse-worker.ts',
     });
   });

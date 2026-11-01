@@ -1,8 +1,17 @@
+import { docNameToTreePath } from './file-tree-adapter';
 import type { PageMeta } from './PageListContext';
 
 export type FolderOverviewEntry =
-  | { kind: 'folder'; path: string; name: string; title: string }
-  | { kind: 'file'; path: string; name: string; title: string; size: number; modified: string };
+  | { kind: 'folder'; path: string; name: string; title: string; fileName?: string }
+  | {
+      kind: 'file';
+      path: string;
+      name: string;
+      title: string;
+      fileName?: string;
+      size: number;
+      modified: string;
+    };
 
 interface FolderOverviewData {
   title: string;
@@ -41,6 +50,18 @@ function resolveTitle(
   return leafName;
 }
 
+function fileNameUnlessTitleShowsIt(
+  title: string,
+  fileName: string,
+  stem = fileName,
+): string | undefined {
+  const label = title.toLocaleLowerCase();
+  if (label === stem.toLocaleLowerCase() || label === fileName.toLocaleLowerCase()) {
+    return undefined;
+  }
+  return fileName;
+}
+
 export function buildFolderOverviewData(
   folderPath: string,
   options: {
@@ -56,12 +77,16 @@ export function buildFolderOverviewData(
     .filter((path) => path.startsWith(prefix))
     .map((path) => ({ path, rel: path.slice(prefix.length) }))
     .filter((e) => e.rel.length > 0 && !e.rel.includes('/'))
-    .map(({ path, rel }) => ({
-      kind: 'folder' as const,
-      path,
-      name: rel,
-      title: getFolderTitle(path, options.pageTitles),
-    }));
+    .map(({ path, rel }) => {
+      const title = getFolderTitle(path, options.pageTitles);
+      return {
+        kind: 'folder' as const,
+        path,
+        name: rel,
+        title,
+        fileName: fileNameUnlessTitleShowsIt(title, rel),
+      };
+    });
 
   const files: FolderOverviewEntry[] = [...options.pages]
     .filter((docName) => docName.startsWith(prefix))
@@ -69,11 +94,14 @@ export function buildFolderOverviewData(
     .filter((e) => e.rel.length > 0 && !e.rel.includes('/'))
     .map(({ docName, rel }) => {
       const meta = options.pageMeta.get(docName);
+      const title = resolveTitle(docName, rel, options.pageTitles);
+      const fileName = docNameToTreePath(rel, meta?.docExt);
       return {
         kind: 'file' as const,
         path: docName,
         name: rel,
-        title: resolveTitle(docName, rel, options.pageTitles),
+        title,
+        fileName: fileNameUnlessTitleShowsIt(title, fileName, rel),
         size: meta?.size ?? 0,
         modified: meta?.modified ?? '',
       };

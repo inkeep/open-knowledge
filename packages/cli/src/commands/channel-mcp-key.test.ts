@@ -104,6 +104,7 @@ describe('per-channel MCP registration', () => {
   let home: string;
 
   beforeEach(() => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
     home = mkdtempSync(join(tmpdir(), 'ok-channel-key-'));
   });
 
@@ -130,6 +131,7 @@ describe('per-channel MCP registration', () => {
         'open-knowledge'
       ],
     );
+    expect(stableEntry).toBeDefined();
 
     vi.stubEnv('OK_CHANNEL', 'beta');
     const servers = writeClaude();

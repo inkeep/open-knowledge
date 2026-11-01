@@ -2,9 +2,10 @@ import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Node, Project, SyntaxKind } from 'ts-morph';
 import { describe, expect, it } from 'vitest';
+import { SERVER_SCAN_ROOT } from './agent-write-pre-drain-coverage.reads.ts';
 import { listAgentWriteSpineFiles } from './agent-write-spine-files.test-helper.ts';
 
-const here = dirname(fileURLToPath(import.meta.url));
+const here = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', SERVER_SCAN_ROOT);
 
 const FULL_BODY_OVERWRITE = new Set(['replace', 'patch']);
 

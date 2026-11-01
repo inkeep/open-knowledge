@@ -127,7 +127,7 @@ export async function buildUninstallModuleGraph(
     logLevel: 'silent',
     plugins: [
       react(),
-      await babel(RENDERER_BABEL_OPTIONS),
+      babel(RENDERER_BABEL_OPTIONS),
       probeEntryPlugin([UNINSTALL_ENTRY, ...extraEntryImports]),
       capture,
     ],

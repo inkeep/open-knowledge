@@ -1,12 +1,10 @@
+import type { RolldownBabelPreset } from '@rolldown/plugin-babel';
 import { reactCompilerPreset } from '@vitejs/plugin-react';
 import type { PluginOptions } from 'babel-plugin-react-compiler';
 
 /**
  * Shared renderer Babel-pass options — single source of truth for both
- * `packages/app/vite.config.ts` (`babel(RENDERER_BABEL_OPTIONS)`) and
- * `packages/desktop/electron.vite.config.ts`
- * (`await babel(RENDERER_BABEL_OPTIONS)` — the `await` is the electron-vite
- * deep-clone workaround, https://github.com/alex8088/electron-vite/issues/902).
+ * `packages/app/vite.config.ts` and `packages/desktop/electron.vite.config.ts`.
  *
  * Keeping this here means a React Compiler tweak or a Lingui-plugin change
  * propagates to both builds without a manual mirror — same rationale as the
@@ -29,7 +27,7 @@ const reactCompilerConfig: PluginOptions = {
  * calls. `@vitejs/plugin-react` v6 (oxc-based) has no `babel` option, so this
  * shared pass is where the macro must live.
  */
-export const RENDERER_BABEL_OPTIONS = {
+export const RENDERER_BABEL_OPTIONS: { plugins: string[]; presets: RolldownBabelPreset[] } = {
   plugins: ['@lingui/babel-plugin-lingui-macro'],
   presets: [reactCompilerPreset(reactCompilerConfig)],
 };

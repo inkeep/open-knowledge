@@ -237,6 +237,27 @@ describe('sanitizeComponentProps — style handling', () => {
   });
 });
 
+describe('sanitizeComponentProps — rendering limits', () => {
+  test('rejects already-materialized deeply nested props before recursive traversal', () => {
+    const props = { items: JSON.parse(`${'['.repeat(6000)}0${']'.repeat(6000)}`) };
+    expect(() => sanitizeComponentProps(props)).toThrow('rendering budget');
+  });
+
+  test('rejects excessive breadth even without deep nesting', () => {
+    expect(() => sanitizeComponentProps({ items: Array.from({ length: 10001 }, () => 0) })).toThrow(
+      'rendering budget',
+    );
+  });
+
+  test('retains ordinary nested props and their URL protection', () => {
+    expect(
+      sanitizeComponentProps({
+        items: [{ meta: { href: 'javascript:alert(1)', title: 'Keep me' } }],
+      }),
+    ).toEqual({ items: [{ meta: { href: '#', title: 'Keep me' } }] });
+  });
+});
+
 describe('sanitizeComponentProps — nested URL traversal', () => {
   test('sanitizes URLs inside nested array of objects (InlineTOC.items shape)', () => {
     const input = {

@@ -18,6 +18,7 @@ import {
 } from './build-skill-zip.ts';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import { tracedCpSync, tracedMkdir, tracedMkdirSync, tracedRmSync } from './fs-traced.ts';
+import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 import { BUNDLE_SKILL_NAME, type BundleId } from './skill-bundles.ts';
 import { recordSkillInstallEvent, type SkillInstallEventOutcome } from './skill-install-events.ts';
@@ -388,40 +389,61 @@ function defaultDownloadsPath(home: string): string {
   return join(home, DOWNLOADS_DIR, SKILL_FILENAME);
 }
 
+type FileAssociationOutcome =
+  | { ok: true }
+  | { ok: false; reason: 'unsupported-platform' | 'spawn-error'; message: string };
+
+function fileAssociationCommand(
+  skillPath: string,
+  platformName: NodeJS.Platform,
+): { command: string; args: string[] } | undefined {
+  if (platformName === 'darwin') return { command: 'open', args: [skillPath] };
+  if (platformName === 'win32') return { command: 'cmd', args: ['/c', 'start', '""', skillPath] };
+  if (platformName === 'linux') return { command: 'xdg-open', args: [skillPath] };
+  return undefined;
+}
+
+function spawnErrorOutcome(command: string, err: unknown): FileAssociationOutcome {
+  const detail = err instanceof Error ? err.message : String(err);
+  const missing = errnoCode(err) === 'ENOENT';
+  return {
+    ok: false,
+    reason: 'spawn-error',
+    message: missing ? `No system file opener (${command}) was found: ${detail}` : detail,
+  };
+}
+
 function invokeFileAssociation(
   skillPath: string,
   platformName: NodeJS.Platform,
   spawnFn: SpawnLike,
-): { ok: true } | { ok: false; reason: 'unsupported-platform' | 'spawn-error'; message: string } {
+): Promise<FileAssociationOutcome> {
+  const invocation = fileAssociationCommand(skillPath, platformName);
+  if (invocation === undefined) {
+    return Promise.resolve({
+      ok: false,
+      reason: 'unsupported-platform',
+      message: `Platform '${platformName}' has no file-association invocation wired.`,
+    });
+  }
   const detached: SpawnOptions = withHiddenWindowsConsole({
     detached: true,
     stdio: 'ignore',
   });
-  try {
-    if (platformName === 'darwin') {
-      spawnFn('open', [skillPath], detached).unref();
-      return { ok: true };
+  return new Promise((resolve) => {
+    let child: ReturnType<SpawnLike>;
+    try {
+      child = spawnFn(invocation.command, invocation.args, detached);
+    } catch (err) {
+      resolve(spawnErrorOutcome(invocation.command, err));
+      return;
     }
-    if (platformName === 'win32') {
-      spawnFn('cmd', ['/c', 'start', '""', skillPath], detached).unref();
-      return { ok: true };
-    }
-    if (platformName === 'linux') {
-      spawnFn('xdg-open', [skillPath], detached).unref();
-      return { ok: true };
-    }
-    return {
-      ok: false,
-      reason: 'unsupported-platform',
-      message: `Platform '${platformName}' has no file-association invocation wired.`,
-    };
-  } catch (err) {
-    return {
-      ok: false,
-      reason: 'spawn-error',
-      message: err instanceof Error ? err.message : String(err),
-    };
-  }
+    child.on('error', (err) => resolve(spawnErrorOutcome(invocation.command, err)));
+    child.once('spawn', () => {
+      child.unref();
+      resolve({ ok: true });
+    });
+  });
 }
 
 export async function buildAndOpenSkill(
@@ -562,7 +584,7 @@ export async function buildAndOpenSkill(
     return baseResult;
   }
 
-  const invocation = invokeFileAssociation(build.outputPath, platformName, spawnFn);
+  const invocation = await invokeFileAssociation(build.outputPath, platformName, spawnFn);
   if (!invocation.ok) {
     await report('built', installedVersion, `handoff-${invocation.reason}`);
     return {

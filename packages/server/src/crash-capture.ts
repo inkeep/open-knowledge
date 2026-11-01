@@ -34,7 +34,7 @@ export function writeCrashArtifacts(projectDir: string, record: CrashRecord): vo
   } catch {}
   try {
     const logsPath = logsCurrentPath(projectDir);
-    mkdirSync(dirname(logsPath), { recursive: true });
+    mkdirSync(dirname(logsPath), { recursive: true, mode: 0o700 });
     const line = {
       level: 60,
       time: Date.parse(record.timestamp),

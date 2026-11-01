@@ -51,6 +51,9 @@ function makeTracingDeps(overrides?: {
       installEmbedRefererRewriter: () => {
         calls.push({ step: 'installEmbedRefererRewriter' });
       },
+      publishAppState: (state: typeof baseState) => {
+        calls.push({ step: 'publishAppState', args: { appState: state } });
+      },
       registerIpcHandlers: () => {
         calls.push({ step: 'registerIpcHandlers' });
       },
@@ -71,10 +74,27 @@ function makeTracingDeps(overrides?: {
       appVersion: '0.99.0',
       maxSupportedSchemaVersion: 1,
     },
+    loadedState: baseState,
   };
 }
 
 describe('runBootstrap order-of-operations', () => {
+  test('publishes loaded appState before IPC handlers register', async () => {
+    const { calls, deps, loadedState } = makeTracingDeps({
+      appStateOverride: { spellCheckEnabled: false },
+    });
+    expect(loadedState).not.toEqual(emptyState());
+    await runBootstrap(deps);
+
+    const publication = calls.find((c) => c.step === 'publishAppState');
+    const publicationIdx = calls.findIndex((c) => c.step === 'publishAppState');
+    const ipcIdx = calls.findIndex((c) => c.step === 'registerIpcHandlers');
+    expect(publicationIdx).toBeGreaterThanOrEqual(0);
+    expect(ipcIdx).toBeGreaterThanOrEqual(0);
+    expect(publicationIdx).toBeLessThan(ipcIdx);
+    expect(publication?.args).toEqual({ appState: loadedState });
+  });
+
   test('IPC handlers register before nativeTheme.themeSource is set', async () => {
     const { calls, deps } = makeTracingDeps();
     await runBootstrap(deps);
@@ -104,6 +124,7 @@ describe('runBootstrap order-of-operations', () => {
       'evaluateSchemaCompatibility',
       'installLocalhostCorsInjector',
       'installEmbedRefererRewriter',
+      'publishAppState',
       'registerIpcHandlers',
       'setNativeThemeSource',
       'refreshApplicationMenu',
@@ -123,6 +144,7 @@ describe('runBootstrap order-of-operations', () => {
       'evaluateSchemaCompatibility',
       'installLocalhostCorsInjector',
       'installEmbedRefererRewriter',
+      'publishAppState',
       'registerIpcHandlers',
       'setNativeThemeSource',
       'refreshApplicationMenu',
@@ -132,10 +154,9 @@ describe('runBootstrap order-of-operations', () => {
 });
 
 describe('runBootstrap return shape', () => {
-  test('returns loaded appState and null diagnostic on the happy path', async () => {
+  test('returns a null diagnostic on the happy path', async () => {
     const { deps } = makeTracingDeps();
     const result = await runBootstrap(deps);
-    expect(result.appState.schemaVersion).toBe(1);
     expect(result.pendingSchemaIncompatibility).toBeNull();
   });
 

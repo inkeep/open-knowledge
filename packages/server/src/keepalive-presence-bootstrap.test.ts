@@ -5,8 +5,8 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
 import { afterAll, describe, expect, test } from 'vitest';
 import { WebSocket as WsClient } from 'ws';
+import { type BootedServer, bootServer } from '../../../test-support/boot-server.test-helper.ts';
 import { toBroadcasterKey } from './agent-id.ts';
-import { type BootedServer, bootServer } from './boot.ts';
 import { parseKeepaliveIdentity } from './mcp-mount.ts';
 
 async function poll<T>(

@@ -11,9 +11,10 @@ import {
 } from 'ts-morph';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
+import { IPC_SCAN_GLOB, IPC_SCAN_ROOTS } from './ipc-exhaustiveness-coverage.reads';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../..');
-const SCAN_ROOTS = [join(REPO_ROOT, 'packages/core/src'), join(REPO_ROOT, 'packages/app/src')];
+const SCAN_ROOTS = IPC_SCAN_ROOTS.map((root) => join(REPO_ROOT, root));
 
 interface DuRegistration {
   readonly name: string;
@@ -63,7 +64,7 @@ function isExcludedPath(absPath: string): boolean {
 
 function* enumerateSourceFiles(): Generator<string> {
   for (const root of SCAN_ROOTS) {
-    const glob = new Bun.Glob('**/*.{ts,tsx}');
+    const glob = new Bun.Glob(IPC_SCAN_GLOB);
     for (const rel of glob.scanSync({ cwd: root })) {
       const abs = join(root, rel);
       if (isExcludedPath(abs)) continue;

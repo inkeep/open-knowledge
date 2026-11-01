@@ -1,5 +1,5 @@
 import { EditorView } from '@codemirror/view';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { CodePreviewEditModal } from './CodePreviewEditModal';
@@ -45,6 +45,17 @@ function Harness(props: {
 }
 
 describe('CodePreviewEditModal', () => {
+  test('CodePreviewEditModal names the CodeMirror textbox', async () => {
+    render(<Harness onSave={() => {}} />);
+    const host = await screen.findByTestId('ok-code-preview-edit-modal-source');
+
+    await waitFor(() => {
+      expect(host.querySelector('.cm-content')).not.toBeNull();
+    });
+    const content = host.querySelector('.cm-content');
+    expect(within(host).getByRole('textbox', { name: /\S/ })).toBe(content);
+  });
+
   test('Cancel discards the draft (onSave not called)', async () => {
     let saveCount = 0;
     render(

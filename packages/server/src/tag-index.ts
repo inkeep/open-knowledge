@@ -371,7 +371,7 @@ export class TagIndex {
       files: Object.fromEntries(this.fileMeta),
     };
     await tracedMkdir(dirname(filePath), { recursive: true });
-    await atomicWriteFile(filePath, JSON.stringify(snapshot, null, 2), { fs: tracedAtomicFs });
+    await atomicWriteFile(filePath, JSON.stringify(snapshot), { fs: tracedAtomicFs });
   }
 
   reconcileWithDisk(): Promise<{ added: number; updated: number; deleted: number }> {

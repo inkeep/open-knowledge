@@ -139,7 +139,7 @@ tags:
 ![[<slug>.<ext>]]
 ```
 
-The body is just the wiki-embed reference. For images, video, and audio, the embed renders inline. **For PDFs and other opaque file-attachment types (docx, xlsx, zip, etc.), the `![[file.ext]]` form renders as a Notion-style File row that click-dispatches to the appropriate viewer** — the pdfjs canvas viewer is opt-in via the explicit `<Pdf src="./<slug>.pdf" />` JSX form, NOT the wiki-embed default. If the user wants the inline canvas viewer for this specific PDF, they can post-edit the wrapper body to swap the embed for that form.
+The body is just the wiki-embed reference. For images, video, and audio, the embed renders inline. **For PDFs and other opaque file-attachment types (docx, xlsx, zip, etc.), the `![[file.ext]]` form renders as an inline File row that click-dispatches to the appropriate viewer** — the pdfjs canvas viewer is opt-in via the explicit `<Pdf src="./<slug>.pdf" />` JSX form, NOT the wiki-embed default. If the user wants the inline canvas viewer for this specific PDF, they can post-edit the wrapper body to swap the embed for that form.
 
 Write via `write` (NOT native `Write` — the CRDT path is mandatory for in-scope markdown).
 

@@ -23,7 +23,12 @@ import { createContentFilter } from './content-filter.ts';
 import { classifyGitError } from './error-classification.ts';
 import type { GitHandle } from './git-handle.ts';
 import { listNames } from './git-paths.ts';
-import type { DetectGhAccountsFn, DetectGhFn } from './github-permissions.ts';
+import type {
+  CheckPushPermissionOptions,
+  DetectGhAccountsFn,
+  DetectGhFn,
+  PushPermission,
+} from './github-permissions.ts';
 import { getLogger } from './logger.ts';
 import { createSyncCredentialConfigResolver } from './share/git-context.ts';
 import { declareGitHubHosts, useIsolatedHome } from './share/git-host-declarations.test-helper.ts';
@@ -150,14 +155,12 @@ async function initGitWithOrigin(originUrl = 'https://github.com/inkeep/open-kno
 
 interface FakeProbeRecorder {
   calls: number;
-  next: import('./github-permissions.ts').PushPermission[];
-  opts: import('./github-permissions.ts').CheckPushPermissionOptions[];
-  fn: (
-    opts: import('./github-permissions.ts').CheckPushPermissionOptions,
-  ) => Promise<import('./github-permissions.ts').PushPermission>;
+  next: PushPermission[];
+  opts: CheckPushPermissionOptions[];
+  fn: (opts: CheckPushPermissionOptions) => Promise<PushPermission>;
 }
 
-function fakeProbe(...sequence: Array<import('./github-permissions.ts').PushPermission>) {
+function fakeProbe(...sequence: Array<PushPermission>) {
   const rec: FakeProbeRecorder = {
     calls: 0,
     next: [...sequence],
@@ -4541,11 +4544,12 @@ describe('SyncEngine push-permission probe', () => {
 
   test('FR7: pushPermission is absent during the probe window (cold-start latency)', async () => {
     await initGitWithOrigin();
-    let resolveProbe: (p: import('./github-permissions.ts').PushPermission) => void = () => {};
-    const slowProbe: FakeProbeRecorder['fn'] = () =>
-      new Promise((res) => {
-        resolveProbe = res;
-      });
+    let resolveProbe: (p: PushPermission) => void = () => {};
+    const slowProbe: FakeProbeRecorder['fn'] = () => {
+      const { promise, resolve } = Promise.withResolvers<PushPermission>();
+      resolveProbe = resolve;
+      return promise;
+    };
     const engine = makeProbeEngine({ syncEnabled: false, fakeProbe: slowProbe });
     await engine.start();
     expect(engine.getStatus().pushPermission).toBeUndefined();
@@ -4567,11 +4571,12 @@ describe('SyncEngine push-permission probe', () => {
 
   test('FR7: transitioning idle → fetching during probe window does NOT set no-push-permission pausedReason', async () => {
     await initGitWithOrigin();
-    let resolveProbe: (p: import('./github-permissions.ts').PushPermission) => void = () => {};
-    const slowProbe: FakeProbeRecorder['fn'] = () =>
-      new Promise((res) => {
-        resolveProbe = res;
-      });
+    let resolveProbe: (p: PushPermission) => void = () => {};
+    const slowProbe: FakeProbeRecorder['fn'] = () => {
+      const { promise, resolve } = Promise.withResolvers<PushPermission>();
+      resolveProbe = resolve;
+      return promise;
+    };
     const engine = makeProbeEngine({ syncEnabled: true, fakeProbe: slowProbe });
     await engine.start();
     expect(engine.getStatus().state).toBe('idle');

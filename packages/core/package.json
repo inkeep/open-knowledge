@@ -287,6 +287,18 @@
       "types": "./dist/constants-native-menu-labels.d.mts",
       "default": "./dist/constants-native-menu-labels.mjs"
     },
+    "./constants/ok-dir": {
+      "@inkeep/source": "./src/constants/ok-dir.ts",
+      "development": "./src/constants/ok-dir.ts",
+      "types": "./dist/constants-ok-dir.d.mts",
+      "default": "./dist/constants-ok-dir.mjs"
+    },
+    "./constants/ok-user-home": {
+      "@inkeep/source": "./src/constants/ok-user-home.ts",
+      "development": "./src/constants/ok-user-home.ts",
+      "types": "./dist/constants-ok-user-home.d.mts",
+      "default": "./dist/constants-ok-user-home.mjs"
+    },
     "./constants/preview-embed-starters": {
       "@inkeep/source": "./src/constants/preview-embed-starters.ts",
       "development": "./src/constants/preview-embed-starters.ts",
@@ -683,6 +695,12 @@
       "types": "./dist/uninstall-bridge.d.mts",
       "default": "./dist/uninstall-bridge.mjs"
     },
+    "./util/atomic-yaml-write": {
+      "@inkeep/source": "./src/util/atomic-yaml-write.ts",
+      "development": "./src/util/atomic-yaml-write.ts",
+      "types": "./dist/util-atomic-yaml-write.d.mts",
+      "default": "./dist/util-atomic-yaml-write.mjs"
+    },
     "./util/doc-name": {
       "@inkeep/source": "./src/util/doc-name.ts",
       "development": "./src/util/doc-name.ts",
@@ -864,6 +882,7 @@
     "ajv-formats": "^3.0.1",
     "decode-named-character-reference": "^1.3.0",
     "diff-match-patch": "^1.0.5",
+    "ipaddr.js": "^2.3.0",
     "markdownlint": "^0.41.0",
     "mdast-util-from-markdown": "^2.0.3",
     "mdast-util-math": "^3.0.0",
@@ -890,6 +909,7 @@
     "remark-rehype": "^11.1.2",
     "remark-stringify": "^11.0.0",
     "remend": "1.3.0",
+    "undici": "~7.29.0",
     "unified": "^11.0.5",
     "unified-lint-rule": "^3.0.0",
     "unist-util-visit": "^5.1.0",
@@ -897,13 +917,13 @@
     "vfile-message": "^4.0.3",
     "yaml": "^2.7.1",
     "yjs": "^13.6.30",
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   },
   "scripts": {
     "build": "node scripts/build-output.mjs build",
     "verify:exports": "node scripts/verify-exports-targets.mjs",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.perf.json --noEmit && tsc -p tests/contract/subpath-types/tsconfig.json --noEmit",
-    "check:dts": "tsc -p tsconfig.check.json --noEmit",
+    "typecheck": "tsrs --noEmit && tsrs -p tsconfig.perf.json --noEmit && tsrs -p tests/contract/subpath-types/tsconfig.json --noEmit",
+    "check:dts": "tsrs -p tsconfig.check.json --noEmit",
     "test": "vitest run src/ tests/contract/ scripts/",
     "test:perf:bench": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --expose-gc\" RUN_BENCH=1 vitest run tests/perf/markdown-bench.test.ts",
     "test:perf:regression:unit": "vitest run tests/perf/regression-gate.test.ts",
@@ -933,6 +953,7 @@
     "micromark": "^4.0.2",
     "micromark-util-symbol": "^2.0.1",
     "tsdown": "^0.22.14",
+    "tsrs": "0.20.0-ts7.1.0-beta",
     "typescript": "~7.0.2",
     "vitest": "^5.0.3",
     "y-prosemirror": "1.3.7"

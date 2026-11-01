@@ -1,6 +1,6 @@
 import { mkdirSync, readdirSync, renameSync, statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/constants/ok-user-home';
 import type { LoggerOptions, Logger as PinoLoggerInstance } from 'pino';
 import pino from 'pino';
 

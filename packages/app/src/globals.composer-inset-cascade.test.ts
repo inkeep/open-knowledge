@@ -11,6 +11,7 @@ import {
   FULL_PAGE_CM_SCROLLPORTS,
   type FullPageCmHost,
 } from './editor/document-scrollports';
+import { COMPOSER_SCAN_ROOT } from './globals.composer-inset-cascade.reads';
 import {
   type CssBlock,
   collectBlocks,
@@ -18,7 +19,7 @@ import {
   splitSelectorList,
 } from './globals-css.test-helper';
 
-const SRC_ROOT = import.meta.dirname;
+const SRC_ROOT = join(import.meta.dirname, '..', '..', '..', COMPOSER_SCAN_ROOT);
 
 const RESET_PRELUDE = '.cm-editor .cm-content';
 

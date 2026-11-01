@@ -3,6 +3,61 @@ import { bodyEdgeEmpties } from './doc-boundary-space.ts';
 
 const COMMONMARK_ESCAPE_RE = /\\([!"#$%&'()*+,\-./:;<=>?@[\]^_`{|}~])/g;
 
+const LINE_START_ESCAPE_RE =
+  /(?<![^\n])((?:[ \t]*(?:>|(?:[-+*]|\d{1,9}[.)])[ \t]))*)[ \t]*(\d{1,9}\\[.)]|\\[-+*#>_=])/g;
+
+const BLOCK_START_OPENER_RE =
+  /^(?:[-+*](?:[ \t]|$)|\d{1,9}[.)](?:[ \t]|$)|#{1,6}(?:[ \t]|$)|>|(?:\*[ \t]*){3,}$|(?:-[ \t]*){3,}$|(?:_[ \t]*){3,}$)/;
+
+const PARAGRAPH_INTERRUPTER_RE =
+  /^(?:[-+*][ \t]+\S|1[.)][ \t]+\S|#{1,6}(?:[ \t]|$)|>|(?:\*[ \t]*){3,}$|(?:_[ \t]*){3,}$|(?:-[ \t]*){3,}$|-+[ \t]*$|=+[ \t]*$)/;
+
+const BLOCK_BOUNDARY_LINE_RE =
+  /^(?:$|#{1,6}(?:[ \t]|$)|`{3,}|~{3,}|(?:\*[ \t]*){3,}$|(?:-[ \t]*){3,}$|(?:_[ \t]*){3,}$)/;
+
+const JSX_CONTAINER_TAG_LINE_RE = /^<\/?[A-Z][A-Za-z0-9.]*(?:\s[^>]*)?>$/;
+
+function previousLine(s: string, lineStart: number): string {
+  return s.slice(s.lastIndexOf('\n', lineStart - 2) + 1, lineStart - 1);
+}
+
+function isBlockBoundaryLine(line: string): boolean {
+  const content = line.replace(/^[ \t>]*/, '');
+  return (
+    BLOCK_BOUNDARY_LINE_RE.test(content) ||
+    JSX_CONTAINER_TAG_LINE_RE.test(content.replace(/[ \t]+$/, ''))
+  );
+}
+
+function structuralEscapeOffsets(s: string): Set<number> {
+  const offsets = new Set<number>();
+  if (!s.includes('\\')) return offsets;
+  for (const m of s.matchAll(LINE_START_ESCAPE_RE)) {
+    const containerPrefix = m[1] ?? '';
+    const marker = m[2] ?? '';
+    const lineStart = m.index;
+    const markerStart = lineStart + m[0].length - marker.length;
+    const lineEnd = s.indexOf('\n', markerStart);
+    const unescapedContent = s
+      .slice(markerStart, lineEnd === -1 ? s.length : lineEnd)
+      .replace(COMMONMARK_ESCAPE_RE, '$1');
+    const opensListItem = /[^ \t>]/.test(containerPrefix);
+    const followsBlockBoundary = lineStart === 0 || isBlockBoundaryLine(previousLine(s, lineStart));
+    const opener =
+      opensListItem || followsBlockBoundary ? BLOCK_START_OPENER_RE : PARAGRAPH_INTERRUPTER_RE;
+    if (opener.test(unescapedContent)) offsets.add(markerStart + marker.indexOf('\\'));
+  }
+  return offsets;
+}
+
+function collapseCommonMarkEscapes(s: string): string {
+  const structural = structuralEscapeOffsets(s);
+  if (structural.size === 0) return s.replace(COMMONMARK_ESCAPE_RE, '$1');
+  return s.replace(COMMONMARK_ESCAPE_RE, (escaped: string, char: string, offset: number) =>
+    structural.has(offset) ? escaped : char,
+  );
+}
+
 const TABLE_ALIGN_ROW_RE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/;
 
 const LIST_ITEM_INDENT_RE = /^[ \t]+([-+*]|\d+[.)]|[a-zA-Z][.)])\s/;
@@ -75,7 +130,6 @@ function findFenceInteriorLines(lines: readonly string[]): Set<number> {
   return interior;
 }
 
-const JSX_CONTAINER_TAG_LINE_RE = /^<\/?[A-Z][A-Za-z0-9.]*(?:\s[^>]*)?>$/;
 const JSX_CONTAINER_OPEN_RE = /^<[A-Z][A-Za-z0-9.]*(?:\s[^>]*)?>$/;
 const JSX_CONTAINER_CLOSE_RE = /^<\/[A-Z][A-Za-z0-9.]*\s*>$/;
 const CAPITALIZED_JSX_TAG_RE = /<\/?[A-Z]/;
@@ -146,10 +200,7 @@ function foldJsxContainerBoundaryBlanks(lines: readonly string[]): string[] {
 
 export function normalizeBridge(s: string): string {
   const lines = foldJsxContainerBoundaryBlanks(
-    s
-      .replace(/^﻿/, '')
-      .replace(/\r/g, '')
-      .replace(COMMONMARK_ESCAPE_RE, '$1')
+    collapseCommonMarkEscapes(s.replace(/^﻿/, '').replace(/\r/g, ''))
       .replace(EMPHASIS_AROUND_CODE_RE, '$1')
       .replace(/^\n+/, '')
       .replace(/^[*-]{3,}(?=\n|$)/, '---')

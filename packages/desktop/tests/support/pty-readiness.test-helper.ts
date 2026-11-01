@@ -831,10 +831,7 @@ export async function runHarness(
 
   let spawnError = null as Error | null;
   let exitResult = null as { code: number | null; signal: string | null } | null;
-  let resolveExit: () => void = () => undefined;
-  const exitPromise = new Promise<void>((resolve) => {
-    resolveExit = resolve;
-  });
+  const { promise: exitPromise, resolve: resolveExit } = Promise.withResolvers<void>();
   child.once('error', (error) => {
     spawnError = error;
   });

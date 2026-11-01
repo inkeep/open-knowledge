@@ -17,6 +17,7 @@ import { basicSetup } from 'codemirror';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef } from 'react';
 import { yCollab } from 'y-codemirror.next';
+import { codeMirrorContentAttributes } from '@/editor/code-mirror-content-attributes';
 import { propEditorHighlight } from '@/editor/components/CodeMirrorPropInput';
 import { okCmTheme } from '@/editor/extensions/cm-theme';
 import { registerFullPageCmView, unregisterFullPageCmView } from '@/editor/full-page-cm-views';
@@ -61,6 +62,7 @@ export function TextDocEditor({
       state: EditorState.create({
         doc: ytext.toString(),
         extensions: [
+          codeMirrorContentAttributes(t`${basename} — text editor`),
           basicSetup,
           yCollab(ytext, provider.awareness, { undoManager }),
           languageSlot.of([]),
@@ -89,7 +91,7 @@ export function TextDocEditor({
       unregisterFullPageCmView(docName, view);
       view.destroy();
     };
-  }, [ytext, provider, resolvedTheme, docName, undoManager]);
+  }, [ytext, provider, resolvedTheme, docName, undoManager, basename, t]);
 
   return (
     <section

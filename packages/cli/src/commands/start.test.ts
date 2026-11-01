@@ -947,6 +947,44 @@ describe('bootStartServer (integration)', () => {
     }
   });
 
+  test('--single-file ephemeral teardown records the signal that stopped it', async () => {
+    const looseDir = await mkdtemp(resolve(tmpdir(), 'ok-start-loose-'));
+    const shutdownRecords: Array<Record<string, unknown>> = [];
+    const record = (data: unknown, message?: string): void => {
+      if (message?.includes('shutdown initiated') === true) {
+        shutdownRecords.push(data as Record<string, unknown>);
+      }
+    };
+    const log = {
+      info: record,
+      warn: record,
+      error: record,
+      debug: record,
+      trace: record,
+      fatal: record,
+    } as unknown as NonNullable<Parameters<typeof bootStartServer>[0]['log']>;
+    try {
+      writeFileSync(join(looseDir, 'note.md'), '# loose note\n', 'utf-8');
+      booted = await bootStartServer({
+        config: makeTestConfig(),
+        cwd: tmpDir,
+        host: TEST_HOST,
+        skipAutoInit: true,
+        singleFile: join(looseDir, 'note.md'),
+        log,
+      });
+      await booted.ready;
+
+      await booted.destroy('external-signal', { signal: 'SIGINT' });
+      booted = null;
+      expect(shutdownRecords).toEqual([
+        expect.objectContaining({ reason: 'external-signal', signal: 'SIGINT' }),
+      ]);
+    } finally {
+      await rm(looseDir, { recursive: true, force: true });
+    }
+  });
+
   test('--single-file with a provided empty --project-dir seeds the synthesized config and boots', async () => {
     const looseDir = await mkdtemp(resolve(tmpdir(), 'ok-start-loose-'));
     const providedDir = await mkdtemp(resolve(tmpdir(), 'ok-ephemeral-'));

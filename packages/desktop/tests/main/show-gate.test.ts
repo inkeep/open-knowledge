@@ -63,6 +63,7 @@ interface TestEnv {
   timers: CapturedTimer[];
   cleared: unknown[];
   warns: Array<{ obj: object; msg: string }>;
+  onShown: ReturnType<typeof vi.fn>;
   registry: ShowGateRegistry;
 }
 
@@ -70,6 +71,7 @@ function buildEnv(opts?: { timeoutMs?: number; shouldRevealInactive?: () => bool
   const timers: CapturedTimer[] = [];
   const cleared: unknown[] = [];
   const warns: Array<{ obj: object; msg: string }> = [];
+  const onShown = vi.fn();
   const registry = createShowGateRegistry({
     log: {
       warn: (obj, msg) => {
@@ -85,9 +87,10 @@ function buildEnv(opts?: { timeoutMs?: number; shouldRevealInactive?: () => bool
       cleared.push(handle);
     },
     timeoutMs: opts?.timeoutMs,
+    onShown,
     shouldRevealInactive: opts?.shouldRevealInactive,
   });
-  return { timers, cleared, warns, registry };
+  return { timers, cleared, warns, onShown, registry };
 }
 
 describe('createShowGateRegistry — dual-signal show contract', () => {
@@ -279,12 +282,14 @@ describe('createShowGateRegistry — timeout fallback', () => {
     expect(env.warns).toHaveLength(0);
   });
 
-  test('window destroyed before signals + timeout → no show, no warn', () => {
+  test('window destroyed before signals + timeout → no show, no warn, no onShown', () => {
     const win = makeWindow();
     env.registry.register(win);
     win.markDestroyed();
+    expect(env.timers).toHaveLength(1);
     env.timers[0]?.cb();
     expect(win.show).not.toHaveBeenCalled();
+    expect(env.onShown).not.toHaveBeenCalled();
     expect(env.warns).toHaveLength(0);
   });
 
@@ -295,6 +300,16 @@ describe('createShowGateRegistry — timeout fallback', () => {
     env.timers[0]?.cb();
     expect(win.show).not.toHaveBeenCalled();
     expect(env.warns).toHaveLength(0);
+  });
+
+  test('window already visible before timeout still fires onShown once', () => {
+    const win = makeWindow();
+    env.registry.register(win, { kind: 'editor' });
+    win.markVisible();
+    env.timers[0]?.cb();
+    expect(win.show).not.toHaveBeenCalled();
+    expect(env.onShown).toHaveBeenCalledTimes(1);
+    expect(env.onShown).toHaveBeenCalledWith('editor');
   });
 
   test('windowKind defaults to editor when omitted', () => {
@@ -397,6 +412,7 @@ describe('createShowGateRegistry — destroyed-window race on the happy path', (
     win.markDestroyed();
     env.registry.fireThemeApplied(win);
     expect(win.show).not.toHaveBeenCalled();
+    expect(env.onShown).not.toHaveBeenCalled();
   });
 
   test('window already-visible between both signals and maybeShow → does not double-show', () => {
@@ -406,6 +422,17 @@ describe('createShowGateRegistry — destroyed-window race on the happy path', (
     win.markVisible();
     env.registry.fireThemeApplied(win);
     expect(win.show).not.toHaveBeenCalled();
+  });
+
+  test('window already visible before both signals still fires onShown once', () => {
+    const win = makeWindow();
+    env.registry.register(win, { kind: 'editor' });
+    win.markVisible();
+    win.fireReadyToShow();
+    env.registry.fireThemeApplied(win);
+    expect(win.show).not.toHaveBeenCalled();
+    expect(env.onShown).toHaveBeenCalledTimes(1);
+    expect(env.onShown).toHaveBeenCalledWith('editor');
   });
 });
 

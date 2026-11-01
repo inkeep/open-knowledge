@@ -67,10 +67,7 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
     const createAssetServeMiddlewareSpy = vi.fn(() => innerAssetFn);
     const handleUpgrade = vi.fn(() => false);
     const teardownOrder: string[] = [];
-    let resolveHostShutdown: (() => void) | undefined;
-    const hostShutdown = new Promise<void>((resolve) => {
-      resolveHostShutdown = resolve;
-    });
+    const { promise: hostShutdown, resolve: resolveHostShutdown } = Promise.withResolvers<void>();
     const fakeHost = {
       handleUpgrade,
       shutdown: vi.fn(async () => {
@@ -217,7 +214,7 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
     httpServer.emit('close');
     expect(fakeHost.shutdown).toHaveBeenCalledOnce();
     expect(teardownOrder).toEqual(['acp', 'host']);
-    resolveHostShutdown?.();
+    resolveHostShutdown();
     await buildEnd;
     expect(buildEndSettled).toBe(true);
     expect(fakeHost.shutdown).toHaveBeenCalledOnce();

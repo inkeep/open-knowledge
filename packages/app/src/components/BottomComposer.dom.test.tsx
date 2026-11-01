@@ -842,10 +842,11 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
 
   test('Send shows a pending state while the dispatch is in flight', async () => {
     let resolveDispatch: (value: { ok: boolean }) => void = () => {};
-    dispatchImpl = () =>
-      new Promise<{ ok: boolean }>((resolve) => {
-        resolveDispatch = resolve;
-      });
+    dispatchImpl = () => {
+      const { promise, resolve } = Promise.withResolvers<{ ok: boolean }>();
+      resolveDispatch = resolve;
+      return promise;
+    };
 
     await renderComposer();
     fireEvent.change(getInput(), { target: { value: 'in flight' } });

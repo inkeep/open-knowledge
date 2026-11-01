@@ -1,11 +1,15 @@
 import { describe, expect, test } from 'vitest';
 import { findMirrorSource, renderMirrorSubtree } from './use-mirror-source.ts';
 
-function mirrorSourceNode(id: string, children: Array<Record<string, unknown>> = []) {
+function mirrorSourceNode(
+  name: string,
+  children: Array<Record<string, unknown>> = [],
+  attributeName: 'name' | 'id' = 'name',
+) {
   return {
     type: 'mdxJsxFlowElement' as const,
     name: 'MirrorSource',
-    attributes: [{ type: 'mdxJsxAttribute', name: 'id', value: id }],
+    attributes: [{ type: 'mdxJsxAttribute', name: attributeName, value: name }],
     children,
   };
 }
@@ -24,16 +28,35 @@ describe('findMirrorSource', () => {
     ).toBeNull();
   });
 
-  test('returns null when name matches but id does not', () => {
+  test('returns null when no MirrorSource carries the requested name', () => {
     expect(findMirrorSource(root([mirrorSourceNode('a')]), 'b')).toBeNull();
   });
 
-  test('matches by exact id', () => {
+  test('matches by exact name', () => {
     const node = mirrorSourceNode('banner', [{ type: 'paragraph' }]);
     expect(findMirrorSource(root([node]), 'banner')).toBe(node);
   });
 
-  test('first match wins when an id appears twice in the same doc', () => {
+  test('reads an older `id` attribute as the name', () => {
+    const node = mirrorSourceNode('banner', [{ type: 'paragraph' }], 'id');
+    expect(findMirrorSource(root([node]), 'banner')).toBe(node);
+  });
+
+  test('`name` wins over an older `id` on the same source', () => {
+    const node = {
+      type: 'mdxJsxFlowElement' as const,
+      name: 'MirrorSource',
+      attributes: [
+        { type: 'mdxJsxAttribute', name: 'id', value: 'old' },
+        { type: 'mdxJsxAttribute', name: 'name', value: 'new' },
+      ],
+      children: [],
+    };
+    expect(findMirrorSource(root([node]), 'new')).toBe(node);
+    expect(findMirrorSource(root([node]), 'old')).toBeNull();
+  });
+
+  test('first match wins when a name appears twice in the same doc', () => {
     const first = mirrorSourceNode('dup', [{ type: 'text', value: 'first' }]);
     const second = mirrorSourceNode('dup', [{ type: 'text', value: 'second' }]);
     expect(findMirrorSource(root([first, second]), 'dup')).toBe(first);
@@ -52,7 +75,7 @@ describe('findMirrorSource', () => {
     expect(findMirrorSource(tree, 'nested')).toBe(target);
   });
 
-  test('ignores non-MirrorSource JSX flow elements named MirrorSource at a deeper level only by id check', () => {
+  test('a MirrorSource without a name matches no requested name', () => {
     const stray = {
       type: 'mdxJsxFlowElement',
       name: 'MirrorSource',
@@ -62,7 +85,7 @@ describe('findMirrorSource', () => {
     expect(findMirrorSource(root([stray]), 'x')).toBeNull();
   });
 
-  test('id with empty-string value still matches an empty anchor query (precise equality)', () => {
+  test('an empty name still matches an empty requested name (precise equality)', () => {
     const node = mirrorSourceNode('', [{ type: 'paragraph' }]);
     expect(findMirrorSource(root([node]), '')).toBe(node);
   });

@@ -288,14 +288,6 @@ jobs:
             echo "::warning::bug-lane: the declared Rust toolchain could not be installed for ${STABLE} + ${SURVIVING_REFS}. COULD NOT VERIFY, which is not a verdict on the batch."
             exit 0
           fi
-          # ONE flake retry, matching the stance the PR tier already applies to
-          # this same suite. Single-shot would hold the synthetic tree to a
-          # STRICTER bar than the tree that gates main, and these tiers include
-          # process-lifecycle probes that spawn a real CLI, SIGKILL its parent
-          # and poll for the grandchild to exit — exactly the class that flakes
-          # under runner contention. Unretried, one such flake refuses a fix
-          # that is fine, and the refusal reads as a real incompatibility.
-          #
           # `--continue` on the FIRST attempt is what keeps the retry cheap. turbo
           # defaults to `--continue=never`: the first failure cancels every
           # in-flight and unstarted task, so none of those cache and the retry
@@ -328,10 +320,6 @@ jobs:
           # runner fails BOTH halves. Widening the `CI` guard alone would change
           # nothing on a four-core box, which is why the bound has to come from
           # this side instead.
-          #
-          # Contention is not a hypothesis about this step: it is the mechanism
-          # the retry note above already names, and a tier that blows a
-          # per-test timeout under it refuses a fix that is fine.
           RETRY_LOG="${RUNNER_TEMP}/bug-lane-tiers-retry.log"
           # Created up front because a first-attempt blow skips the retry
           # entirely, and the extraction below reads this file either way.
@@ -365,13 +353,6 @@ jobs:
           if [[ "$FIRST_STATUS" -ne 0 ]]; then
             case "$FIRST_STATUS" in
               124|137)
-                # NOT retried, which is where this parts company with the PR
-                # tier's idiom it otherwise copies: that tier refuses to retry a
-                # budget blow because a second attempt burns another full budget
-                # and buries the signal. Here it would also race attempt 1's
-                # orphans, since `--foreground` signals the command and not its
-                # children, on the four cores whose contention is the whole
-                # reason for the bound.
                 RETRY_STATUS="$FIRST_STATUS"
                 ;;
               *)

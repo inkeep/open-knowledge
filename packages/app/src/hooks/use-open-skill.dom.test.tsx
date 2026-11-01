@@ -51,7 +51,7 @@ describe('useOpenSkill gitignored gate', () => {
     await vi.waitFor(() => {
       expect(openTarget).toHaveBeenCalledWith(
         expect.objectContaining({ docName: '.claude/skills/hidden/SKILL' }),
-        undefined,
+        { disposition: 'permanent' },
       );
     });
     expect(requestSkillTrackPrompt).not.toHaveBeenCalled();
@@ -74,7 +74,7 @@ describe('useOpenSkill gitignored gate', () => {
     expect(requestSkillTrackPrompt).not.toHaveBeenCalled();
     expect(openTarget).toHaveBeenCalledWith(
       expect.objectContaining({ docName: '.claude/skills/hidden/SKILL' }),
-      undefined,
+      { disposition: 'permanent' },
     );
   });
 });
@@ -109,7 +109,7 @@ describe('useOpenSkill symlinked-bundle routing', () => {
 
     expect(openTarget).toHaveBeenCalledWith(
       expect.objectContaining({ docName: '.claude/skills/hidden/SKILL' }),
-      undefined,
+      { disposition: 'permanent' },
     );
   });
 

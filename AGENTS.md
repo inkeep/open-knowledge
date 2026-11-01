@@ -79,7 +79,7 @@ Shell scripts are declared in scope by `no-comments.config.jsonc`, but the sweep
 ## Public Mirror Rules
 
 - This repo is generated from an allowlist. Do not rely on hidden source-only folders being present.
-- Maintainers review public PRs that are small fixes or link an accepted issue; others may be closed without review (see the Pull requests section of `CONTRIBUTING.md`). A detailed issue is the preferred contribution. Accepted changes sync back here automatically. A PR may close rather than show as merged; that is expected for this mirror.
+- Do not open pull requests here. Report bugs and feature requests as detailed issues using `CONTRIBUTING.md`. Maintainers publish changes through the mirror; its sync pull requests are automation.
 - Top-level public docs such as `README.md`, `CONTRIBUTING.md`, and `AGENTS.md` are overlay files. Keep them public-safe and standalone.
 - Do not add secrets, private customer context, internal-only specs, local paths, or generated debug artifacts.
 - Keep dependency updates paired with `pnpm-lock.yaml`. Run `pnpm run notices` when third-party notices may change.
@@ -101,7 +101,7 @@ Cadence: merging a PR with a changeset triggers a beta publish within minutes vi
 
 ## Before Finishing
 
-While iterating, run the tests for what you changed with `pnpm --dir packages/<pkg> run test`, plus `pnpm run lint` and `pnpm run typecheck`, widening to affected consumers for shared inputs. A red remains a blocker: diagnose it against the changed inputs, repair only an in-scope cause, and record an unrelated environment blocker with its log and owner. Then run:
+While iterating, run the tests for what you changed with `pnpm --dir packages/<pkg> run test`, plus `pnpm run lint` and `pnpm run typecheck`, widening to affected consumers for shared inputs. A red is yours to fix when it is in a test you added or edited or names a file you changed: fix its cause, never by retrying blindly, suppressing it, or skipping or commenting out a test. Note any other red in one line in your report, "also red on the base" or "unknown", and do not chase it. A red, yours or not, means you do not report the work as passing. Then run:
 
 ```bash
 pnpm run check

@@ -541,10 +541,7 @@ describe('timed freshness re-check', () => {
   test('a full re-check requested while a timed recovery is queued runs that recovery in full', async () => {
     settleTimestamps();
     const double = createWatcherDouble();
-    let releaseQueue: () => void = () => {};
-    const queueHeld = new Promise<void>((resolve) => {
-      releaseQueue = resolve;
-    });
+    const { promise: queueHeld, resolve: releaseQueue } = Promise.withResolvers<void>();
     handle = await startWatcher(
       contentDir,
       async (event) => {

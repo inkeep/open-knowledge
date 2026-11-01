@@ -13,8 +13,10 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { SHARED_OK_ENTRIES } from '@inkeep/open-knowledge-core';
+import { currentDesktopProduct } from '@inkeep/open-knowledge-core/constants/product';
 import { MCP_SERVER_NAME } from '@inkeep/open-knowledge-server';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { EmbeddingsSecretStoreError } from '../auth/embeddings-key-store.ts';
 import { DESKTOP_UPDATER_CACHE_DIR_NAME } from '../integrations/desktop-state.ts';
 import { readPathInstallMarker } from '../integrations/path-shim.ts';
 import {
@@ -42,7 +44,70 @@ import {
   removalPlanToJson,
 } from './removal-render.ts';
 
-const OWN_ENTRY = buildManagedServerEntry({ mode: 'published' });
+let OWN_ENTRY: ReturnType<typeof buildManagedServerEntry>;
+
+beforeEach(() => {
+  vi.stubEnv('XDG_CONFIG_HOME', undefined);
+  vi.stubEnv('OK_CHANNEL', 'stable');
+  OWN_ENTRY = buildManagedServerEntry({ mode: 'published' });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+test('reports the native service for manual cleanup without leaking a credential failure', async () => {
+  const outcome = await runRemoval(
+    {
+      scope: 'uninstall',
+      ops: [{ kind: 'embeddings-key', group: 'credentials', label: 'Remove keys' }],
+    },
+    {
+      clearEmbeddingsKey: async () => {
+        throw new Error('sk-private-native-error');
+      },
+    },
+  );
+  expect(outcome.failed).toHaveLength(1);
+  expect(outcome.failed[0].detail).toContain(
+    `${currentDesktopProduct().keyringService}-embeddings`,
+  );
+  expect(outcome.failed[0].detail).toContain('credential manager');
+  expect(outcome.failed[0].detail).not.toContain('sk-private-native-error');
+});
+
+test('uninstall reports file permissions rather than prescribing native credential deletion', async () => {
+  const outcome = await runRemoval(
+    {
+      scope: 'uninstall',
+      ops: [{ kind: 'embeddings-key', group: 'credentials', label: 'Remove keys' }],
+    },
+    {
+      clearEmbeddingsKey: async () => {
+        throw new EmbeddingsSecretStoreError('file_access');
+      },
+    },
+  );
+  expect(outcome.failed).toHaveLength(1);
+  expect(outcome.failed[0].detail).toContain('Check their contents and permissions');
+  expect(outcome.failed[0].detail).not.toContain('remove entries');
+});
+
+test('uninstall reports unverifiable native cleanup without advising a reinstall', async () => {
+  const outcome = await runRemoval(
+    {
+      scope: 'uninstall',
+      ops: [{ kind: 'embeddings-key', group: 'credentials', label: 'Remove keys' }],
+    },
+    {
+      clearEmbeddingsKey: async () => {
+        throw new EmbeddingsSecretStoreError('native_access', 'load');
+      },
+    },
+  );
+  expect(outcome.failed[0].detail).toContain('automatic native-key removal was not verified');
+  expect(outcome.failed[0].detail).not.toContain('Reinstall');
+});
 
 function write(path: string, content: string): void {
   mkdirSync(dirname(path), { recursive: true });
@@ -498,13 +563,32 @@ describe('runRemoval — uninstall end to end', () => {
     }
   });
 
-  test('idempotent — a second run is a clean no-op (nothing removed, nothing failed)', async () => {
+  test('idempotent — a second run is a clean no-op (nothing removed, nothing failed)', async ({
+    onTestFinished,
+  }) => {
     const home = mkdtempSync(join(tmpdir(), 'ok-uninst-'));
+    const ambientConfig = mkdtempSync(join(tmpdir(), 'ok-uninst-ambient-'));
+    const platform = process.platform;
+    onTestFinished(() => {
+      Object.defineProperty(process, 'platform', { value: platform });
+      vi.unstubAllEnvs();
+    });
     try {
+      Object.defineProperty(process, 'platform', { value: 'linux' });
+      vi.stubEnv('XDG_CONFIG_HOME', ambientConfig);
+      vi.stubEnv('OK_CHANNEL', 'stable');
+      write(
+        join(ambientConfig, 'OpenKnowledge', 'path-install.json'),
+        JSON.stringify(markerFor(ambientConfig)),
+      );
       seedHome(home);
       const input = baseInput(home);
       await runRemoval(buildUninstallPlan(input), stubDeps());
-      const secondInput: UninstallPlanInput = { ...input, marker: readPathInstallMarker(home) };
+      const secondInput: UninstallPlanInput = {
+        ...input,
+        marker: readPathInstallMarker(home, undefined, 'darwin', {}),
+      };
+      expect(secondInput.marker).toBeNull();
       const second = await runRemoval(
         buildUninstallPlan(secondInput),
         stubDeps({
@@ -514,8 +598,10 @@ describe('runRemoval — uninstall end to end', () => {
       );
       expect(second.failed).toHaveLength(0);
       expect(second.removed).toHaveLength(0);
+      expect(existsSync(join(ambientConfig, '.local', 'bin', 'ok'))).toBe(true);
     } finally {
       rmSync(home, { recursive: true, force: true });
+      rmSync(ambientConfig, { recursive: true, force: true });
     }
   });
 });

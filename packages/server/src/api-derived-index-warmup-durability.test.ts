@@ -72,9 +72,8 @@ describe('agent writes while the derived index is still starting (PRD-8839)', ()
     await git.init();
     await git.addConfig('user.name', 'Test User');
     await git.addConfig('user.email', 'test@example.com');
-    const startupStalled = new Promise<void>((resolve) => {
-      releaseStartup = resolve;
-    });
+    const { promise: startupStalled, resolve } = Promise.withResolvers<void>();
+    releaseStartup = resolve;
     const rebuild = vi
       .spyOn(BacklinkIndex.prototype, 'rebuildFromDisk')
       .mockReturnValue(startupStalled);

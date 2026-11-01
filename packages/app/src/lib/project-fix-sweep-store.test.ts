@@ -113,21 +113,15 @@ describe('startProjectFixSweep — progress', () => {
 describe('startProjectFixSweep — one sweep at a time', () => {
   test('refuses a second start while one is running, however many panels ask', async () => {
     const attempts: string[] = [];
-    let releaseFirst: (() => void) | undefined;
-    const firstFixLanded = new Promise<void>((resolve) => {
-      releaseFirst = resolve;
-    });
-    let held: (() => void) | undefined;
-    const parked = new Promise<void>((resolve) => {
-      held = resolve;
-    });
+    const { promise: firstFixLanded, resolve: releaseFirst } = Promise.withResolvers<void>();
+    const { promise: parked, resolve: held } = Promise.withResolvers<void>();
     const first = startProjectFixSweep({
       items: files(2),
       sleep: async () => {},
       fixItem: async (item) => {
         attempts.push(item.file);
         if (item.file === 'doc-0.md') {
-          releaseFirst?.();
+          releaseFirst();
           await parked;
         }
         return { ok: true };
@@ -140,7 +134,7 @@ describe('startProjectFixSweep — one sweep at a time', () => {
     expect(second).not.toHaveBeenCalled();
     expect(getProjectFixSweepProgress()?.total).toBe(2);
 
-    held?.();
+    held();
     await first;
     expect(attempts).toHaveLength(2);
   });

@@ -1542,10 +1542,7 @@ describe('deadlines and cancellation', () => {
   test('parent cancellation during backoff prevents another attempt', async () => {
     const signals = new EventEmitter();
     const count = join(scratch, 'backoff-cancel-count');
-    let enterBackoff;
-    const backoffStarted = new Promise((resolve) => {
-      enterBackoff = resolve;
-    });
+    const { promise: backoffStarted, resolve: enterBackoff } = Promise.withResolvers();
     writeFileSync(count, '0');
     const promise = run({
       command: nodeCmd(

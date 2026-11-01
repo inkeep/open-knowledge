@@ -338,13 +338,13 @@ describe('invalidate-during-construction silent teardown (D27 silent-only)', () 
     const origYield = scheduler.yield.bind(scheduler);
     let stallResolve: (() => void) | null = null;
     let yieldCallCount = 0;
-    scheduler.yield = (() => {
+    scheduler.yield = () => {
       yieldCallCount++;
       if (yieldCallCount === 1) return Promise.resolve();
-      return new Promise<void>((res) => {
-        stallResolve = res;
-      });
-    }) as typeof scheduler.yield;
+      const { promise, resolve } = Promise.withResolvers<void>();
+      stallResolve = resolve;
+      return promise;
+    };
 
     try {
       const promise = mountTiptapEditorPromise({
@@ -532,13 +532,13 @@ describe('mount-failure error path', () => {
     const origYield = scheduler.yield.bind(scheduler);
     let stallResolve: (() => void) | null = null;
     let yieldCallCount = 0;
-    scheduler.yield = (() => {
+    scheduler.yield = () => {
       yieldCallCount++;
       if (yieldCallCount === 1) return Promise.resolve();
-      return new Promise<void>((res) => {
-        stallResolve = res;
-      });
-    }) as typeof scheduler.yield;
+      const { promise, resolve } = Promise.withResolvers<void>();
+      stallResolve = resolve;
+      return promise;
+    };
 
     try {
       const promise = mountTiptapEditorPromise({
@@ -647,10 +647,11 @@ describe('stalled-but-pending observability (D27 LOCKED, precedent 41)', () => {
     const h = makeHarness('doc-stalled-once');
     const origYield = scheduler.yield.bind(scheduler);
     let stallResolve: (() => void) | null = null;
-    scheduler.yield = (() =>
-      new Promise<void>((res) => {
-        stallResolve = res;
-      })) as typeof scheduler.yield;
+    scheduler.yield = () => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      stallResolve = resolve;
+      return promise;
+    };
     try {
       const promise = mountTiptapEditorPromise({
         docName: h.docName,
@@ -672,10 +673,11 @@ describe('stalled-but-pending observability (D27 LOCKED, precedent 41)', () => {
     const h = makeHarness('doc-stalled-reaper');
     const origYield = scheduler.yield.bind(scheduler);
     let stallResolve: (() => void) | null = null;
-    scheduler.yield = (() =>
-      new Promise<void>((res) => {
-        stallResolve = res;
-      })) as typeof scheduler.yield;
+    scheduler.yield = () => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      stallResolve = resolve;
+      return promise;
+    };
     try {
       const promise = mountTiptapEditorPromise({
         docName: h.docName,
@@ -696,10 +698,11 @@ describe('stalled-but-pending observability (D27 LOCKED, precedent 41)', () => {
     const h = makeHarness('doc-stalled-idempotent');
     const origYield = scheduler.yield.bind(scheduler);
     let stallResolve: (() => void) | null = null;
-    scheduler.yield = (() =>
-      new Promise<void>((res) => {
-        stallResolve = res;
-      })) as typeof scheduler.yield;
+    scheduler.yield = () => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      stallResolve = resolve;
+      return promise;
+    };
     try {
       const promise = mountTiptapEditorPromise({
         docName: h.docName,
@@ -730,10 +733,11 @@ describe('D27 no-timer-reject regression guard', () => {
     const h = makeHarness('d27-no-timer-reject');
     const origYield = scheduler.yield.bind(scheduler);
     let stallResolve: (() => void) | null = null;
-    scheduler.yield = (() =>
-      new Promise<void>((res) => {
-        stallResolve = res;
-      })) as typeof scheduler.yield;
+    scheduler.yield = () => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      stallResolve = resolve;
+      return promise;
+    };
     if (typeof globalThis.window === 'undefined') {
       // biome-ignore lint/suspicious/noExplicitAny: minimal test-only window stub
       (globalThis as any).window = {
@@ -824,15 +828,15 @@ describe('getMountAbortController (FW13 explicit-cancel surface)', () => {
     const origYield = scheduler.yield.bind(scheduler);
     let stallResolve: (() => void) | null = null;
     let yieldCallCount = 0;
-    scheduler.yield = (() => {
+    scheduler.yield = () => {
       yieldCallCount++;
       if (yieldCallCount === 1) {
         return Promise.resolve();
       }
-      return new Promise<void>((res) => {
-        stallResolve = res;
-      });
-    }) as typeof scheduler.yield;
+      const { promise, resolve } = Promise.withResolvers<void>();
+      stallResolve = resolve;
+      return promise;
+    };
 
     try {
       const promise = mountTiptapEditorPromise({
@@ -886,10 +890,11 @@ describe('subscribeMountStalled (FW13 affordance contract)', () => {
     const h = makeHarness('subscribe-fan-out');
     const origYield = scheduler.yield.bind(scheduler);
     let stallResolve: (() => void) | null = null;
-    scheduler.yield = (() =>
-      new Promise<void>((res) => {
-        stallResolve = res;
-      })) as typeof scheduler.yield;
+    scheduler.yield = () => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      stallResolve = resolve;
+      return promise;
+    };
     const events: { docName: string; mountId: string }[] = [];
     const unsubscribe = subscribeMountStalled((docName, mountId) => {
       events.push({ docName, mountId });
@@ -914,10 +919,11 @@ describe('subscribeMountStalled (FW13 affordance contract)', () => {
     const h = makeHarness('subscribe-replay');
     const origYield = scheduler.yield.bind(scheduler);
     let stallResolve: (() => void) | null = null;
-    scheduler.yield = (() =>
-      new Promise<void>((res) => {
-        stallResolve = res;
-      })) as typeof scheduler.yield;
+    scheduler.yield = () => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      stallResolve = resolve;
+      return promise;
+    };
     try {
       const promise = mountTiptapEditorPromise({
         docName: h.docName,

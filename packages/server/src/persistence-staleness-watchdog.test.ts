@@ -367,10 +367,7 @@ describe('exclusions', () => {
   });
 
   test('dispose drains an in-flight sweep and stops it before the next doc', async () => {
-    let releaseFirstStore: (() => void) | undefined;
-    const gate = new Promise<void>((resolve) => {
-      releaseFirstStore = resolve;
-    });
+    const { promise: gate, resolve: releaseFirstStore } = Promise.withResolvers<void>();
     const blockingRig = makeRig({
       forceStore: async (_document, documentName) => {
         blockingRig.forceCalls.push(documentName);
@@ -383,13 +380,13 @@ describe('exclusions', () => {
 
       const sweepPromise = blockingRig.watchdog.sweep();
       const disposePromise = blockingRig.watchdog.dispose();
-      releaseFirstStore?.();
+      releaseFirstStore();
       await disposePromise;
       await sweepPromise;
 
       expect(blockingRig.forceCalls).toEqual(['doc-a']);
     } finally {
-      releaseFirstStore?.();
+      releaseFirstStore();
       await blockingRig.watchdog.dispose();
     }
   });

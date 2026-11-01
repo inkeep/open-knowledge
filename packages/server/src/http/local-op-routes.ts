@@ -35,8 +35,9 @@ import {
   withHiddenWindowsConsole,
 } from '../child-process-windows-hide.ts';
 import { getLocalDir } from '../config/paths.ts';
+import { EmbeddingsCredentialStoreError } from '../embeddings/embedder.ts';
 import {
-  FileEmbeddingsBackend,
+  createEmbeddingsSecretStore,
   probeEmbeddingEndpoint,
   type ResolvedSemanticConfig,
   resolveEmbeddingsCredential,
@@ -1437,7 +1438,11 @@ export function createLocalOpRoutes(
       }
       try {
         const { projectDir: pd, baseUrl } = embeddingsKeyScope();
-        await new FileEmbeddingsBackend(embeddingsSecretsFile).setForProject(pd, baseUrl, body.key);
+        await createEmbeddingsSecretStore(embeddingsSecretsFile).setForProject(
+          pd,
+          baseUrl,
+          body.key,
+        );
         semanticSearch?.reloadCredential();
         successResponse(
           res,
@@ -1481,7 +1486,7 @@ export function createLocalOpRoutes(
       }
       try {
         const { projectDir: pd, baseUrl } = embeddingsKeyScope();
-        await new FileEmbeddingsBackend(embeddingsSecretsFile).clearForProject(pd, baseUrl);
+        await createEmbeddingsSecretStore(embeddingsSecretsFile).clearForProject(pd, baseUrl);
         semanticSearch?.reloadCredential();
         successResponse(
           res,
@@ -1533,23 +1538,39 @@ export function createLocalOpRoutes(
           dimensions: undefined,
         };
         const cred = await resolveEmbeddingsCredential(
-          new FileEmbeddingsBackend(embeddingsSecretsFile),
+          createEmbeddingsSecretStore(embeddingsSecretsFile),
           projectDir ?? contentDir,
           config.baseUrl,
-        );
+        ).catch((error) => {
+          if (!(error instanceof EmbeddingsCredentialStoreError)) throw error;
+          return error;
+        });
         const echo = { endpoint: config.baseUrl, model: config.model };
         const probe =
-          cred.apiKey || cred.keyless
-            ? await probeEmbeddingEndpoint({
-                baseUrl: config.baseUrl,
-                model: config.model,
-                dimensions: config.dimensions,
-                apiKey: cred.apiKey ?? undefined,
-              })
-            : ({ ok: false, reason: 'no_key', status: undefined } as const);
+          cred instanceof EmbeddingsCredentialStoreError
+            ? ({
+                ok: false,
+                reason: 'credential_store',
+                status: undefined,
+                keyStoreError: cred.code,
+              } as const)
+            : cred.apiKey || cred.keyless
+              ? await probeEmbeddingEndpoint({
+                  baseUrl: config.baseUrl,
+                  model: config.model,
+                  dimensions: config.dimensions,
+                  apiKey: cred.apiKey ?? undefined,
+                })
+              : ({ ok: false, reason: 'no_key', status: undefined } as const);
         const payload: LocalOpEmbeddingsTestResponse = probe.ok
           ? { ok: true, ...echo, dimensions: probe.dimensions }
-          : { ok: false, ...echo, reason: probe.reason, status: probe.status };
+          : {
+              ok: false,
+              ...echo,
+              reason: probe.reason,
+              status: probe.status,
+              ...('keyStoreError' in probe ? { keyStoreError: probe.keyStoreError } : {}),
+            };
         successResponse(res, 200, LocalOpEmbeddingsTestResponseSchema, payload, {
           handler: HANDLE_LOCAL_OP_EMBEDDINGS_TEST,
           extraHeaders: { 'Cache-Control': 'no-store' },

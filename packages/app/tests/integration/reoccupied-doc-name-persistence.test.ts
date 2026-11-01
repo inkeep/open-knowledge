@@ -214,6 +214,7 @@ describe('switching back to a branch that has a tombstoned document', () => {
     async () => {
       const contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-branch-switch-revive-')));
       cleanups.push(() => rmSync(contentDir, { recursive: true, force: true }));
+      git(contentDir, 'init --initial-branch=main');
       await ensureProjectGit(contentDir);
       configureTestGitRepository(contentDir);
       mkdirSync(join(contentDir, '.ok', 'local'), { recursive: true });

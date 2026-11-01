@@ -19,6 +19,8 @@ import {
   applySkillBundleFileDelete,
   applySkillBundleFileWrite,
   applySkillWrite,
+  skillMutationErrorStatus,
+  validateSkillMutationPath,
 } from '../content/skills-write.ts';
 import type { extractActorIdentity } from '../extract-actor-identity.ts';
 import { mutateSkillsLock } from '../skills-lock-store.ts';
@@ -240,6 +242,33 @@ export function createSkillReimportService(deps: SkillReimportDeps): SkillReimpo
       const skillBody = acquiredDoc.body;
       const acquiredPack = packMarkerOf(acquiredDoc.frontmatter);
 
+      const skillDir = resolve(skillsRoot, name);
+      for (const relPath of [
+        'SKILL.md',
+        ...acquired.files.map((f) => f.relPath),
+        ...removedUpstream,
+      ]) {
+        const pathCheck = validateSkillMutationPath(
+          reimportBase,
+          skillDir,
+          resolve(skillDir, relPath),
+        );
+        if (!pathCheck.ok) {
+          const status = skillMutationErrorStatus(pathCheck.error.code);
+          return {
+            ok: false,
+            status,
+            urn:
+              status === 500
+                ? 'urn:ok:error:internal-server-error'
+                : 'urn:ok:error:invalid-request',
+            title: pathCheck.error.message,
+            detail: `${relPath}: ${pathCheck.error.code}`,
+            cause: pathCheck.error.cause ?? new Error(pathCheck.error.message),
+          };
+        }
+      }
+
       if (params.dryRun) {
         let gitTracked: boolean | undefined;
         if (scope === 'project' && deps.projectDir) {
@@ -275,6 +304,7 @@ export function createSkillReimportService(deps: SkillReimportDeps): SkillReimpo
         }
       }
       const wr = applySkillWrite({
+        boundary: reimportBase,
         skillsRoot,
         name,
         body: skillBody,
@@ -285,18 +315,21 @@ export function createSkillReimportService(deps: SkillReimportDeps): SkillReimpo
         },
       });
       if (!wr.ok) {
+        const status = skillMutationErrorStatus(wr.error.code);
         return {
           ok: false,
-          status: 400,
-          urn: 'urn:ok:error:invalid-request',
-          title: 'Failed to write skill.',
+          status,
+          urn:
+            status === 500 ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request',
+          title: wr.error.message,
           detail: wr.error.code,
-          cause: new Error(wr.error.message),
+          cause: wr.error.cause ?? new Error(wr.error.message),
         };
       }
       const warnings = [...wr.warnings];
       for (const f of acquired.files) {
         const br = applySkillBundleFileWrite({
+          boundary: reimportBase,
           skillsRoot,
           name,
           relPath: f.relPath,
@@ -316,7 +349,12 @@ export function createSkillReimportService(deps: SkillReimportDeps): SkillReimpo
         }
       }
       for (const relPath of removedUpstream) {
-        const deleted = applySkillBundleFileDelete({ skillsRoot, name, relPath });
+        const deleted = applySkillBundleFileDelete({
+          boundary: reimportBase,
+          skillsRoot,
+          name,
+          relPath,
+        });
         if (!deleted.ok) {
           return {
             ok: false,

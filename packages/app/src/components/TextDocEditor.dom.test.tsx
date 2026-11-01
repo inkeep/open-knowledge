@@ -1,6 +1,6 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import * as actualLinguiMacro from '@lingui/react/macro';
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, render, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
@@ -58,6 +58,20 @@ afterEach(() => {
 });
 
 describe('TextDocEditor host contract', () => {
+  test('names the CodeMirror textbox', async () => {
+    const { container, unmount, dispose } = mountTextDocEditor();
+
+    await waitFor(() => {
+      expect(container.querySelector('.cm-content')).not.toBeNull();
+    });
+    expect(within(container).getByRole('textbox', { name: /\S/ })).toBe(
+      container.querySelector('.cm-content'),
+    );
+
+    unmount();
+    dispose();
+  });
+
   test('renders the host attribute used by the composer-inset selector', () => {
     const { container, unmount, dispose } = mountTextDocEditor();
 

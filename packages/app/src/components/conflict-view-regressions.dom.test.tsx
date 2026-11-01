@@ -121,10 +121,7 @@ test('Apply commits once however many times it is clicked', async () => {
 });
 
 test('the Apply latch is held until the resolve settles, not until the next tick', async () => {
-  let release!: () => void;
-  const inFlight = new Promise<void>((r) => {
-    release = r;
-  });
+  const { promise: inFlight, resolve: release } = Promise.withResolvers<void>();
   const onResolve = vi.fn(() => inFlight);
 
   await mount({

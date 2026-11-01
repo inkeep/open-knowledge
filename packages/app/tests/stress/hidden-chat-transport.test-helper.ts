@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import type {
   ThreadClientFrame,
   ThreadServerFrame,
@@ -16,6 +17,50 @@ interface HiddenChatAgent {
   finish(): void;
   closeThread(threadId: string): Promise<void>;
   close(): Promise<void>;
+}
+
+const THREAD_FRAME_WAIT_MS = 20_000;
+const ROSTER_REFRESH_INTERVAL_MS = 50;
+
+const pauseBeforeRosterRefresh = () => delay(ROSTER_REFRESH_INTERVAL_MS);
+
+export async function closeThreadAndDelete(
+  id: string,
+  send: (frame: ThreadClientFrame) => void,
+  waitForFrame: (
+    matches: (frame: ThreadServerFrame) => boolean,
+    fromIndex: number,
+    deadline: number,
+  ) => Promise<ThreadServerFrame>,
+  frameIndex: () => number,
+  pauseBeforeRefresh: () => Promise<void>,
+): Promise<void> {
+  let rosterFromIndex = frameIndex();
+  send({ op: 'close', threadId: id });
+  const closeDeadline = performance.now() + THREAD_FRAME_WAIT_MS;
+  for (;;) {
+    const roster = await waitForFrame(
+      (frame) => frame.op === 'threads',
+      rosterFromIndex,
+      closeDeadline,
+    );
+    if (roster.op !== 'threads') {
+      throw new Error(`thread fixture roster wait resolved a ${roster.op} frame`);
+    }
+    const thread = roster.threads.find((candidate) => candidate.threadId === id);
+    if (thread === undefined) return;
+    if (thread.archived === true) break;
+    await pauseBeforeRefresh();
+    rosterFromIndex = frameIndex();
+    send({ op: 'list' });
+  }
+  const deleteFromIndex = frameIndex();
+  send({ op: 'delete', threadId: id });
+  await waitForFrame(
+    (frame) => frame.op === 'threads' && !frame.threads.some((thread) => thread.threadId === id),
+    deleteFromIndex,
+    performance.now() + THREAD_FRAME_WAIT_MS,
+  );
 }
 
 export async function startHiddenChatAgent(workerServer: WorkerServer): Promise<HiddenChatAgent> {
@@ -102,21 +147,28 @@ process.stdin.on('data', (chunk) => {
     });
   });
   const send = (frame: ThreadClientFrame) => socket.send(JSON.stringify(frame));
-  const waitForFrame = (matches: (frame: ThreadServerFrame) => boolean, fromIndex = 0) =>
+  const waitForFrame = (
+    matches: (frame: ThreadServerFrame) => boolean,
+    fromIndex = 0,
+    deadline = performance.now() + THREAD_FRAME_WAIT_MS,
+  ) =>
     new Promise<ThreadServerFrame>((resolve, reject) => {
       const found = frames.slice(fromIndex).find(matches);
       if (found !== undefined) {
         resolve(found);
         return;
       }
-      const timer = setTimeout(() => {
-        listeners.delete(listener);
-        reject(
-          new Error(
-            `thread fixture frame timeout; saw ${frames.map((frame) => frame.op).join(', ')}`,
-          ),
-        );
-      }, 20_000);
+      const timer = setTimeout(
+        () => {
+          listeners.delete(listener);
+          reject(
+            new Error(
+              `thread fixture frame timeout; saw ${frames.map((frame) => frame.op).join(', ')}`,
+            ),
+          );
+        },
+        Math.max(0, deadline - performance.now()),
+      );
       const listener = (frame: ThreadServerFrame) => {
         if (!matches(frame)) return;
         clearTimeout(timer);
@@ -136,19 +188,13 @@ process.stdin.on('data', (chunk) => {
   );
 
   const closeThread = async (id: string) => {
-    const closeFromIndex = frames.length;
-    send({ op: 'close', threadId: id });
-    const closed = await waitForFrame((frame) => frame.op === 'threads', closeFromIndex);
-    if (closed.op !== 'threads') return;
-    if (closed.threads.some((thread) => thread.threadId === id && thread.archived === true)) {
-      const deleteFromIndex = frames.length;
-      send({ op: 'delete', threadId: id });
-      await waitForFrame(
-        (frame) =>
-          frame.op === 'threads' && !frame.threads.some((thread) => thread.threadId === id),
-        deleteFromIndex,
-      );
-    }
+    await closeThreadAndDelete(
+      id,
+      send,
+      waitForFrame,
+      () => frames.length,
+      pauseBeforeRosterRefresh,
+    );
   };
 
   return {

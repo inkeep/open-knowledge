@@ -237,9 +237,9 @@ describe('ensureCoworkSkillInstalled — concurrency', () => {
     const installer: SkillInstaller = {
       install: () => {
         installInvocationCount += 1;
-        return new Promise<SkillInstallResult>((resolve: Resolver) => {
-          resolver = resolve;
-        });
+        const { promise, resolve } = Promise.withResolvers<SkillInstallResult>();
+        resolver = resolve;
+        return promise;
       },
     };
 

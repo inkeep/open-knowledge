@@ -1699,7 +1699,7 @@ Homepage: https://github.com/Brooooooklyn/canvas
 
 Copyright (c) 2020 lynweklm@gmail.com
 
-### `@napi-rs/keyring@1.3.0`
+### `@napi-rs/keyring@2.1.2`
 Homepage: https://github.com/Brooooooklyn/keyring-node
 
 Copyright (c) 2020 N-API for Rust
@@ -6005,7 +6005,7 @@ Homepage: https://github.com/sindresorhus/yoctocolors
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
-### `zod@4.4.3`
+### `zod@4.6.7`
 Homepage: https://zod.dev
 
 Copyright (c) 2025 Colin McDonnell
@@ -6703,7 +6703,7 @@ Copyright (c) 2026 Inkeep
 
 ## Patched dependencies
 
-The following MIT-licensed packages are patched in this repository via pnpm's `patchedDependencies` mechanism. Modifications are released under the same MIT license as the upstream package. Patch files live under `patches/` in the source repo; the bundled output of every shipped artifact incorporates the patched code.
+The following packages are patched in this repository via pnpm's `patchedDependencies` mechanism. Modifications are released under each upstream package's license. Patch files live under `patches/` in the source repo; the bundled output of every shipped artifact incorporates the patched code.
 
 | Package | Patch file |
 | --- | --- |
@@ -6712,10 +6712,12 @@ The following MIT-licensed packages are patched in this repository via pnpm's `p
 | `@lingui/core@6.5.0` | `patches/@lingui%2Fcore@6.5.0.patch` |
 | `@pierre/diffs@1.3.6` | `patches/@pierre%2Fdiffs@1.3.6.patch` |
 | `@pierre/trees@1.0.0-beta.4` | `patches/@pierre%2Ftrees@1.0.0-beta.4.patch` |
+| `@radix-ui/react-tooltip@1.2.8` | `patches/@radix-ui__react-tooltip@1.2.8.patch` |
 | `@tiptap/extension-drag-handle@3.22.3` | `patches/@tiptap%2Fextension-drag-handle@3.22.3.patch` |
 | `@tiptap/y-tiptap@3.0.3` | `patches/@tiptap%2Fy-tiptap@3.0.3.patch` |
 | `@xterm/xterm@6.0.0` | `patches/@xterm%2Fxterm@6.0.0.patch` |
 | `cmdk@1.1.1` | `patches/cmdk@1.1.1.patch` |
+| `just-bash@2.14.5` | `patches/just-bash@2.14.5.patch` |
 | `react-medium-image-zoom@5.4.3` | `patches/react-medium-image-zoom@5.4.3.patch` |
 | `react-resizable-panels@4.12.1` | `patches/react-resizable-panels@4.12.1.patch` |
 | `sirv@3.0.2` | `patches/sirv@3.0.2.patch` |

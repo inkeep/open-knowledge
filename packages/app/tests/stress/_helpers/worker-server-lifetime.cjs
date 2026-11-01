@@ -1,3 +1,5 @@
+const { readFileSync } = require('node:fs');
+const { productionShellLockPath } = require('./production-shell-readiness.ts');
 const { removeAllDuringTeardown, runTeardownPhases } = require('./teardown-fs.ts');
 const { killGracefully } = require('./server-process.ts');
 const { spawnWorkerServerCommand } = require('./worker-server-command.ts');
@@ -8,6 +10,43 @@ let releasing;
 let finishing;
 let ownerLost = !process.connected;
 let terminal;
+const lifetimeStartedAt = Date.now();
+const ownerPid = process.ppid;
+let commandSpawnedAt;
+let ownerLossRecorded = false;
+
+function ownerAlive() {
+  const pid = ownerPid;
+  if (!Number.isSafeInteger(pid) || pid <= 1) return null;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === 'EPERM';
+  }
+}
+
+function readinessState() {
+  try {
+    const lock = JSON.parse(readFileSync(productionShellLockPath(launch.contentDir), 'utf8'));
+    if (lock.draining === true) return 'lock-draining';
+    if (typeof lock.port === 'number' && lock.port > 0) return 'lock-bound';
+    return 'lock-pending';
+  } catch (error) {
+    return error?.code === 'ENOENT' ? 'lock-missing' : 'lock-unreadable';
+  }
+}
+
+function recordOwnerLoss(trigger) {
+  if (ownerLossRecorded || finishing !== undefined) return;
+  ownerLossRecorded = true;
+  const elapsedMs = Date.now() - (commandSpawnedAt ?? lifetimeStartedAt);
+  const serverPid = proc?.pid ?? null;
+  const line = `[worker-server-lifetime] owner-loss trigger=${trigger} ownerPid=${ownerPid} ownerAlive=${String(ownerAlive())} serverPid=${String(serverPid)} elapsedMs=${elapsedMs} readiness=${readinessState()}\n`;
+  try {
+    process.stdout.write(line);
+  } catch {}
+}
 
 function send(message) {
   if (process.connected) process.send(message, () => {});
@@ -75,6 +114,7 @@ function finish() {
 
 process.once('disconnect', () => {
   ownerLost = true;
+  recordOwnerLoss('ipc-disconnect');
   void finish();
 });
 process.on('message', (message) => {
@@ -88,14 +128,18 @@ process.on('message', (message) => {
 for (const signal of ['SIGTERM', 'SIGINT']) {
   process.once(signal, () => {
     ownerLost = true;
+    recordOwnerLoss(`signal-${signal}`);
     void finish();
   });
 }
 
-if (ownerLost) void finish();
-else {
+if (ownerLost) {
+  recordOwnerLoss('owner-not-connected-at-start');
+  void finish();
+} else {
   try {
     proc = spawnWorkerServerCommand(launch);
+    commandSpawnedAt = Date.now();
     proc.once('error', (error) => {
       terminal = commandStatus();
       send({ type: 'command-error', status: terminal, error: commandError(error) });

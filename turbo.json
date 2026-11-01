@@ -71,9 +71,11 @@
       "dependsOn": ["^types", "build"]
     },
     "typecheck": {
+      "env": ["TSRS_BINARY"],
       "dependsOn": ["^types", "//#typecheck:no-net-connect", "//#typecheck:lint-plugins"]
     },
     "//#typecheck:lint-plugins": {
+      "env": ["TSRS_BINARY"],
       "inputs": [
         "lint-plugins/ok-rules/**/*.ts",
         "lint-plugins/ok-rules/tsconfig.json",
@@ -82,6 +84,7 @@
       ]
     },
     "//#typecheck:no-net-connect": {
+      "env": ["TSRS_BINARY"],
       "inputs": [
         "test-support/*.ts",
         "test-support/*.mts",
@@ -104,6 +107,7 @@
       ]
     },
     "@inkeep/open-knowledge-core#check:dts": {
+      "env": ["TSRS_BINARY"],
       "dependsOn": ["build"],
       "inputs": ["tsconfig.json", "tsconfig.check.json", "tests/contract/subpath-types/consumer.ts"]
     },
@@ -207,6 +211,22 @@
         "test-results/vitest-test-shard3.provenance.json"
       ]
     },
+    "@inkeep/open-knowledge-server#test:shard4": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!CHANGELOG.md",
+        "!README.md",
+        "../../test-support/*.ts",
+        "../../test-support/test-only-source-file.mjs",
+        "../app/src/editor/observers.ts"
+      ],
+      "outputs": [
+        "test-results/vitest-test-shard4.json",
+        "test-results/vitest-test-shard4.provenance.json"
+      ]
+    },
     "@inkeep/open-knowledge#test": {
       "dependsOn": ["^build", "build"],
       "cache": true,
@@ -268,6 +288,57 @@
       "outputs": [
         "test-results/vitest-test-dom.json",
         "test-results/vitest-test-dom.provenance.json"
+      ]
+    },
+    "test:dom:shard1": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/test-support/**",
+        "../core/src/**/*.ts",
+        "../server/src/**/*.ts",
+        "../md-conformance/src/**/*.ts",
+        "../md-conformance/src/**/*.json",
+        "../md-conformance/corpora/typed-view-scripts.json"
+      ],
+      "outputs": [
+        "test-results/vitest-test-dom-shard1.json",
+        "test-results/vitest-test-dom-shard1.provenance.json"
+      ]
+    },
+    "test:dom:shard2": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/test-support/**",
+        "../core/src/**/*.ts",
+        "../server/src/**/*.ts",
+        "../md-conformance/src/**/*.ts",
+        "../md-conformance/src/**/*.json",
+        "../md-conformance/corpora/typed-view-scripts.json"
+      ],
+      "outputs": [
+        "test-results/vitest-test-dom-shard2.json",
+        "test-results/vitest-test-dom-shard2.provenance.json"
+      ]
+    },
+    "test:dom:shard3": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/test-support/**",
+        "../core/src/**/*.ts",
+        "../server/src/**/*.ts",
+        "../md-conformance/src/**/*.ts",
+        "../md-conformance/src/**/*.json",
+        "../md-conformance/corpora/typed-view-scripts.json"
+      ],
+      "outputs": [
+        "test-results/vitest-test-dom-shard3.json",
+        "test-results/vitest-test-dom-shard3.provenance.json"
       ]
     },
     "test:browser": {
@@ -402,6 +473,108 @@
         "test-results/vitest-test-integration-shard6.provenance.json"
       ]
     },
+    "test:integration:shard7": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/test-support/**",
+        "../server/src/**/*.ts",
+        "../core/src/**/*.ts",
+        "$TURBO_ROOT$/lint-plugins/no-comments/**",
+        "$TURBO_ROOT$/packages/cli/src/**",
+        "$TURBO_ROOT$/packages/cli/package.json"
+      ],
+      "outputs": [
+        "test-results/vitest-test-integration-shard7.json",
+        "test-results/vitest-test-integration-shard7.provenance.json"
+      ]
+    },
+    "test:integration:shard8": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/test-support/**",
+        "../server/src/**/*.ts",
+        "../core/src/**/*.ts",
+        "$TURBO_ROOT$/lint-plugins/no-comments/**",
+        "$TURBO_ROOT$/packages/cli/src/**",
+        "$TURBO_ROOT$/packages/cli/package.json"
+      ],
+      "outputs": [
+        "test-results/vitest-test-integration-shard8.json",
+        "test-results/vitest-test-integration-shard8.provenance.json"
+      ]
+    },
+    "test:integration:shard9": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/test-support/**",
+        "../server/src/**/*.ts",
+        "../core/src/**/*.ts",
+        "$TURBO_ROOT$/lint-plugins/no-comments/**",
+        "$TURBO_ROOT$/packages/cli/src/**",
+        "$TURBO_ROOT$/packages/cli/package.json"
+      ],
+      "outputs": [
+        "test-results/vitest-test-integration-shard9.json",
+        "test-results/vitest-test-integration-shard9.provenance.json"
+      ]
+    },
+    "test:integration:shard10": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/test-support/**",
+        "../server/src/**/*.ts",
+        "../core/src/**/*.ts",
+        "$TURBO_ROOT$/lint-plugins/no-comments/**",
+        "$TURBO_ROOT$/packages/cli/src/**",
+        "$TURBO_ROOT$/packages/cli/package.json"
+      ],
+      "outputs": [
+        "test-results/vitest-test-integration-shard10.json",
+        "test-results/vitest-test-integration-shard10.provenance.json"
+      ]
+    },
+    "test:integration:shard11": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/test-support/**",
+        "../server/src/**/*.ts",
+        "../core/src/**/*.ts",
+        "$TURBO_ROOT$/lint-plugins/no-comments/**",
+        "$TURBO_ROOT$/packages/cli/src/**",
+        "$TURBO_ROOT$/packages/cli/package.json"
+      ],
+      "outputs": [
+        "test-results/vitest-test-integration-shard11.json",
+        "test-results/vitest-test-integration-shard11.provenance.json"
+      ]
+    },
+    "test:integration:shard12": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/test-support/**",
+        "../server/src/**/*.ts",
+        "../core/src/**/*.ts",
+        "$TURBO_ROOT$/lint-plugins/no-comments/**",
+        "$TURBO_ROOT$/packages/cli/src/**",
+        "$TURBO_ROOT$/packages/cli/package.json"
+      ],
+      "outputs": [
+        "test-results/vitest-test-integration-shard12.json",
+        "test-results/vitest-test-integration-shard12.provenance.json"
+      ]
+    },
     "test:conversion": {
       "dependsOn": ["^build"],
       "cache": true,
@@ -415,6 +588,27 @@
         "test-results/vitest-test-conversion.json",
         "test-results/vitest-test-conversion.provenance.json"
       ]
+    },
+    "vitest:selected": {
+      "cache": false,
+      "inputs": [],
+      "command": ["pnpm"]
+    },
+    "vitest:selected:browser": {
+      "cache": false,
+      "inputs": [],
+      "command": ["pnpm"],
+      "passThroughEnv": [
+        "VITEST_CHROMIUM_GC_DISK_THRESHOLD_GB",
+        "VITEST_CHROMIUM_GC_FORCE",
+        "DEBUG"
+      ]
+    },
+    "vitest:selected:fidelity": {
+      "cache": false,
+      "inputs": [],
+      "command": ["pnpm"],
+      "env": ["STRESS_FIDELITY"]
     },
     "test:e2e": {
       "dependsOn": ["^build", "build"],

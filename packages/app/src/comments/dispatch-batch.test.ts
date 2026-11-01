@@ -125,10 +125,7 @@ describe('dispatchComments', () => {
     const store = await import('./store');
     await store.refresh();
 
-    let release = (): void => {};
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: held, resolve: release } = Promise.withResolvers<void>();
     const composed: number[] = [];
 
     const first = dispatchWith(store, async (items) => {

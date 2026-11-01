@@ -3,10 +3,11 @@ import { basename, dirname, join, relative, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../test-support/test-only-source-file.mjs';
+import { SERVER_SCAN_ROOT } from './console-discipline.reads.ts';
 import { toPosix } from './path-utils.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCAN_ROOT = __dirname;
+const SCAN_ROOT = join(__dirname, '..', '..', '..', SERVER_SCAN_ROOT);
 
 const SELF_BASENAME = basename(fileURLToPath(import.meta.url));
 
@@ -118,7 +119,7 @@ describe('console discipline (server sources)', () => {
     expect(
       violations,
       `Raw console.* call found in packages/server/src — console output never reaches the pino file sink ` +
-        `(.ok/local/logs/server-current.jsonl) that bug-report bundles collect, and the packaged desktop app ` +
+        `(user-level project logs) that bug-report bundles collect, and the packaged desktop app ` +
         `runs the server detached with no persistent stdio. Use getLogger(name) from './logger.ts' ` +
         `(warn/error still reach the terminal through the console stream). The only sanctioned console shapes ` +
         `are the structured telemetry-event channel (console.<level>(JSON.stringify({ event: ... }))) and the ` +

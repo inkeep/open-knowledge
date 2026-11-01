@@ -1494,6 +1494,81 @@ describe('ContentFilter', () => {
       expect(filter.isDirExcluded('tutorials')).toBe(false);
     });
 
+    test.each([
+      ['sync', createContentFilter],
+      ['async', createContentFilterAsync],
+    ] as const)(
+      '%s factory applies project ignore files to a contentDir whose name starts with two dots',
+      async (_name, create) => {
+        const contentDir = join(projectDir, '..notes');
+        mkdirSync(contentDir);
+        writeFileSync(join(projectDir, '.gitignore'), 'secret.md\n');
+        writeFileSync(join(projectDir, '.okignore'), 'hidden.md\n');
+        writeFileSync(join(contentDir, 'secret.md'), '# Secret');
+        writeFileSync(join(contentDir, 'hidden.md'), '# Hidden');
+        writeFileSync(join(contentDir, 'open.md'), '# Open');
+        mkdirSync(join(contentDir, 'sub'));
+        writeFileSync(join(contentDir, 'sub', '.gitignore'), 'draft.md\n');
+        writeFileSync(join(contentDir, 'sub', 'draft.md'), '# Draft');
+        writeFileSync(join(contentDir, 'sub', 'kept.md'), '# Kept');
+
+        const filter = await create({ projectDir, contentDir });
+
+        expect(filter.isExcluded('secret.md')).toBe(true);
+        expect(filter.isExcluded('hidden.md')).toBe(true);
+        expect(filter.isExcluded('open.md')).toBe(false);
+        expect(filter.isExcluded('sub/draft.md')).toBe(true);
+        expect(filter.isExcluded('sub/kept.md')).toBe(false);
+      },
+    );
+
+    test.each([
+      ['sync', createContentFilter],
+      ['async', createContentFilterAsync],
+    ] as const)(
+      '%s factory builds when the project holds a directory named only with dots',
+      async (_name, create) => {
+        mkdirSync(join(projectDir, '...'));
+        writeFileSync(join(projectDir, '...', '.gitignore'), 'draft.md\n');
+        writeFileSync(join(projectDir, '...', 'note.md'), '# Note');
+        writeFileSync(join(projectDir, 'open.md'), '# Open');
+
+        const building = Promise.resolve().then(() =>
+          create({ projectDir, contentDir: projectDir }),
+        );
+        await expect(building).resolves.toBeDefined();
+        const filter = await building;
+
+        expect(filter.isExcluded('open.md')).toBe(false);
+        expect(filter.isPathIgnored('.../note.md')).toBe(false);
+        const showAll = { bypassFilters: true, respectOkignore: true } as const;
+        expect(filter.isDirExcluded('...', showAll)).toBe(false);
+        expect(filter.isExcluded('.../note.md', showAll)).toBe(false);
+      },
+    );
+
+    test.each([
+      ['sync', createContentFilter],
+      ['async', createContentFilterAsync],
+    ] as const)(
+      '%s factory builds when the contentDir is named only with dots',
+      async (_name, create) => {
+        const contentDir = join(projectDir, '...');
+        mkdirSync(join(contentDir, 'sub'), { recursive: true });
+        writeFileSync(join(projectDir, '.okignore'), 'hidden.md\n');
+        writeFileSync(join(contentDir, 'note.md'), '# Note');
+        writeFileSync(join(contentDir, 'sub', 'nested.md'), '# Nested');
+
+        const building = Promise.resolve().then(() => create({ projectDir, contentDir }));
+        await expect(building).resolves.toBeDefined();
+        const filter = await building;
+
+        expect(filter.isExcluded('note.md')).toBe(false);
+        expect(filter.isExcluded('sub/nested.md')).toBe(false);
+        expect(filter.isDirExcluded('sub')).toBe(false);
+      },
+    );
+
     test('handles contentDir completely outside projectDir (dotdot relative path)', async () => {
       const externalContentDir = await mkdtemp(join(tmpdir(), 'content-filter-external-'));
       try {
@@ -1600,6 +1675,74 @@ describe('ContentFilter', () => {
       }
     });
 
+    test('a {{filename}} attachment folder admits per-document folders beneath note directories in both factories', async () => {
+      mkdirSync(join(projectDir, 'notes'), { recursive: true });
+      writeFileSync(join(projectDir, 'root.md'), '# Root');
+      writeFileSync(join(projectDir, 'notes', 'meeting.md'), '# Meeting');
+      const filters = [
+        createContentFilter({
+          projectDir,
+          contentDir: projectDir,
+          attachmentFolderPath: './{{filename}}.assets',
+        }),
+        await createContentFilterAsync({
+          projectDir,
+          contentDir: projectDir,
+          attachmentFolderPath: './{{filename}}.assets',
+        }),
+        createContentFilter({
+          projectDir,
+          contentDir: projectDir,
+          attachmentFolderPath: '/uploads/{{filename}}',
+        }),
+      ];
+
+      for (const filter of filters.slice(0, 2)) {
+        expect(filter.isExcluded('root.assets/cover.png')).toBe(false);
+        expect(filter.isExcluded('notes/meeting.assets/photo.png')).toBe(false);
+        expect(filter.isExcluded('notes/meeting.files/photo.png')).toBe(true);
+        expect(filter.isExcluded('orphan/meeting.assets/photo.png')).toBe(true);
+      }
+      expect(filters[2].isExcluded('uploads/meeting/photo.png')).toBe(false);
+      expect(filters[2].isExcluded('uploads/photo.png')).toBe(true);
+      expect(filters[2].isExcluded('other/meeting/photo.png')).toBe(true);
+    });
+
+    test('a filter built without an attachment folder admits the default per-document folders in both factories', async () => {
+      mkdirSync(join(projectDir, 'notes'), { recursive: true });
+      writeFileSync(join(projectDir, 'notes', 'meeting.md'), '# Meeting');
+      const filters = [
+        createContentFilter({ projectDir, contentDir: projectDir }),
+        await createContentFilterAsync({ projectDir, contentDir: projectDir }),
+      ];
+
+      for (const filter of filters) {
+        expect(filter.isExcluded('notes/meeting.assets/photo.png')).toBe(false);
+      }
+    });
+
+    test('a folder name that repeats a variable is matched literally, not as a pattern', async () => {
+      mkdirSync(join(projectDir, 'notes'), { recursive: true });
+      writeFileSync(join(projectDir, 'notes', 'meeting.md'), '# Meeting');
+      const filters = [
+        createContentFilter({
+          projectDir,
+          contentDir: projectDir,
+          attachmentFolderPath: './{{filename}}{{filename}}.assets',
+        }),
+        await createContentFilterAsync({
+          projectDir,
+          contentDir: projectDir,
+          attachmentFolderPath: './{{filename}}{{filename}}.assets',
+        }),
+      ];
+
+      for (const filter of filters) {
+        expect(filter.isExcluded('notes/meetingmeeting.assets/photo.png')).toBe(true);
+        expect(filter.isExcluded('notes/{{filename}}{{filename}}.assets/photo.png')).toBe(false);
+      }
+    });
+
     test('content-root attachment folder admits only root-level assets in both factories', async () => {
       const filters = [
         createContentFilter({
@@ -1677,7 +1820,7 @@ describe('ContentFilter', () => {
       }
     });
 
-    test('explicit default keeps the historical sibling-only rule', () => {
+    test("an explicit './' admits only assets beside a document", () => {
       mkdirSync(join(projectDir, 'assets'), { recursive: true });
       writeFileSync(join(projectDir, 'root.md'), '# Root');
       const filter = createContentFilter({

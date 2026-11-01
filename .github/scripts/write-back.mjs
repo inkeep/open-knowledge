@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /* biome-ignore-all lint/suspicious/noUndeclaredEnvVars: GitHub Actions invokes this entrypoint outside Turbo. */
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import {
   deriveChannel,
@@ -19,10 +20,14 @@ import {
 import { createTagContainment } from './tag-containment.mjs';
 import {
   compareVersions,
+  composeEmailSubject,
   composeReply,
+  contactEmailOrigin,
   evaluateFanIn,
+  isInternalContactEmail,
   isOriginRepliableFrom,
   markerSuffixFor,
+  parseContactEmail,
   partitionAttachments,
   planIssueClose,
 } from './write-back-gate.mjs';
@@ -33,6 +38,9 @@ const RELEASES_TAG_BASE = 'https://github.com/inkeep/open-knowledge/releases/tag
 const DEFAULT_PRIVATE_REPO = 'inkeep/agents-private';
 const FULL_SHA_RE = /^[0-9a-f]{40}$/i;
 const PAGE_SIZE = 50;
+const RESEND_EMAILS_URL = 'https://api.resend.com/emails';
+const EMAIL_FROM = 'OpenKnowledge <updates@updates.openknowledge.ai>';
+const EMAIL_REPLY_TO = 'feedback@inkeep.com';
 
 export const CANDIDATE_QUERY = `
   query WriteBackCandidates($after: String) {
@@ -49,6 +57,30 @@ export const CANDIDATE_QUERY = `
         labels { nodes { name } }
         attachments { nodes { url } }
         children(first: 1) { nodes { id } pageInfo { hasNextPage } }
+      }
+    }
+  }
+`;
+
+export const CONTACT_EMAIL_QUERY = `
+  query WriteBackContactEmails($after: String) {
+    issues(
+      first: ${PAGE_SIZE}
+      after: $after
+      filter: {
+        state: { type: { in: ["completed", "duplicate"] } }
+        labels: { some: { name: { in: ["ok:intake", "ok:feedback"] } } }
+        description: { containsIgnoreCase: "Contact email:" }
+      }
+    ) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        id
+        identifier
+        description
+        state { type }
+        labels { nodes { name } }
+        relations { nodes { type relatedIssue { id } } }
       }
     }
   }
@@ -302,6 +334,59 @@ const KEPT_OPEN_HINTS = {
     'and close it by hand if none is still open',
 };
 
+const EMAIL_MODES = new Set(['off', 'dry-run', 'live']);
+
+export function emailIdempotencyKey(ticketId, markerUrl) {
+  if (!ticketId || !markerUrl)
+    throw new Error('emailIdempotencyKey needs a ticket id and a marker');
+  return `write-back-${createHash('sha256').update(`${ticketId}\n${markerUrl}`).digest('hex')}`;
+}
+
+export function resolveEmailMode({ resendKey, live, emailModeVariable }) {
+  if (!String(resendKey ?? '').trim()) return 'off';
+  return live && emailModeVariable === 'live' ? 'live' : 'dry-run';
+}
+
+export function createRunOutput({
+  redactor = createRedactor(),
+  out = console.log,
+  err = console.error,
+} = {}) {
+  return {
+    redactor,
+    log: (message) => out(redactor.scrub(message)),
+    error: (message) => err(redactor.scrub(message)),
+  };
+}
+
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function createRedactor() {
+  const addresses = new Set();
+  return {
+    add(address) {
+      if (address) addresses.add(String(address).toLowerCase());
+    },
+    scrub(text) {
+      let out = String(text ?? '');
+      for (const address of addresses) {
+        for (const form of new Set([address, encodeURIComponent(address)])) {
+          out = out.replace(new RegExp(escapeRegExp(form), 'gi'), 'the contact email');
+        }
+      }
+      return out;
+    },
+  };
+}
+
+function originLabel(origin) {
+  return origin.channel === 'email'
+    ? `the contact email from ${origin.reportIdentifier}`
+    : origin.url;
+}
+
 export class NeedsHumanError extends Error {
   constructor(message) {
     super(message);
@@ -344,9 +429,15 @@ export async function runWriteBack({
   classifyRelease,
   channel = 'stable',
   selfRepo = process.env.GITHUB_REPOSITORY,
+  emailMode = 'off',
   live = false,
   log = () => {},
 }) {
+  if (!EMAIL_MODES.has(emailMode)) {
+    throw new Error(
+      `runWriteBack requires emailMode 'off', 'dry-run' or 'live', got '${emailMode}'`,
+    );
+  }
   if (typeof classifyRelease !== 'function') {
     throw new Error('runWriteBack requires classifyRelease; see makeReleaseWindow.');
   }
@@ -383,10 +474,22 @@ export async function runWriteBack({
       unrepliable,
       fixReferences,
     } = partitionAttachments(candidate.attachmentUrls ?? []);
-    const origins = attachedOrigins.filter((origin) => isOriginRepliableFrom(origin, selfRepo));
+    const contacts = (candidate.contacts ?? []).map((c) =>
+      contactEmailOrigin(c.address, c.reportIdentifier, c.reportKind),
+    );
+    const externalContacts = contacts.filter((c) => !isInternalContactEmail(c.address));
+    const origins = [
+      ...attachedOrigins.filter((origin) => isOriginRepliableFrom(origin, selfRepo)),
+      ...(emailMode === 'off' ? [] : externalContacts),
+    ];
 
     if (origins.length === 0 && unrepliable.length === 0) {
-      if (attachedOrigins.length > 0) {
+      if (contacts.length > 0) {
+        skip(
+          candidate.identifier,
+          externalContacts.length > 0 ? 'email-unconfigured' : 'internal-reporter',
+        );
+      } else if (attachedOrigins.length > 0) {
         log(
           `::debug::write-back: ${candidate.identifier} reports from ` +
             `${attachedOrigins.map((o) => o.url).join(', ')}, outside ${selfRepo || 'this repo'}; ` +
@@ -479,7 +582,9 @@ export async function runWriteBack({
       return;
     }
 
+    const emailFailures = [];
     for (const origin of origins) {
+      const label = originLabel(origin);
       const attachmentUrls = candidate.attachmentUrls ?? [];
       const marker = notificationMarkerUrl({ version: gate.version, originUrl: origin.url });
       const notifiedVersions = notificationVersions({
@@ -505,6 +610,16 @@ export async function runWriteBack({
         channel,
         isPublishedVersion,
       });
+      const subject =
+        origin.channel === 'email'
+          ? composeEmailSubject({
+              identifier: origin.reportIdentifier,
+              version: gate.version,
+              channel,
+              correction: recoveryFrom.length > 0,
+              reportKind: origin.reportKind,
+            })
+          : undefined;
       const text =
         changeset === null
           ? null
@@ -535,13 +650,14 @@ export async function runWriteBack({
           ? `${origin.url} (${closure.open.length ? `${closure.reason}: ${closure.open.join(', ')}` : closure.reason})`
           : null;
 
-      if (!live) {
+      const sendLive = live && (origin.channel !== 'email' || emailMode === 'live');
+      if (!sendLive) {
         log(
-          `::notice::write-back: [dry run] would reply to ${origin.url} for ${candidate.identifier} ` +
+          `::notice::write-back: [dry run] would reply to ${label} for ${candidate.identifier} ` +
             `(v${gate.version}, covers ${gate.coverage.join(', ')}).`,
         );
         log(
-          `::notice::write-back: [dry run] ${recoveryFrom.length ? 'recovery correction' : 'release announcement'}: ${text.replaceAll('\n', ' ')}`,
+          `::notice::write-back: [dry run] ${recoveryFrom.length ? 'recovery correction' : 'release announcement'}: ${subject ? `${subject}: ` : ''}${text.replaceAll('\n', ' ')}`,
         );
         if (closure) {
           log(
@@ -550,10 +666,48 @@ export async function runWriteBack({
         }
         posted.push({
           identifier: candidate.identifier,
-          origin: origin.url,
+          origin: label,
           version: gate.version,
           dryRun: true,
           closed: closure?.close === true,
+        });
+        continue;
+      }
+
+      if (origin.channel === 'email') {
+        let sent;
+        try {
+          sent = await postReply(origin, text, {
+            subject,
+            idempotencyKey: emailIdempotencyKey(candidate.id, marker),
+          });
+        } catch (err) {
+          emailFailures.push(
+            `${label}, on the ${channel} leg for v${gate.version} (${err.message})`,
+          );
+          continue;
+        }
+        const messageId = sent?.id ?? null;
+        log(
+          sent?.alreadyAccepted
+            ? `::warning::write-back: Resend had already accepted a message to ${label} for ` +
+                `${candidate.identifier} (v${gate.version}) under this ticket's key, with different text; ` +
+                'recording the marker without sending again.'
+            : `::notice::write-back: emailed ${label} for ${candidate.identifier} (v${gate.version}, ` +
+                `Resend message ${messageId}); recording the marker next.`,
+        );
+        await recordNotification({
+          issueId: candidate.id,
+          url: marker,
+          title: `Reporter notified: v${gate.version}`,
+        });
+        posted.push({
+          identifier: candidate.identifier,
+          origin: label,
+          version: gate.version,
+          dryRun: false,
+          closed: false,
+          messageId,
         });
         continue;
       }
@@ -564,23 +718,23 @@ export async function runWriteBack({
         title: `Reporter notified: v${gate.version}`,
       });
       log(
-        `::debug::write-back: marker written for ${origin.url} (${candidate.identifier}); posting reply next.`,
+        `::debug::write-back: marker written for ${label} (${candidate.identifier}); posting reply next.`,
       );
       try {
-        await postReply(origin, text);
+        await postReply(origin, text, { subject });
       } catch (err) {
         throw new NeedsHumanError(
-          `marker for ${origin.url} was written but the reply did NOT send (${err.message}). ` +
+          `marker for ${label} was written but the reply did NOT send (${err.message}). ` +
             `No future run will retry it; post the reply by hand${closure?.close ? ', then close the issue' : ''}.`,
         );
       }
       log(
-        `::notice::write-back: replied to ${origin.url} for ${candidate.identifier} ` +
+        `::notice::write-back: replied to ${label} for ${candidate.identifier} ` +
           `(v${gate.version}).`,
       );
       const entry = {
         identifier: candidate.identifier,
-        origin: origin.url,
+        origin: label,
         version: gate.version,
         dryRun: false,
         closed: false,
@@ -607,6 +761,13 @@ export async function runWriteBack({
       entry.closed = true;
       log(
         `::notice::write-back: closed ${origin.url} for ${candidate.identifier} (v${gate.version}).`,
+      );
+    }
+    if (emailFailures.length > 0) {
+      throw new Error(
+        `email to ${emailFailures.join('; ')} did not send; the next run retries it. If Resend keeps ` +
+          "refusing one address, end its retries by attaching that address's marker for that " +
+          'version to the ticket, as RELEASES.md describes under the email reply leg',
       );
     }
   };
@@ -650,6 +811,19 @@ export async function runWriteBack({
   return { posted, skipped, errored, deferred, dryRun: !live };
 }
 
+export function runSummary(result, { linearRequests }) {
+  return {
+    dryRun: result.dryRun,
+    linearRequests,
+    deferred: result.deferred,
+    posted: result.posted.filter((entry) => !entry.dryRun).length,
+    previewed: result.posted.filter((entry) => entry.dryRun).length,
+    closed: result.posted.filter((entry) => !entry.dryRun && entry.closed).length,
+    skipped: result.skipped,
+    errored: result.errored,
+  };
+}
+
 export function runFailureMessage({ errored = [], deferred } = {}) {
   if (errored.length === 0) return null;
   if (deferred === null) {
@@ -661,7 +835,7 @@ export function runFailureMessage({ errored = [], deferred } = {}) {
 
   const needsHuman = errored.filter((e) => e.disposition === 'needs-human');
   if (needsHuman.length === 0) {
-    return `${head}. No marker was written for any of them, so the next release run picks them up again.`;
+    return `${head}. Every reply that failed was left unmarked, so the next release run picks them up again.`;
   }
   return (
     `${head}. ACTION REQUIRED: ${needsHuman.map((e) => e.identifier).join(', ')} ` +
@@ -849,7 +1023,51 @@ export function toNode(raw) {
   };
 }
 
-async function paginate({ apiKey, query, variables, log, fetchImpl }) {
+export function toContactNode(raw) {
+  const labels = (raw.labels?.nodes ?? []).map((label) => label.name);
+  const canonical =
+    raw.state?.type === 'duplicate'
+      ? (raw.relations?.nodes ?? []).find((relation) => relation.type === 'duplicate')?.relatedIssue
+          ?.id
+      : raw.id;
+  return {
+    targetId: canonical ?? null,
+    address: parseContactEmail(raw.description),
+    reportIdentifier: raw.identifier,
+    reportKind: labels.includes('ok:intake') ? 'bug-report' : 'feedback',
+    own: canonical === raw.id,
+  };
+}
+
+export async function listCandidatesWithContacts({ paginate, redactor }) {
+  const candidates = await paginate(CANDIDATE_QUERY, toNode);
+  const contacts = await paginate(CONTACT_EMAIL_QUERY, toContactNode);
+  for (const contact of contacts) redactor?.add(contact.address);
+  return attachContactEmails(candidates, contacts);
+}
+
+export function attachContactEmails(candidates, contactNodes) {
+  const byTarget = new Map();
+  const ordered = [...contactNodes].sort((a, b) => Number(b.own) - Number(a.own));
+  for (const node of ordered) {
+    if (!node.targetId || !node.address) continue;
+    const list = byTarget.get(node.targetId) ?? [];
+    const address = node.address.toLowerCase();
+    if (!list.some((c) => c.address.toLowerCase() === address)) {
+      list.push({
+        address: node.address,
+        reportIdentifier: node.reportIdentifier,
+        reportKind: node.reportKind,
+      });
+    }
+    byTarget.set(node.targetId, list);
+  }
+  return candidates.map((candidate) =>
+    byTarget.has(candidate.id) ? { ...candidate, contacts: byTarget.get(candidate.id) } : candidate,
+  );
+}
+
+async function paginate({ apiKey, query, variables, log, fetchImpl, toItem = toNode }) {
   const collected = [];
   let after = null;
   do {
@@ -865,7 +1083,7 @@ async function paginate({ apiKey, query, variables, log, fetchImpl }) {
       throw new Error(
         'Linear returned no issues connection; refusing to treat that as an empty result.',
       );
-    collected.push(...page.nodes.map(toNode));
+    collected.push(...page.nodes.map(toItem));
     after = page.pageInfo?.hasNextPage ? page.pageInfo.endCursor : null;
   } while (after);
   return collected;
@@ -1022,7 +1240,50 @@ export function parseChangeset(raw) {
   return { title: firstLine.trim(), body: withoutFrontmatter };
 }
 
-async function realPostReply(origin, text) {
+export async function sendReporterEmail({
+  origin,
+  text,
+  subject,
+  idempotencyKey,
+  apiKey,
+  fetchImpl = fetch,
+}) {
+  if (!apiKey) throw new Error('RESEND_API_KEY is required to email a reporter');
+  if (!idempotencyKey) throw new Error('an idempotency key is required to email a reporter');
+  const res = await fetchImpl(RESEND_EMAILS_URL, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${apiKey}`,
+      'idempotency-key': idempotencyKey,
+    },
+    body: JSON.stringify({
+      from: EMAIL_FROM,
+      to: [origin.address],
+      reply_to: EMAIL_REPLY_TO,
+      subject,
+      text,
+    }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  const body = await res.text();
+  let payload = null;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    payload = null;
+  }
+  if (res.ok) return { id: typeof payload?.id === 'string' ? payload.id : null };
+  if (res.status === 409 && payload?.name === 'invalid_idempotent_request') {
+    return { id: null, alreadyAccepted: true };
+  }
+  throw new Error(`Resend returned HTTP ${res.status}: ${body.slice(0, 200)}`);
+}
+
+async function realPostReply(origin, text, { subject, idempotencyKey, resendKey } = {}) {
+  if (origin.channel === 'email') {
+    return sendReporterEmail({ origin, text, subject, idempotencyKey, apiKey: resendKey });
+  }
   if (origin.channel === 'github-issue') {
     execFileSync(
       'gh',
@@ -1118,11 +1379,13 @@ function realCloseIssue(origin) {
   );
 }
 
+const output = createRunOutput();
+
 async function main() {
-  const log = (message) => console.log(message);
+  const { log, redactor } = output;
   const apiKey = (process.env.LINEAR_API_KEY ?? '').trim();
   if (!apiKey) {
-    console.log(
+    log(
       '::notice::write-back: LINEAR_API_KEY is not set on this repo, so there is nothing to enumerate. ' +
         'Add it as a repo secret to enable reporter write-back. Nothing was posted.',
     );
@@ -1169,6 +1432,24 @@ async function main() {
     );
   }
 
+  const resendKey = String(process.env.RESEND_API_KEY ?? '').trim();
+  const emailMode = resolveEmailMode({
+    resendKey,
+    live,
+    emailModeVariable: process.env.WRITE_BACK_EMAIL_MODE,
+  });
+  if (emailMode === 'off') {
+    log(
+      '::notice::write-back: RESEND_API_KEY is not set, so contact emails are not read as a reply channel; ' +
+        'a ticket whose only reachable reporter left one is skipped as email-unconfigured.',
+    );
+  } else if (emailMode === 'dry-run') {
+    log(
+      '::notice::write-back: email replies are previewed, not sent (set WRITE_BACK_EMAIL_MODE=live, ' +
+        'with WRITE_BACK_MODE=live, to arm them).',
+    );
+  }
+
   let linearRequests = 0;
   const fetchImpl = (...args) => {
     linearRequests++;
@@ -1176,7 +1457,11 @@ async function main() {
   };
   const result = await runWriteBack({
     listCandidates: () =>
-      paginate({ apiKey, query: CANDIDATE_QUERY, variables: {}, log, fetchImpl }),
+      listCandidatesWithContacts({
+        paginate: (query, toItem) =>
+          paginate({ apiKey, query, variables: {}, log, fetchImpl, toItem }),
+        redactor,
+      }),
     listChildren: (parentId) =>
       paginate({ apiKey, query: CHILDREN_QUERY, variables: { parentId }, log, fetchImpl }),
     versionFor: (node) => versionFor(node, channel),
@@ -1184,8 +1469,9 @@ async function main() {
     isPublishedVersion: (version) => stableTags.includes(`v${version}`),
     classifyRelease,
     channel,
+    emailMode,
     readChangesetProse: (candidate, ctx) => realReadChangesetProse(candidate, ctx),
-    postReply: realPostReply,
+    postReply: (origin, text, message) => realPostReply(origin, text, { ...message, resendKey }),
     readIssueClosure: createIssueClosureReader({
       readIssueState: (origin) => readIssueStateWith(gh, origin),
       queryCarriers: (url) =>
@@ -1209,17 +1495,7 @@ async function main() {
     log,
   });
 
-  console.log(
-    JSON.stringify({
-      dryRun: result.dryRun,
-      linearRequests,
-      deferred: result.deferred,
-      posted: result.posted.length,
-      closed: result.posted.filter((entry) => entry.closed).length,
-      skipped: result.skipped,
-      errored: result.errored,
-    }),
-  );
+  log(JSON.stringify(runSummary(result, { linearRequests })));
 
   const failure = runFailureMessage(result);
   if (failure) throw new Error(failure);
@@ -1227,7 +1503,7 @@ async function main() {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((err) => {
-    console.error(`::error::write-back: ${err.message}`);
+    output.error(`::error::write-back: ${err.message}`);
     process.exit(1);
   });
 }

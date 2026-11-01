@@ -94,8 +94,8 @@ msgstr "（分離狀態）"
 msgid "(inline)"
 msgstr "（行內）"
 
-msgid "(no id)"
-msgstr "（無 id）"
+msgid "(no name)"
+msgstr "（無名稱）"
 
 msgid "(opens in new tab)"
 msgstr "（在新分頁中開啟）"
@@ -892,11 +892,11 @@ msgstr "<0>{cliCommand}</0> 在你稍後從「檔案」選單新增之前，無�
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> 無法在這裡合併。請選擇要保留的版本。"
 
-msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
-msgstr "<0>鏡像——請挑一個來源。</0>在屬性面板中設定 <1>src</1> + <2>anchor</2>，指向別處的 <3><MirrorSource></3>。"
+msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
+msgstr "<0>鏡像——請挑一個來源。</0>在屬性面板中設定 <1>src</1> + <2>name</2>，指向別處的 <3><MirrorSource></3>。"
 
-msgid "<0>Mirror anchor not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
-msgstr "<0>找不到鏡像錨點。</0><2>{src}</2> 中不存在 <1>{mirrorSourceTag}</1>。"
+msgid "<0>Mirror name not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
+msgstr "<0>找不到鏡像名稱。</0><2>{src}</2> 中不存在 <1>{mirrorSourceTag}</1>。"
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>鏡像來源已移除。</0>文件 <1>{src}</1> 已無法使用。"
@@ -1084,6 +1084,9 @@ msgstr "標題、描述、標籤——任何能描述這個資料夾的資訊。
 msgid "A token added here only applies to HTTPS remotes, and this project's remote doesn't use HTTPS."
 msgstr "在此新增的權杖只適用於 HTTPS 遠端儲存庫，而此專案的遠端儲存庫不使用 HTTPS。"
 
+msgid "A variable needs two braces on each side, such as {filenameVariable}."
+msgstr "變數兩側各需要兩個大括號，例如 {filenameVariable}。"
+
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "{shareBranch} 的 worktree 資料夾已存在。"
 
@@ -1126,6 +1129,9 @@ msgstr "對衝突 {0} 採用傳入版本"
 
 msgid "Accept their deletion"
 msgstr "接受對方的刪除"
+
+msgid "Access to the saved API key timed out. Wait for the credential store operation to finish, then try again."
+msgstr "存取已儲存的 API 金鑰逾時。請等待憑證儲存區操作完成，然後再試一次。"
 
 msgid "Access token"
 msgstr "存取權杖"
@@ -2444,8 +2450,8 @@ msgstr "摺疊「問 AI」"
 msgid "Collapse graph"
 msgstr "摺疊關係圖"
 
-msgid "Collapsible content block (Notion-style toggle)."
-msgstr "可摺疊內容區塊（Notion 風格摺疊）。"
+msgid "Collapsible block, the same as Accordion."
+msgstr "可摺疊區塊，與 Accordion 相同。"
 
 msgid "Collapsible section with a clickable summary."
 msgstr "帶可點擊摘要的可摺疊區塊。"
@@ -2671,9 +2677,6 @@ msgstr "內容目錄"
 msgid "Content directory must be inside the project"
 msgstr "內容目錄必須在專案裡面"
 
-msgid "Content root"
-msgstr "內容根目錄"
-
 msgid "Content rules"
 msgstr "內容規則"
 
@@ -2814,6 +2817,12 @@ msgstr "正在複製"
 
 msgid "Copying..."
 msgstr "正在複製…"
+
+msgid "Could not access the saved API key. Check the local credential files, then try again."
+msgstr "無法存取已儲存的 API 金鑰。請檢查本機憑證檔案，然後再試一次。"
+
+msgid "Could not access the saved API key. Unlock your system credential store or check the local credential files, then try again."
+msgstr "無法存取已儲存的 API 金鑰。請解鎖系統憑證儲存區或檢查本機憑證檔案，然後再試一次。"
 
 msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
 msgstr "無法檢查 {shareBranch} 中的符號連結，因此未切換。請重試；如果仍然失敗，請確認已安裝 Git 且專案資料夾可讀取。"
@@ -3115,8 +3124,8 @@ msgstr "無法連線到 {displayName}。請稍後再試。"
 msgid "Couldn't reach {displayName} — try again?"
 msgstr "無法連線到 {displayName}。要再試一次嗎？"
 
-msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-msgstr "無法連上協作伺服器——{errorDetail}。可以試試 <0>{cliCommand} status</0>，或看看 <1>.ok/local/last-spawn-error.log</1>。"
+msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or collect logs with <1>{cliCommand} diagnose bundle</1>."
+msgstr "無法連上協作伺服器——{errorDetail}。可以試試 <0>{cliCommand} status</0>，或使用 <1>{cliCommand} diagnose bundle</1> 收集記錄檔。"
 
 msgid "Couldn't reach GitHub. Try again?"
 msgstr "無法連上 GitHub。要再試一次嗎？"
@@ -3307,6 +3316,18 @@ msgstr "無法更新 {subRoot}：{0}"
 msgid "Couldn't update from {0}: {1}"
 msgstr "無法從 {0} 更新：{1}"
 
+msgid "Couldn't upload the file. The {settingKey} value in {configFile} can't be used. Fix it in that file."
+msgstr "無法上傳檔案。{configFile} 中的 {settingKey} 值無法使用。請在該檔案中修正。"
+
+msgid "Couldn't upload the file. The attachment folder has a {open} or {close} without its pair. Fix it under Attachments in Settings."
+msgstr "無法上傳檔案。附件資料夾中有未成對的 {open} 或 {close}。請在設定的「附件」中修正。"
+
+msgid "Couldn't upload the file. The attachment folder uses {filenameVariable} more than once in one folder name. Fix it under Attachments in Settings."
+msgstr "無法上傳檔案。附件資料夾的同一個資料夾名稱中多次使用了 {filenameVariable}。請在設定的「附件」中修正。"
+
+msgid "Couldn't upload the file. The attachment folder uses the unknown variable {variables}. Fix it under Attachments in Settings."
+msgstr "無法上傳檔案。附件資料夾使用了未知變數 {variables}。請在設定的「附件」中修正。"
+
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
 msgstr "無法確認 {displayName}（{bin}）是否可用，因此這是一個一般 shell。你仍然可以自行執行 {bin}。"
 
@@ -3486,9 +3507,6 @@ msgstr "日期"
 
 msgid "Default"
 msgstr "預設"
-
-msgid "Default location for new attachments"
-msgstr "新附件的預設位置"
 
 msgid "Default properties"
 msgstr "預設屬性"
@@ -3783,6 +3801,9 @@ msgstr "文件統計"
 msgid "Document structure"
 msgstr "文件結構"
 
+msgid "Document suggestions"
+msgstr "文件建議"
+
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "記錄這個儲存庫的架構：建立一頁總覽，連到每個主要模組的頁面，說明各自的職責和進入點。"
 
@@ -3895,9 +3916,6 @@ msgstr "已建立副本「{0}」"
 msgid "Duplicates dropped"
 msgstr "捨棄重複項"
 
-msgid "e.g. assets/uploads"
-msgstr "例如 assets/uploads"
-
 msgid "e.g. drafts/ or *.draft.md"
 msgstr "例如 drafts/ 或 *.draft.md"
 
@@ -3909,6 +3927,9 @@ msgstr "例如：同步進行到一半時切換了專案"
 
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr "例如：貼上一個很大的表格之後編輯器卡住了"
+
+msgid "Each {open} needs a matching {close}."
+msgstr "每個 {open} 都需要一個對應的 {close}。"
 
 #. Says what symlinking two skill folders together buys the user, before any button names it
 msgid "Each AI tool reads skills from its own folder. Point one folder at another and both tools see the same skills — add a skill once instead of copying it into every tool."
@@ -4266,6 +4287,9 @@ msgstr "{1}/ 裡各個 {0}/ 資料夾底下的所有內容"
 
 msgid "everything under any {0}/ folder"
 msgstr "任何 {0}/ 資料夾底下的所有內容"
+
+msgid "Example: a file added to <0>{exampleDoc}</0> is saved as <1>{exampleFile}</1>"
+msgstr "範例：新增到 <0>{exampleDoc}</0> 的檔案會儲存為 <1>{exampleFile}</1>"
 
 msgid "Excalidraw board"
 msgstr "Excalidraw 畫板"
@@ -4751,9 +4775,6 @@ msgstr "固定"
 msgid "Fixed {total, plural, one {# file} other {# files}}."
 msgstr "{total, plural, other {已修復 # 個檔案}}。"
 
-msgid "Fixed folder in content root"
-msgstr "內容根目錄中的固定資料夾"
-
 msgid "Fixed port number"
 msgstr "固定連接埠號碼"
 
@@ -4789,6 +4810,12 @@ msgstr "資料夾名稱"
 
 msgid "Folder name: {detail}"
 msgstr "資料夾名稱：{detail}"
+
+msgid "Folder names cannot contain {reserved}."
+msgstr "資料夾名稱不能包含 {reserved}。"
+
+msgid "Folder path must start with {documentPrefix} or {rootPrefix} and cannot contain {parentFolder}"
+msgstr "資料夾路徑必須以 {documentPrefix} 或 {rootPrefix} 開頭，且不能包含 {parentFolder}。"
 
 msgid "Folder properties"
 msgstr "資料夾屬性"
@@ -5517,6 +5544,9 @@ msgstr "行內公式"
 
 msgid "Inline Math Properties"
 msgstr "行內公式屬性"
+
+msgid "Inline row for a downloadable file. Drag-drop also works."
+msgstr "用來呈現可下載檔案的行內列。也可以拖放。"
 
 msgid "Input"
 msgstr "輸入"
@@ -6276,6 +6306,9 @@ msgstr "鏡像來源 <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "鏡像來源 <0>api-spec</0>"
 
+msgid "Mirror source names"
+msgstr "鏡像來源名稱"
+
 msgid "Missing"
 msgstr "缺失"
 
@@ -6903,6 +6936,12 @@ msgstr "沒有相符的儲存庫。"
 msgid "No matching worktrees or branches."
 msgstr "沒有相符的 worktree 或分支。"
 
+msgid "No Mirror Source block in {docName} matches the text in this field. Clear it to see them all."
+msgstr "{docName} 中沒有與此欄位文字相符的鏡像來源區塊。清空此欄位即可查看全部。"
+
+msgid "No Mirror Source blocks in {docName}"
+msgstr "{docName} 中沒有鏡像來源區塊"
+
 msgid "No Outgoing"
 msgstr "沒有連出"
 
@@ -7114,9 +7153,6 @@ msgstr "沒有需要提交的內容：工作區是乾淨的。"
 
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "未上傳任何內容。在你以電子郵件寄給我們之前，報告會保留在這台電腦上。"
-
-msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
-msgstr "Notion 風格的行內列，用來呈現可下載的檔案。也可以拖放。"
 
 msgid "Number"
 msgstr "數字"
@@ -8589,6 +8625,12 @@ msgstr "移除選取範圍"
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "刪除上層的 <0>.git</0> 資料夾"
 
+msgid "Remove the slash at the end of the path."
+msgstr "刪除路徑結尾的斜線。"
+
+msgid "Remove the spaces at the start or end of the path."
+msgstr "刪除路徑開頭或結尾的空格。"
+
 msgid "Removed"
 msgstr "已移除"
 
@@ -9019,9 +9061,6 @@ msgstr "正在執行專案稽核"
 msgid "Runs a shell command"
 msgstr "執行 shell 指令"
 
-msgid "Same folder as current file"
-msgstr "和目前檔案相同的資料夾"
-
 msgid "Sample image"
 msgstr "範例圖片"
 
@@ -9054,6 +9093,9 @@ msgstr "存到這個專案的技能資料夾中（例如 <0>.agents/skills</0>�
 
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "存到你的全域技能資料夾中（例如 <0>~/.agents/skills</0>）。"
+
+msgid "Saved keys conflict. Enter a replacement key for this project and endpoint to use instead."
+msgstr "已儲存的金鑰發生衝突。請輸入此專案和端點的替代金鑰。"
 
 msgid "Saved themes couldn’t load. The last available theme list is still shown."
 msgstr "無法載入已儲存的主題。仍顯示上次可用的主題清單。"
@@ -9382,8 +9424,8 @@ msgstr "已傳送"
 msgid "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
 msgstr "會連同你的備註和應用程式版本一起私下寄給 OpenKnowledge 團隊。絕不會公開發布。"
 
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
-msgstr "會送到 <0>{endpointHost}</0> 來產生你內容的嵌入向量。只存在這台電腦上（在 <1>{secretsPath}</1>），絕不會存進專案。"
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored outside the project."
+msgstr "會送到 <0>{endpointHost}</0> 來產生你內容的嵌入向量。儲存在專案之外。"
 
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."
 msgstr "已傳送，但無法把這些註解標記為完成——它們仍在等著傳送。"
@@ -9463,8 +9505,8 @@ msgstr "設定 OpenKnowledge 整合…"
 msgid "Set up syncing"
 msgstr "設定同步"
 
-msgid "Set where pasted and dropped files are stored for this project."
-msgstr "設定這個專案中貼上和拖入的檔案要存在哪裡。"
+msgid "Set where pasted and dropped files are stored."
+msgstr "設定貼上和拖入的檔案要存在哪裡。"
 
 msgid "Setting up"
 msgstr "正在設定"
@@ -9731,6 +9773,9 @@ msgstr "正在登入 {agentName}…"
 
 msgid "Single page"
 msgstr "單頁"
+
+msgid "size limit"
+msgstr "大小限制"
 
 msgid "skill \"{0}\""
 msgstr "技能「{0}」"
@@ -10114,9 +10159,6 @@ msgstr "子代理"
 
 msgid "Subfolder name"
 msgstr "子資料夾名稱"
-
-msgid "Subfolder under current folder"
-msgstr "目前資料夾底下的子資料夾"
 
 msgid "Subscribe"
 msgstr "訂閱"
@@ -10717,6 +10759,9 @@ msgstr "儲存的權杖缺少這個主機推送所需的權限。"
 msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
 msgstr "隊友第一次開啟此專案時採用的同步模式。它保存在專案的 OpenKnowledge 設定中，因此只有當下方的設定分享設為已分享時才會傳給他們。"
 
+msgid "The system credential store is unavailable. This key is stored in a file with restricted permissions outside the project."
+msgstr "系統憑證儲存區無法使用。此金鑰儲存在專案之外的檔案中，檔案權限受到限制。"
+
 msgid "The template's filename (without `.md`)."
 msgstr "範本的檔案名稱（不含 `.md`）。"
 
@@ -10907,6 +10952,9 @@ msgstr "這則註解是針對整個屬性的"
 
 msgid "This component changed. Try again."
 msgstr "此元件已變更。請再試一次。"
+
+msgid "This component is too large to render."
+msgstr "此元件過大，無法顯示。"
 
 msgid "This component was removed."
 msgstr "此元件已被移除。"
@@ -11530,6 +11578,9 @@ msgstr "日期不明"
 msgid "Unknown error"
 msgstr "未知的錯誤"
 
+msgid "Unknown variable {unknownList}. Available variables: {supportedVariables}."
+msgstr "未知的變數 {unknownList}。可用的變數：{supportedVariables}。"
+
 msgid "unlink"
 msgstr "取消連結"
 
@@ -11699,6 +11750,9 @@ msgstr "將 {0} 用於目前的淺色模式"
 msgid "Use {editor} version"
 msgstr "使用 {editor} 的版本"
 
+msgid "Use {filenameVariable} at most once in each folder name."
+msgstr "每個資料夾名稱中最多使用一次 {filenameVariable}。"
+
 msgid "Use <0>{copyShortcut}</0> to copy the link below, or open OK in the desktop app."
 msgstr "用 <0>{copyShortcut}</0> 複製下面的連結，或者在桌面應用程式中開啟 OK。"
 
@@ -11737,6 +11791,9 @@ msgstr "只能用小寫字母、數字和 <0>-</0>。"
 
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "只能用小寫字母、數字和連字號"
+
+msgid "Use one slash between folder names."
+msgstr "資料夾名稱之間只用一個斜線。"
 
 msgid "Use their version"
 msgstr "使用對方的版本"
@@ -11964,9 +12021,6 @@ msgstr "當你安裝一個已發布的技能時，會告知技能目錄（skills
 
 msgid "Where"
 msgstr "位置"
-
-msgid "Where newly added attachments are placed."
-msgstr "新加入的附件要放在哪裡。"
 
 msgid "Where should it live?"
 msgstr "它應該放在哪裡？"

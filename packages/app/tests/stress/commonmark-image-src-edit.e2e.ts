@@ -50,7 +50,7 @@ test('a src edit on a doc-relative image in the Properties panel saves the new U
   let panel = await openImageProperties(page);
   await panel.locator('#prop-src').click();
   await page
-    .getByTestId('src-autocomplete-option')
+    .getByTestId('suggestion-option')
     .filter({ hasText: `notes/${imageFile}` })
     .click();
   await expect(panel.locator('#prop-src')).toHaveValue(`/notes/${imageFile}`);

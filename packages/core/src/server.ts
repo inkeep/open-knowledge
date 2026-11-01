@@ -53,4 +53,11 @@ export {
   withFileLock,
   withFileLockSync,
 } from './util/file-lock.ts';
+export { classifyHost, isPublicUnicastIp } from './util/ip-classifier.ts';
+export {
+  isProjectLogsKey,
+  okProjectLogsDir,
+  projectLogsKeyForCanonicalPath,
+  projectSpawnErrorLogPath,
+} from './util/project-logs-dir.ts';
 export { openSpawnErrorLog } from './util/spawn-error-log-open.ts';

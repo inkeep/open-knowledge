@@ -278,10 +278,7 @@ function holdFirstBaselineStat(
   let starting = true;
   let releaseWorker: () => void = () => {};
   let releaseSample: () => void = () => {};
-  let markReleased: () => void = () => {};
-  const released = new Promise<void>((resolve) => {
-    markReleased = resolve;
-  });
+  const { promise: released, resolve: markReleased } = Promise.withResolvers<void>();
   const letSampleRun = (): void => {
     if (sampleState !== 'held') return;
     releaseSample();
@@ -311,11 +308,10 @@ function holdFirstBaselineStat(
       samples.unwatch(heldPath);
       if (form === 'sync' || !starting) return undefined;
       sampleState = 'held';
-      const gate = new Promise<void>((resolve) => {
-        releaseSample = resolve;
-      });
+      const gate = Promise.withResolvers<void>();
+      releaseSample = gate.resolve;
       onHeld('sample');
-      return gate;
+      return gate.promise;
     },
     after() {
       sampleLanded = true;

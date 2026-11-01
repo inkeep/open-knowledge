@@ -1,3 +1,4 @@
+import { E2E_COVERAGE_DIR_ENV } from '../../../../src/build/e2e-coverage-contract.ts';
 import { E2E_SERVING_ENV, PREBUILT_APP_ENV } from '../prebuilt/prebuilt-serving.ts';
 import { REUSE_RUN_ENV, REUSE_SOCKET_ENV } from '../reuse/lease-protocol.ts';
 
@@ -6,6 +7,7 @@ const OUTER_RUN_SERVER_ENV = [
   REUSE_RUN_ENV,
   E2E_SERVING_ENV,
   PREBUILT_APP_ENV,
+  E2E_COVERAGE_DIR_ENV,
 ] as const;
 
 export function createNestedPlaywrightEnv(overrides: NodeJS.ProcessEnv): NodeJS.ProcessEnv {

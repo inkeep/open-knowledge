@@ -5,13 +5,32 @@ import {
   LocalOpEmbeddingsTestResponseSchema,
   ProblemDetailsSchema,
 } from '@inkeep/open-knowledge-core';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import {
   type FakeEmbeddingsServer,
   startFakeEmbeddingsServer,
 } from '../../../../server/src/embeddings/fake-provider.test-helper.ts';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
 import { createTestServer, type TestServer } from '../test-harness';
+
+const keyring = vi.hoisted(() => new Map<string, string>());
+vi.mock('@napi-rs/keyring', () => ({
+  AsyncEntry: class {
+    private readonly id: string;
+    constructor(service: string, account: string) {
+      this.id = JSON.stringify([service, account]);
+    }
+    async getPassword() {
+      return keyring.get(this.id) ?? null;
+    }
+    async setPassword(value: string) {
+      keyring.set(this.id, value);
+    }
+    async deletePassword() {
+      return keyring.delete(this.id);
+    }
+  },
+}));
 
 let server: TestServer;
 let provider: FakeEmbeddingsServer;
@@ -41,6 +60,7 @@ beforeAll(async () => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key: 'sk-test-probe-key' }),
   });
+  expect([...keyring.values()]).toContain('sk-test-probe-key');
 }, HARNESS_BOOT_TIMEOUT_MS);
 
 afterAll(async () => {
@@ -134,6 +154,7 @@ describe('local-op-embeddings-test — provider failure', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: 'sk-bad' }),
     });
+    expect([...keyring.values()]).toContain('sk-bad');
   }, HARNESS_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {

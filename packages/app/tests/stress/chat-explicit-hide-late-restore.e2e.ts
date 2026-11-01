@@ -25,7 +25,7 @@ test('a hidden Chat stays hidden through late thread restoration until its short
   const createdThreadIds = new Set<string>();
   let threadSocket: WebSocketRoute | null = null;
   let holdInitialFrames = true;
-  let releaseHost: (() => void) | undefined;
+  const { promise: heldHost, resolve: releaseHost } = Promise.withResolvers<void>();
 
   await page.addInitScript((agentId) => {
     localStorage.setItem(
@@ -113,9 +113,6 @@ test('a hidden Chat stays hidden through late thread restoration until its short
       .toBe(false);
 
     let heldRequests = 0;
-    const heldHost = new Promise<void>((resolve) => {
-      releaseHost = resolve;
-    });
     await page.route('**/src/components/SessionsHost*', async (route) => {
       heldRequests += 1;
       await heldHost;
@@ -185,7 +182,7 @@ test('a hidden Chat stays hidden through late thread restoration until its short
     expect(frames.some((frame) => frame.visible)).toBe(true);
     expect(frames.filter((frame) => frame.visible !== frame.pressed)).toEqual([]);
   } finally {
-    releaseHost?.();
+    releaseHost();
     try {
       for (const id of createdThreadIds) await fixture.closeThread(id);
     } finally {

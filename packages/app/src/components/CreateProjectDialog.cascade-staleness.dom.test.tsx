@@ -489,9 +489,9 @@ describe('CreateProjectDialog cascade staleness (Tier-3 mount)', () => {
     let resolveDeferred: (value: OkFindEnclosingGitRootResult | null) => void = () => {};
     stub.setFindEnclosingGitRootImpl((_path) => {
       probeCallCount += 1;
-      return new Promise<OkFindEnclosingGitRootResult | null>((r) => {
-        resolveDeferred = r;
-      });
+      const { promise, resolve } = Promise.withResolvers<OkFindEnclosingGitRootResult | null>();
+      resolveDeferred = resolve;
+      return promise;
     });
 
     const probesBefore = probeCallCount;
@@ -549,9 +549,9 @@ describe('CreateProjectDialog cascade staleness (Tier-3 mount)', () => {
       let resolveDeferred: (value: OkFindEnclosingGitRootResult | null) => void = () => {};
       stub.setFindEnclosingGitRootImpl((_path) => {
         probeCallCount += 1;
-        return new Promise<OkFindEnclosingGitRootResult | null>((r) => {
-          resolveDeferred = r;
-        });
+        const { promise, resolve } = Promise.withResolvers<OkFindEnclosingGitRootResult | null>();
+        resolveDeferred = resolve;
+        return promise;
       });
 
       await typeName(`${PROJECT_NAME} (v2)`);

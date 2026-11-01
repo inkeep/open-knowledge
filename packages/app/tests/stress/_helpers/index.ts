@@ -131,6 +131,7 @@ export {
   servedModuleRoute,
   servedModuleUrl,
 } from './prebuilt/served-modules.ts';
+export { openPropPanel } from './prop-panel.ts';
 export {
   installClockAfterSync,
   type WaitForProviderOptions,

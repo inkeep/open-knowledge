@@ -194,6 +194,11 @@ describe('runCreateNew — happy paths', () => {
       editors: [...ALL_EDITOR_IDS],
     });
 
+    const branch = execFileSync('git', ['symbolic-ref', '--short', 'HEAD'], {
+      cwd: result.projectDir,
+      encoding: 'utf-8',
+    }).trim();
+
     expect(() =>
       execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { cwd: result.projectDir }),
     ).not.toThrow();
@@ -207,7 +212,7 @@ describe('runCreateNew — happy paths', () => {
           'wt-1',
           join(result.projectDir, '.ok/worktrees/wt-1'),
           '--',
-          'main',
+          branch,
         ],
         { cwd: result.projectDir },
       ),

@@ -518,10 +518,8 @@ describe('ProjectSwitcher dropdown behavior', () => {
   });
 
   test('does not flash "No recent projects." while the first listRecent is in flight, then resolves cleanly', async () => {
-    let resolveList: (value: Array<{ name: string; path: string }>) => void = () => {};
-    const pending = new Promise<Array<{ name: string; path: string }>>((resolve) => {
-      resolveList = resolve;
-    });
+    const { promise: pending, resolve: resolveList } =
+      Promise.withResolvers<Array<{ name: string; path: string }>>();
     const bridge = createBridge();
     bridge.project.listRecent = vi.fn(() => pending);
     render(<ProjectSwitcher bridge={bridge as never} />);

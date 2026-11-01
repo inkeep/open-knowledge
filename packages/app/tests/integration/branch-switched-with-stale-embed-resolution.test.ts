@@ -66,6 +66,7 @@ describe('T17: branch switch with `![[photo.png]]` doc — reseed-before-reset',
 
     writeRel(contentDir, 'test-doc.md', DOC_BODY);
     writeRel(contentDir, 'photo.png', PNG_BYTES);
+    git(contentDir, 'init --initial-branch=main');
     await ensureProjectGit(contentDir);
     configureTestGitRepository(contentDir);
     git(contentDir, 'config user.name test');

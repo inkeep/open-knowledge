@@ -132,12 +132,11 @@ describe('useOnboardingCardVisible', () => {
 
   test('cancels a pending activation when the probe unmounts mid-flight', async () => {
     let resolveRecents!: (r: Array<{ path: string }>) => void;
-    const listRecent = vi.fn(
-      () =>
-        new Promise<Array<{ path: string }>>((res) => {
-          resolveRecents = res;
-        }),
-    );
+    const listRecent = vi.fn(() => {
+      const { promise, resolve } = Promise.withResolvers<Array<{ path: string }>>();
+      resolveRecents = resolve;
+      return promise;
+    });
     (window as unknown as { okDesktop: unknown }).okDesktop = {
       project: { listRecent },
       config: { projectPath: CURRENT_PATH },

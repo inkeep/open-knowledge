@@ -433,10 +433,7 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
 
   test('Switch does not navigate or warm-focus until CC1 resolves', async () => {
     const store = createShareReceiveStore();
-    let resolveCc1: (result: { ok: true }) => void = () => {};
-    const cc1Promise = new Promise<{ ok: true }>((resolve) => {
-      resolveCc1 = resolve;
-    });
+    const { promise: cc1Promise, resolve: resolveCc1 } = Promise.withResolvers<{ ok: true }>();
     const { bridge, calls } = makeBridge({
       awaitBranchSwitched: vi.fn(() => cc1Promise),
     });
@@ -1221,12 +1218,11 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     const store = createShareReceiveStore();
     let resolveCheckout: (result: WorktreeCreateResult) => void = () => {};
     const { bridge, calls } = makeBridge({
-      checkout: vi.fn(
-        () =>
-          new Promise<WorktreeCreateResult>((resolve) => {
-            resolveCheckout = resolve;
-          }),
-      ),
+      checkout: vi.fn(() => {
+        const { promise, resolve } = Promise.withResolvers<WorktreeCreateResult>();
+        resolveCheckout = resolve;
+        return promise;
+      }),
     });
     renderDialog(bridge, store);
 
@@ -1439,12 +1435,11 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     const store = createShareReceiveStore();
     let resolveCheckout: (result: WorktreeCreateResult) => void = () => {};
     const { bridge, calls } = makeBridge({
-      checkout: vi.fn(
-        () =>
-          new Promise<WorktreeCreateResult>((resolve) => {
-            resolveCheckout = resolve;
-          }),
-      ),
+      checkout: vi.fn(() => {
+        const { promise, resolve } = Promise.withResolvers<WorktreeCreateResult>();
+        resolveCheckout = resolve;
+        return promise;
+      }),
     });
     const { emit } = renderDialog(bridge, store);
 

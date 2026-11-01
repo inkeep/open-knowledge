@@ -14,6 +14,7 @@ export function SettingsSectionHeader({
   beta,
   adornment,
   docUrl,
+  descriptionId,
   children,
 }: {
   titleId?: string;
@@ -23,10 +24,28 @@ export function SettingsSectionHeader({
   beta?: boolean;
   adornment?: ReactNode;
   docUrl?: string;
+  descriptionId?: string;
   children?: ReactNode;
 }) {
   const { t } = useLingui();
   const Heading = level === 'page' ? 'h3' : 'h4';
+  const docLink =
+    docUrl !== undefined ? (
+      // oxlint-disable-next-line jsx-a11y/anchor-ambiguous-text -- the accessible name comes from aria-label, which this rule only recognises as a string literal; the i18n directive requires the t macro.
+      <a
+        href={docUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => dispatchExternalLinkClick(e, docUrl)}
+        onAuxClick={(e) => dispatchExternalLinkClick(e, docUrl)}
+        aria-label={typeof title === 'string' ? t`Learn more about ${title}` : t`Learn more`}
+        className="inline-flex items-center gap-0.5 text-sm text-primary underline-offset-2 hover:underline"
+        data-testid={`${titleId}-docs-link`}
+      >
+        <Trans>Learn more</Trans>
+        <ArrowUpRight aria-hidden className="size-3" />
+      </a>
+    ) : null;
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2">
@@ -40,23 +59,14 @@ export function SettingsSectionHeader({
         {beta ? <PluginBetaBadge /> : null}
         {scope ? <ScopeBadge scope={scope} /> : null}
       </div>
-      {children ? <p className="text-sm text-muted-foreground">{children}</p> : null}
-      {docUrl !== undefined ? (
-        // oxlint-disable-next-line jsx-a11y/anchor-ambiguous-text -- the accessible name comes from aria-label, which this rule only recognises as a string literal; the i18n directive requires the t macro.
-        <a
-          href={docUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => dispatchExternalLinkClick(e, docUrl)}
-          onAuxClick={(e) => dispatchExternalLinkClick(e, docUrl)}
-          aria-label={typeof title === 'string' ? t`Learn more about ${title}` : t`Learn more`}
-          className="inline-flex items-center gap-0.5 text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-          data-testid={`${titleId}-docs-link`}
-        >
-          <Trans>Learn more</Trans>
-          <ArrowUpRight aria-hidden className="size-3" />
-        </a>
-      ) : null}
+      {children ? (
+        <p className="text-sm text-muted-foreground">
+          <span id={descriptionId}>{children}</span>
+          {docLink ? <> {docLink}</> : null}
+        </p>
+      ) : (
+        docLink
+      )}
     </div>
   );
 }

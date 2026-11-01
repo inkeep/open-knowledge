@@ -184,12 +184,7 @@ export function syncPromise(docName: string, provider: HocuspocusProvider): Prom
   }
 
   const createdAt = Date.now();
-  let resolveFn: () => void = () => {};
-  let rejectFn: (error: Error) => void = () => {};
-  const promise = new Promise<void>((res, rej) => {
-    resolveFn = res;
-    rejectFn = rej;
-  });
+  const { promise, resolve: resolveFn, reject: rejectFn } = Promise.withResolvers<void>();
 
   const onSynced = () => {
     const entry = cache.get(docName);

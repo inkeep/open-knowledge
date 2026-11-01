@@ -26,6 +26,20 @@ const LOG_PREFIX = '[prepare-platform-natives]';
 const DEFAULT_REGISTRY = 'https://registry.npmjs.org/';
 const STAGING_PREFIX = '.staging-keyring-';
 const BLOCK = 512;
+const MAX_FETCH_ATTEMPTS = 2;
+const RETRY_BACKOFF_MS = 250;
+const TRANSIENT_ERROR_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ETIMEDOUT',
+  'UND_ERR_BODY_TIMEOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
 
 export class NativesError extends Error {}
 
@@ -213,29 +227,72 @@ function describeCause(error) {
   return cause?.message ?? error?.message ?? String(error);
 }
 
-async function fetchVerified({ fetchImpl, url, pkgName, version, integrity }) {
-  let response;
-  try {
-    response = await fetchImpl(url);
-  } catch (error) {
-    throw new NativesError(`fetch ${url} failed: ${describeCause(error)}`);
+function errorCode(error) {
+  return error?.cause?.code ?? error?.code;
+}
+
+function isTransientError(error) {
+  return TRANSIENT_ERROR_CODES.has(errorCode(error));
+}
+
+async function fetchVerified({ fetchImpl, url, pkgName, version, integrity, sleepImpl, log }) {
+  for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt += 1) {
+    let response;
+    try {
+      response = await fetchImpl(url);
+    } catch (error) {
+      if (isTransientError(error) && attempt < MAX_FETCH_ATTEMPTS) {
+        log(
+          `${LOG_PREFIX}   ${pkgName}@${version} fetch ${url} failed on attempt ${attempt}: ${describeCause(error)}; retrying in ${RETRY_BACKOFF_MS}ms`,
+        );
+        await sleepImpl(RETRY_BACKOFF_MS);
+        continue;
+      }
+      throw new NativesError(
+        `${pkgName}@${version}: fetch ${url} failed: ${describeCause(error)} (attempts: ${attempt})`,
+      );
+    }
+    if (!response.ok) {
+      const message = `HTTP ${response.status} ${response.statusText}`;
+      if (response.status >= 500 && response.status < 600 && attempt < MAX_FETCH_ATTEMPTS) {
+        log(
+          `${LOG_PREFIX}   ${pkgName}@${version} fetch ${url} failed on attempt ${attempt}: ${message}; retrying in ${RETRY_BACKOFF_MS}ms`,
+        );
+        await sleepImpl(RETRY_BACKOFF_MS);
+        continue;
+      }
+      throw new NativesError(
+        `${pkgName}@${version}: fetch ${url} → ${message} (attempts: ${attempt})`,
+      );
+    }
+    let bytes;
+    try {
+      bytes = Buffer.from(await response.arrayBuffer());
+    } catch (error) {
+      if (isTransientError(error) && attempt < MAX_FETCH_ATTEMPTS) {
+        log(
+          `${LOG_PREFIX}   ${pkgName}@${version} fetch ${url} body read failed on attempt ${attempt}: ${describeCause(error)}; retrying in ${RETRY_BACKOFF_MS}ms`,
+        );
+        await sleepImpl(RETRY_BACKOFF_MS);
+        continue;
+      }
+      throw new NativesError(
+        `${pkgName}@${version}: fetch ${url} body read failed: ${describeCause(error)} (attempts: ${attempt})`,
+      );
+    }
+    const actual = `sha512-${createHash('sha512').update(bytes).digest('base64')}`;
+    if (actual !== integrity) {
+      throw new NativesError(
+        `${pkgName}@${version}: fetch ${url} sha512 hash mismatch, expected ${integrity}, got ${actual} (attempts: ${attempt})`,
+      );
+    }
+    if (attempt > 1)
+      log(`${LOG_PREFIX}   ${pkgName}@${version} fetched ${url} on attempt ${attempt}`);
+    return bytes;
   }
-  if (!response.ok) {
-    throw new NativesError(`fetch ${url} → HTTP ${response.status} ${response.statusText}`);
-  }
-  let bytes;
-  try {
-    bytes = Buffer.from(await response.arrayBuffer());
-  } catch (error) {
-    throw new NativesError(`fetch ${url} body read failed: ${describeCause(error)}`);
-  }
-  const actual = `sha512-${createHash('sha512').update(bytes).digest('base64')}`;
-  if (actual !== integrity) {
-    throw new NativesError(
-      `${pkgName}@${version}: sha512 hash mismatch, expected ${integrity}, got ${actual}`,
-    );
-  }
-  return bytes;
+  throw new NativesError(
+    `${pkgName}@${version}: fetch ${url} failed (attempts: ${MAX_FETCH_ATTEMPTS})`,
+  );
 }
 
 function defaultTarBin(platform) {
@@ -287,6 +344,7 @@ async function prepareOne({
   version,
   registry,
   fetchImpl,
+  sleepImpl,
   extract,
   log,
 }) {
@@ -305,7 +363,15 @@ async function prepareOne({
   }
   log(`${LOG_PREFIX}   ${pkgName}@${version} ${state.reason} — fetching`);
   const url = new URL(`${pkgName}/-/keyring-${suffix}-${version}.tgz`, registry).href;
-  const bytes = await fetchVerified({ fetchImpl, url, pkgName, version, integrity });
+  const bytes = await fetchVerified({
+    fetchImpl,
+    url,
+    pkgName,
+    version,
+    integrity,
+    sleepImpl,
+    log,
+  });
   let tar;
   try {
     tar = gunzipSync(bytes);
@@ -374,6 +440,7 @@ export async function prepareKeyringNatives({
   platform = process.platform,
   registry = process.env.npm_config_registry || DEFAULT_REGISTRY,
   fetchImpl = fetch,
+  sleepImpl = (delay) => new Promise((resolveDelay) => setTimeout(resolveDelay, delay)),
   extract = extractWithTar(defaultTarBin(platform)),
   checkOnly = false,
   log = console.log,
@@ -412,6 +479,7 @@ export async function prepareKeyringNatives({
       version,
       registry: registryBase,
       fetchImpl,
+      sleepImpl,
       extract,
       log,
     });

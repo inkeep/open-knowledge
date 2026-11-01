@@ -3,8 +3,9 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../../../test-support/test-only-source-file.mjs';
+import { DISPATCH_SCAN_ROOT } from './dispatch-single-entry-point.reads';
 
-const SRC_DIR = fileURLToPath(new URL('../..', import.meta.url));
+const SRC_DIR = join(fileURLToPath(new URL('../../../../..', import.meta.url)), DISPATCH_SCAN_ROOT);
 
 const ALLOWLISTED_SUBPATHS = ['lib/handoff', 'components/handoff'] as const;
 

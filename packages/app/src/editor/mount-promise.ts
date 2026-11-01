@@ -147,12 +147,11 @@ export function mountTiptapEditorPromise(
 
   const controller = new AbortController();
   const createdAt = Date.now();
-  let resolveFn: (entry: TiptapCacheEntry) => void = () => {};
-  let rejectFn: (error: Error) => void = () => {};
-  const promise = new Promise<TiptapCacheEntry>((res, rej) => {
-    resolveFn = res;
-    rejectFn = rej;
-  });
+  const {
+    promise,
+    resolve: resolveFn,
+    reject: rejectFn,
+  } = Promise.withResolvers<TiptapCacheEntry>();
 
   const entry: MountPromiseEntry = {
     promise,

@@ -63,6 +63,7 @@ async function setupGitRepoWithBranches(
   contentA: string,
   contentB: string,
 ): Promise<void> {
+  git(contentDir, 'init --initial-branch=main');
   await ensureProjectGit(contentDir);
   configureTestGitRepository(contentDir);
   git(contentDir, 'config user.name test');

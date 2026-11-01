@@ -248,10 +248,11 @@ describe('TerminalAgentConnectionBanner', () => {
       'fetch',
       vi.fn(async (_url: string, init: RequestInit) => {
         const { intents } = JSON.parse(String(init.body)) as { intents: ApplyIntent[] };
-        if (intents.length === 0)
-          return new Promise<Response>((resolve) => {
-            finishRead = resolve;
-          });
+        if (intents.length === 0) {
+          const { promise, resolve } = Promise.withResolvers<Response>();
+          finishRead = resolve;
+          return promise;
+        }
         return new Response(
           JSON.stringify({
             actions: [claudeMcpInstall],

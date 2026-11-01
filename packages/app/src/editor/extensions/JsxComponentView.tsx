@@ -6,7 +6,6 @@
 
 import { commentLeafText } from '@inkeep/open-knowledge-core/comments/leaf-text';
 import {
-  incrementJsxActionAborted,
   incrementJsxAutoConvertFailed,
   incrementJsxAutoConvertSucceeded,
   incrementJsxChromeDeleteFailed,
@@ -17,6 +16,7 @@ import {
   incrementJsxStuckDeleteFailed,
   type JsxNodeAction,
 } from '@inkeep/open-knowledge-core/metrics/parse-health';
+import { componentPropsBudgetError } from '@inkeep/open-knowledge-core/registry';
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { NodeViewProps } from '@tiptap/core';
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react';
@@ -33,17 +33,17 @@ import {
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
-import { toast } from 'sonner';
 import { emitStartComment } from '@/comments/store';
 import { Button } from '@/components/ui/button';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
-import { hashFromDocName } from '@/lib/doc-hash';
+import { hashFromDocName, hashFromMirrorSource } from '@/lib/doc-hash';
 import {
   Popover,
   PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from '../../components/ui/popover.tsx';
+import { ViewInSourceBubbleButton } from '../bubble-menu/ViewInSourceBubbleButton.tsx';
 import { OPT_OUT_ATTR } from '../clipboard/index.ts';
 import { CodePreviewEditModal } from '../components/CodePreviewEditModal';
 import { DescriptorPlaceholder } from '../components/DescriptorPlaceholder.tsx';
@@ -59,12 +59,14 @@ import {
   resolveDescriptorPlaceholder,
   shouldRenderPlaceholder,
 } from '../registry/resolve-descriptor-placeholder.ts';
+import type { JsxComponentDescriptor } from '../registry/types.ts';
 import { moveCaretAfterNode, placeGapCursorAfterNode } from '../selection/place-caret.ts';
 import {
   consumeAutoOpen,
   createChildNode,
   focusInsertedComponent,
 } from '../slash-command/component-items.tsx';
+import { authoredText } from '../utils/authored-text.ts';
 import { formatContainerAriaLabel } from '../utils/editor-strings.ts';
 import { getEditorView } from '../utils/get-editor-view.ts';
 import { reconstructSource } from '../utils/reconstruct-source.ts';
@@ -72,12 +74,13 @@ import {
   autonomousFragmentEditAllowed,
   markAutonomousFragmentEdit,
 } from './autonomous-fragment-edit.ts';
+import { reportJsxActionAborted, resolveJsxActionTarget } from './jsx-node-action.ts';
 import { isSameJsxElement, resolveJsxNodeTarget } from './jsx-node-target.ts';
 import {
-  extractPrimitiveProps,
   JSX_WRAPPER_CLASS,
   jsxChildrenClassName,
   jsxWrapperDataAttributes,
+  prepareJsxProps,
   reportJsxRenderFailure,
   resolveJsxRenderProps,
   resolveJsxSourceDocName,
@@ -113,15 +116,21 @@ function ComponentErrorBoundary(props: ComponentErrorBoundaryProps) {
 }
 
 export function stableHash(value: unknown): string {
+  const budgetError = componentPropsBudgetError(value);
+  if (budgetError) throw new RangeError(budgetError);
+  return stableHashWithinBudget(value);
+}
+
+function stableHashWithinBudget(value: unknown): string {
   if (value === null || typeof value !== 'object') {
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
-    return `[${value.map(stableHash).join(',')}]`;
+    return `[${value.map(stableHashWithinBudget).join(',')}]`;
   }
   const entries = Object.entries(value as Record<string, unknown>);
   entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableHash(v)}`).join(',')}}`;
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableHashWithinBudget(v)}`).join(',')}}`;
 }
 
 interface ElementJsxAttrs extends Record<string, unknown> {
@@ -131,6 +140,42 @@ interface ElementJsxAttrs extends Record<string, unknown> {
 
 export function getElementJsxAttrs(attrs: Record<string, unknown>): ElementJsxAttrs | null {
   return attrs.kind === 'element' ? (attrs as ElementJsxAttrs) : null;
+}
+
+function isMdxJsxAttributeNamed(attribute: unknown, names: ReadonlySet<string>): boolean {
+  if (attribute == null || typeof attribute !== 'object') return false;
+  const { type, name } = attribute as Record<string, unknown>;
+  return type === 'mdxJsxAttribute' && typeof name === 'string' && names.has(name);
+}
+
+export function attrsWithChangedProp(
+  elementAttrs: ElementJsxAttrs,
+  descriptor: Pick<JsxComponentDescriptor, 'props'>,
+  propName: string,
+  value: unknown,
+): ElementJsxAttrs {
+  const legacyNames = descriptor.props.find((prop) => prop.name === propName)?.legacyNames ?? [];
+  const removedNames = new Set(value === undefined ? [propName, ...legacyNames] : legacyNames);
+  const nextProps: Record<string, unknown> = { ...elementAttrs.props };
+  for (const removedName of removedNames) delete nextProps[removedName];
+  if (value !== undefined) nextProps[propName] = value;
+  if (
+    propName === 'src' &&
+    elementAttrs.componentName === 'CommonMarkImage' &&
+    value !== elementAttrs.props.src
+  ) {
+    delete nextProps.sourceUrl;
+  }
+  const attributes = Array.isArray(elementAttrs.attributes) ? elementAttrs.attributes : [];
+  return {
+    ...elementAttrs,
+    attributes:
+      removedNames.size === 0
+        ? attributes
+        : attributes.filter((attribute) => !isMdxJsxAttributeNamed(attribute, removedNames)),
+    props: nextProps,
+    sourceDirty: true,
+  };
 }
 
 const MAX_AUTO_CONVERT_ATTEMPTS = 3;
@@ -185,13 +230,14 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
   );
 
   const currentProps = (node.attrs.props as Record<string, unknown>) ?? {};
+  const { props: primitiveProps, error: propsError } = prepareJsxProps(node.attrs, descriptor);
   const needsConfig =
     hasEditableProps &&
     descriptor.props.some((p) => {
       if (p.type !== 'string') return false;
       if (!p.required) return false;
       if ('hidden' in p && p.hidden) return false;
-      return !Object.hasOwn(currentProps, p.name);
+      return !Object.hasOwn(primitiveProps, p.name);
     });
 
   const showPlaceholder = shouldRenderPlaceholder(descriptor, currentProps);
@@ -236,7 +282,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
     wasSelected.current = selected;
   }, [selected, hasEditableProps, isSourceBearing, pos]);
 
-  const primitiveProps = extractPrimitiveProps(node.attrs, descriptor.reactNodePropNames);
   const renderProps = resolveJsxRenderProps(
     descriptor,
     primitiveProps,
@@ -258,30 +303,11 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
   }, [boardExpandable]);
   const resetKey = `${descriptor.name}::${stableHash(primitiveProps)}`;
 
-  const reportAbortedAction = (action: JsxNodeAction, reason: 'changed' | 'removed') => {
-    incrementJsxActionAborted(action);
-    console.warn(
-      JSON.stringify({
-        event: 'jsx-component-action-aborted',
-        action,
-        reason,
-        component: descriptor.name === '*' ? 'wildcard' : descriptor.name,
-        rawComponentName: String(node.attrs.componentName ?? '').slice(0, 200),
-      }),
-    );
-    toast.info(
-      reason === 'removed' ? t`This component was removed.` : t`This component changed. Try again.`,
-    );
-  };
-
-  const resolveActionTarget = (action: JsxNodeAction) => {
-    const target = resolveJsxNodeTarget(editor.state.doc, getPos, node);
-    if (target.kind !== 'current') {
-      reportAbortedAction(action, target.kind);
-      return null;
-    }
-    return target;
-  };
+  const actionContext = { editor, getPos, node, descriptorName: descriptor.name };
+  const reportAbortedAction = (action: JsxNodeAction, reason: 'changed' | 'removed') =>
+    reportJsxActionAborted(actionContext, action, reason);
+  const resolveActionTarget = (action: JsxNodeAction) =>
+    resolveJsxActionTarget(actionContext, action);
 
   const resolveElementActionTarget = (action: JsxNodeAction) => {
     const target = resolveJsxNodeTarget(editor.state.doc, getPos, node);
@@ -443,6 +469,27 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
           >
             {t`Delete`}
           </button>
+        </div>
+        <NodeViewContent className="component-children" />
+      </NodeViewWrapper>
+    );
+  }
+
+  if (propsError) {
+    return (
+      <NodeViewWrapper className="jsx-component-wrapper my-2" data-jsx-props-error="">
+        <div
+          className="flex flex-wrap items-center gap-2 px-2 py-1 text-xs text-warning"
+          contentEditable={false}
+          {...{ [OPT_OUT_ATTR]: 'true' }}
+        >
+          <span role="status">
+            <Trans>This component is too large to render.</Trans>
+          </span>
+          <ViewInSourceBubbleButton
+            editor={editor}
+            getTargetPosition={() => resolveActionTarget('edit-source')?.pos}
+          />
         </div>
         <NodeViewContent className="component-children" />
       </NodeViewWrapper>
@@ -628,18 +675,17 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
             )}
 
           {descriptor.name === 'Mirror' &&
-            typeof primitiveProps.src === 'string' &&
-            primitiveProps.src.length > 0 &&
+            authoredText(primitiveProps.src) !== '' &&
             (() => {
-              const mirrorSrc = primitiveProps.src as string;
+              const mirrorSrc = authoredText(primitiveProps.src);
+              const mirrorName = authoredText(primitiveProps.name);
               return (
                 <a
-                  href={hashFromDocName(
-                    mirrorSrc,
-                    typeof primitiveProps.anchor === 'string' && primitiveProps.anchor.length > 0
-                      ? primitiveProps.anchor
-                      : null,
-                  )}
+                  href={
+                    mirrorName !== ''
+                      ? hashFromMirrorSource(mirrorSrc, mirrorName)
+                      : hashFromDocName(mirrorSrc)
+                  }
                   className="jsx-chrome-btn"
                   aria-label={t`Open source doc: ${mirrorSrc}`}
                   title={t`Open source: ${mirrorSrc}`}
@@ -1047,40 +1093,12 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
               const { pos: p, node: curNode } = target;
               const elementAttrs = getElementJsxAttrs(curNode.attrs);
               if (!elementAttrs) return;
-              const currentNodeProps = elementAttrs.props;
-              const nextProps: Record<string, unknown> = { ...currentNodeProps };
-              const currentAttributes = Array.isArray(curNode.attrs.attributes)
-                ? (curNode.attrs.attributes as unknown[])
-                : [];
-              let nextAttributes = currentAttributes;
-              if (value === undefined) {
-                delete nextProps[propName];
-                nextAttributes = currentAttributes.filter(
-                  (a) =>
-                    !(
-                      a != null &&
-                      typeof a === 'object' &&
-                      (a as Record<string, unknown>).type === 'mdxJsxAttribute' &&
-                      (a as Record<string, unknown>).name === propName
-                    ),
-                );
-              } else {
-                nextProps[propName] = value;
-              }
-              if (
-                propName === 'src' &&
-                elementAttrs.componentName === 'CommonMarkImage' &&
-                value !== currentNodeProps.src
-              ) {
-                delete nextProps.sourceUrl;
-              }
               editor.view.dispatch(
-                editor.state.tr.setNodeMarkup(p, null, {
-                  ...elementAttrs,
-                  attributes: nextAttributes,
-                  props: nextProps,
-                  sourceDirty: true,
-                }),
+                editor.state.tr.setNodeMarkup(
+                  p,
+                  null,
+                  attrsWithChangedProp(elementAttrs, descriptor, propName, value),
+                ),
               );
               markUserTyping();
             }}

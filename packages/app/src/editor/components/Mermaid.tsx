@@ -17,6 +17,7 @@ import { type ComponentProps, useEffect, useLayoutEffect, useRef, useState } fro
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
+import { createActivityParks, useActivityPark } from '@/lib/activity-park.tsx';
 import { createRetryingLoader } from '@/lib/retrying-loader.ts';
 import { cn } from '@/lib/utils.ts';
 import { useJsxComponentHost } from './jsx-host-context.tsx';
@@ -135,12 +136,45 @@ const CANVAS_CONTAINED_EVENTS = [
   'keypress',
 ] as const;
 
+interface MermaidPanzoom {
+  instance: PanzoomObject;
+  target: SVGElement;
+  maxScaleObserver: ResizeObserver | null;
+}
+
+interface MermaidCanvas {
+  editor: MermaidWysiwygEditor;
+  view: MermaidCanvasView;
+  colorMode: 'light' | 'dark';
+  panzoom: MermaidPanzoom | null;
+}
+
+function destroyPanzoom(panzoom: MermaidPanzoom | null): void {
+  panzoom?.instance.destroy();
+  panzoom?.maxScaleObserver?.disconnect();
+}
+
+function destroyMermaidCanvas(canvas: MermaidCanvas): void {
+  destroyPanzoom(canvas.panzoom);
+  canvas.view.destroy();
+}
+
+const PARKED_CANVAS_LIMIT = 32;
+
+const canvasParks = createActivityParks<HTMLElement, MermaidCanvas>({
+  capacity: PARKED_CANVAS_LIMIT,
+  dispose: destroyMermaidCanvas,
+});
+
+const READY_STATE: RenderState = { status: 'ready', error: '' };
+
 export function MermaidView({ chart = '', className, editBinding, onExpand }: MermaidProps) {
   const { t } = useLingui();
   const [state, setState] = useState<RenderState>({ status: 'rendering', error: '' });
   const [loadAttempt, setLoadAttempt] = useState(0);
   const colorMode = useAppColorMode();
   const host = useJsxComponentHost();
+  const canvasPark = useActivityPark(canvasParks);
   const canEdit = editBinding ? editBinding.canEdit : (host?.editor.isEditable ?? false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef(host);
@@ -163,24 +197,22 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
   useLayoutEffect(() => {
     colorModeRef.current = colorMode;
   }, [colorMode]);
-  const editorRef = useRef<MermaidWysiwygEditor | null>(null);
-  const viewRef = useRef<MermaidCanvasView | null>(null);
+  const activeCanvasRef = useRef<MermaidCanvas | null>(null);
   const panzoomRef = useRef<PanzoomObject | null>(null);
   const [panzoomFailed, setPanzoomFailed] = useState(false);
-  const maxScaleObsRef = useRef<ResizeObserver | null>(null);
   const loadFailedRef = useRef(false);
 
   const hasChart = Boolean(chart.trim());
 
   useEffect(() => {
     void loadAttempt;
-    if (!hasChart) return;
+    const container = canvasRef.current;
+    if (!hasChart || !container) return;
     let disposed = false;
-    let view: MermaidCanvasView | null = null;
-    const offs: Array<() => void> = [];
+    let canvas: MermaidCanvas | null = null;
     let hasRendered = false;
-    setState({ status: 'rendering', error: '' });
-    void loadPanzoom().catch(() => undefined);
+    const keepWhenHidden = editBindingRef.current !== LIGHTBOX_VIEW_BINDING;
+    const offs: Array<() => void> = [];
 
     function commitChartSource(newChart: string): void {
       const binding = editBindingRef.current;
@@ -208,20 +240,21 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
       }
     }
 
-    function attachPanzoom(): void {
-      const svgElement = canvasRef.current?.querySelector<SVGElement>('svg');
-      const previous = panzoomRef.current;
+    const attachPanzoom = (target: MermaidCanvas): void => {
+      const svgElement = container.querySelector<SVGElement>('svg');
+      const previous = target.panzoom;
+      target.panzoom = null;
       panzoomRef.current = null;
-      previous?.destroy();
+      destroyPanzoom(previous);
       if (svgElement?.namespaceURI !== 'http://www.w3.org/2000/svg') return;
       const viewBox = (svgElement as Partial<SVGSVGElement>).viewBox?.baseVal;
       if (viewBox && viewBox.width > 0) svgElement.style.maxWidth = `${viewBox.width}px`;
       loadPanzoom()
         .then((Panzoom) => {
-          if (disposed) return;
-          if (canvasRef.current?.querySelector('svg') !== svgElement) return;
-          panzoomRef.current?.destroy();
-          const panzoom = Panzoom(svgElement, {
+          if (disposed || canvas !== target) return;
+          if (container.querySelector('svg') !== svgElement) return;
+          destroyPanzoom(target.panzoom);
+          const instance = Panzoom(svgElement, {
             canvas: true,
             cursor: 'default',
             maxScale: MERMAID_ZOOM_MAX,
@@ -230,18 +263,18 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
             step: MERMAID_ZOOM_STEP,
             touchAction: 'auto',
           });
-          panzoomRef.current = panzoom;
+          const panzoom: MermaidPanzoom = { instance, target: svgElement, maxScaleObserver: null };
+          target.panzoom = panzoom;
+          panzoomRef.current = instance;
           setPanzoomFailed(false);
           try {
-            maxScaleObsRef.current?.disconnect();
-            maxScaleObsRef.current = null;
             if (viewBox && viewBox.width > 0) {
               const vbW = viewBox.width;
               const applyMaxScale = (width: number) => {
-                if (disposed || panzoomRef.current !== panzoom) return;
+                if (target.panzoom !== panzoom) return;
                 if (width <= 0) return;
                 try {
-                  panzoom.setOptions({
+                  instance.setOptions({
                     maxScale: compensatedMaxScale(width, vbW),
                   });
                 } catch (err) {
@@ -255,7 +288,7 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
                   applyMaxScale(width);
                 });
                 ro.observe(svgElement);
-                maxScaleObsRef.current = ro;
+                panzoom.maxScaleObserver = ro;
               }
             }
           } catch (err) {
@@ -266,97 +299,114 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
           console.warn('[Mermaid] panzoom setup failed:', err);
           if (!disposed) setPanzoomFailed(true);
         });
+    };
+
+    function bind(target: MermaidCanvas): void {
+      canvas = target;
+      activeCanvasRef.current = target;
+      panzoomRef.current = target.panzoom?.instance ?? null;
+      offs.push(
+        target.editor.on('change', ({ code, origin }) => {
+          if (origin === 'external') return;
+          commitChartSource(code);
+        }),
+        target.view.on('render', ({ ok, error }) => {
+          if (disposed) return;
+          if (ok) {
+            hasRendered = true;
+            setState(READY_STATE);
+            attachPanzoom(target);
+          } else if (!hasRendered) {
+            setState({ status: 'error', error: error ?? '' });
+          }
+        }),
+      );
     }
 
     if (editBindingRef.current) {
-      const scrollContainer = canvasRef.current;
-      if (scrollContainer) {
-        const onWheel = (e: WheelEvent) => {
-          const pz = panzoomRef.current;
-          if (!pz) return;
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            pz.zoomWithWheel(e);
-            return;
-          }
+      const onWheel = (e: WheelEvent) => {
+        const pz = panzoomRef.current;
+        if (!pz) return;
+        if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
-          const scale = typeof pz.getScale === 'function' ? pz.getScale() : 1;
-          const denom = scale > 0 ? scale : 1;
-          pz.pan(-e.deltaX / denom, -e.deltaY / denom, { relative: true });
-        };
-        scrollContainer.addEventListener('wheel', onWheel, { passive: false });
-        offs.push(() => scrollContainer.removeEventListener('wheel', onWheel));
-      }
+          pz.zoomWithWheel(e);
+          return;
+        }
+        e.preventDefault();
+        const scale = typeof pz.getScale === 'function' ? pz.getScale() : 1;
+        const denom = scale > 0 ? scale : 1;
+        pz.pan(-e.deltaX / denom, -e.deltaY / denom, { relative: true });
+      };
+      container.addEventListener('wheel', onWheel, { passive: false });
+      offs.push(() => container.removeEventListener('wheel', onWheel));
     }
 
-    Promise.all([loadMermaid(), loadWysiwyg()])
-      .then(([mermaid, [core, dom]]) => {
-        const container = canvasRef.current;
-        if (disposed || !container) return;
-        const editor = new core.MermaidWysiwygEditor({ code: chartRef.current });
-        view = new dom.MermaidCanvasView({
-          editor,
-          container,
-          mermaid,
-          mermaidConfig: mermaidConfigFor(colorModeRef.current),
-          readOnly: !canEditRef.current,
-          accentColor: 'var(--ring)',
+    const parked = canvasPark?.reclaim(container);
+    if (parked) {
+      hasRendered = true;
+      bind(parked);
+      setState(READY_STATE);
+      if ((parked.panzoom?.target ?? null) !== container.querySelector('svg'))
+        attachPanzoom(parked);
+    } else {
+      setState({ status: 'rendering', error: '' });
+      void loadPanzoom().catch(() => undefined);
+      Promise.all([loadMermaid(), loadWysiwyg()])
+        .then(([mermaid, [core, dom]]) => {
+          if (disposed) return;
+          const editor = new core.MermaidWysiwygEditor({ code: chartRef.current });
+          const canvasColorMode = colorModeRef.current;
+          const view = new dom.MermaidCanvasView({
+            editor,
+            container,
+            mermaid,
+            mermaidConfig: mermaidConfigFor(canvasColorMode),
+            readOnly: !canEditRef.current,
+            accentColor: 'var(--ring)',
+          });
+          bind({ editor, view, colorMode: canvasColorMode, panzoom: null });
+        })
+        .catch((err) => {
+          if (disposed) return;
+          loadFailedRef.current = true;
+          const msg = err instanceof Error ? err.message : String(err);
+          setState({ status: 'error', error: msg });
         });
-        editorRef.current = editor;
-        viewRef.current = view;
-        offs.push(
-          editor.on('change', ({ code, origin }) => {
-            if (origin === 'external') return;
-            commitChartSource(code);
-          }),
-          view.on('render', ({ ok, error }) => {
-            if (disposed) return;
-            if (ok) {
-              hasRendered = true;
-              setState({ status: 'ready', error: '' });
-              attachPanzoom();
-            } else if (!hasRendered) {
-              setState({ status: 'error', error: error ?? '' });
-            }
-          }),
-        );
-      })
-      .catch((err) => {
-        if (disposed) return;
-        loadFailedRef.current = true;
-        const msg = err instanceof Error ? err.message : String(err);
-        setState({ status: 'error', error: msg });
-      });
+    }
 
     return () => {
       disposed = true;
       for (const off of offs) off();
-      panzoomRef.current?.destroy();
+      activeCanvasRef.current = null;
       panzoomRef.current = null;
-      maxScaleObsRef.current?.disconnect();
-      maxScaleObsRef.current = null;
-      view?.destroy();
-      editorRef.current = null;
-      viewRef.current = null;
+      if (!canvas) return;
+      if (!canvasPark || !hasRendered || !keepWhenHidden) {
+        destroyMermaidCanvas(canvas);
+        return;
+      }
+      canvasPark.park(container, canvas);
     };
-  }, [hasChart, loadAttempt]);
+  }, [hasChart, loadAttempt, canvasPark]);
 
   useEffect(() => {
-    const editor = editorRef.current;
-    if (editor && chart !== editor.code) {
-      editor.setCode(chart, 'external');
-    } else if (!editorRef.current && loadFailedRef.current && chart.trim()) {
+    const canvas = activeCanvasRef.current;
+    if (canvas && chart !== canvas.editor.code) {
+      canvas.editor.setCode(chart, 'external');
+    } else if (!canvas && loadFailedRef.current && chart.trim()) {
       loadFailedRef.current = false;
       setLoadAttempt((n) => n + 1);
     }
   }, [chart]);
 
   useEffect(() => {
-    viewRef.current?.setReadOnly(!canEdit);
+    activeCanvasRef.current?.view.setReadOnly(!canEdit);
   }, [canEdit]);
 
   useEffect(() => {
-    viewRef.current?.setMermaidConfig(mermaidConfigFor(colorMode));
+    const canvas = activeCanvasRef.current;
+    if (!canvas || canvas.colorMode === colorMode) return;
+    canvas.colorMode = colorMode;
+    canvas.view.setMermaidConfig(mermaidConfigFor(colorMode));
   }, [colorMode]);
 
   useEffect(() => {

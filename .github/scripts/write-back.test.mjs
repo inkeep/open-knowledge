@@ -6,10 +6,15 @@ import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 import { deriveChannel } from './published-release-tags.mjs';
 import {
+  attachContactEmails,
   CANDIDATE_QUERY,
+  CONTACT_EMAIL_QUERY,
   changesetDirFor,
   createIssueClosureReader,
+  createRedactor,
+  createRunOutput,
   deriveVersionForFixRefs,
+  emailIdempotencyKey,
   findChangesetPath,
   isFixRepoInRemit,
   isRetryableNetworkError,
@@ -20,16 +25,21 @@ import {
   LINEAR_RETRY_CAP_MS,
   LinearRateLimitError,
   linearGraphql,
+  listCandidatesWithContacts,
   makeReleaseWindow,
   notificationMarkerUrl,
   parseChangeset,
   parseMergeShaOutput,
   parseRetryAfterSeconds,
   readIssueStateWith,
+  resolveEmailMode,
   retryDelayMs,
   runFailureMessage,
+  runSummary,
   runWriteBack,
   selectGhToken,
+  sendReporterEmail,
+  toContactNode,
   toNode,
 } from './write-back.mjs';
 import { composeReply, planIssueClose } from './write-back-gate.mjs';
@@ -813,6 +823,601 @@ describe('write-back run', () => {
     });
     await h.run();
     expect(h.writes.find((w) => w.kind === 'post').text).toContain('Covers PRD-7398, PRD-7403.');
+  });
+});
+
+describe('emailing a reporter who left a contact email', () => {
+  const ADDRESS = 'jo.reporter@example.com';
+  const CONTACT = { address: ADDRESS, reportIdentifier: 'PRD-7539' };
+  const MAILTO = `mailto:${ADDRESS}`;
+  const emailHarness = (overrides = {}) => {
+    const h = harness({
+      emailMode: 'live',
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL], contacts: [CONTACT] })],
+      ...overrides,
+    });
+    h.deps.postReply =
+      overrides.postReply ??
+      (async (origin, text, message) => {
+        h.writes.push({ kind: 'post', origin: origin.url, text, ...message });
+        return origin.channel === 'email' ? { id: 'msg_123' } : undefined;
+      });
+    return h;
+  };
+  const leaked = (h, result) =>
+    [...h.logs, JSON.stringify(result), runFailureMessage(result) ?? ''].some((line) =>
+      line.includes(ADDRESS),
+    );
+
+  test('the email is sent first, under a key derived from its marker, and then marked', async () => {
+    const h = emailHarness({ live: true });
+    const result = await h.run();
+    const marker = notificationMarkerUrl({ version: '0.36.0', originUrl: MAILTO });
+    expect(h.writes.map((w) => w.kind)).toEqual(['post', 'mark']);
+    const [post, mark] = h.writes;
+    expect(mark.url).toBe(marker);
+    expect(post.origin).toBe(MAILTO);
+    expect(post.idempotencyKey).toBe(emailIdempotencyKey('uuid-7539', marker));
+    expect(post.subject).toBe('Your Open Knowledge report PRD-7539 is fixed in v0.36.0');
+    expect(post.text).toContain('https://github.com/inkeep/open-knowledge/releases/tag/v0.36.0');
+    expect(result.posted).toEqual([
+      expect.objectContaining({ origin: 'the contact email from PRD-7539', messageId: 'msg_123' }),
+    ]);
+    expect(h.logs.some((m) => m.includes('Resend message msg_123'))).toBe(true);
+  });
+
+  test('the idempotency key is the same on every run, so a retried send is not delivered twice', () => {
+    const marker = notificationMarkerUrl({ version: '0.36.0', originUrl: MAILTO });
+    expect(emailIdempotencyKey('uuid-7539', marker)).toBe(emailIdempotencyKey('uuid-7539', marker));
+    expect(emailIdempotencyKey('uuid-7539', marker)).not.toContain(ADDRESS);
+    expect(emailIdempotencyKey('uuid-7539', marker)).not.toBe(
+      emailIdempotencyKey(
+        'uuid-7539',
+        notificationMarkerUrl({ version: '0.36.1', originUrl: MAILTO }),
+      ),
+    );
+  });
+
+  test('two tickets from one address in one release are two sends, not one', () => {
+    const marker = notificationMarkerUrl({ version: '0.36.0', originUrl: MAILTO });
+    expect(emailIdempotencyKey('uuid-1', marker)).not.toBe(emailIdempotencyKey('uuid-2', marker));
+  });
+
+  test('a key Resend already accepted for this ticket is marked, and says it sent nothing new', async () => {
+    const h = emailHarness({
+      live: true,
+      postReply: async (origin) => {
+        h.writes.push({ kind: 'post', origin: origin.url });
+        return { id: null, alreadyAccepted: true };
+      },
+    });
+    const result = await h.run();
+    expect(h.writes.map((w) => w.kind)).toEqual(['post', 'mark']);
+    expect(result.errored).toEqual([]);
+    expect(
+      h.logs.some((m) => m.startsWith('::warning::') && m.includes('without sending again')),
+    ).toBe(true);
+    expect(h.logs.some((m) => m.includes('emailed the contact email'))).toBe(false);
+  });
+
+  test('the message id is logged before the marker, so a failed marker still names the send', async () => {
+    const h = emailHarness({
+      live: true,
+      recordNotification: async () => {
+        throw new Error('Linear attachmentCreate reported failure');
+      },
+    });
+    await h.run();
+    expect(h.logs.some((m) => m.includes('Resend message msg_123'))).toBe(true);
+  });
+
+  test('a send that fails writes no marker and is left for the next run', async () => {
+    const h = emailHarness({
+      live: true,
+      postReply: async () => {
+        throw new Error('Resend returned HTTP 503: unavailable');
+      },
+    });
+    const result = await h.run();
+    expect(h.writes).toEqual([]);
+    expect(result.errored).toEqual([
+      expect.objectContaining({ identifier: 'PRD-7539', disposition: 'retried-next-run' }),
+    ]);
+  });
+
+  test('the marker is keyed on the lowercased address, so a hand-written one matches', async () => {
+    const marker = notificationMarkerUrl({ version: '0.36.0', originUrl: MAILTO });
+    const h = emailHarness({
+      live: true,
+      listCandidates: async () => [
+        candidate({
+          attachmentUrls: [GH_PULL, marker],
+          contacts: [{ ...CONTACT, address: 'Jo.Reporter@Example.com' }],
+        }),
+      ],
+    });
+    const result = await h.run();
+    expect(h.writes).toEqual([]);
+    expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'already-notified' }]);
+  });
+
+  test("one address that fails does not stop the ticket's other addresses", async () => {
+    const SAM = 'mailto:sam@example.com';
+    const h = emailHarness({
+      live: true,
+      listCandidates: async () => [
+        candidate({
+          attachmentUrls: [GH_PULL],
+          contacts: [CONTACT, { address: 'sam@example.com', reportIdentifier: 'PRD-9945' }],
+        }),
+      ],
+      postReply: async (origin) => {
+        if (origin.url === MAILTO) throw new Error('Resend returned HTTP 422: invalid to');
+        h.writes.push({ kind: 'post', origin: origin.url });
+        return { id: 'msg_9' };
+      },
+    });
+    const result = await h.run();
+    expect(h.writes.map((w) => [w.kind, w.origin ?? w.url])).toEqual([
+      ['post', SAM],
+      ['mark', notificationMarkerUrl({ version: '0.36.0', originUrl: SAM })],
+    ]);
+    expect(result.errored).toEqual([
+      expect.objectContaining({ identifier: 'PRD-7539', disposition: 'retried-next-run' }),
+    ]);
+    expect(result.errored[0].message).toContain('the contact email from PRD-7539');
+    expect(result.errored[0].message).toContain('on the stable leg for v0.36.0');
+    expect(result.errored[0].message).toContain("attaching that address's marker");
+  });
+
+  test('a marker that fails after the send is left for the next run, not a person', async () => {
+    const h = emailHarness({
+      live: true,
+      recordNotification: async () => {
+        throw new Error('Linear attachmentCreate reported failure');
+      },
+    });
+    const result = await h.run();
+    expect(h.writes.map((w) => w.kind)).toEqual(['post']);
+    expect(result.errored[0].disposition).toBe('retried-next-run');
+  });
+
+  test('a report that also came from a GitHub issue answers both', async () => {
+    const h = emailHarness({
+      live: true,
+      listCandidates: async () => [
+        candidate({ attachmentUrls: [GH_PULL, GH_ISSUE], contacts: [CONTACT] }),
+      ],
+    });
+    await h.run();
+    expect(h.writes.filter((w) => w.kind === 'post').map((w) => w.origin)).toEqual([
+      GH_ISSUE,
+      MAILTO,
+    ]);
+  });
+
+  test('the address is emailed once per release, however many runs see it', async () => {
+    const marker = notificationMarkerUrl({ version: '0.36.0', originUrl: MAILTO });
+    const h = emailHarness({
+      live: true,
+      listCandidates: async () => [
+        candidate({ attachmentUrls: [GH_PULL, marker], contacts: [CONTACT] }),
+      ],
+    });
+    const result = await h.run();
+    expect(h.writes).toEqual([]);
+    expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'already-notified' }]);
+  });
+
+  test('a beta email names the beta and promises a second email', async () => {
+    const h = emailHarness({
+      live: true,
+      channel: 'beta',
+      versionFor: async () => '0.36.0-beta.1',
+      stableVersionFor: async () => null,
+      classifyRelease: makeReleaseWindow({
+        releaseTag: 'v0.36.0-beta.1',
+        channel: 'beta',
+        minimumVersion: '0.35.0-beta.0',
+      }),
+    });
+    await h.run();
+    const post = h.writes.find((w) => w.kind === 'post');
+    expect(post.subject).toBe(
+      'A fix for your Open Knowledge report PRD-7539 is in beta v0.36.0-beta.1',
+    );
+    expect(post.text).toContain('email you again');
+  });
+
+  test('an email that corrects an unavailable release says so in its subject', async () => {
+    const h = emailHarness({
+      live: true,
+      isPublishedVersion: (version) => version !== '0.35.9',
+      listCandidates: async () => [
+        candidate({
+          attachmentUrls: [
+            GH_PULL,
+            notificationMarkerUrl({ version: '0.35.9', originUrl: MAILTO }),
+          ],
+          contacts: [CONTACT],
+        }),
+      ],
+    });
+    await h.run();
+    expect(h.writes.find((w) => w.kind === 'post').subject).toBe(
+      'Correction: your Open Knowledge report PRD-7539 is fixed in v0.36.0',
+    );
+  });
+
+  test('an Inkeep address is never emailed', async () => {
+    const h = emailHarness({
+      live: true,
+      listCandidates: async () => [
+        candidate({
+          attachmentUrls: [GH_PULL],
+          contacts: [{ address: 'dev@inkeep.com', reportIdentifier: 'PRD-7539' }],
+        }),
+      ],
+    });
+    const result = await h.run();
+    expect(h.writes).toEqual([]);
+    expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'internal-reporter' }]);
+  });
+
+  test('an Inkeep address does not stop a reply to the GitHub issue beside it', async () => {
+    const h = emailHarness({
+      live: true,
+      listCandidates: async () => [
+        candidate({
+          attachmentUrls: [GH_PULL, GH_ISSUE],
+          contacts: [{ address: 'dev@inkeep.com', reportIdentifier: 'PRD-7539' }],
+        }),
+      ],
+    });
+    await h.run();
+    expect(h.writes.filter((w) => w.kind === 'post').map((w) => w.origin)).toEqual([GH_ISSUE]);
+  });
+
+  test('with no mail transport configured the address is left alone, not marked', async () => {
+    const h = emailHarness({ live: true, emailMode: 'off' });
+    const result = await h.run();
+    expect(h.writes).toEqual([]);
+    expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'email-unconfigured' }]);
+  });
+
+  test('a configured key alone previews email while the other channels stay live', async () => {
+    const h = emailHarness({
+      live: true,
+      emailMode: 'dry-run',
+      listCandidates: async () => [
+        candidate({ attachmentUrls: [GH_PULL, GH_ISSUE], contacts: [CONTACT] }),
+      ],
+    });
+    const result = await h.run();
+    expect(h.writes.map((w) => [w.kind, w.origin ?? w.url])).toEqual([
+      ['mark', notificationMarkerUrl({ version: '0.36.0', originUrl: GH_ISSUE })],
+      ['post', GH_ISSUE],
+    ]);
+    expect(result.posted.map((p) => [p.origin, p.dryRun])).toEqual([
+      [GH_ISSUE, false],
+      ['the contact email from PRD-7539', true],
+    ]);
+    expect(h.logs.some((m) => m.includes('[dry run] would reply to the contact email'))).toBe(true);
+  });
+
+  test('an email reporter is not shown the internal tickets a fix covers', async () => {
+    const h = emailHarness({
+      live: true,
+      listChildren: async () => [
+        {
+          id: 'a',
+          identifier: 'PRD-7398',
+          stateType: 'completed',
+          labels: ['Bug'],
+          attachmentUrls: [],
+        },
+      ],
+      listCandidates: async () => [
+        candidate({ attachmentUrls: [GH_PULL, GH_ISSUE], contacts: [CONTACT] }),
+      ],
+    });
+    await h.run();
+    const [github, email] = h.writes.filter((w) => w.kind === 'post');
+    expect(github.text).toContain('Covers PRD-7398.');
+    expect(email.text).not.toContain('PRD-7398');
+  });
+
+  test('feedback is answered without a ticket id the sender was never shown', async () => {
+    const h = emailHarness({
+      live: true,
+      listCandidates: async () => [
+        candidate({
+          attachmentUrls: [GH_PULL],
+          contacts: [{ ...CONTACT, reportKind: 'feedback' }],
+        }),
+      ],
+    });
+    await h.run();
+    expect(h.writes.find((w) => w.kind === 'post').subject).toBe(
+      'What you told us about Open Knowledge is fixed in v0.36.0',
+    );
+  });
+
+  test('an unknown email mode is refused rather than read as off', async () => {
+    await expect(emailHarness({ emailMode: 'yes' }).run()).rejects.toThrow(/emailMode/);
+  });
+
+  test('the run itself names an email origin only by its label', async () => {
+    const dry = emailHarness();
+    expect(leaked(dry, await dry.run())).toBe(false);
+    expect(dry.logs.some((m) => m.includes('[dry run]') && m.includes('PRD-7539'))).toBe(true);
+
+    const live = emailHarness({ live: true });
+    expect(leaked(live, await live.run())).toBe(false);
+  });
+});
+
+describe('keeping addresses out of the public log', () => {
+  test('every form of a known address is scrubbed, whatever its case', () => {
+    const redactor = createRedactor();
+    redactor.add('Jo.Reporter+ok@Example.com');
+    const marker = notificationMarkerUrl({
+      version: '0.36.0',
+      originUrl: 'mailto:jo.reporter+ok@example.com',
+    });
+    const scrubbed = redactor.scrub(
+      `failed for JO.REPORTER+OK@EXAMPLE.COM and ${marker} and jo.reporter%2Bok%40example.com`,
+    );
+    expect(scrubbed).not.toMatch(/jo\.reporter/i);
+    expect(scrubbed).toContain('the contact email');
+  });
+
+  test("both of the run's output sinks scrub what they print", () => {
+    const printed = [];
+    const output = createRunOutput({
+      out: (m) => printed.push(['out', m]),
+      err: (m) => printed.push(['err', m]),
+    });
+    output.redactor.add('jo@example.com');
+    output.log('notice for jo@example.com');
+    output.error('error for JO%40EXAMPLE.COM');
+    expect(printed).toEqual([
+      ['out', 'notice for the contact email'],
+      ['err', 'error for the contact email'],
+    ]);
+  });
+
+  test('a redactor that knows no address changes nothing', () => {
+    expect(createRedactor().scrub('PRD-7539 at jo@example.com')).toBe('PRD-7539 at jo@example.com');
+  });
+});
+
+describe('finding the contact email on a ticket', () => {
+  test('a narrow query lists completed and duplicate intake tickets that name the field', () => {
+    expect(CONTACT_EMAIL_QUERY).toContain('state: { type: { in: ["completed", "duplicate"] } }');
+    expect(CONTACT_EMAIL_QUERY).toContain(
+      'labels: { some: { name: { in: ["ok:intake", "ok:feedback"] } } }',
+    );
+    expect(CONTACT_EMAIL_QUERY).toContain('description: { containsIgnoreCase: "Contact email:" }');
+    expect(CONTACT_EMAIL_QUERY).toContain('relations { nodes { type relatedIssue { id } } }');
+    expect(CANDIDATE_QUERY).not.toContain('description');
+  });
+
+  const raw = (id, description, { duplicateOf, label = 'ok:intake' } = {}) => ({
+    id,
+    identifier: `PRD-${id}`,
+    description,
+    labels: { nodes: [{ name: label }, { name: 'Bug' }] },
+    state: { type: duplicateOf ? 'duplicate' : 'completed' },
+    relations: {
+      nodes: duplicateOf ? [{ type: 'duplicate', relatedIssue: { id: duplicateOf } }] : [],
+    },
+  });
+  const line = (address) => `* Contact email: [${address}](<mailto:${address}>)`;
+  const merge = (raws) =>
+    attachContactEmails(
+      ['1', '2', '3'].map((id) => candidate({ id, identifier: `PRD-${id}` })),
+      raws.map(toContactNode),
+    ).map((c) => c.contacts ?? []);
+
+  test('the address found on a ticket rides on that ticket and on no other', () => {
+    expect(
+      merge([raw('1', line('jo@example.com')), raw('3', 'Mentions a Contact email: field only.')]),
+    ).toEqual([
+      [{ address: 'jo@example.com', reportIdentifier: 'PRD-1', reportKind: 'bug-report' }],
+      [],
+      [],
+    ]);
+  });
+
+  test('a report merged as a duplicate is answered when its canonical ships, under its own id', () => {
+    expect(
+      merge([
+        raw('9', line('sam@example.com'), { duplicateOf: '2' }),
+        raw('2', line('jo@example.com')),
+      ]),
+    ).toEqual([
+      [],
+      [
+        { address: 'jo@example.com', reportIdentifier: 'PRD-2', reportKind: 'bug-report' },
+        { address: 'sam@example.com', reportIdentifier: 'PRD-9', reportKind: 'bug-report' },
+      ],
+      [],
+    ]);
+  });
+
+  test('one address on a canonical and its duplicate is emailed once, under the canonical', () => {
+    expect(
+      merge([
+        raw('9', line('Jo@Example.com'), { duplicateOf: '1' }),
+        raw('1', line('jo@example.com')),
+      ])[0],
+    ).toEqual([{ address: 'jo@example.com', reportIdentifier: 'PRD-1', reportKind: 'bug-report' }]);
+  });
+
+  test('the run lists candidates and contacts together and learns every address to scrub', async () => {
+    const calls = [];
+    const redactor = createRedactor();
+    const merged = await listCandidatesWithContacts({
+      paginate: async (query, toItem) => {
+        calls.push([query, toItem]);
+        return query === CANDIDATE_QUERY
+          ? [candidate({ id: '1', identifier: 'PRD-1' })]
+          : [toItem(raw('1', line('jo@example.com')))];
+      },
+      redactor,
+    });
+    expect(calls).toEqual([
+      [CANDIDATE_QUERY, toNode],
+      [CONTACT_EMAIL_QUERY, toContactNode],
+    ]);
+    expect(merged[0].contacts).toEqual([
+      { address: 'jo@example.com', reportIdentifier: 'PRD-1', reportKind: 'bug-report' },
+    ]);
+    expect(redactor.scrub('jo@example.com')).toBe('the contact email');
+  });
+
+  test('an in-app report is a bug report and a feedback ticket is feedback', () => {
+    expect(toContactNode(raw('1', line('jo@example.com'))).reportKind).toBe('bug-report');
+    expect(
+      toContactNode(raw('1', line('jo@example.com'), { label: 'ok:feedback' })).reportKind,
+    ).toBe('feedback');
+  });
+
+  test('a duplicate that names no canonical rides on nothing', () => {
+    const orphan = raw('9', line('sam@example.com'), { duplicateOf: '1' });
+    orphan.relations.nodes = [];
+    expect(merge([orphan])).toEqual([[], [], []]);
+  });
+
+  test('each reporter on a canonical gets their own email, subject and marker', async () => {
+    const h = harness({
+      live: true,
+      emailMode: 'live',
+      listCandidates: async () => [
+        candidate({
+          attachmentUrls: [GH_PULL],
+          contacts: [
+            { address: 'jo@example.com', reportIdentifier: 'PRD-7539' },
+            { address: 'sam@example.com', reportIdentifier: 'PRD-9945' },
+          ],
+        }),
+      ],
+    });
+    h.deps.postReply = async (origin, _text, message) =>
+      h.writes.push({ kind: 'post', origin: origin.url, subject: message.subject });
+    await h.run();
+    expect(h.writes.filter((w) => w.kind === 'mark').map((w) => w.url)).toEqual([
+      notificationMarkerUrl({ version: '0.36.0', originUrl: 'mailto:jo@example.com' }),
+      notificationMarkerUrl({ version: '0.36.0', originUrl: 'mailto:sam@example.com' }),
+    ]);
+    expect(h.writes.filter((w) => w.kind === 'post').map((w) => w.subject)).toEqual([
+      'Your Open Knowledge report PRD-7539 is fixed in v0.36.0',
+      'Your Open Knowledge report PRD-9945 is fixed in v0.36.0',
+    ]);
+  });
+});
+
+describe('arming the email leg', () => {
+  test('no key is off, a key alone previews, and only both switches live send', () => {
+    const mode = (resendKey, live, emailModeVariable) =>
+      resolveEmailMode({ resendKey, live, emailModeVariable });
+    expect(mode('', true, 'live')).toBe('off');
+    expect(mode('  ', true, 'live')).toBe('off');
+    expect(mode('re_x', false, undefined)).toBe('dry-run');
+    expect(mode('re_x', true, undefined)).toBe('dry-run');
+    expect(mode('re_x', false, 'live')).toBe('dry-run');
+    expect(mode('re_x', true, 'live')).toBe('live');
+  });
+
+  test('the closing line counts previewed emails apart from what was sent', () => {
+    const summary = runSummary(
+      {
+        dryRun: false,
+        deferred: 0,
+        skipped: [],
+        errored: [],
+        posted: [
+          { origin: GH_ISSUE, dryRun: false, closed: true },
+          { origin: 'the contact email from PRD-1', dryRun: true, closed: false },
+        ],
+      },
+      { linearRequests: 4 },
+    );
+    expect(summary).toMatchObject({ posted: 1, previewed: 1, closed: 1, linearRequests: 4 });
+    expect(
+      runSummary(
+        {
+          dryRun: true,
+          deferred: 0,
+          skipped: [],
+          errored: [],
+          posted: [{ origin: GH_ISSUE, dryRun: true, closed: true }],
+        },
+        { linearRequests: 1 },
+      ),
+    ).toMatchObject({ posted: 0, previewed: 1, closed: 0 });
+  });
+});
+
+describe('the mail transport', () => {
+  const origin = { channel: 'email', url: 'mailto:jo@example.com', address: 'jo@example.com' };
+  const reply = (status, body) => async () => ({
+    ok: status < 300,
+    status,
+    text: async () => JSON.stringify(body),
+  });
+  const send = (fetchImpl, overrides = {}) =>
+    sendReporterEmail({
+      origin,
+      text: 'This shipped.',
+      subject: 'Subject line',
+      idempotencyKey: 'write-back-abc',
+      apiKey: 're_test',
+      fetchImpl,
+      ...overrides,
+    });
+
+  test('sends one plain-text email from the verified sender, keyed, with replies to the team', async () => {
+    const requests = [];
+    const sent = await send(async (url, init) => {
+      requests.push({ url, init });
+      return { ok: true, status: 200, text: async () => '{"id":"msg_1"}' };
+    });
+    expect(sent).toEqual({ id: 'msg_1' });
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).toBe('https://api.resend.com/emails');
+    expect(requests[0].init.headers.authorization).toBe('Bearer re_test');
+    expect(requests[0].init.headers['idempotency-key']).toBe('write-back-abc');
+    expect(JSON.parse(requests[0].init.body)).toEqual({
+      from: 'OpenKnowledge <updates@updates.openknowledge.ai>',
+      to: ['jo@example.com'],
+      reply_to: 'feedback@inkeep.com',
+      subject: 'Subject line',
+      text: 'This shipped.',
+    });
+  });
+
+  test('a key Resend already used for a send counts as sent', async () => {
+    await expect(
+      send(reply(409, { name: 'invalid_idempotent_request', message: 'used' })),
+    ).resolves.toEqual({ id: null, alreadyAccepted: true });
+  });
+
+  test('a send still in flight under the same key is not counted as sent', async () => {
+    await expect(
+      send(reply(409, { name: 'concurrent_idempotent_requests', message: 'busy' })),
+    ).rejects.toThrow(/HTTP 409/);
+  });
+
+  test('any refused send throws with its status, for the next run to retry', async () => {
+    await expect(send(reply(422, { name: 'invalid_parameter' }))).rejects.toThrow(/HTTP 422/);
+    await expect(send(reply(503, { name: 'internal_server_error' }))).rejects.toThrow(/HTTP 503/);
+  });
+
+  test('no key or no idempotency key is a thrown error, never an unkeyed send', async () => {
+    await expect(send(fetch, { apiKey: '' })).rejects.toThrow(/RESEND_API_KEY/);
+    await expect(send(fetch, { idempotencyKey: '' })).rejects.toThrow(/idempotency key/);
   });
 });
 

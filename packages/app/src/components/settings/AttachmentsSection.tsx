@@ -1,19 +1,21 @@
 import type { ConfigBinding } from '@inkeep/open-knowledge-core/config/bind-config-doc';
 import { humanFormat } from '@inkeep/open-knowledge-core/config/errors';
-import { normalizeAttachmentFolderPath } from '@inkeep/open-knowledge-core/config/schema';
+import {
+  ATTACHMENT_FOLDER_PATH_VARIABLES,
+  type AttachmentFolderPathInputIssue,
+  type AttachmentFolderPathPart,
+  attachmentFolderForDocument,
+  attachmentFolderPathInputIssue,
+  canonicalAttachmentFolderPath,
+  parseAttachmentFolderPath,
+} from '@inkeep/open-knowledge-core/config/schema';
 import { CONFIG_DOC_NAME_PROJECT } from '@inkeep/open-knowledge-core/constants/cc1';
 import { DEFAULT_ATTACHMENT_FOLDER_PATH } from '@inkeep/open-knowledge-core/constants/upload';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { Field, FieldError } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { useConfigContext } from '@/lib/config-provider';
 import { subscribeToConfigValidationRejected } from '@/lib/config-validation-events';
 import { cn } from '@/lib/utils';
@@ -21,48 +23,16 @@ import { firstIssuePath, SavedIndicator, SectionSkeleton } from './field-control
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 import { pickFirstIssueForPath } from './use-config-form';
 
-type AttachmentPlacementMode =
-  | 'same-folder'
-  | 'content-root'
-  | 'current-folder-subfolder'
-  | 'content-root-folder';
-
 const ATTACHMENT_FIELD_NAME = 'content.attachmentFolderPath';
-const ATTACHMENT_FALLBACK_FOLDER = 'attachments';
+const EXAMPLE_DOC_PATH = 'notes/meeting.md';
+const EXAMPLE_FILE_NAME = 'image.png';
 
-function attachmentModeFromPath(path: string): AttachmentPlacementMode {
-  const normalized = normalizeAttachmentFolderPath(path);
-  if (normalized === DEFAULT_ATTACHMENT_FOLDER_PATH) return 'same-folder';
-  if (normalized === '/') return 'content-root';
-  if (normalized.startsWith('./')) return 'current-folder-subfolder';
-  return 'content-root-folder';
-}
+const ATTACHMENTS_DOCS_URL =
+  'https://openknowledge.ai/docs/features/assets-and-embeds#attachment-folder';
 
-function attachmentFolderTextFromPath(path: string): string {
-  const normalized = normalizeAttachmentFolderPath(path);
-  if (normalized === DEFAULT_ATTACHMENT_FOLDER_PATH || normalized === '/') {
-    return ATTACHMENT_FALLBACK_FOLDER;
-  }
-  if (normalized.startsWith('./')) {
-    return normalized.slice(2) || ATTACHMENT_FALLBACK_FOLDER;
-  }
-  return normalized;
-}
-
-function normalizeAttachmentFolderInput(value: string): string {
-  return value
-    .trim()
-    .replace(/^(?:\.\/)+/, '')
-    .replace(/\/{2,}/g, '/')
-    .replace(/\/+$/g, '');
-}
-
-function attachmentPathFromMode(mode: AttachmentPlacementMode, folderText: string): string {
-  const folder = normalizeAttachmentFolderInput(folderText) || ATTACHMENT_FALLBACK_FOLDER;
-  if (mode === 'same-folder') return DEFAULT_ATTACHMENT_FOLDER_PATH;
-  if (mode === 'content-root') return '/';
-  if (mode === 'current-folder-subfolder') return `./${folder}`;
-  return folder;
+function exampleDestination(path: string): string {
+  const folder = attachmentFolderForDocument(path, EXAMPLE_DOC_PATH);
+  return folder === '' ? EXAMPLE_FILE_NAME : `${folder}/${EXAMPLE_FILE_NAME}`;
 }
 
 export function AttachmentsSection() {
@@ -70,22 +40,24 @@ export function AttachmentsSection() {
   if (!projectBinding || !projectSynced || !projectConfig) {
     return <SectionSkeleton />;
   }
-  const attachmentFolderPath =
-    projectConfig.content.attachmentFolderPath ?? DEFAULT_ATTACHMENT_FOLDER_PATH;
-  return (
-    <AttachmentsSectionBody
-      key={attachmentFolderPath}
-      binding={projectBinding}
-      value={attachmentFolderPath}
-    />
+  const attachmentFolderPath = canonicalAttachmentFolderPath(
+    projectConfig.content.attachmentFolderPath ?? DEFAULT_ATTACHMENT_FOLDER_PATH,
   );
+  return <AttachmentsSectionBody binding={projectBinding} value={attachmentFolderPath} />;
 }
 
 function AttachmentsSectionBody({ binding, value }: { binding: ConfigBinding; value: string }) {
   const { t } = useLingui();
-  const [mode, setMode] = useState<AttachmentPlacementMode>(() => attachmentModeFromPath(value));
-  const [folderText, setFolderText] = useState(() => attachmentFolderTextFromPath(value));
-  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState(value);
+  const [syncedValue, setSyncedValue] = useState(value);
+  const [commitAttempted, setCommitAttempted] = useState(false);
+  if (syncedValue !== value) {
+    setSyncedValue(value);
+    setDraft(value);
+    setCommitAttempted(false);
+  }
+  const [scrollLeft, setScrollLeft] = useState(0);
+  const [serverError, setServerError] = useState<string | null>(null);
   const [savedTick, setSavedTick] = useState(false);
   const [flashed, setFlashed] = useState(false);
   const savedTickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -105,12 +77,12 @@ function AttachmentsSectionBody({ binding, value }: { binding: ConfigBinding; va
       if (firstIssuePath(event.error) !== ATTACHMENT_FIELD_NAME) return;
       const issue = pickFirstIssueForPath(event.error, ATTACHMENT_FIELD_NAME);
       toast.error(humanFormat(event.error), { duration: 8000 });
-      setError(issue);
+      setServerError(issue);
       setFlashed(true);
       if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
       flashTimerRef.current = setTimeout(() => {
         setFlashed(false);
-        setError(null);
+        setServerError(null);
       }, 600);
     });
     return unsubscribe;
@@ -122,137 +94,223 @@ function AttachmentsSectionBody({ binding, value }: { binding: ConfigBinding; va
     savedTickTimerRef.current = setTimeout(() => setSavedTick(false), 1200);
   };
 
-  const commitPath = (nextPath: string) => {
-    const result = binding.patch({ content: { attachmentFolderPath: nextPath } });
+  const edited = draft !== value;
+  const draftProblem = attachmentFolderPathInputIssue(draft);
+  const hasError = draftProblem !== null || serverError !== null;
+  const announceError = commitAttempted || serverError !== null;
+
+  const commitDraft = () => {
+    if (!edited) return;
+    if (draftProblem) {
+      setCommitAttempted(true);
+      return;
+    }
+    const result = binding.patch({ content: { attachmentFolderPath: draft } });
     if (result.ok) {
-      setError(null);
+      setServerError(null);
       flashSavedTick();
       return;
     }
     const detail = pickFirstIssueForPath(result.error, ATTACHMENT_FIELD_NAME);
-    setError(detail);
+    setServerError(detail);
     toast.error(t`Failed to update attachment location — ${detail}`);
   };
 
-  const onModeChange = (next: string) => {
-    if (
-      next !== 'same-folder' &&
-      next !== 'content-root' &&
-      next !== 'current-folder-subfolder' &&
-      next !== 'content-root-folder'
-    ) {
-      return;
-    }
-    const nextMode = next as AttachmentPlacementMode;
-    const nextFolderText =
-      nextMode === 'current-folder-subfolder' || nextMode === 'content-root-folder'
-        ? folderText || ATTACHMENT_FALLBACK_FOLDER
-        : folderText;
-    setMode(nextMode);
-    setFolderText(nextFolderText);
-    commitPath(attachmentPathFromMode(nextMode, nextFolderText));
-  };
-
-  const commitFolderText = () => {
-    const nextPath = attachmentPathFromMode(mode, folderText);
-    setFolderText(attachmentFolderTextFromPath(nextPath));
-    commitPath(nextPath);
-  };
-
-  const showsFolderInput = mode === 'current-folder-subfolder' || mode === 'content-root-folder';
-  const labelId = 'settings-attachments-location-label';
-  const inputId = 'settings-attachments-folder-input';
+  const exampleDoc = EXAMPLE_DOC_PATH;
+  const exampleFile = exampleDestination(draft);
+  const titleId = 'settings-attachments-title';
+  const descriptionId = 'settings-attachments-description';
+  const exampleId = 'settings-attachments-path-example';
+  const errorId = 'settings-attachments-path-error';
+  const describedBy = `${descriptionId} ${hasError ? errorId : exampleId}`;
 
   return (
     <section
-      aria-labelledby="settings-attachments-title"
-      className="space-y-3"
+      aria-labelledby={titleId}
+      className="flex flex-col gap-3"
       data-testid="settings-attachments"
     >
       <SettingsSectionHeader
-        titleId="settings-attachments-title"
+        titleId={titleId}
         title={<Trans>Attachments</Trans>}
         scope="project"
         level="block"
+        docUrl={ATTACHMENTS_DOCS_URL}
+        descriptionId={descriptionId}
       >
-        <Trans>Set where pasted and dropped files are stored for this project.</Trans>
+        <Trans>Set where pasted and dropped files are stored.</Trans>
       </SettingsSectionHeader>
 
       <div
-        className={cn('rounded-md border p-3', flashed && 'animate-settings-flash')}
+        className={cn(flashed && 'animate-settings-flash')}
         data-field={ATTACHMENT_FIELD_NAME}
         data-scope="project"
       >
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(16rem,18rem)] sm:items-start">
-          <div className="space-y-0.5">
-            <div className="text-sm font-medium" id={labelId}>
-              <Trans>Default location for new attachments</Trans>
-            </div>
-            <p className="text-muted-foreground text-1sm">
-              <Trans>Where newly added attachments are placed.</Trans>
-            </p>
-          </div>
-          <Select value={mode} onValueChange={onModeChange}>
-            <SelectTrigger
-              aria-labelledby={labelId}
-              data-testid="settings-attachments-mode"
-              size="sm"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="same-folder">
-                <Trans>Same folder as current file</Trans>
-              </SelectItem>
-              <SelectItem value="content-root">
-                <Trans>Content root</Trans>
-              </SelectItem>
-              <SelectItem value="current-folder-subfolder">
-                <Trans>Subfolder under current folder</Trans>
-              </SelectItem>
-              <SelectItem value="content-root-folder">
-                <Trans>Fixed folder in content root</Trans>
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {showsFolderInput ? (
-          <div className="mt-3 max-w-sm space-y-1">
-            <label className="text-sm font-medium" htmlFor={inputId}>
-              <Trans>Folder</Trans>
-            </label>
+        <Field data-invalid={hasError} className="gap-2">
+          <div className="relative max-w-md">
             <Input
-              id={inputId}
-              value={folderText}
-              placeholder={t`e.g. assets/uploads`}
-              onChange={(event) => setFolderText(event.target.value)}
-              onBlur={commitFolderText}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  commitFolderText();
-                }
+              aria-labelledby={titleId}
+              dir="ltr"
+              value={draft}
+              spellCheck={false}
+              autoComplete="off"
+              aria-invalid={hasError}
+              aria-describedby={describedBy}
+              onChange={(event) => {
+                setDraft(event.target.value);
+                setCommitAttempted(false);
+                setServerError(null);
+                setScrollLeft(event.target.scrollLeft);
               }}
-              className="h-8 text-sm"
-              data-testid="settings-attachments-folder"
+              onScroll={(event) => setScrollLeft(event.currentTarget.scrollLeft)}
+              onSelect={(event) => setScrollLeft(event.currentTarget.scrollLeft)}
+              onBlur={commitDraft}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+                event.preventDefault();
+                commitDraft();
+              }}
+              className="font-mono text-sm text-transparent caret-foreground md:text-sm"
+              data-testid="settings-attachments-path"
             />
+            <AttachmentPathHighlight value={draft} scrollLeft={scrollLeft} />
           </div>
-        ) : null}
-
-        <div className="mt-2 flex min-h-5 items-center gap-2">
-          {error ? (
-            <p
-              className="text-1sm text-destructive"
-              data-field-error={ATTACHMENT_FIELD_NAME}
-              role="alert"
-            >
-              {error}
-            </p>
-          ) : null}
-          <SavedIndicator visible={savedTick} />
-        </div>
+          <div className="flex min-h-5 items-center gap-2">
+            {hasError ? (
+              <FieldError
+                key={announceError ? 'announced' : 'typing'}
+                role={announceError ? 'alert' : undefined}
+                id={errorId}
+                data-field-error={ATTACHMENT_FIELD_NAME}
+                data-testid={errorId}
+              >
+                {draftProblem ? <DraftProblemMessage problem={draftProblem} /> : serverError}
+              </FieldError>
+            ) : (
+              <p
+                className="text-1sm text-muted-foreground"
+                id={exampleId}
+                data-testid="settings-attachments-preview"
+              >
+                <Trans>
+                  Example: a file added to <code dir="ltr">{exampleDoc}</code> is saved as{' '}
+                  <code dir="ltr">{exampleFile}</code>
+                </Trans>
+              </p>
+            )}
+            <SavedIndicator visible={savedTick} />
+          </div>
+        </Field>
       </div>
     </section>
   );
+}
+
+function DraftProblemMessage({ problem }: { problem: AttachmentFolderPathInputIssue }) {
+  const filenameVariable = <bdi dir="ltr">{'{{filename}}'}</bdi>;
+  switch (problem.kind) {
+    case 'empty':
+    case 'missing-prefix':
+    case 'outside-project': {
+      const documentPrefix = <bdi dir="ltr">./</bdi>;
+      const rootPrefix = <bdi dir="ltr">/</bdi>;
+      const parentFolder = <bdi dir="ltr">..</bdi>;
+      return (
+        <Trans>
+          Folder path must start with {documentPrefix} or {rootPrefix} and cannot contain{' '}
+          {parentFolder}
+        </Trans>
+      );
+    }
+    case 'reserved-character': {
+      const reserved = <bdi dir="ltr">{'< > : " \\ | ? *'}</bdi>;
+      return <Trans>Folder names cannot contain {reserved}.</Trans>;
+    }
+    case 'surrounding-space':
+      return <Trans>Remove the spaces at the start or end of the path.</Trans>;
+    case 'empty-folder-name':
+      return <Trans>Use one slash between folder names.</Trans>;
+    case 'trailing-slash':
+      return <Trans>Remove the slash at the end of the path.</Trans>;
+    case 'single-brace':
+      return <Trans>A variable needs two braces on each side, such as {filenameVariable}.</Trans>;
+    case 'unknown-variable': {
+      const unknownList = <bdi dir="ltr">{problem.variables.join(', ')}</bdi>;
+      const supportedVariables = (
+        <bdi dir="ltr">
+          {ATTACHMENT_FOLDER_PATH_VARIABLES.map((name) => `{{${name}}}`).join(', ')}
+        </bdi>
+      );
+      return (
+        <Trans>
+          Unknown variable {unknownList}. Available variables: {supportedVariables}.
+        </Trans>
+      );
+    }
+    case 'unclosed-braces': {
+      const open = <bdi dir="ltr">{'{{'}</bdi>;
+      const close = <bdi dir="ltr">{'}}'}</bdi>;
+      return (
+        <Trans>
+          Each {open} needs a matching {close}.
+        </Trans>
+      );
+    }
+    case 'repeated-variable':
+      return <Trans>Use {filenameVariable} at most once in each folder name.</Trans>;
+    default:
+      return assertNeverDraftProblem(problem);
+  }
+}
+
+function assertNeverDraftProblem(problem: never): never {
+  throw new Error(`unhandled attachment path problem: ${JSON.stringify(problem)}`);
+}
+
+function AttachmentPathHighlight({ value, scrollLeft }: { value: string; scrollLeft: number }) {
+  return (
+    <div
+      aria-hidden="true"
+      dir="ltr"
+      data-testid="settings-attachments-path-highlight"
+      className="pointer-events-none absolute inset-0 flex items-center overflow-hidden rounded-lg border border-transparent px-2.5 font-mono text-sm whitespace-pre forced-colors:hidden"
+    >
+      <span style={{ transform: `translateX(${-scrollLeft}px)` }}>
+        {parseAttachmentFolderPath(value).map((part) => (
+          <AttachmentPathPart key={part.start} part={part} />
+        ))}
+      </span>
+    </div>
+  );
+}
+
+function AttachmentPathPart({ part }: { part: AttachmentFolderPathPart }) {
+  switch (part.kind) {
+    case 'text':
+      return <span>{part.text}</span>;
+    case 'variable':
+      return (
+        <span
+          data-token="known"
+          className="rounded-sm bg-primary/15 text-foreground ring-1 ring-primary/40"
+        >
+          {part.text}
+        </span>
+      );
+    case 'unknown-variable':
+      return (
+        <span
+          data-token="unknown"
+          className="text-destructive underline decoration-destructive decoration-wavy underline-offset-4"
+        >
+          {part.text}
+        </span>
+      );
+    default:
+      return assertNeverPathPart(part);
+  }
+}
+
+function assertNeverPathPart(part: never): never {
+  throw new Error(`unhandled attachment path part: ${JSON.stringify(part)}`);
 }

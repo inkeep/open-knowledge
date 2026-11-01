@@ -4,7 +4,6 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import * as actualDocumentContext from '@/editor/DocumentContext';
 import type { AgentParticipant } from './use-presence';
-import * as actualUsePresence from './use-presence';
 import * as actualUseSyncStatus from './use-sync-status';
 import * as actualUseSyncToasts from './use-sync-toasts';
 
@@ -29,11 +28,6 @@ vi.doMock('@/editor/DocumentContext', () => ({
     docPanelExpandSignal: 0,
     closeActivityPanel: () => {},
   }),
-}));
-
-vi.doMock('./use-presence', () => ({
-  ...actualUsePresence,
-  usePresence: () => ({ current: currentAgents, crossDoc: crossDocAgents }),
 }));
 
 vi.doMock('./use-sync-status', () => ({
@@ -76,7 +70,7 @@ describe('PresenceBar avatar click wiring', () => {
     currentAgents = [agent('abc', 'claude', 'notes.md')];
     const html = renderToString(
       <TooltipProvider>
-        <PresenceBar />
+        <PresenceBar current={currentAgents} crossDoc={crossDocAgents} />
       </TooltipProvider>,
     );
     expect(html).toContain('data-presence-badge="agent"');
@@ -88,7 +82,7 @@ describe('PresenceBar avatar click wiring', () => {
     crossDocAgents = [agent('zzz', 'cursor', 'other.md')];
     const html = renderToString(
       <TooltipProvider>
-        <PresenceBar />
+        <PresenceBar current={currentAgents} crossDoc={crossDocAgents} />
       </TooltipProvider>,
     );
     expect(html).toContain('data-presence-badge="agent"');
@@ -100,7 +94,7 @@ describe('PresenceBar avatar click wiring', () => {
     crossDocAgents = [agent('idle', 'claude', '(connected)')];
     const html = renderToString(
       <TooltipProvider>
-        <PresenceBar />
+        <PresenceBar current={currentAgents} crossDoc={crossDocAgents} />
       </TooltipProvider>,
     );
     expect(html).toContain('data-presence-badge="agent"');
@@ -113,7 +107,7 @@ describe('PresenceBar avatar click wiring', () => {
     crossDocAgents = [agent('idle', 'claude', '(connected)')];
     const html = renderToString(
       <TooltipProvider>
-        <PresenceBar />
+        <PresenceBar current={currentAgents} crossDoc={crossDocAgents} />
       </TooltipProvider>,
     );
     expect(html).toContain('<button');
@@ -130,7 +124,7 @@ describe('PresenceBar avatar click wiring', () => {
     ];
     const html = renderToString(
       <TooltipProvider>
-        <PresenceBar />
+        <PresenceBar current={currentAgents} crossDoc={crossDocAgents} />
       </TooltipProvider>,
     );
     expect(html).toContain('data-slot="presence-overflow"');

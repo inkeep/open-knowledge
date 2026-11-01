@@ -52,10 +52,8 @@ export class ShadowOpGate {
         '[shadow-op-gate] exclusive acquisition waited a long time for the mutator drain — sustained write stream is starving maintenance',
       );
     }
-    let release!: () => void;
-    this.exclusiveHeld = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise, resolve: release } = Promise.withResolvers<void>();
+    this.exclusiveHeld = promise;
     try {
       return await fn();
     } finally {

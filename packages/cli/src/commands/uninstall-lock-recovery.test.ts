@@ -17,7 +17,7 @@ import {
   type LockProcessScan,
   scanLockProcesses,
 } from '@inkeep/open-knowledge-server';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { hasLsof } from '../../../../test-support/capabilities.test-helper.ts';
 import {
   buildDeinitPlan,
@@ -34,10 +34,12 @@ describe.skipIf(process.platform === 'win32')('uninstall lock recovery in an iso
     | { candidates: LockProcessScan['candidates']; livePidsAtScanTime: number[] }
     | undefined;
   beforeEach(() => {
+    vi.stubEnv('XDG_CONFIG_HOME', undefined);
     root = realpathSync(mkdtempSync(join(tmpdir(), 'ok-uninstall-recovery-')));
     observedScan = undefined;
   });
   afterEach(async () => {
+    vi.unstubAllEnvs();
     for (const child of children.splice(0)) {
       if (child.exitCode !== null || child.signalCode !== null) continue;
       const exited = once(child, 'exit');

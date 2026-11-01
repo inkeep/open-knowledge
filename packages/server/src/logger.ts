@@ -15,11 +15,12 @@ function otelMixin(): Record<string, unknown> {
   };
 }
 
-function shouldColorize(): boolean {
+function shouldColorize(destination: 1 | 2): boolean {
   if (process.env.NO_COLOR && process.env.NO_COLOR !== '') {
     return false;
   }
-  return process.stdout.isTTY ?? false;
+  const stream = destination === 2 ? process.stderr : process.stdout;
+  return stream.isTTY ?? false;
 }
 
 const VALID_LOG_LEVELS = new Set(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']);
@@ -38,6 +39,7 @@ export interface PinoLoggerConfig {
   transportConfigs?: TransportSingleOptions[];
   fileSink?: PinoFileSinkOpts;
   redactPaths?: readonly string[];
+  consoleDestination?: 1 | 2;
 }
 
 export class PinoLogger {
@@ -45,6 +47,7 @@ export class PinoLogger {
   private transportConfigs: TransportSingleOptions[] = [];
   private fileSinkOpts: PinoFileSinkOpts | undefined;
   private redactPaths: readonly string[] | undefined;
+  private consoleDestination: 1 | 2 = 1;
   private activeFileSink: PinoFileSink | undefined;
   private pinoInstance: PinoLoggerInstance;
   private options: LoggerOptions;
@@ -68,6 +71,9 @@ export class PinoLogger {
 
     if (config.fileSink) {
       this.fileSinkOpts = config.fileSink;
+    }
+    if (config.consoleDestination !== undefined) {
+      this.consoleDestination = config.consoleDestination;
     }
     if (config.redactPaths && config.redactPaths.length > 0) {
       this.redactPaths = config.redactPaths;
@@ -110,9 +116,10 @@ export class PinoLogger {
     let prettyStream: ReturnType<typeof pinoPretty>;
     try {
       prettyStream = pinoPretty({
-        colorize: shouldColorize(),
+        colorize: shouldColorize(this.consoleDestination),
         translateTime: 'HH:MM:ss',
         ignore: 'pid,hostname',
+        destination: this.consoleDestination,
       });
     } catch (err) {
       console.warn('[PinoLogger] pino-pretty failed, falling back to JSON:', err);
@@ -124,7 +131,10 @@ export class PinoLogger {
           pino.multistream([{ stream: fileSink, level: fileLevel }]),
         );
       }
-      return pino({ ...this.options, level: consoleLevel });
+      return pino(
+        { ...this.options, level: consoleLevel },
+        pino.destination(this.consoleDestination),
+      );
     }
 
     if (this.fileSinkOpts) {
@@ -178,6 +188,9 @@ export class PinoLogger {
     }
     if (config.fileSink) {
       this.fileSinkOpts = config.fileSink;
+    }
+    if (config.consoleDestination !== undefined) {
+      this.consoleDestination = config.consoleDestination;
     }
     if (config.redactPaths && config.redactPaths.length > 0) {
       this.redactPaths = config.redactPaths;

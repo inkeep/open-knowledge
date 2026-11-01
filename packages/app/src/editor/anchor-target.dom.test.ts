@@ -1,5 +1,9 @@
+import { cleanup, render } from '@testing-library/react';
+import { createElement, Fragment } from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
+import { anchorFromHash, hashFromMirrorSource } from '@/lib/doc-hash';
 import { findAnchorTarget } from './anchor-target';
+import { MirrorSource } from './components/MirrorSource';
 
 function mount(html: string): HTMLElement {
   const root = document.createElement('div');
@@ -19,6 +23,7 @@ afterAll(() => {
 });
 
 afterEach(() => {
+  cleanup();
   document.body.replaceChildren();
 });
 
@@ -28,9 +33,41 @@ describe('findAnchorTarget', () => {
     expect(findAnchorTarget(root, 'data-model-v2')?.textContent).toBe('Data model: v2');
   });
 
-  test('finds a mirror source by its source id', () => {
-    const root = mount('<div data-mirror-source-id="block-1">Mirrored</div>');
-    expect(findAnchorTarget(root, 'block-1')?.textContent).toBe('Mirrored');
+  test('finds a rendered Mirror Source block by its name', () => {
+    const root = mount('');
+    render(createElement(MirrorSource, { name: 'block-1' }, 'Mirrored'), { container: root });
+    expect(findAnchorTarget(root, 'block-1')?.textContent).toContain('Mirrored');
+  });
+
+  test('a Mirror link lands on its source block even where a heading has the same id', () => {
+    const root = mount('');
+    render(
+      createElement(
+        Fragment,
+        null,
+        createElement('h2', { id: 'plans' }, 'Plans'),
+        createElement(MirrorSource, { name: 'plans' }, 'First source'),
+        createElement(MirrorSource, { name: 'plans-1' }, 'Second source'),
+        createElement('h2', { id: 'plans-1' }, 'Plans'),
+      ),
+      { container: root },
+    );
+    const mirrorLinkAnchor = (name: string) =>
+      anchorFromHash(hashFromMirrorSource('pricing', name)) ?? '';
+
+    expect(findAnchorTarget(root, mirrorLinkAnchor('plans'))?.textContent).toContain(
+      'First source',
+    );
+    expect(findAnchorTarget(root, mirrorLinkAnchor('plans-1'))?.textContent).toContain(
+      'Second source',
+    );
+    expect(findAnchorTarget(root, 'plans')?.tagName).toBe('H2');
+    expect(findAnchorTarget(root, 'plans-1')?.tagName).toBe('H2');
+  });
+
+  test('a heading anchor that happens to start with `source:` still finds the heading', () => {
+    const root = mount('<h2 id="source-notes">Source: notes</h2>');
+    expect(findAnchorTarget(root, 'source: notes')?.textContent).toBe('Source: notes');
   });
 
   test('finds a Korean heading from an anchor written as decomposed jamo', () => {

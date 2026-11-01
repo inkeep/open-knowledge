@@ -2329,6 +2329,7 @@ describe('shadow repo excludes OpenKnowledge machine-local state', () => {
     fsTracedRecorder.renameSources.length = 0;
 
     const written = applySkillWrite({
+      boundary: projectRoot,
       skillsRoot,
       name: 'trip-log',
       body: '# Steps\n\nDo the thing.',

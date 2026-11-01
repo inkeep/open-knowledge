@@ -209,9 +209,14 @@ export async function ensureProjectGit(projectRoot: string): Promise<EnsureProje
 
   let stderr = '';
   try {
+    const { stdout: defaultBranch } = await execFileAsync(
+      gitBin,
+      ['config', '--default', 'main', '--get', 'init.defaultBranch'],
+      withHiddenWindowsConsole({ cwd: abs, encoding: 'utf-8' }),
+    );
     const result = await execFileAsync(
       gitBin,
-      ['init', '--initial-branch=main', abs],
+      ['init', `--initial-branch=${defaultBranch.trim()}`, abs],
       withHiddenWindowsConsole({ encoding: 'utf-8' }),
     );
     stderr = result.stderr ?? '';
@@ -240,7 +245,7 @@ export async function ensureProjectGit(projectRoot: string): Promise<EnsureProje
     return { didInit: true, repaired: true };
   }
 
-  log.info({ path: abs, branch: 'main' }, 'initialized .git/');
+  log.info({ path: abs }, 'initialized .git/');
 
   return { didInit: true };
 }

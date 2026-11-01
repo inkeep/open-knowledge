@@ -334,7 +334,7 @@ export function MarkdownlintPluginSection({
             onAuxClick={(e) =>
               dispatchExternalLinkClick(e, 'https://github.com/DavidAnson/markdownlint')
             }
-            className="inline-flex items-center gap-0.5 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            className="inline-flex items-center gap-0.5 text-primary underline-offset-2 hover:underline"
           >
             markdownlint
             <ArrowUpRight aria-hidden className="size-3" />

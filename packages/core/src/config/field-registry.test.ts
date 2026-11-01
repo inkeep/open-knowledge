@@ -184,6 +184,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'editor.previewTabs',
       'editor.wordWrap',
       'git.hosts',
+      'skills.trustedPrivateOrigins',
       'slides.enabled',
       'telemetry.skillInstallReports.enabled',
     ]);

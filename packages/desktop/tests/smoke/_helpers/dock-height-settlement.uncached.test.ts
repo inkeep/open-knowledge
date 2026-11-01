@@ -69,17 +69,11 @@ function currentDockHeightWait(label: string): string {
 function runCurrentDockWait(label: string, panelHeight: number) {
   const source = currentDockHeightWait(label);
   const path = fileURLToPath(new URL('../terminal-dock.e2e.ts', import.meta.url));
-  let releaseRead: (() => void) | undefined;
-  let markReadStarted: (() => void) | undefined;
-  const readStarted = new Promise<void>((resolve) => {
-    markReadStarted = resolve;
-  });
-  const reading = new Promise<void>((resolve) => {
-    releaseRead = resolve;
-  });
+  const { promise: readStarted, resolve: markReadStarted } = Promise.withResolvers<void>();
+  const { promise: reading, resolve: releaseRead } = Promise.withResolvers<void>();
   const panel = {
     async evaluate(callback: (element: unknown) => number): Promise<number> {
-      markReadStarted?.();
+      markReadStarted();
       await reading;
       return runInNewContext(`(${callback.toString()})(element)`, {
         element: { getBoundingClientRect: () => ({ height: panelHeight }) },

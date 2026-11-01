@@ -31,10 +31,7 @@ export class LocalOpSubprocessLifetime {
 
   begin(): () => void {
     this.assertOpen();
-    let finish!: () => void;
-    const completion = new Promise<void>((resolve) => {
-      finish = resolve;
-    });
+    const { promise: completion, resolve: finish } = Promise.withResolvers<void>();
     this.operations.add(completion);
     return () => {
       this.operations.delete(completion);

@@ -4,6 +4,7 @@ import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { isTestOnlySourceFile } from '../../../test-support/test-only-source-file.mjs';
+import { SERVER_SCAN_ROOT } from './bridge-loss-suppression.reads.ts';
 import {
   PAIRED_INTAKE_DETECTION,
   pairedIntakeDetectionMode,
@@ -11,7 +12,7 @@ import {
   shouldRunPairedIntakeDetection,
 } from './bridge-loss-suppression.ts';
 
-const SRC_DIR = dirname(fileURLToPath(import.meta.url));
+const SRC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', SERVER_SCAN_ROOT);
 
 function isProductionSource(name: string): boolean {
   return name.endsWith('.ts') && !isTestOnlySourceFile(name) && !name.endsWith('.d.ts');

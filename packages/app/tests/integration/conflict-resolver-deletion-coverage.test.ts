@@ -2,8 +2,12 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
+import {
+  RESOLVER_SCAN_EXTENSIONS,
+  RESOLVER_SCAN_ROOT,
+} from './conflict-resolver-deletion-coverage.reads';
 
-const APP_SRC = join(import.meta.dir, '..', '..', 'src');
+const APP_SRC = join(import.meta.dir, '..', '..', '..', '..', RESOLVER_SCAN_ROOT);
 const RESOLVER_PATH = join(APP_SRC, 'components', 'ConflictResolver.tsx');
 
 function* walkTsx(dir: string): Generator<string> {
@@ -13,7 +17,10 @@ function* walkTsx(dir: string): Generator<string> {
     const stat = statSync(full);
     if (stat.isDirectory()) {
       yield* walkTsx(full);
-    } else if ((entry.endsWith('.ts') || entry.endsWith('.tsx')) && !isTestOnlySourceFile(entry)) {
+    } else if (
+      RESOLVER_SCAN_EXTENSIONS.some((extension) => entry.endsWith(extension)) &&
+      !isTestOnlySourceFile(entry)
+    ) {
       yield full;
     }
   }

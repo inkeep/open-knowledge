@@ -18,7 +18,12 @@ export default defineConfig({
   // worker_threads file next to the importing bundle (`./parse-worker.mjs`
   // sibling probe), so inlining it into index.mjs would leave no file to
   // spawn in dist-based installs.
-  entry: { index: 'src/index.ts', 'parse-worker': 'src/parse-worker.ts' },
+  entry: {
+    index: 'src/index.ts',
+    'parse-worker': 'src/parse-worker.ts',
+    'file-logger': 'src/file-logger.ts',
+    'fs-find-project-root': 'src/fs/find-project-root.ts',
+  },
   unbundle: false,
   format: 'esm',
   dts: { tsconfig: 'tsconfig.build.json' },

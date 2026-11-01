@@ -10,9 +10,10 @@ import {
 } from 'ts-morph';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../test-support/test-only-source-file.mjs';
+import { SERVER_SCAN_ROOT } from './child-process-windows-hide.reads.ts';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 
-const SERVER_SRC_DIR = import.meta.dir;
+const SERVER_SRC_DIR = resolve(import.meta.dir, '..', '..', '..', SERVER_SCAN_ROOT);
 const CHILD_PROCESS_MODULE = 'node:child_process';
 const CHILD_PROCESS_APIS = new Set(['spawn', 'spawnSync', 'execFile']);
 const HIDDEN_HELPERS = new Set(['withHiddenWindowsConsole']);

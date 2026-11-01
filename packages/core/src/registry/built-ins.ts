@@ -65,7 +65,8 @@ const calloutProps: PropDef[] = [
     required: false,
     defaultValue: false,
     advanced: true,
-    description: 'Render as a foldable `<details>` (Obsidian `[!TYPE]+/-`)',
+    description:
+      'Render as a foldable `<details>`; in the blockquote form, `> [!TYPE]+` starts open and `> [!TYPE]-` starts closed',
   },
   {
     name: 'defaultOpen',
@@ -493,7 +494,7 @@ const wikiEmbedImageProps: PropDef[] = [
     type: 'string',
     required: false,
     defaultValue: '',
-    description: 'Alt text (Obsidian alias syntax: `![[file.png|alt text]]`)',
+    description: 'Alt text (alias syntax: `![[file.png|alt text]]`)',
   },
 ];
 
@@ -503,7 +504,7 @@ const wikiEmbedVideoProps: PropDef[] = [
     type: 'string',
     required: false,
     defaultValue: '',
-    description: 'Title text (Obsidian alias syntax: `![[clip.mp4|title]]`)',
+    description: 'Title text (alias syntax: `![[clip.mp4|title]]`)',
   },
 ];
 
@@ -513,7 +514,7 @@ const wikiEmbedAudioProps: PropDef[] = [
     type: 'string',
     required: false,
     defaultValue: '',
-    description: 'Title text (Obsidian alias syntax: `![[song.mp3|title]]`)',
+    description: 'Title text (alias syntax: `![[song.mp3|title]]`)',
   },
 ];
 
@@ -589,7 +590,7 @@ const wikiEmbedFileProps: PropDef[] = [
     type: 'string',
     required: false,
     defaultValue: '',
-    description: 'Display name override (Obsidian alias syntax: `![[file.zip|label]]`)',
+    description: 'Display name override (alias syntax: `![[file.zip|label]]`)',
   },
 ];
 
@@ -655,22 +656,25 @@ const mirrorProps: PropDef[] = [
     required: true,
     description: 'Path of the source doc, extension-less (e.g. `api-spec`).',
     autoFocus: true,
+    documentPicker: true,
   },
   {
-    name: 'anchor',
+    name: 'name',
     type: 'string',
     required: true,
-    description: 'Id of the `<MirrorSource>` block within the source doc.',
+    legacyNames: ['anchor'],
+    mirrorSourcePicker: 'src',
+    description: 'Name of the `<MirrorSource>` block in the source doc.',
   },
 ];
 
 const mirrorSourceProps: PropDef[] = [
   {
-    name: 'id',
+    name: 'name',
     type: 'string',
     required: true,
-    description:
-      'Stable id agents and authors use to reference this block from `<Mirror>` elsewhere.',
+    legacyNames: ['id'],
+    description: 'Stable name a `<Mirror>` uses to reference this block.',
     autoFocus: true,
   },
   {
@@ -730,7 +734,7 @@ export const builtInComponents: JsxComponentMeta[] = [
     category: 'content',
     displayName: 'Callout',
     description:
-      'Alert / admonition with 15 type variants — 5 GFM (note, tip, important, warning, caution) plus 10 Obsidian-parity (abstract, info, todo, success, question, failure, danger, bug, example, quote)',
+      'Alert / admonition with 15 type variants — 5 GFM (note, tip, important, warning, caution) plus 10 extended (abstract, info, todo, success, question, failure, danger, bug, example, quote)',
     searchTerms: [
       'note',
       'tip',
@@ -876,7 +880,7 @@ export const builtInComponents: JsxComponentMeta[] = [
     category: 'content',
     displayName: 'Toggle',
     description:
-      'Standalone expand/collapse block (Notion-style). Same render + props as `<Accordion>` — pick whichever vocabulary matches the vault.',
+      'Standalone expand/collapse block. Same render + props as `<Accordion>` under a different tag name; pick whichever name the vault already uses.',
     searchTerms: ['toggle', 'collapsible', 'expand', 'details', 'disclosure', 'fold'],
     exampleBody: 'Body content revealed when the toggle is expanded.',
     serialize: (node, ctx) => emitMdxJsx('Toggle', node, ctx, accordionProps),
@@ -984,10 +988,10 @@ export const builtInComponents: JsxComponentMeta[] = [
     category: 'content',
     displayName: 'Mirror Source',
     description:
-      'Mark a block as the source of truth for content that appears in multiple docs. Wrap any block content; `<Mirror src="…" anchor="<id>">` references render this verbatim read-only at every call-site. Edit here, propagate everywhere.',
+      'Mark a block as the source of truth for content that appears in multiple docs. Wrap any block content; `<Mirror src="…" name="…">` references render this verbatim read-only at every call-site. Edit here, propagate everywhere.',
     searchTerms: ['mirror source', 'sync source', 'source block', 'master block', 'shared'],
     exampleBody:
-      'Authoritative content lives inside this block — edits here propagate to every `<Mirror>` that references this id.',
+      'Authoritative content lives inside this block — edits here propagate to every `<Mirror>` that references this name.',
     serialize: (node, ctx) => emitMdxJsx('MirrorSource', node, ctx, mirrorSourceProps),
   },
 
@@ -1089,7 +1093,7 @@ export const builtInComponents: JsxComponentMeta[] = [
     category: 'media',
     displayName: 'Wiki Embed Image',
     description:
-      'Obsidian-style `![[file.png]]` wiki-embed — read-only compat. Edit the alt-text via the alias slot; the embed target / anchor stay on the prop bag and round-trip byte-identical.',
+      '`![[file.png]]` wiki-embed — read-only compat. Edit the alt-text via the alias slot; the embed target / anchor stay on the prop bag and round-trip byte-identical.',
     rendersAs: 'img',
     translateProps: (props) => {
       const alias = typeof props.alias === 'string' && props.alias.length > 0 ? props.alias : null;
@@ -1112,7 +1116,7 @@ export const builtInComponents: JsxComponentMeta[] = [
     category: 'media',
     displayName: 'Wiki Embed Video',
     description:
-      'Obsidian-style `![[clip.mp4]]` wiki-embed — read-only compat. Edit the title via the alias slot; the embed target / anchor stay on the prop bag and round-trip byte-identical.',
+      '`![[clip.mp4]]` wiki-embed — read-only compat. Edit the title via the alias slot; the embed target / anchor stay on the prop bag and round-trip byte-identical.',
     rendersAs: 'video',
     translateProps: (props) => {
       const alias = typeof props.alias === 'string' && props.alias.length > 0 ? props.alias : null;
@@ -1135,7 +1139,7 @@ export const builtInComponents: JsxComponentMeta[] = [
     category: 'media',
     displayName: 'Wiki Embed Audio',
     description:
-      'Obsidian-style `![[song.mp3]]` wiki-embed — read-only compat. Edit the title via the alias slot; the embed target / anchor stay on the prop bag and round-trip byte-identical.',
+      '`![[song.mp3]]` wiki-embed — read-only compat. Edit the title via the alias slot; the embed target / anchor stay on the prop bag and round-trip byte-identical.',
     rendersAs: 'audio',
     translateProps: (props) => {
       const alias = typeof props.alias === 'string' && props.alias.length > 0 ? props.alias : null;
@@ -1158,7 +1162,7 @@ export const builtInComponents: JsxComponentMeta[] = [
     category: 'media',
     displayName: 'Wiki Embed File',
     description:
-      'Obsidian-style `![[file.zip]]` wiki-embed — read-only compat for arbitrary downloadable attachments. Renders through the `File` canonical (inline row with file-up icon + bold name + optional dim size). Edit the display name via the alias slot.',
+      '`![[file.zip]]` wiki-embed — read-only compat for arbitrary downloadable attachments. Renders through the `File` canonical (inline row with file-up icon + bold name + optional dim size). Edit the display name via the alias slot.',
     rendersAs: 'File',
     translateProps: (props) => {
       const alias = typeof props.alias === 'string' && props.alias.length > 0 ? props.alias : null;

@@ -45,10 +45,7 @@ describe('useSkills', () => {
     test(`a mutation mid-flight is not served pre-write data (${trigger})`, async () => {
       const { useSkills, emitSkillsChanged, emitDocumentsChanged } = await freshModules();
 
-      let release: ((body: unknown) => void) | undefined;
-      const first = new Promise<unknown>((resolve) => {
-        release = resolve;
-      });
+      const { promise: first, resolve: release } = Promise.withResolvers<unknown>();
 
       let live = 0;
       let maxLive = 0;
@@ -93,7 +90,7 @@ describe('useSkills', () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
-      release?.(skillsBody(['kept', 'removed']));
+      release(skillsBody(['kept', 'removed']));
 
       await waitFor(() => expect(screen.getByTestId('names').textContent).toBe('kept'));
       expect(fetchMock).toHaveBeenCalledTimes(2);

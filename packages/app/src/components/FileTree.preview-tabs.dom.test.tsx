@@ -301,6 +301,7 @@ vi.doMock('@/editor/preview-tab-promotion', () => ({
 }));
 
 const { FileTree } = await import('./FileTree');
+const { readManagedHashHistoryEntry } = await import('@/lib/doc-hash');
 
 describe('FileTree preview-tab activation', () => {
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
@@ -343,6 +344,7 @@ describe('FileTree preview-tab activation', () => {
         ),
       );
       expect(window.location.hash).toBe('#/note');
+      expect(readManagedHashHistoryEntry(window.history.state)).toEqual({ disposition });
       expect(notifySidebarFileSelectedMock).toHaveBeenCalledTimes(1);
 
       fireEvent.click(screen.getByRole('treeitem', { name: 'docs/' }));
@@ -355,6 +357,7 @@ describe('FileTree preview-tab activation', () => {
         ),
       );
       expect(window.location.hash).toBe('#/docs/');
+      expect(readManagedHashHistoryEntry(window.history.state)).toEqual({ disposition });
       expect(notifySidebarFileSelectedMock).toHaveBeenCalledTimes(2);
     },
   );

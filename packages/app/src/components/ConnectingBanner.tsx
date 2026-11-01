@@ -81,8 +81,9 @@ export function ConnectingBanner() {
           ) : (
             <Trans>
               Couldn't reach collab server — {errorDetail}. Try{' '}
-              <code className="bg-background/20 px-1 rounded">{cliCommand} status</code> or check{' '}
-              <code className="bg-background/20 px-1 rounded">.ok/local/last-spawn-error.log</code>.
+              <code className="bg-background/20 px-1 rounded">{cliCommand} status</code> or collect
+              logs with{' '}
+              <code className="bg-background/20 px-1 rounded">{cliCommand} diagnose bundle</code>.
             </Trans>
           )}
         </span>

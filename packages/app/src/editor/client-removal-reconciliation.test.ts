@@ -4,16 +4,6 @@ import {
   createClientRemovalReconciler,
 } from './client-removal-reconciliation';
 
-function deferred<T = void>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
-  return { promise, resolve, reject };
-}
-
 function createPorts(
   options: {
     activePoolDocName?: string | null;
@@ -26,7 +16,7 @@ function createPorts(
 ) {
   const log: string[] = [];
   let activePoolDocName = options.activePoolDocName ?? null;
-  const clearDeferred = new Map<string, ReturnType<typeof deferred>>();
+  const clearDeferred = new Map<string, PromiseWithResolvers<void>>();
   const ports: ClientRemovalReconciliationPorts = {
     captureRenameSnapshots: (renamed) =>
       log.push(
@@ -42,7 +32,7 @@ function createPorts(
         log.push(`clear:end:${docName}`);
         return Promise.resolve();
       }
-      const pending = deferred();
+      const pending = Promise.withResolvers<void>();
       clearDeferred.set(docName, pending);
       pending.promise.then(() => {
         if (activePoolDocName === docName) activePoolDocName = null;

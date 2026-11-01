@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { currentCliCommandName, OK_USER_HOME_AUTH_FILE } from '@inkeep/open-knowledge-core';
 import { isHomeDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
+import { getInvocationCwd } from '../project-anchor.ts';
 import { accent, dim, error as errorColor, warning } from '../ui/colors.ts';
 import { confirmDestructive } from '../ui/confirm.ts';
 import {
@@ -115,7 +116,10 @@ export function deinitCommand(): Command {
     .description(
       `Remove OpenKnowledge from this project (its .ok/, editor MCP entries, git-exclude lines, shadow repo) while leaving your markdown content untouched. Re-run \`${currentCliCommandName()} start\` to re-scaffold.`,
     )
-    .argument('[path]', 'Project directory (defaults to the current project)')
+    .argument(
+      '[path]',
+      'Project directory, relative to where you run the command (defaults to the enclosing project)',
+    )
     .option('-y, --yes', 'Skip the confirmation prompt')
     .option('--dry-run', 'Print the removal plan and exit without changing anything')
     .option('--json', 'Emit a machine-readable plan/outcome (requires --yes or --dry-run)')
@@ -124,8 +128,12 @@ export function deinitCommand(): Command {
         pathArg: string | undefined,
         options: { yes?: boolean; dryRun?: boolean; json?: boolean },
       ) => {
+        const cwd = pathArg === undefined ? process.cwd() : resolve(getInvocationCwd(), pathArg);
+        if (pathArg !== undefined) {
+          process.stderr.write(`[ok] Deinit target: ${cwd}\n`);
+        }
         const result = await runDeinit({
-          cwd: pathArg ?? process.cwd(),
+          cwd,
           yes: options.yes,
           dryRun: options.dryRun,
           json: options.json,

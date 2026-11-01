@@ -10,10 +10,14 @@ import {
   unlinkSync,
 } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
-import { dirname, extname, relative, resolve } from 'node:path';
+import { extname, relative, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import {
   ASSET_EXTENSIONS,
+  type AttachmentFolderPathVariableIssue,
+  attachmentFolderForDocument,
+  attachmentFolderPathVariableIssue,
+  BESIDE_DOCUMENT_ATTACHMENT_FOLDER_PATH,
   DEFAULT_ATTACHMENT_FOLDER_PATH,
   DEFAULT_DEDUP_MODE,
   INLINE_RENDERABLE_EXTENSIONS,
@@ -71,10 +75,19 @@ interface StoreUploadInput {
   placement: 'configured-attachments' | 'parent-dir' | undefined;
 }
 
+export class AttachmentFolderPathConfigError extends Error {
+  readonly reasons: readonly string[];
+  constructor(reasons: readonly string[]) {
+    super(`Invalid content.attachmentFolderPath in project config: ${reasons.join('; ')}`);
+    this.reasons = reasons;
+    this.name = 'AttachmentFolderPathConfigError';
+  }
+}
+
 type StoreUploadOutcome =
   | { ok: true; src: string; path: string; deduped: boolean; mime: string | null }
   | { ok: false; kind: 'config-error'; cause: unknown }
-  | { ok: false; kind: 'invalid-attachment-folder' }
+  | { ok: false; kind: 'invalid-attachment-folder'; issue?: AttachmentFolderPathVariableIssue }
   | { ok: false; kind: 'path-escape'; cause?: unknown }
   | { ok: false; kind: 'dest-validation-error'; cause: unknown; destDir: string }
   | { ok: false; kind: 'reserved-destination'; destDir: string }
@@ -119,17 +132,10 @@ export function resolveUploadDestDir(
   attachmentFolderPath: string,
   resolvedContentDir: string,
 ): string {
-  const trimmed = attachmentFolderPath.trim();
-  if (trimmed === '' || trimmed === './') {
-    return resolve(resolvedContentDir, dirname(parentDocName));
-  }
-  if (trimmed === '/') {
-    return resolvedContentDir;
-  }
-  if (trimmed.startsWith('./')) {
-    return resolve(resolvedContentDir, dirname(parentDocName), trimmed.slice(2));
-  }
-  return resolve(resolvedContentDir, trimmed);
+  return resolve(
+    resolvedContentDir,
+    attachmentFolderForDocument(attachmentFolderPath, parentDocName),
+  );
 }
 
 function readTempFileHead(path: string, n: number): Buffer {
@@ -265,7 +271,7 @@ export function createAssetService(deps: AssetServiceDeps): AssetService {
     try {
       rawAttachmentFolderPath =
         placement === 'parent-dir'
-          ? DEFAULT_ATTACHMENT_FOLDER_PATH
+          ? BESIDE_DOCUMENT_ATTACHMENT_FOLDER_PATH
           : (deps.getAttachmentFolderPath?.() ?? DEFAULT_ATTACHMENT_FOLDER_PATH);
     } catch (err) {
       cleanupTempfile();
@@ -274,6 +280,11 @@ export function createAssetService(deps: AssetServiceDeps): AssetService {
     if (!isValidAttachmentFolderPath(rawAttachmentFolderPath)) {
       cleanupTempfile();
       return { ok: false, kind: 'invalid-attachment-folder' };
+    }
+    const variableIssue = attachmentFolderPathVariableIssue(rawAttachmentFolderPath);
+    if (variableIssue) {
+      cleanupTempfile();
+      return { ok: false, kind: 'invalid-attachment-folder', issue: variableIssue };
     }
     const attachmentFolderPath = normalizeAttachmentFolderPath(rawAttachmentFolderPath);
     const destDir = resolveUploadDestDir(parentDocName, attachmentFolderPath, resolvedContentDir);

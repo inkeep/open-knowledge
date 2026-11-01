@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { RENDERER_SCAN_GLOB, RENDERER_SCAN_ROOT } from './y-prosemirror-import-coverage.reads';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../..');
-const RENDERER_ROOT = join(REPO_ROOT, 'packages/app/src');
+const RENDERER_ROOT = join(REPO_ROOT, RENDERER_SCAN_ROOT);
 
 const FORBIDDEN_PATTERNS: readonly RegExp[] = [
   /from\s+['"]y-prosemirror['"]/g,
@@ -42,7 +43,7 @@ function lineOf(content: string, index: number): number {
 function scanRenderer(): ScanResult {
   const violations: Violation[] = [];
   let filesScanned = 0;
-  const glob = new Bun.Glob('**/*.{ts,tsx}');
+  const glob = new Bun.Glob(RENDERER_SCAN_GLOB);
   for (const rel of glob.scanSync({ cwd: RENDERER_ROOT })) {
     const abs = join(RENDERER_ROOT, rel);
     if (isExcludedPath(abs)) continue;

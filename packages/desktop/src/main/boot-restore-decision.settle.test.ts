@@ -34,10 +34,7 @@ function makeHandler() {
 }
 
 function manualSettle() {
-  let release!: () => void;
-  const promise = new Promise<void>((res) => {
-    release = res;
-  });
+  const { promise, resolve: release } = Promise.withResolvers<void>();
   return { waitForUrlLaunchSettled: () => promise, release };
 }
 

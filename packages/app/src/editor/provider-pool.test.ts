@@ -1766,12 +1766,11 @@ describe('ProviderPool stored-state validation spine', () => {
 
   test('a re-dispatch onto an entry with an in-flight spine run is a no-op (attach ownership)', async () => {
     let resolvePeek: (value: string | null) => void = () => {};
-    const peek = vi.fn(
-      () =>
-        new Promise<string | null>((resolve) => {
-          resolvePeek = resolve;
-        }),
-    );
+    const peek = vi.fn(() => {
+      const { promise, resolve } = Promise.withResolvers<string | null>();
+      resolvePeek = resolve;
+      return promise;
+    });
     const persistenceFactory = vi.fn(makePersistenceStub);
     pool = new ProviderPool(3, DUMMY_WS, {
       storage: null,
@@ -2072,12 +2071,11 @@ describe("ProviderPool authenticationFailed handling (US-002 / 'server-instance-
     pool.setActive('doc1');
 
     let resolveClear: () => void = () => {};
-    persistence.clearData = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveClear = resolve;
-        }),
-    );
+    persistence.clearData = vi.fn(() => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      resolveClear = resolve;
+      return promise;
+    });
 
     syncPromise('doc1', entry.provider).catch(() => {});
     expect(__syncPromiseCacheSize()).toBe(1);
@@ -3428,12 +3426,11 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
 
     test('closeAndClearPersistence dedups concurrent calls via in-flight reuse', async () => {
       let resolveClear: () => void = () => {};
-      const { stub, clearSpy } = makeControllableStub(
-        () =>
-          new Promise<void>((resolve) => {
-            resolveClear = resolve;
-          }),
-      );
+      const { stub, clearSpy } = makeControllableStub(() => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        resolveClear = resolve;
+        return promise;
+      });
       const persistenceFactory = vi.fn(() => stub);
       const deleteDbSpy = vi.spyOn(indexedDB, 'deleteDatabase');
 
@@ -3460,12 +3457,11 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
 
     test('deferred persistence attach: pool.open during in-flight clear leaves persistence null synchronously, attaches once clear resolves', async () => {
       let resolveClear: () => void = () => {};
-      const cleared = makeControllableStub(
-        () =>
-          new Promise<void>((resolve) => {
-            resolveClear = resolve;
-          }),
-      );
+      const cleared = makeControllableStub(() => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        resolveClear = resolve;
+        return promise;
+      });
       const fresh = makeControllableStub(async () => {});
       let callCount = 0;
       const persistenceFactory = vi.fn(() => {
@@ -3495,12 +3491,11 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
 
     test('deferred persistence attach skipped on pending-clear-failed (structured warn fires, persistence stays null)', async () => {
       let rejectClear: (err: Error) => void = () => {};
-      const cleared = makeControllableStub(
-        () =>
-          new Promise<void>((_, reject) => {
-            rejectClear = reject;
-          }),
-      );
+      const cleared = makeControllableStub(() => {
+        const { promise, reject } = Promise.withResolvers<void>();
+        rejectClear = reject;
+        return promise;
+      });
       const persistenceFactory = vi.fn(() => cleared.stub);
 
       pool = new ProviderPool(3, DUMMY_WS, { persistenceFactory, clearDataTimeoutMs: 30_000 });
@@ -3535,12 +3530,11 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
 
     test('dispose() clears pendingClears tracking so the deferred-attach .then never reattaches', async () => {
       let resolveClear: () => void = () => {};
-      const cleared = makeControllableStub(
-        () =>
-          new Promise<void>((resolve) => {
-            resolveClear = resolve;
-          }),
-      );
+      const cleared = makeControllableStub(() => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        resolveClear = resolve;
+        return promise;
+      });
       const fresh = makeControllableStub(async () => {});
       let callCount = 0;
       const persistenceFactory = vi.fn(() => {

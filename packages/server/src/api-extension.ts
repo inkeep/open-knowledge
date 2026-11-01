@@ -2372,6 +2372,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
       fileExists: createLinkedFileExists(),
       folderExists: createLinkedFolderExists(),
       fileExcluded: createLinkedFileExcluded(),
+      imagePathExcluded: contentFilter?.isPathIgnored ?? null,
       resolveWikiFile: createLinkedWikiFileResolver(),
       resolveFileByBasename: createLinkedFileBasenameResolver(),
     };
@@ -2590,10 +2591,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     let pending = Promise.resolve();
     return async function runSerialized<T>(task: () => Promise<T>): Promise<T> {
       const waitFor = pending;
-      let release = () => {};
-      pending = new Promise<void>((resolve) => {
-        release = resolve;
-      });
+      const { promise, resolve: release } = Promise.withResolvers<void>();
+      pending = promise;
       await waitFor;
       try {
         return await task();

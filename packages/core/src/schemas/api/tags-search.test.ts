@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { z } from 'zod';
 import {
   canonicalTemplateName,
   classifySemanticProviderError,
@@ -10,6 +11,7 @@ import {
   isSkillSourceStateCode,
   normalizeApiWarnings,
   SearchSemanticStatusSchema,
+  SearchSuccessSchema,
   SemanticIndexStatusSchema,
   SKILL_MOVE_RETAINED_DESTINATION,
   SKILL_MOVE_STATE_CODES,
@@ -338,5 +340,11 @@ describe('templateRenameTarget', () => {
 
   test('a decomposed name can be renamed to its composed spelling', () => {
     expect(templateRenameTarget('cafe\u{0301}', 'caf\u{00E9}')).toBe('caf\u{00E9}');
+  });
+});
+
+describe('SearchSuccessSchema under zod/compile', () => {
+  test('compiles as a whole schema in strict mode', () => {
+    expect(() => z.compile(SearchSuccessSchema, { strict: true })).not.toThrow();
   });
 });

@@ -641,10 +641,7 @@ async function runAttempt({
   });
 
   let closeValue;
-  let resolveClose;
-  const closePromise = new Promise((resolve) => {
-    resolveClose = resolve;
-  });
+  const { promise: closePromise, resolve: resolveClose } = Promise.withResolvers();
   let spawnError;
   child.once('error', (error) => {
     spawnError = error;

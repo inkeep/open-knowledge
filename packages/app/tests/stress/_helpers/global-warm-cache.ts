@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -6,13 +7,13 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
-  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 import { APP_PACKAGE_ROOT, computeSeedKey } from './seed-key.ts';
 import {
   beginViteStartup,
@@ -20,8 +21,10 @@ import {
   createViteStartupRequest,
   killGracefully,
   openServerLog,
+  resolveViteSeedDir,
   tailServerLog,
   VITE_E2E_SEED_DIR,
+  VITE_E2E_SEED_POINTER,
   waitForBoundViteEndpoint,
   waitForHttpReady,
 } from './server-process.ts';
@@ -30,6 +33,28 @@ import { removeAllDuringTeardown } from './teardown-fs.ts';
 const SEED_KEY_FILENAME = '.seed-key';
 const OPTIMIZER_SETTLE_BUDGET_MS = 90_000;
 const WARM_ATTEMPTS = 2;
+const OWNER_GUARD = fileURLToPath(new URL('./warm-cache-owner-guard.cjs', import.meta.url));
+
+function appendNodeOption(options: string | undefined, option: string): string {
+  if (options?.split(/\s+/).includes(option)) return options;
+  return [options, option]
+    .filter((value): value is string => value !== undefined && value !== '')
+    .join(' ');
+}
+
+function publishSeed(buildDir: string): void {
+  const seedParent = dirname(VITE_E2E_SEED_DIR);
+  const publishedDir = join(seedParent, `.vite-e2e-seed-published-${process.pid}-${randomUUID()}`);
+  const pointerTemp = join(seedParent, `.vite-e2e-seed-pointer-${process.pid}-${randomUUID()}`);
+  try {
+    renameSync(buildDir, publishedDir);
+    writeFileSync(pointerTemp, `${publishedDir}\n`, 'utf-8');
+    renameSync(pointerTemp, VITE_E2E_SEED_POINTER);
+  } catch (err) {
+    removeAllDuringTeardown(buildDir, publishedDir, pointerTemp);
+    throw err;
+  }
+}
 
 function depsDirSignature(depsDir: string): string {
   try {
@@ -61,6 +86,11 @@ async function buildSeedOnce(key: string): Promise<void> {
     env: {
       ...process.env,
       ...request.environment,
+      OK_WARM_CACHE_OWNER_PID: String(process.pid),
+      NODE_OPTIONS: appendNodeOption(
+        process.env.NODE_OPTIONS,
+        `--require=${JSON.stringify(OWNER_GUARD)}`,
+      ),
       OK_TEST_CONTENT_DIR: contentDir,
       OK_TEST_VITE_CACHE_DIR: buildDir,
       OK_TEST_SKIP_I18N_COMPILE: '1',
@@ -116,8 +146,7 @@ async function buildSeedOnce(key: string): Promise<void> {
     }
   }
   try {
-    rmSync(VITE_E2E_SEED_DIR, { recursive: true, force: true });
-    renameSync(buildDir, VITE_E2E_SEED_DIR);
+    publishSeed(buildDir);
     removeAllDuringTeardown(log.path);
   } catch (promoteErr) {
     removeAllDuringTeardown(buildDir, log.path);
@@ -127,9 +156,16 @@ async function buildSeedOnce(key: string): Promise<void> {
 
 export default async function globalWarmViteCache(): Promise<void> {
   const key = computeSeedKey(APP_PACKAGE_ROOT);
-  const keyPath = join(VITE_E2E_SEED_DIR, SEED_KEY_FILENAME);
-  const metaPath = join(VITE_E2E_SEED_DIR, 'deps', '_metadata.json');
-  if (existsSync(keyPath) && existsSync(metaPath) && readFileSync(keyPath, 'utf-8') === key) {
+  const seedDir = resolveViteSeedDir();
+  const keyPath = seedDir === undefined ? undefined : join(seedDir, SEED_KEY_FILENAME);
+  const metaPath = seedDir === undefined ? undefined : join(seedDir, 'deps', '_metadata.json');
+  if (
+    keyPath !== undefined &&
+    metaPath !== undefined &&
+    existsSync(keyPath) &&
+    existsSync(metaPath) &&
+    readFileSync(keyPath, 'utf-8') === key
+  ) {
     return;
   }
   for (let attempt = 1; attempt <= WARM_ATTEMPTS; attempt += 1) {

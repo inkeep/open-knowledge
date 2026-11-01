@@ -1,4 +1,4 @@
-import { act, cleanup, renderHook } from '@testing-library/react';
+import { act, cleanup, render, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
 
@@ -36,6 +36,7 @@ const { acquireLiveDocProvider, disposeLiveDocPool, LIVE_DOC_POOL_MAX } = await 
   './live-doc-pool.ts'
 );
 const { useMirrorSource } = await import('./use-mirror-source.ts');
+const { Mirror } = await import('./Mirror.tsx');
 
 const SOURCE_MD = [
   '<MirrorSource id="intro">',
@@ -66,6 +67,18 @@ describe('useMirrorSource', () => {
   afterEach(() => {
     cleanup();
     disposeLiveDocPool();
+  });
+
+  test('a Mirror whose name was written as a number finds the source with that name', async () => {
+    const { container } = render(<Mirror src="numbers" name={42} />);
+    act(() => {
+      const provider = lastProvider();
+      setSource(provider, '<MirrorSource name="42">\n\nForty-two.\n\n</MirrorSource>');
+      provider.emitSynced();
+    });
+    await waitFor(() => {
+      expect(container.textContent).toContain('Forty-two.');
+    });
   });
 
   test('a pool capacity refusal maps to at-capacity, never source-removed', () => {

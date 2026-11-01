@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { shellSingleQuote } from '@inkeep/open-knowledge-core';
 import { type Config, readServerLock, resolveLockDir } from '@inkeep/open-knowledge-server';
-import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   GITHUB_HOST,
@@ -148,13 +148,6 @@ describe("ok sync without a running server authenticates through OpenKnowledge's
   let standIn: GitHubStandIn | undefined;
   let interceptor: PlainHttpInterceptor | undefined;
 
-  beforeAll(() => {
-    expect(
-      process.env.GIT_CONFIG_GLOBAL,
-      'precondition: GIT_CONFIG_GLOBAL must be unset, or git reads that file instead of the temporary HOME and the credentials this suite approves reach the helpers it names',
-    ).toBeUndefined();
-  });
-
   beforeEach(() => {
     workspace = realpathSync(mkdtempSync(join(tmpdir(), 'ok-sync-credential-')));
     home = join(workspace, 'home');
@@ -166,15 +159,19 @@ describe("ok sync without a running server authenticates through OpenKnowledge's
     authFile = join(workspace, 'ok-auth.yml');
     helperPhases = join(workspace, 'helper-phases.jsonl');
     phases = [{ stage: 'setup:start', at: Date.now() }];
+    for (const variable of Object.keys(process.env)) {
+      if (variable.startsWith('GIT_')) {
+        vi.stubEnv(variable, undefined);
+      }
+    }
     vi.stubEnv('HOME', home);
     vi.stubEnv('USERPROFILE', home);
     vi.stubEnv('XDG_CONFIG_HOME', join(home, '.config'));
     vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
+    vi.stubEnv('GIT_CONFIG_SYSTEM', '/dev/null');
     for (const variable of [
       'NO_PROXY',
       'no_proxy',
-      'GIT_SSL_CAINFO',
-      'GIT_SSL_NO_VERIFY',
       'OK_GH_TOKEN',
       'OK_GH_TOKEN_HOST',
       'OK_GH_TOKEN_LOGIN',

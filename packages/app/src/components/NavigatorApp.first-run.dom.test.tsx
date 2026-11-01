@@ -310,12 +310,11 @@ describe('NavigatorApp launcher — starter-pack line', () => {
 
   test('listPacks failure drops the pack line entirely, leaving the four cards', async () => {
     let settle: (result: unknown) => void = () => {};
-    const listPacks = vi.fn(
-      () =>
-        new Promise((resolve) => {
-          settle = resolve;
-        }),
-    );
+    const listPacks = vi.fn(() => {
+      const { promise, resolve } = Promise.withResolvers();
+      settle = resolve;
+      return promise;
+    });
     listPacksImpl = listPacks;
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const bridge = createBridge([]);

@@ -8,10 +8,12 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { context, trace } from '@opentelemetry/api';
 import { BasicTracerProvider, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import pino from 'pino';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   DEFAULT_MAX_VALUE_BYTES,
   FileSpanExporter,
@@ -26,11 +28,17 @@ import {
 } from './telemetry-file-sink.ts';
 
 let tmp: string;
+let fixtureRoot: string;
 beforeEach(() => {
-  tmp = mkdtempSync(join(tmpdir(), 'ok-file-span-test-'));
+  fixtureRoot = mkdtempSync(join(tmpdir(), 'ok-file-span-test-'));
+  tmp = join(fixtureRoot, 'project');
+  mkdirSync(tmp);
+  vi.stubEnv('HOME', join(fixtureRoot, 'home'));
+  vi.stubEnv('USERPROFILE', join(fixtureRoot, 'home'));
 });
 afterEach(() => {
-  if (tmp) rmSync(tmp, { recursive: true, force: true });
+  vi.unstubAllEnvs();
+  if (fixtureRoot) rmSync(fixtureRoot, { recursive: true, force: true });
 });
 
 function makeProvider(exporter: FileSpanExporter): BasicTracerProvider {
@@ -114,7 +122,7 @@ describe('FileSpanExporter', () => {
 
   test('parent directory is created lazily on first export', async () => {
     const exporter = new FileSpanExporter({ projectDir: tmp, maxBytes: 1_000_000 });
-    const telemetryDir = join(tmp, '.ok', 'local', 'telemetry');
+    const telemetryDir = dirname(spansCurrentPath(tmp));
     expect(existsSync(telemetryDir)).toBe(false);
 
     const provider = makeProvider(exporter);
@@ -122,6 +130,7 @@ describe('FileSpanExporter', () => {
     await provider.forceFlush();
 
     expect(existsSync(telemetryDir)).toBe(true);
+    if (process.platform !== 'win32') expect(statSync(telemetryDir).mode & 0o777).toBe(0o700);
     expect(existsSync(spansCurrentPath(tmp))).toBe(true);
 
     await provider.shutdown();
@@ -265,7 +274,74 @@ describe('FileSpanExporter', () => {
   });
 });
 
+describe('project diagnostics location', () => {
+  test('real Pino and span writes stay outside the project in the same user namespace', async () => {
+    const sink = new PinoFileSink({ projectDir: tmp, maxBytes: 1_000_000 });
+    const provider = makeProvider(new FileSpanExporter({ projectDir: tmp, maxBytes: 1_000_000 }));
+    try {
+      pino({}, sink).info('project log canary');
+      provider.getTracer('test').startSpan('project span canary').end();
+      await Promise.all([sink.drain(), provider.forceFlush()]);
+
+      const logsPath = logsCurrentPath(tmp);
+      const spansPath = spansCurrentPath(tmp);
+      expect(readFileSync(logsPath, 'utf8')).toContain('project log canary');
+      expect(firstSpanName(parseEnvelope(readLines(spansPath)[0] ?? ''))).toBe(
+        'project span canary',
+      );
+      const namespace = dirname(logsPath);
+      expect(dirname(namespace)).toBe(join(okUserHomeDir(), 'logs', 'projects'));
+      expect(basename(namespace)).toMatch(/^[a-f0-9]{64}$/);
+      expect(dirname(spansPath)).toBe(namespace);
+      expect(existsSync(join(tmp, '.ok', 'local', 'logs'))).toBe(false);
+      expect(existsSync(join(tmp, '.ok', 'local', 'telemetry'))).toBe(false);
+    } finally {
+      await provider.shutdown();
+      sink.destroy();
+    }
+  });
+
+  test('two projects with the same name do not mix log records', async () => {
+    const otherProject = join(fixtureRoot, 'other', 'project');
+    mkdirSync(otherProject, { recursive: true });
+    const first = new PinoFileSink({ projectDir: tmp, maxBytes: 1_000_000 });
+    const second = new PinoFileSink({ projectDir: otherProject, maxBytes: 1_000_000 });
+    try {
+      pino({}, first).info('first project canary');
+      pino({}, second).info('second project canary');
+      await Promise.all([first.drain(), second.drain()]);
+
+      const firstLog = readFileSync(logsCurrentPath(tmp), 'utf8');
+      const secondLog = readFileSync(logsCurrentPath(otherProject), 'utf8');
+      expect(firstLog).toContain('first project canary');
+      expect(firstLog).not.toContain('second project canary');
+      expect(secondLog).toContain('second project canary');
+      expect(secondLog).not.toContain('first project canary');
+    } finally {
+      first.destroy();
+      second.destroy();
+    }
+  });
+});
+
 describe('RotatingAppender (shared rotation primitive)', () => {
+  test('recreates a namespace removed while a retained appender was inactive', async () => {
+    const currentPath = logsCurrentPath(tmp);
+    const namespace = dirname(currentPath);
+    const appender = new RotatingAppender({
+      currentPath,
+      previousPath: logsPreviousPath(tmp),
+      maxBytes: 1024,
+    });
+    await appender.append('first\n');
+    await appender.drain();
+    rmSync(namespace, { recursive: true });
+    await expect(appender.append('after reactivation\n')).resolves.toBeUndefined();
+    await appender.drain();
+    expect(readFileSync(currentPath, 'utf8')).toBe('after reactivation\n');
+    if (process.platform !== 'win32') expect(statSync(namespace).mode & 0o777).toBe(0o700);
+  });
+
   test('appends bytes, creates parent dir lazily, and rotates over cap', async () => {
     const currentPath = join(tmp, 'logs', 'a-current.jsonl');
     const previousPath = join(tmp, 'logs', 'a-prev.jsonl');

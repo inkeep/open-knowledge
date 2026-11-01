@@ -322,6 +322,7 @@ export interface WatcherHandle {
 export const writeTracker = new Map<string, Array<{ hash: string; timestamp: number }>>();
 const WRITE_TRACKER_TTL_MS = 10_000;
 const REMOVAL_TRACKER_TTL_MS = 30_000;
+const deletedOwnWrites = new WeakSet<{ hash: string; timestamp: number }>();
 
 interface OwnWriteObservation {
   key: string;
@@ -492,6 +493,7 @@ type WatcherDecision =
   | 'dispatched'
   | 'self-write-skip'
   | 'superseded-own-write-skip'
+  | 'outside-write-over-own-write'
   | 'self-removal-skip'
   | `drop-${WatcherDropReason}`;
 
@@ -510,6 +512,7 @@ const watcherDropCounts = new Map<WatcherDropReason, number>();
 let watcherDispatchedCount = 0;
 let watcherSelfWriteSkipCount = 0;
 let watcherSupersededOwnWriteSkipCount = 0;
+let watcherOutsideWriteOverOwnWriteCount = 0;
 let watcherSelfRemovalSkipCount = 0;
 let watcherDropsSinceLastSummary = 0;
 
@@ -536,6 +539,10 @@ function recordWatcherDecision(decision: WatcherDecision, kind: string, rawPath:
     watcherSupersededOwnWriteSkipCount++;
     return;
   }
+  if (decision === 'outside-write-over-own-write') {
+    watcherOutsideWriteOverOwnWriteCount++;
+    return;
+  }
   if (decision === 'self-removal-skip') {
     watcherSelfRemovalSkipCount++;
     return;
@@ -553,6 +560,14 @@ function recordSupersededOwnWriteSkip(kind: DiskEvent['kind'], filePath: string)
   );
   _fileWatcherEventsCounter().add(1, { 'disk.kind': kind, self: true, 'disk.superseded': true });
   recordWatcherDecision('superseded-own-write-skip', kind, filePath);
+}
+
+function recordOutsideWriteOverOwnWrite(filePath: string): void {
+  log.debug(
+    { path: filePath },
+    '[file-watcher] Read a create over a pending own write as an update',
+  );
+  recordWatcherDecision('outside-write-over-own-write', 'create', filePath);
 }
 
 export function getWatcherDecisionRingSnapshot(): WatcherDecisionRecord[] {
@@ -576,6 +591,7 @@ export function logWatcherDropSummary(): void {
       dispatched: watcherDispatchedCount,
       selfWriteSkips: watcherSelfWriteSkipCount,
       supersededOwnWriteSkips: watcherSupersededOwnWriteSkipCount,
+      outsideWritesOverOwnWrites: watcherOutsideWriteOverOwnWriteCount,
       selfRemovalSkips: watcherSelfRemovalSkipCount,
     },
     `[file-watcher] drop summary: ${droppedSinceLastSummary} event(s) dropped since last summary`,
@@ -588,6 +604,7 @@ export function resetWatcherDecisionDiagnostics(): void {
   watcherDispatchedCount = 0;
   watcherSelfWriteSkipCount = 0;
   watcherSupersededOwnWriteSkipCount = 0;
+  watcherOutsideWriteOverOwnWriteCount = 0;
   watcherSelfRemovalSkipCount = 0;
   watcherDropsSinceLastSummary = 0;
 }
@@ -1014,6 +1031,9 @@ async function classifyEventsInternal(
             continue;
           }
         }
+        if (writeTracker.size > 0)
+          for (const write of writeTracker.get(observedPathKey(event.path)) ?? [])
+            deletedOwnWrites.add(write);
         deletes.push(event);
         break;
       }
@@ -1067,6 +1087,16 @@ async function classifyEventsInternal(
       contents.delete(filePath);
       recordSupersededOwnWriteSkip(type, filePath);
     }
+  }
+
+  for (const event of creates) {
+    const content = createContents.get(event.path);
+    if (content === undefined || !overwritesOwnWrite(event.path, content)) continue;
+    createContents.delete(event.path);
+    createFacts.delete(event.path);
+    updateContents.set(event.path, content);
+    updates.push(event);
+    recordOutsideWriteOverOwnWrite(event.path);
   }
 
   function resolveDocName(event: RawFileEvent): string {
@@ -1267,6 +1297,15 @@ export function isSelfWrite(filePath: string, hash: string): boolean {
   if (consumeOwnWrite(filePath, hash)) return true;
   writeTracker.delete(filePath);
   return false;
+}
+
+function overwritesOwnWrite(filePath: string, content: string): boolean {
+  if (writeTracker.size === 0) return false;
+  const queue = writeTracker.get(observedPathKey(filePath));
+  const newest = queue?.at(-1);
+  if (queue === undefined || newest === undefined || deletedOwnWrites.has(newest)) return false;
+  const hash = contentHash(content);
+  return queue.every((write) => write.hash !== hash);
 }
 
 function consumeOwnWrite(key: string, hash: string): boolean {

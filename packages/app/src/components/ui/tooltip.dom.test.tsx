@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { act } from 'react';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -87,6 +87,27 @@ describe('Tooltip runtime contracts', () => {
     await Promise.resolve();
 
     expect(screen.getByRole('tooltip').textContent).toBe('Tooltip body');
+  });
+
+  test('Escape dismisses an open tooltip', async () => {
+    const { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } = await import('./tooltip');
+    const user = userEvent.setup();
+
+    render(
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button">Target</button>
+          </TooltipTrigger>
+          <TooltipContent>Tooltip body</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>,
+    );
+
+    await user.hover(screen.getByRole('button', { name: 'Target' }));
+    expect(screen.getByRole('tooltip').textContent).toBe('Tooltip body');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
   });
 
   test.each([

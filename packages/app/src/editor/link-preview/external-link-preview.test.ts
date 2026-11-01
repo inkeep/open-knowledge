@@ -136,12 +136,11 @@ describe('loadLinkPreview — single-flight + abort', () => {
   test('concurrent identical hovers coalesce to a single request', async () => {
     const url = uniqueUrl();
     let resolveFetch!: (r: Response) => void;
-    const fetchMock = vi.fn(
-      () =>
-        new Promise<Response>((resolve) => {
-          resolveFetch = resolve;
-        }),
-    );
+    const fetchMock = vi.fn(() => {
+      const { promise, resolve } = Promise.withResolvers<Response>();
+      resolveFetch = resolve;
+      return promise;
+    });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const first = loadLinkPreview(url);

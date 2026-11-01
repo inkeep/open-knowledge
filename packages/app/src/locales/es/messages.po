@@ -94,8 +94,8 @@ msgstr "(desacoplado)"
 msgid "(inline)"
 msgstr "(en línea)"
 
-msgid "(no id)"
-msgstr "(sin id)"
+msgid "(no name)"
+msgstr "(sin nombre)"
 
 msgid "(opens in new tab)"
 msgstr "(se abre en una pestaña nueva)"
@@ -892,11 +892,11 @@ msgstr "<0>{cliCommand}</0> no funcionará en terminales externas hasta que lo a
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> no se puede combinar aquí. Elige la versión que quieres conservar."
 
-msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
-msgstr "<0>Espejo: elige una fuente.</0> Define <1>src</1> + <2>anchor</2> desde el panel de propiedades para apuntar a un <3><MirrorSource></3> de otro sitio."
+msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
+msgstr "<0>Espejo: elige una fuente.</0> Define <1>src</1> + <2>name</2> desde el panel de propiedades para apuntar a un <3><MirrorSource></3> de otro sitio."
 
-msgid "<0>Mirror anchor not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
-msgstr "<0>No se encontró el ancla del espejo.</0> No existe ningún <1>{mirrorSourceTag}</1> en <2>{src}</2>."
+msgid "<0>Mirror name not found.</0> No <1>{mirrorSourceTag}</1> exists in <2>{src}</2>."
+msgstr "<0>No se encontró el nombre del espejo.</0> No existe ningún <1>{mirrorSourceTag}</1> en <2>{src}</2>."
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>Se eliminó la fuente del espejo.</0> El documento <1>{src}</1> ya no está disponible."
@@ -1084,6 +1084,9 @@ msgstr "Un título, una descripción, etiquetas: cualquier cosa que describa est
 msgid "A token added here only applies to HTTPS remotes, and this project's remote doesn't use HTTPS."
 msgstr "Un token añadido aquí solo se aplica a remotos HTTPS, y el remoto de este proyecto no usa HTTPS."
 
+msgid "A variable needs two braces on each side, such as {filenameVariable}."
+msgstr "Una variable necesita dos llaves a cada lado, como {filenameVariable}."
+
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "Ya existe una carpeta de worktree para {shareBranch}."
 
@@ -1126,6 +1129,9 @@ msgstr "Aceptar la versión entrante para el conflicto {0}"
 
 msgid "Accept their deletion"
 msgstr "Aceptar su eliminación"
+
+msgid "Access to the saved API key timed out. Wait for the credential store operation to finish, then try again."
+msgstr "Se agotó el tiempo de acceso a la clave API guardada. Espera a que termine la operación del almacén de credenciales y vuelve a intentarlo."
 
 msgid "Access token"
 msgstr "Token de acceso"
@@ -2444,8 +2450,8 @@ msgstr "Contraer Preguntar a la IA"
 msgid "Collapse graph"
 msgstr "Contraer el grafo"
 
-msgid "Collapsible content block (Notion-style toggle)."
-msgstr "Bloque de contenido plegable (alternador estilo Notion)."
+msgid "Collapsible block, the same as Accordion."
+msgstr "Bloque plegable, igual que Accordion."
 
 msgid "Collapsible section with a clickable summary."
 msgstr "Sección plegable con un resumen en el que se puede hacer clic."
@@ -2671,9 +2677,6 @@ msgstr "Directorio de contenido"
 msgid "Content directory must be inside the project"
 msgstr "El directorio de contenido debe estar dentro del proyecto"
 
-msgid "Content root"
-msgstr "Raíz del contenido"
-
 msgid "Content rules"
 msgstr "Reglas de contenido"
 
@@ -2814,6 +2817,12 @@ msgstr "Copiando"
 
 msgid "Copying..."
 msgstr "Copiando..."
+
+msgid "Could not access the saved API key. Check the local credential files, then try again."
+msgstr "No se pudo acceder a la clave API guardada. Revisa los archivos de credenciales locales y vuelve a intentarlo."
+
+msgid "Could not access the saved API key. Unlock your system credential store or check the local credential files, then try again."
+msgstr "No se pudo acceder a la clave API guardada. Desbloquea el almacén de credenciales del sistema o revisa los archivos de credenciales locales y vuelve a intentarlo."
 
 msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
 msgstr "No se pudieron comprobar los enlaces simbólicos de {shareBranch}, así que no se cambió. Vuelve a intentarlo; si sigue fallando, comprueba que Git esté instalado y que la carpeta del proyecto se pueda leer."
@@ -3115,8 +3124,8 @@ msgstr "No se pudo conectar con {displayName}. Inténtalo de nuevo más tarde."
 msgid "Couldn't reach {displayName} — try again?"
 msgstr "No se pudo conectar con {displayName}. ¿Reintentar?"
 
-msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-msgstr "No se pudo contactar con el servidor de colaboración: {errorDetail}. Prueba <0>{cliCommand} status</0> o revisa <1>.ok/local/last-spawn-error.log</1>."
+msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or collect logs with <1>{cliCommand} diagnose bundle</1>."
+msgstr "No se pudo contactar con el servidor de colaboración: {errorDetail}. Prueba <0>{cliCommand} status</0> o recopila los registros con <1>{cliCommand} diagnose bundle</1>."
 
 msgid "Couldn't reach GitHub. Try again?"
 msgstr "No se pudo contactar con GitHub. ¿Reintentar?"
@@ -3307,6 +3316,18 @@ msgstr "No se pudo actualizar {subRoot}: {0}"
 msgid "Couldn't update from {0}: {1}"
 msgstr "No se pudo actualizar desde {0}: {1}"
 
+msgid "Couldn't upload the file. The {settingKey} value in {configFile} can't be used. Fix it in that file."
+msgstr "No se pudo subir el archivo. El valor de {settingKey} en {configFile} no se puede usar. Corrígelo en ese archivo."
+
+msgid "Couldn't upload the file. The attachment folder has a {open} or {close} without its pair. Fix it under Attachments in Settings."
+msgstr "No se pudo subir el archivo. La carpeta de adjuntos tiene un {open} o {close} sin su par. Corrígela en Adjuntos, en Ajustes."
+
+msgid "Couldn't upload the file. The attachment folder uses {filenameVariable} more than once in one folder name. Fix it under Attachments in Settings."
+msgstr "No se pudo subir el archivo. La carpeta de adjuntos usa {filenameVariable} más de una vez en un nombre de carpeta. Corrígela en Adjuntos, en Ajustes."
+
+msgid "Couldn't upload the file. The attachment folder uses the unknown variable {variables}. Fix it under Attachments in Settings."
+msgstr "No se pudo subir el archivo. La carpeta de adjuntos usa la variable desconocida {variables}. Corrígela en Adjuntos, en Ajustes."
+
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
 msgstr "No se pudo verificar que {displayName} ({bin}) esté disponible, así que este es un shell normal. Aún puedes ejecutar {bin} tú mismo."
 
@@ -3486,9 +3507,6 @@ msgstr "Fecha"
 
 msgid "Default"
 msgstr "Predeterminado"
-
-msgid "Default location for new attachments"
-msgstr "Ubicación por defecto de los adjuntos nuevos"
 
 msgid "Default properties"
 msgstr "Propiedades por defecto"
@@ -3783,6 +3801,9 @@ msgstr "Estadísticas del documento"
 msgid "Document structure"
 msgstr "Estructura del documento"
 
+msgid "Document suggestions"
+msgstr "Sugerencias de documentos"
+
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "Documenta la arquitectura de este repositorio: crea una página general que enlace a una página por cada módulo principal describiendo sus responsabilidades y sus puntos de entrada."
 
@@ -3895,9 +3916,6 @@ msgstr "Se duplicó en \"{0}\""
 msgid "Duplicates dropped"
 msgstr "Duplicados descartados"
 
-msgid "e.g. assets/uploads"
-msgstr "p. ej. assets/uploads"
-
 msgid "e.g. drafts/ or *.draft.md"
 msgstr "p. ej. drafts/ o *.draft.md"
 
@@ -3909,6 +3927,9 @@ msgstr "p. ej. Cambiar de proyecto mientras se sincronizaba"
 
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr "p. ej. El editor se quedó bloqueado al pegar una tabla grande"
+
+msgid "Each {open} needs a matching {close}."
+msgstr "Cada {open} necesita su {close} correspondiente."
 
 #. Says what symlinking two skill folders together buys the user, before any button names it
 msgid "Each AI tool reads skills from its own folder. Point one folder at another and both tools see the same skills — add a skill once instead of copying it into every tool."
@@ -4266,6 +4287,9 @@ msgstr "todo lo que hay en las carpetas {0}/ dentro de {1}/"
 
 msgid "everything under any {0}/ folder"
 msgstr "todo lo que hay en cualquier carpeta {0}/"
+
+msgid "Example: a file added to <0>{exampleDoc}</0> is saved as <1>{exampleFile}</1>"
+msgstr "Ejemplo: un archivo añadido a <0>{exampleDoc}</0> se guarda en <1>{exampleFile}</1>"
 
 msgid "Excalidraw board"
 msgstr "Pizarra de Excalidraw"
@@ -4751,9 +4775,6 @@ msgstr "Fijo"
 msgid "Fixed {total, plural, one {# file} other {# files}}."
 msgstr "{total, plural, one {Se corrigió # archivo} many {Se corrigieron # archivos} other {Se corrigieron # archivos}}."
 
-msgid "Fixed folder in content root"
-msgstr "Carpeta fija en la raíz del contenido"
-
 msgid "Fixed port number"
 msgstr "Número de puerto fijo"
 
@@ -4789,6 +4810,12 @@ msgstr "Nombre de la carpeta"
 
 msgid "Folder name: {detail}"
 msgstr "Nombre de la carpeta: {detail}"
+
+msgid "Folder names cannot contain {reserved}."
+msgstr "Los nombres de carpeta no pueden contener {reserved}."
+
+msgid "Folder path must start with {documentPrefix} or {rootPrefix} and cannot contain {parentFolder}"
+msgstr "La ruta de la carpeta debe empezar con {documentPrefix} o {rootPrefix} y no puede contener {parentFolder}"
 
 msgid "Folder properties"
 msgstr "Propiedades de la carpeta"
@@ -5517,6 +5544,9 @@ msgstr "Fórmula en línea"
 
 msgid "Inline Math Properties"
 msgstr "Propiedades de la fórmula en línea"
+
+msgid "Inline row for a downloadable file. Drag-drop also works."
+msgstr "Fila en línea para un archivo descargable. También funciona arrastrar y soltar."
 
 msgid "Input"
 msgstr "Entrada"
@@ -6276,6 +6306,9 @@ msgstr "Origen del espejo <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "Origen del espejo <0>api-spec</0>"
 
+msgid "Mirror source names"
+msgstr "Nombres de orígenes del espejo"
+
 msgid "Missing"
 msgstr "Ausente"
 
@@ -6903,6 +6936,12 @@ msgstr "Ningún repositorio coincide."
 msgid "No matching worktrees or branches."
 msgstr "Ningún worktree ni rama coincide."
 
+msgid "No Mirror Source block in {docName} matches the text in this field. Clear it to see them all."
+msgstr "Ningún bloque de origen del espejo en {docName} coincide con el texto de este campo. Vacíalo para verlos todos."
+
+msgid "No Mirror Source blocks in {docName}"
+msgstr "No hay bloques de origen del espejo en {docName}"
+
 msgid "No Outgoing"
 msgstr "Sin salientes"
 
@@ -7114,9 +7153,6 @@ msgstr "Nada que confirmar: el árbol de trabajo está limpio."
 
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "No se subió nada. El informe permanece en este equipo hasta que nos lo envíes por correo."
-
-msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
-msgstr "Fila en línea al estilo Notion para un archivo descargable. También funciona arrastrar y soltar."
 
 msgid "Number"
 msgstr "Número"
@@ -8589,6 +8625,12 @@ msgstr "Quitar la selección"
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "Eliminar la carpeta <0>.git</0> superior"
 
+msgid "Remove the slash at the end of the path."
+msgstr "Quita la barra del final de la ruta."
+
+msgid "Remove the spaces at the start or end of the path."
+msgstr "Quita los espacios al principio o al final de la ruta."
+
 msgid "Removed"
 msgstr "Eliminado"
 
@@ -9019,9 +9061,6 @@ msgstr "Ejecutando la auditoría del proyecto"
 msgid "Runs a shell command"
 msgstr "Ejecuta un comando de shell"
 
-msgid "Same folder as current file"
-msgstr "La misma carpeta que el archivo actual"
-
 msgid "Sample image"
 msgstr "Imagen de ejemplo"
 
@@ -9054,6 +9093,9 @@ msgstr "Guardado en la carpeta de habilidades de este proyecto (p. ej. <0>.agent
 
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "Guardado en tu carpeta global de habilidades (p. ej. <0>~/.agents/skills</0>)."
+
+msgid "Saved keys conflict. Enter a replacement key for this project and endpoint to use instead."
+msgstr "Las claves guardadas entran en conflicto. Introduce una clave de reemplazo para este proyecto y endpoint."
 
 msgid "Saved themes couldn’t load. The last available theme list is still shown."
 msgstr "No se pudieron cargar los temas guardados. Se sigue mostrando la última lista de temas disponible."
@@ -9382,8 +9424,8 @@ msgstr "Enviado"
 msgid "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
 msgstr "Se envía en privado al equipo de OpenKnowledge, junto con tu nota y la versión de la aplicación. Nunca se publica."
 
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
-msgstr "Se envía a <0>{endpointHost}</0> para generar los embeddings de tu contenido. Se guarda solo en este equipo (en <1>{secretsPath}</1>), nunca en el proyecto."
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored outside the project."
+msgstr "Se envía a <0>{endpointHost}</0> para generar los embeddings de tu contenido. Se guarda fuera del proyecto."
 
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."
 msgstr "Se envió, pero no se pudieron marcar los comentarios como hechos: siguen pendientes de envío."
@@ -9463,8 +9505,8 @@ msgstr "Configurar las integraciones de OpenKnowledge…"
 msgid "Set up syncing"
 msgstr "Configurar la sincronización"
 
-msgid "Set where pasted and dropped files are stored for this project."
-msgstr "Define dónde se guardan en este proyecto los archivos pegados y soltados."
+msgid "Set where pasted and dropped files are stored."
+msgstr "Define dónde se guardan los archivos pegados y soltados."
 
 msgid "Setting up"
 msgstr "Configurando"
@@ -9731,6 +9773,9 @@ msgstr "Iniciando sesión en {agentName}…"
 
 msgid "Single page"
 msgstr "Página única"
+
+msgid "size limit"
+msgstr "límite de tamaño"
 
 msgid "skill \"{0}\""
 msgstr "habilidad \"{0}\""
@@ -10114,9 +10159,6 @@ msgstr "subagentes"
 
 msgid "Subfolder name"
 msgstr "Nombre de la subcarpeta"
-
-msgid "Subfolder under current folder"
-msgstr "Subcarpeta dentro de la carpeta actual"
 
 msgid "Subscribe"
 msgstr "Suscribirse"
@@ -10717,6 +10759,9 @@ msgstr "Al token guardado le faltan los permisos que este host necesita para hac
 msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
 msgstr "El modo de sincronización con el que empiezan tus compañeros la primera vez que abren este proyecto. Se guarda en los ajustes de OpenKnowledge del proyecto, así que solo les llega cuando Compartir configuración, más abajo, está en Compartido."
 
+msgid "The system credential store is unavailable. This key is stored in a file with restricted permissions outside the project."
+msgstr "El almacén de credenciales del sistema no está disponible. Esta clave se guarda en un archivo con permisos restringidos fuera del proyecto."
+
 msgid "The template's filename (without `.md`)."
 msgstr "El nombre de archivo de la plantilla (sin `.md`)."
 
@@ -10907,6 +10952,9 @@ msgstr "Este comentario es sobre toda la propiedad"
 
 msgid "This component changed. Try again."
 msgstr "Este componente ha cambiado. Inténtalo de nuevo."
+
+msgid "This component is too large to render."
+msgstr "Este componente es demasiado grande para mostrarse."
 
 msgid "This component was removed."
 msgstr "Este componente se ha eliminado."
@@ -11530,6 +11578,9 @@ msgstr "Fecha desconocida"
 msgid "Unknown error"
 msgstr "Error desconocido"
 
+msgid "Unknown variable {unknownList}. Available variables: {supportedVariables}."
+msgstr "Variable desconocida {unknownList}. Variables disponibles: {supportedVariables}."
+
 msgid "unlink"
 msgstr "desenlazar"
 
@@ -11699,6 +11750,9 @@ msgstr "Usar {0} para el modo claro activo"
 msgid "Use {editor} version"
 msgstr "Usar la versión de {editor}"
 
+msgid "Use {filenameVariable} at most once in each folder name."
+msgstr "Usa {filenameVariable} como máximo una vez en cada nombre de carpeta."
+
 msgid "Use <0>{copyShortcut}</0> to copy the link below, or open OK in the desktop app."
 msgstr "Usa <0>{copyShortcut}</0> para copiar el enlace de abajo, o abre OK en la aplicación de escritorio."
 
@@ -11737,6 +11791,9 @@ msgstr "Usa solo letras minúsculas, dígitos y <0>-</0>."
 
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "Usa solo letras minúsculas, números y guiones"
+
+msgid "Use one slash between folder names."
+msgstr "Usa una sola barra entre los nombres de carpeta."
 
 msgid "Use their version"
 msgstr "Usar su versión"
@@ -11964,9 +12021,6 @@ msgstr "Cuando instalas una habilidad publicada, se avisa al directorio de habil
 
 msgid "Where"
 msgstr "Dónde"
-
-msgid "Where newly added attachments are placed."
-msgstr "Dónde se colocan los adjuntos recién añadidos."
 
 msgid "Where should it live?"
 msgstr "¿Dónde debería vivir?"

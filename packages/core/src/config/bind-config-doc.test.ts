@@ -117,6 +117,20 @@ describe('bindConfigDoc — current()', () => {
 });
 
 describe('bindConfigDoc — patch()', () => {
+  test('rejects malformed private-origin patches without changing the synced document', () => {
+    const binding = bindSyncedConfigDoc('user');
+    const origin = 'https://skills.example.com';
+    expect(binding.patch({ skills: { trustedPrivateOrigins: [origin] } }).ok).toBe(true);
+    const before = doc.getText('source').toString();
+    expect(
+      binding.patch({ skills: { trustedPrivateOrigins: [origin, `${origin}/`] } }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: 'SCHEMA_INVALID' },
+    });
+    expect(doc.getText('source').toString()).toBe(before);
+    binding.dispose();
+  });
   test('allows removing providers and hosts without discarding sibling declarations', () => {
     const binding = bindSyncedConfigDoc('user');
     expect(

@@ -1725,12 +1725,11 @@ describe('TerminalPanel', () => {
     Object.defineProperty(globalThis.navigator, 'clipboard', {
       configurable: true,
       value: {
-        readText: vi.fn(
-          () =>
-            new Promise<string>((resolve) => {
-              resolveClipboard = resolve;
-            }),
-        ),
+        readText: vi.fn(() => {
+          const { promise, resolve } = Promise.withResolvers<string>();
+          resolveClipboard = resolve;
+          return promise;
+        }),
         writeText: vi.fn(async () => {}),
       },
     });
@@ -2227,10 +2226,8 @@ describe('TerminalPanel', () => {
   });
 
   test('reaps a PTY that finishes spawning after the panel has already unmounted', async () => {
-    let resolveCreate: ((r: OkPtyCreateResult) => void) | undefined;
-    const createPromise = new Promise<OkPtyCreateResult>((res) => {
-      resolveCreate = res;
-    });
+    const { promise: createPromise, resolve: resolveCreate } =
+      Promise.withResolvers<OkPtyCreateResult>();
     const kill = vi.fn(async (_id: string) => {});
     const terminal = {
       create: vi.fn(() => createPromise),
@@ -2251,7 +2248,7 @@ describe('TerminalPanel', () => {
 
     act(() => unmount());
     await act(async () => {
-      resolveCreate?.({ ok: true, ptyId: 'pty-late' });
+      resolveCreate({ ok: true, ptyId: 'pty-late' });
       await createPromise;
     });
 
@@ -2260,10 +2257,8 @@ describe('TerminalPanel', () => {
   });
 
   test('reaps a PTY that is mid-start when the panel unmounts', async () => {
-    let resolveAdopt: ((r: OkPtyAdoptResult) => void) | undefined;
-    const adoptPromise = new Promise<OkPtyAdoptResult>((res) => {
-      resolveAdopt = res;
-    });
+    const { promise: adoptPromise, resolve: resolveAdopt } =
+      Promise.withResolvers<OkPtyAdoptResult>();
     const { bridge, terminal } = makeBridge(
       { ok: true, ptyId: 'pty-1' },
       WIRED,
@@ -2276,7 +2271,7 @@ describe('TerminalPanel', () => {
 
     act(() => unmount());
     await act(async () => {
-      resolveAdopt?.({ ok: true, replay: '' });
+      resolveAdopt({ ok: true, replay: '' });
       await adoptPromise;
     });
 
@@ -2411,11 +2406,8 @@ describe('TerminalPanel', () => {
   });
 
   test('surfaces a restartable error state when create() rejects (startup failure, no silent dead-end)', async () => {
-    let resolveCreate: (() => void) | undefined;
     let createCalls = 0;
-    const createGate = new Promise<void>((res) => {
-      resolveCreate = res;
-    });
+    const { promise: createGate, resolve: resolveCreate } = Promise.withResolvers<void>();
     const terminal = {
       create: vi.fn(async () => {
         createCalls += 1;
@@ -2451,7 +2443,7 @@ describe('TerminalPanel', () => {
     fireEvent.click(restart);
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(2));
     await act(async () => {
-      resolveCreate?.();
+      resolveCreate();
       await Promise.resolve();
     });
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
@@ -2514,14 +2506,11 @@ describe('TerminalPanel', () => {
 
   test('a throw after the adopted shell is live keeps the session running instead of reporting never-started', async () => {
     let releaseAdopt: ((r: OkPtyAdoptResult) => void) | undefined;
-    const h = makeBridge(
-      { ok: true, ptyId: 'unused' },
-      WIRED,
-      async () =>
-        await new Promise<OkPtyAdoptResult>((resolve) => {
-          releaseAdopt = resolve;
-        }),
-    );
+    const h = makeBridge({ ok: true, ptyId: 'unused' }, WIRED, () => {
+      const { promise, resolve } = Promise.withResolvers<OkPtyAdoptResult>();
+      releaseAdopt = resolve;
+      return promise;
+    });
     render(<TerminalPanel bridge={h.bridge} adoptPtyId="surv-1" />);
     await waitFor(() => expect(h.terminal.adopt).toHaveBeenCalledWith('surv-1'));
     lastTerm?.write.mockImplementationOnce(() => {

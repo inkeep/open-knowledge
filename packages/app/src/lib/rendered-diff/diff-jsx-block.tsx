@@ -1,4 +1,4 @@
-import { useLingui } from '@lingui/react/macro';
+import { Trans, useLingui } from '@lingui/react/macro';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import {
@@ -16,10 +16,10 @@ import { LiveDocAccessContext } from '@/editor/components/live-doc-pool';
 import { getEditorDocName } from '@/editor/extensions/doc-context';
 import { JsxComponent } from '@/editor/extensions/jsx-component';
 import {
-  extractPrimitiveProps,
   JSX_WRAPPER_CLASS,
   jsxChildrenClassName,
   jsxWrapperDataAttributes,
+  prepareJsxProps,
   reportJsxRenderFailure,
   resolveJsxRenderProps,
   resolveJsxSourceDocName,
@@ -30,6 +30,7 @@ import {
   shouldRenderPlaceholder,
 } from '@/editor/registry/resolve-descriptor-placeholder';
 import type { JsxComponentDescriptor } from '@/editor/registry/types';
+import { authoredText } from '@/editor/utils/authored-text';
 import { reconstructSource } from '@/editor/utils/reconstruct-source';
 
 export interface RenderedJsxBlock {
@@ -51,9 +52,9 @@ function opensLiveDocument(
 }
 
 function referenceTarget(renderProps: Record<string, unknown>): string {
-  const src = typeof renderProps.src === 'string' ? renderProps.src : '';
-  const anchor = typeof renderProps.anchor === 'string' ? renderProps.anchor : '';
-  return anchor ? `${src}#${anchor}` : src;
+  const src = authoredText(renderProps.src);
+  const name = authoredText(renderProps.name);
+  return name ? `${src}#${name}` : src;
 }
 
 function diffRenderProps(
@@ -133,7 +134,17 @@ function DiffJsxBlock({
     );
   }
 
-  const primitiveProps = extractPrimitiveProps(node.attrs, descriptor.reactNodePropNames);
+  const { props: primitiveProps, error: propsError } = prepareJsxProps(node.attrs, descriptor);
+  if (propsError) {
+    return (
+      <div>
+        <div role="status" className="text-xs text-warning">
+          <Trans>This component is too large to render.</Trans>
+        </div>
+        {children}
+      </div>
+    );
+  }
   const renderProps = resolveJsxRenderProps(descriptor, primitiveProps, docName);
 
   if (

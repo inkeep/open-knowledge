@@ -253,7 +253,9 @@ export type EmitFormat = 'wikiembed' | 'markdown-image';
 export type DedupMode = 'off' | 'same-dir';
 export type DedupUIMode = 'silent' | 'toast' | 'confirm';
 
-export const DEFAULT_ATTACHMENT_FOLDER_PATH = './';
+export const DEFAULT_ATTACHMENT_FOLDER_PATH = './{{filename}}.assets';
+
+export const BESIDE_DOCUMENT_ATTACHMENT_FOLDER_PATH = './';
 
 export const DEFAULT_EMIT_FORMAT: EmitFormat = 'wikiembed';
 

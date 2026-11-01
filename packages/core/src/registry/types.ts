@@ -15,6 +15,7 @@ export interface PropDefBase {
    * byte-identically (precedent #9 untouched).
    */
   omitOnDefault?: boolean;
+  legacyNames?: readonly string[];
 }
 
 export interface PropDefString extends PropDefBase {
@@ -26,6 +27,8 @@ export interface PropDefString extends PropDefBase {
   iconPicker?: boolean;
   colorPicker?: boolean;
   cssLengthInput?: boolean;
+  documentPicker?: boolean;
+  mirrorSourcePicker?: string;
 }
 
 export interface PropDefBoolean extends PropDefBase {

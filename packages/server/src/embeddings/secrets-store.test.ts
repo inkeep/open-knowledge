@@ -14,14 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { parse } from 'yaml';
-import {
-  canonicalProjectKey,
-  clearAllEmbeddingsKeys,
-  describeStoredEmbeddingsKey,
-  FileEmbeddingsBackend,
-  makeLazyEmbeddingsKeyStore,
-  secretsFilePath,
-} from './secrets-store.ts';
+import { canonicalProjectKey, FileEmbeddingsBackend, secretsFilePath } from './secrets-store.ts';
 
 const KEY = 'sk-secret-embeddings-key-1234567890';
 const KEY_2 = 'sk-second-embeddings-key-0987654321';
@@ -153,7 +146,7 @@ describe('file permissions + atomic writes', () => {
   });
 
   test('picks up a key written AFTER the reader was created (re-reads each call)', async () => {
-    const reader = makeLazyEmbeddingsKeyStore(secretsFile);
+    const reader = store();
     expect((await reader.resolveForProject(projectA, CUSTOM)).key).toBeNull();
     await store().setForProject(projectA, CUSTOM, KEY);
     expect((await reader.resolveForProject(projectA, CUSTOM)).key).toBe(KEY);
@@ -183,17 +176,17 @@ describe('clear semantics', () => {
     const s = store();
     await s.setForProject(projectA, CUSTOM, KEY);
     await s.setForProject(projectB, OPENAI, KEY_2);
-    const { touched } = await clearAllEmbeddingsKeys(secretsFile);
+    const { touched } = await s.clearAll();
     expect(touched).toEqual(['file']);
     expect(existsSync(secretsFile)).toBe(false);
-    expect(await clearAllEmbeddingsKeys(secretsFile)).toEqual({ touched: [] });
+    expect(await s.clearAll()).toEqual({ touched: [] });
   });
 });
 
 describe('describe + list + canonicalProjectKey', () => {
   test('describeStoredEmbeddingsKey reports presence + redacted hint, never the key', async () => {
     await store().setForProject(projectA, CUSTOM, KEY);
-    const desc = await describeStoredEmbeddingsKey(projectA, CUSTOM, secretsFile);
+    const desc = await store().describeForProject(projectA, CUSTOM);
     expect(desc.present).toBe(true);
     expect(desc.hint).toBe(KEY.slice(-4));
     expect(JSON.stringify(desc)).not.toContain(KEY);

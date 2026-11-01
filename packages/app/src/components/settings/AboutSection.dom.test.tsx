@@ -443,12 +443,11 @@ describe('AboutSection automatic updates switch', () => {
     });
 
     let resolveStaleRead: (value: unknown) => void = () => {};
-    bridge.state.query.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveStaleRead = resolve;
-        }),
-    );
+    bridge.state.query.mockImplementationOnce(() => {
+      const { promise, resolve } = Promise.withResolvers();
+      resolveStaleRead = resolve;
+      return promise;
+    });
     window.dispatchEvent(new Event('focus'));
     await userEvent.click(toggle);
     await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'));

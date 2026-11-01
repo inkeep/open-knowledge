@@ -10,15 +10,23 @@ export function configureTestGitRepository<T>(
 export function configureTestGitRepository<T>(
   repositoryPath: string,
   executeGit?: (args: readonly string[]) => T,
-): T | void {
-  const args = ['-C', repositoryPath, 'config', '--local', 'maintenance.auto', 'false'];
-  if (executeGit) return executeGit(args);
-  execFileSync('git', args, {
-    env: Object.fromEntries(
-      Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')),
-    ),
-    stdio: 'pipe',
-    timeout: GIT_CONFIG_SPAWN_BUDGET_MS,
-    killSignal: 'SIGKILL',
-  });
+): T | undefined {
+  const args = ['-C', repositoryPath, 'config', '--local'];
+  let result: T | undefined;
+  for (const setting of ['receive.autoGC', 'maintenance.auto']) {
+    const command = [...args, setting, 'false'];
+    if (executeGit) {
+      result = executeGit(command);
+    } else {
+      execFileSync('git', command, {
+        env: Object.fromEntries(
+          Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')),
+        ),
+        stdio: 'pipe',
+        timeout: GIT_CONFIG_SPAWN_BUDGET_MS,
+        killSignal: 'SIGKILL',
+      });
+    }
+  }
+  return result;
 }

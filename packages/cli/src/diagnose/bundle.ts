@@ -17,16 +17,26 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import type { BundleRedaction as SecretScrubEntry } from '@inkeep/open-knowledge-core';
 import {
   ACP_LAUNCH_FAILURE_LOG,
+  okUserHomeDisplayPath,
+  PROJECT_DIAGNOSTIC_FILES,
   REPORT_SIDECAR_BUNDLE_DIR,
   SERVER_CRASH_LOG,
   SERVER_EXIT_LOG,
+  SPAWN_ERROR_LOG,
 } from '@inkeep/open-knowledge-core';
 import {
   DEFAULT_LOGS_MAX_BYTES,
   DEFAULT_SPANS_MAX_BYTES,
+  projectSpawnErrorLogPath,
   resolveConfigPath,
 } from '@inkeep/open-knowledge-core/server';
-import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
+import {
+  logsCurrentPath,
+  logsPreviousPath,
+  spansCurrentPath,
+  spansPreviousPath,
+  withHiddenWindowsConsole,
+} from '@inkeep/open-knowledge-server';
 import { parse as parseYaml } from 'yaml';
 import { ZipFile } from 'yazl';
 import {
@@ -97,6 +107,7 @@ interface BundleManifest {
       enabled: boolean;
       spansMaxBytes: number;
       logsMaxBytes: number;
+      directory: string;
     };
     otlpPushEnabled: boolean;
   };
@@ -159,28 +170,12 @@ export interface WriteBundleOpts {
 const TELEMETRY_REL = ['.ok', 'local', 'telemetry'] as const;
 const LOGS_REL = ['.ok', 'local', 'logs'] as const;
 const LOSS_CAPTURE_REL = ['.ok', 'local', 'loss-capture'] as const;
-const SPANS_CURRENT = 'spans-current.jsonl';
-const SPANS_PREVIOUS = 'spans-prev.jsonl';
-const LOGS_CURRENT = 'server-current.jsonl';
-const LOGS_PREVIOUS = 'server-prev.jsonl';
+const SPANS_CURRENT = PROJECT_DIAGNOSTIC_FILES.spansCurrent;
+const SPANS_PREVIOUS = PROJECT_DIAGNOSTIC_FILES.spansPrevious;
+const LOGS_CURRENT = PROJECT_DIAGNOSTIC_FILES.logsCurrent;
+const LOGS_PREVIOUS = PROJECT_DIAGNOSTIC_FILES.logsPrevious;
 const LOSS_CURRENT = 'loss-current.jsonl';
 const LOSS_PREVIOUS = 'loss-prev.jsonl';
-
-function spansCurrentPath(projectDir: string): string {
-  return join(projectDir, ...TELEMETRY_REL, SPANS_CURRENT);
-}
-
-function spansPreviousPath(projectDir: string): string {
-  return join(projectDir, ...TELEMETRY_REL, SPANS_PREVIOUS);
-}
-
-function logsCurrentPath(projectDir: string): string {
-  return join(projectDir, ...LOGS_REL, LOGS_CURRENT);
-}
-
-function logsPreviousPath(projectDir: string): string {
-  return join(projectDir, ...LOGS_REL, LOGS_PREVIOUS);
-}
 
 function lossCaptureCurrentPath(projectDir: string): string {
   return join(projectDir, ...LOSS_CAPTURE_REL, LOSS_CURRENT);
@@ -191,10 +186,6 @@ function lossCapturePreviousPath(projectDir: string): string {
 }
 
 export const _pathHelpersForTests = {
-  spansCurrentPath,
-  spansPreviousPath,
-  logsCurrentPath,
-  logsPreviousPath,
   lossCaptureCurrentPath,
   lossCapturePreviousPath,
 };
@@ -416,6 +407,20 @@ function stageFileIfPresent(srcPath: string, destPath: string): boolean {
   }
 }
 
+function stageDiagnosticFile(
+  currentPath: string,
+  legacyPath: string,
+  stagingDir: string,
+  entryPath: string,
+): void {
+  const hasCurrent = existsSync(currentPath);
+  stageFileIfPresent(currentPath, join(stagingDir, entryPath));
+  stageFileIfPresent(
+    legacyPath,
+    hasCurrent ? join(stagingDir, 'legacy', entryPath) : join(stagingDir, entryPath),
+  );
+}
+
 function walkStagedFiles(stagingDir: string): string[] {
   const results: string[] = [];
   const recurse = (dir: string): void => {
@@ -501,13 +506,30 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
     mkdirSync(join(stagingDir, 'logs'), { recursive: true });
     mkdirSync(join(stagingDir, 'state'), { recursive: true });
 
-    stageFileIfPresent(spansCurrentPath(projectDir), join(stagingDir, 'telemetry', SPANS_CURRENT));
-    stageFileIfPresent(
-      spansPreviousPath(projectDir),
-      join(stagingDir, 'telemetry', SPANS_PREVIOUS),
+    stageDiagnosticFile(
+      spansCurrentPath(projectDir),
+      join(projectDir, ...TELEMETRY_REL, SPANS_CURRENT),
+      stagingDir,
+      join('telemetry', SPANS_CURRENT),
     );
-    stageFileIfPresent(logsCurrentPath(projectDir), join(stagingDir, 'logs', LOGS_CURRENT));
-    stageFileIfPresent(logsPreviousPath(projectDir), join(stagingDir, 'logs', LOGS_PREVIOUS));
+    stageDiagnosticFile(
+      spansPreviousPath(projectDir),
+      join(projectDir, ...TELEMETRY_REL, SPANS_PREVIOUS),
+      stagingDir,
+      join('telemetry', SPANS_PREVIOUS),
+    );
+    stageDiagnosticFile(
+      logsCurrentPath(projectDir),
+      join(projectDir, ...LOGS_REL, LOGS_CURRENT),
+      stagingDir,
+      join('logs', LOGS_CURRENT),
+    );
+    stageDiagnosticFile(
+      logsPreviousPath(projectDir),
+      join(projectDir, ...LOGS_REL, LOGS_PREVIOUS),
+      stagingDir,
+      join('logs', LOGS_PREVIOUS),
+    );
     for (const userLogPath of opts.userLogFiles ?? []) {
       stageFileIfPresent(userLogPath, join(stagingDir, 'logs', basename(userLogPath)));
     }
@@ -585,9 +607,11 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       join(stagingDir, 'state', LOSS_PREVIOUS),
     );
 
-    stageFileIfPresent(
-      join(lockDir, 'last-spawn-error.log'),
-      join(stagingDir, 'state', 'last-spawn-error.log'),
+    stageDiagnosticFile(
+      projectSpawnErrorLogPath(projectDir),
+      join(lockDir, SPAWN_ERROR_LOG),
+      stagingDir,
+      'state/last-spawn-error.log',
     );
 
     stageFileIfPresent(join(lockDir, SERVER_EXIT_LOG), join(stagingDir, 'state', SERVER_EXIT_LOG));
@@ -645,6 +669,7 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
     const redactApplied = opts.redact === true;
     if (redactApplied) {
       redactStagedBundle({ stagingDir, contentDir });
+      redactStagedBundle({ stagingDir: join(stagingDir, 'legacy'), contentDir });
     }
 
     if (opts.note) {
@@ -685,7 +710,10 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       const lines = shouldCountLines(relPath) ? countLines(absPath) : 0;
       files.push({ path: relPath, bytes, lines });
       totalBytes += bytes;
-      if (relPath.startsWith('telemetry/') || relPath.startsWith('logs/')) {
+      const diagnosticPath = relPath.startsWith('legacy/')
+        ? relPath.slice('legacy/'.length)
+        : relPath;
+      if (diagnosticPath.startsWith('telemetry/') || diagnosticPath.startsWith('logs/')) {
         docNameCount += countDocNameOccurrences(absPath);
       }
     }
@@ -710,7 +738,7 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
         absolutePath: redactApplied ? '<CONTENT_DIR>' : contentDir,
       },
       telemetry: {
-        localSink,
+        localSink: { ...localSink, directory: okUserHomeDisplayPath('logs', 'projects') },
         otlpPushEnabled: isOtlpPushEnabled(),
       },
       redaction,

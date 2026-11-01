@@ -11,12 +11,21 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { MCP_SERVER_NAME } from '@inkeep/open-knowledge-server';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { deinitCommand, runDeinit } from './deinit.ts';
 import { buildManagedServerEntry } from './editors.ts';
 import { ensurePiBridge } from './pi-acp-bridge.ts';
 
-const OWN_ENTRY = buildManagedServerEntry({ mode: 'published' });
+let ownEntry: ReturnType<typeof buildManagedServerEntry>;
+
+beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
+  ownEntry = buildManagedServerEntry({ mode: 'published' });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function write(path: string, content: string): void {
   mkdirSync(dirname(path), { recursive: true });
@@ -34,7 +43,7 @@ function seedProject(home: string = seedHome()): string {
   write(join(dir, '.okignore'), 'secret.md\n');
   write(
     join(dir, '.mcp.json'),
-    `${JSON.stringify({ mcpServers: { mine: { command: 'x' }, [MCP_SERVER_NAME]: OWN_ENTRY } }, null, 2)}\n`,
+    `${JSON.stringify({ mcpServers: { mine: { command: 'x' }, [MCP_SERVER_NAME]: ownEntry } }, null, 2)}\n`,
   );
   write(join(dir, '.claude', 'skills', 'open-knowledge', 'SKILL.md'), '# ok\n');
   write(join(dir, 'notes.md'), '# my notes\n');
@@ -368,7 +377,7 @@ test('keeps project state after incomplete config cleanup so a repaired config c
     const first = await runDeinit(opts);
     expect(first.status).toBe('failed');
     expect(existsSync(join(project, '.ok', 'config.yml'))).toBe(true);
-    write(configPath, JSON.stringify({ mcpServers: { [MCP_SERVER_NAME]: OWN_ENTRY } }));
+    write(configPath, JSON.stringify({ mcpServers: { [MCP_SERVER_NAME]: ownEntry } }));
     const second = await runDeinit(opts);
     expect(second.status).toBe('done');
     expect(existsSync(join(project, '.ok'))).toBe(false);
