@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -61,7 +61,7 @@ function runFixture(specs: string[], { args = [], env = {} }: FixtureRun = {}) {
       },
     },
   );
-  return { ...run, commands: parseWorkflowCommands(run.stdout) };
+  return { ...run, outputDir, commands: parseWorkflowCommands(run.stdout) };
 }
 
 const fullTitleOf = (message: string) => message.split('\n')[0].replace(/^\d+\) /, '');
@@ -188,6 +188,24 @@ describe('an error outside any test', () => {
       expect(run.commands.map(({ command }) => command)).toEqual(['error', 'error']);
       expect(runLevel).toHaveLength(1);
       expect(runLevel[0].message).toContain('worker teardown failed on purpose');
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  test(
+    'is an error when the run timed out though no test failed',
+    () => {
+      const run = runFixture(['hangs'], { args: ['--global-timeout=10000'] });
+      expect(run.signal, run.stderr).toBeNull();
+      expect(run.status, run.stdout).toBe(1);
+      expect(
+        existsSync(path.join(run.outputDir, 'hang-began')),
+        'the hanging test began before the global timeout, so the run had a test result',
+      ).toBe(true);
+      expect(run.commands.map(({ command, properties }) => [command, properties])).toEqual([
+        ['error', {}],
+      ]);
+      expect(run.commands[0].message).not.toBe('');
     },
     TEST_TIMEOUT_MS,
   );

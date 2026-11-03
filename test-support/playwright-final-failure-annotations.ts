@@ -134,7 +134,8 @@ export default class FinalFailureAnnotations {
     for (const test of tests) if (test.outcome() === 'unexpected') this.annotateFailure(test);
     if (result.status === 'passed' || this.runErrors.length === 0) return;
     const noTestRan = tests.every((test) => test.results.length === 0);
-    const level = this.annotated.size > 0 || noTestRan ? 'error' : 'warning';
+    const level =
+      result.status === 'failed' && this.annotated.size === 0 && !noTestRan ? 'warning' : 'error';
     stdout.write(`\n::${level}::${data(this.runErrors.join('\n\n'))}\n`);
   }
 
