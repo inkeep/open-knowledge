@@ -515,7 +515,7 @@ describe('EditorTabs runtime behavior', () => {
     expect(txtTab.getAttribute('title')).toBeNull();
   });
 
-  test.each(['glossary.csv', 'settings.json'])(
+  test.each(['glossary.csv', 'settings.json', 'flow.mmd', 'sequence.mermaid', 'board.excalidraw'])(
     '%s without page metadata keeps its filename across tab and file-menu actions',
     async (docName) => {
       activeDocName = docName;
@@ -529,6 +529,9 @@ describe('EditorTabs runtime behavior', () => {
       await renderEditorTabs();
 
       expect(tabButton(docName).textContent).toBe(docName);
+
+      fireEvent.click(screen.getByRole('button', { name: `Close ${docName}` }));
+      expect.soft(closeTab).toHaveBeenCalledWith(docName);
 
       fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
       expect(screen.getByTestId('file-target-rename-dialog').textContent).toBe(docName);
