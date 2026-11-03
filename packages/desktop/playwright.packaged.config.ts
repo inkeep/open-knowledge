@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import { FINAL_FAILURE_ANNOTATIONS } from '../../test-support/playwright-final-failure-annotations.ts';
 import { ONE_LAUNCH_AND_ITS_READINESS_VERDICT_MS } from './tests/smoke/_helpers/launch-desktop';
 
 /**
@@ -80,7 +81,11 @@ export default defineConfig({
   fullyParallel: false,
   // `json` is what the driver parses for its verdict; `list` keeps the CI log
   // readable. No `html` — nothing uploads a report for this tier.
-  reporter: [['list'], ['json', { outputFile: PACKAGED_JSON_REPORT_PATH }]],
+  reporter: [
+    ['list'],
+    ['json', { outputFile: PACKAGED_JSON_REPORT_PATH }],
+    ...(process.env.CI ? [[FINAL_FAILURE_ANNOTATIONS] as const] : []),
+  ],
   use: {
     trace: 'retain-on-failure',
   },

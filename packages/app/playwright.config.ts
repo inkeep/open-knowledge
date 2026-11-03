@@ -1,5 +1,6 @@
 import { availableParallelism } from 'node:os';
 import { defineConfig } from '@playwright/test';
+import { FINAL_FAILURE_ANNOTATIONS } from '../../test-support/playwright-final-failure-annotations.ts';
 import { SETUP_NON_RESULT_REPORTER } from './tests/stress/_helpers/setup-non-result-reporter.ts';
 
 /**
@@ -134,7 +135,7 @@ export default defineConfig({
     [SETUP_NON_RESULT_REPORTER],
     ...(isCI
       ? [
-          ['github'] as const,
+          [FINAL_FAILURE_ANNOTATIONS] as const,
           ['json', { outputFile: 'playwright-report-json/results.json' }] as const,
         ]
       : []),
