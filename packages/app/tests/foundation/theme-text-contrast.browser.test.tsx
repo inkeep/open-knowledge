@@ -464,6 +464,7 @@ describe('rendered theme text contrast', () => {
         `contrast-${theme.id}.mmd`,
         '%% note\ngraph TD\nA[Ready] --> B[Ship]\n',
       );
+      disposers.push(() => evictCmEditor(`contrast-${theme.id}.mmd`));
       const { container } = mount(
         theme,
         <>

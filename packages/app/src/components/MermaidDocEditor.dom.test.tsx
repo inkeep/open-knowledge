@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { FULL_PAGE_CM_HOST_SELECTORS } from '@/editor/document-scrollports';
+import { evictCmEditor } from '@/editor/editor-cache';
 import {
   getFullPageCmEntryForDoc,
   getMarkdownSourceViewForDoc,
@@ -43,6 +44,7 @@ function mountMermaidDocEditor(isSourceMode: boolean): {
     awareness,
     on() {},
     off() {},
+    destroy() {},
   } as unknown as HocuspocusProvider;
   const { container, unmount } = render(
     <MermaidDocEditor docName={DOC_NAME} provider={provider} isSourceMode={isSourceMode} />,
@@ -59,6 +61,7 @@ function mountMermaidDocEditor(isSourceMode: boolean): {
 
 afterEach(() => {
   cleanup();
+  evictCmEditor(DOC_NAME);
   const entry = getFullPageCmEntryForDoc(DOC_NAME);
   if (entry) unregisterFullPageCmView(DOC_NAME, entry.view);
 });

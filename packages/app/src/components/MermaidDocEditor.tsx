@@ -5,19 +5,23 @@
  */
 
 import { syntaxHighlighting } from '@codemirror/language';
-import { EditorState } from '@codemirror/state';
+import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { useLingui } from '@lingui/react/macro';
 import { basicSetup } from 'codemirror';
 import { mermaid } from 'codemirror-lang-mermaid';
 import { useTheme } from 'next-themes';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { yCollab } from 'y-codemirror.next';
 import type * as Y from 'yjs';
-import { codeMirrorContentAttributes } from '@/editor/code-mirror-content-attributes';
+import {
+  codeMirrorContentAttributes,
+  relabelCodeMirrorContent,
+} from '@/editor/code-mirror-content-attributes';
 import { propEditorHighlight } from '@/editor/components/CodeMirrorPropInput';
 import { type MermaidSourceBinding, MermaidView } from '@/editor/components/Mermaid';
+import { type CmCacheEntry, mountCmEditor, parkCmEditor } from '@/editor/editor-cache';
 import { okCmTheme } from '@/editor/extensions/cm-theme';
 import { registerFullPageCmView, unregisterFullPageCmView } from '@/editor/full-page-cm-views';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
@@ -32,6 +36,18 @@ const lightTheme = okCmTheme({
   dark: false,
   background: 'var(--background)',
   gutterBackground: 'var(--muted)',
+});
+
+const lastScrollSnapshots = new WeakMap<
+  EditorView,
+  ReturnType<EditorView['scrollSnapshot']> | undefined
+>();
+
+const mapScrollSnapshotThroughEdits = EditorView.updateListener.of((update) => {
+  const snapshot = lastScrollSnapshots.get(update.view);
+  if (snapshot && update.docChanged) {
+    lastScrollSnapshots.set(update.view, snapshot.map(update.changes));
+  }
 });
 
 export function replaceYText(ytext: Y.Text, next: string, origin?: unknown): void {
@@ -69,34 +85,85 @@ function MermaidSourcePane({
   undoManager: Y.UndoManager;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const cmEntryRef = useRef<CmCacheEntry | null>(null);
   const { resolvedTheme } = useTheme();
+  const theme = resolvedTheme === 'dark' ? darkTheme : lightTheme;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: theme and content label reconfigure the live view in the effects below
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const entry = mountCmEditor({
+      docName,
+      container,
+      sizeStats: { viewCount: 0, bytes: ytext.length },
+      factory: (parent) => {
+        const themeCompartment = new Compartment();
+        const view = new EditorView({
+          state: EditorState.create({
+            doc: ytext.toString(),
+            extensions: [
+              codeMirrorContentAttributes(contentLabel),
+              basicSetup,
+              yCollab(ytext, provider.awareness, { undoManager }),
+              mermaid(),
+              syntaxHighlighting(propEditorHighlight),
+              EditorView.lineWrapping,
+              EditorView.theme({ '&': { height: '100%' } }),
+              mapScrollSnapshotThroughEdits,
+              themeCompartment.of(theme),
+            ],
+          }),
+          parent,
+        });
+        view.scrollDOM.addEventListener(
+          'scroll',
+          () => {
+            if (view.scrollDOM.clientHeight > 0) {
+              lastScrollSnapshots.set(view, view.scrollSnapshot());
+            }
+          },
+          { passive: true },
+        );
+        return {
+          view,
+          ydoc: provider.document,
+          ytext,
+          provider,
+          themeCompartment,
+          wordWrapCompartment: new Compartment(),
+          placeholderCompartment: new Compartment(),
+          lintCompartment: new Compartment(),
+        };
+      },
+    });
+    const lastScroll = lastScrollSnapshots.get(entry.view);
+    if (lastScroll) entry.view.dispatch({ effects: lastScroll });
+    cmEntryRef.current = entry;
+    registerFullPageCmView(docName, entry.view, 'mermaidDocEditor');
+    return () => {
+      cmEntryRef.current = null;
+      unregisterFullPageCmView(docName, entry.view);
+      parkCmEditor(entry);
+    };
+  }, [docName, ytext, provider, undoManager]);
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const theme = resolvedTheme === 'dark' ? darkTheme : lightTheme;
-    const view = new EditorView({
-      state: EditorState.create({
-        doc: ytext.toString(),
-        extensions: [
-          codeMirrorContentAttributes(contentLabel),
-          basicSetup,
-          yCollab(ytext, provider.awareness, { undoManager }),
-          mermaid(),
-          syntaxHighlighting(propEditorHighlight),
-          EditorView.lineWrapping,
-          EditorView.theme({ '&': { height: '100%' } }),
-          theme,
-        ],
-      }),
-      parent: el,
-    });
-    registerFullPageCmView(docName, view, 'mermaidDocEditor');
-    return () => {
-      unregisterFullPageCmView(docName, view);
-      view.destroy();
-    };
-  }, [docName, ytext, provider, resolvedTheme, undoManager, contentLabel]);
+    const entry = cmEntryRef.current;
+    if (entry?.hadFocus) entry.view.focus();
+  }, []);
+
+  useLayoutEffect(() => {
+    const entry = cmEntryRef.current;
+    if (!entry) return;
+    entry.view.dispatch({ effects: entry.themeCompartment.reconfigure(theme) });
+  }, [theme]);
+
+  useLayoutEffect(() => {
+    const entry = cmEntryRef.current;
+    if (!entry) return;
+    relabelCodeMirrorContent(entry.view, contentLabel);
+  }, [contentLabel]);
 
   return <div ref={containerRef} className="h-full min-h-0 overflow-auto" />;
 }
