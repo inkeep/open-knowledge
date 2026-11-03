@@ -110,7 +110,7 @@ overrides:
   'nanoid@3': ~3.3.18
   'nanoid@4': ~5.1.16
   'nanoid@5': ~5.1.16
-  # `next` is floored at ~16.3.x, the first line on which Next type-checks
+  # `next` must stay on 16.3 or later, the first line on which Next type-checks
   # through the project-local `tsc` CLI instead of the JavaScript compiler API
   # that TypeScript 7 no longer ships. A 16.2.x build under TypeScript 7 does not
   # merely fail: it shells out an unsolicited `pnpm add -D typescript` inside the
@@ -118,7 +118,7 @@ overrides:
   # opaque worker error, and `ignoreBuildErrors` does not suppress it. So this
   # floor moves in lockstep with the compiler, never after it. From here the line
   # is security-only again -- a bare `^16` caret would float to the next minor.
-  'next@16': ~16.3.8
+  'next@16': ~16.4.3 # GHSA-2464-fhr4-w9xw + GHSA-673q-mjm6-r5xr (unauthenticated RCE, fixed in 16.4.1)
   'postcss@8': ~8.5.23
   'sharp@0.34': ~0.35.0
   'tar@7': ~7.5.21

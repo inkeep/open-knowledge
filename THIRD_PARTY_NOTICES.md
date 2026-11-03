@@ -5950,7 +5950,7 @@ Homepage: https://github.com/jsdom/whatwg-mimetype
 
 _(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
 
-### `ws@8.21.0`
+### `ws@8.22.0`
 Homepage: https://github.com/websockets/ws
 
 Copyright (c) 2011 Einar Otto Stangvik <einaros@gmail.com> Copyright (c) 2013 Arnout Kazemier and contributors Copyright (c) 2016 Luigi Pinca and contributors
@@ -6365,7 +6365,7 @@ Homepage: https://github.com/isaacs/yallist
 
 Copyright (c) Isaac Z. Schlueter and Contributors
 
-### `yaml@2.9.0`
+### `yaml@2.9.1`
 Homepage: https://eemeli.org/yaml/
 
 Copyright Eemeli Aro <eemeli@gmail.com>
