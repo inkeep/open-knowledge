@@ -11,7 +11,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { getMachineId } from '@inkeep/open-knowledge-server';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest';
 import { failedOpenHolder, promptHolderStop } from '../../src/main/holder-stop-prompt.ts';
 import { resolveLocalOpCliInvocation } from '../../src/main/local-op-cli-invocation.ts';
 import { breakServerLockHeldBy } from '../../src/main/server-lock-break.ts';
@@ -2848,7 +2848,11 @@ describe('WindowManager', () => {
       };
 
       function enableSyncTimers() {
+        let now = Date.now();
+        const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+        onTestFinished(() => clock.mockRestore());
         env.deps.setTimeout = (cb: () => void, _ms: number) => {
+          now++;
           cb();
           return null;
         };
