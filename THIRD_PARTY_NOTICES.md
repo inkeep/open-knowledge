@@ -864,6 +864,11 @@ Homepage: https://github.com/web-platform-dx/baseline-browser-mapping
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
+### `baseline-browser-mapping@2.11.32`
+Homepage: https://github.com/web-platform-dx/baseline-browser-mapping
+
+_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
+
 ### `before-after-hook@4.0.0`
 Homepage: https://github.com/gr2m/before-after-hook
 
@@ -1553,11 +1558,6 @@ Copyright 2024 Justin Ridgewell <justin@ridgewell.name>
 Homepage: https://github.com/jridgewell/resolve-uri
 
 Copyright 2019 Justin Ridgewell <jridgewell@google.com>
-
-### `@jridgewell/sourcemap-codec@1.5.5`
-Homepage: https://github.com/jridgewell/sourcemaps/tree/main/packages/sourcemap-codec
-
-Copyright 2024 Justin Ridgewell <justin@ridgewell.name>
 
 ### `@jridgewell/sourcemap-codec@1.6.0`
 Homepage: https://github.com/jridgewell/sourcemaps/tree/main/packages/sourcemap-codec
@@ -2879,6 +2879,11 @@ Homepage: https://github.com/micromatch/braces
 Copyright (c) 2014-present, Jon Schlinkert.
 
 ### `browserslist@4.28.6`
+Homepage: https://github.com/browserslist/browserslist
+
+Copyright 2014 Andrey Sitnik <andrey@sitnik.es> and other contributors
+
+### `browserslist@4.29.4`
 Homepage: https://github.com/browserslist/browserslist
 
 Copyright 2014 Andrey Sitnik <andrey@sitnik.es> and other contributors
@@ -4679,6 +4684,11 @@ Homepage: https://github.com/chicoxyzzy/node-releases
 
 Copyright (c) 2017 Sergey Rubanov (https://github.com/chicoxyzzy)
 
+### `node-releases@2.0.60`
+Homepage: https://github.com/chicoxyzzy/node-releases
+
+Copyright (c) 2017 Sergey Rubanov (https://github.com/chicoxyzzy)
+
 ### `normalize-path@3.0.0`
 Homepage: https://github.com/jonschlinkert/normalize-path
 
@@ -5850,6 +5860,11 @@ Homepage: https://github.com/browserslist/update-db
 
 Copyright 2022 Andrey Sitnik <andrey@sitnik.ru> and other contributors
 
+### `update-browserslist-db@1.3.4`
+Homepage: https://github.com/browserslist/update-db
+
+Copyright 2022 Andrey Sitnik <andrey@sitnik.es> and other contributors
+
 ### `use-callback-ref@1.3.3`
 Homepage: https://github.com/theKashey/use-callback-ref/
 
@@ -6225,6 +6240,11 @@ Homepage: https://github.com/mapbox/delaunator
 Copyright (c) 2026, Mapbox
 
 ### `electron-to-chromium@1.5.389`
+Homepage: https://github.com/Kilian/electron-to-chromium
+
+Copyright 2018 Kilian Valkhof
+
+### `electron-to-chromium@1.5.464`
 Homepage: https://github.com/Kilian/electron-to-chromium
 
 Copyright 2018 Kilian Valkhof
@@ -6668,6 +6688,11 @@ The following packages are under licenses that do not require attribution (BlueO
 The data files below are licensed under CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/legalcode). Each entry preserves its copyright and license URI per §3(a)(1). Note: CC-BY-4.0 §5 disclaims warranties; the licensor offers the work as-is.
 
 ### `caniuse-lite@1.0.30001805`
+Homepage: https://github.com/browserslist/caniuse-lite
+
+_(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
+
+### `caniuse-lite@1.0.30001819`
 Homepage: https://github.com/browserslist/caniuse-lite
 
 _(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
