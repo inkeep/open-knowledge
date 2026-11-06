@@ -743,7 +743,11 @@ test('comment composer stays inside the pane when anchored at the text column le
   expectInsideVisibleRegionHorizontally(geometry, 'comment composer');
 });
 
-async function narrowPaneTo(page: Page, targetPaneWidthPx: number): Promise<void> {
+async function narrowPaneTo(
+  page: Page,
+  targetPaneWidthPx: number,
+  minViewportWidthPx = MIN_VIEWPORT_WIDTH_PX,
+): Promise<void> {
   const initial = page.viewportSize();
   if (!initial) throw new Error('narrowPaneTo: no viewport to resize');
   for (let round = 0; round < 6; round += 1) {
@@ -756,7 +760,7 @@ async function narrowPaneTo(page: Page, targetPaneWidthPx: number): Promise<void
     if (!viewport) throw new Error('narrowPaneTo: viewport disappeared mid-resize');
     const chromeWidth = viewport.width - paneWidth;
     await page.setViewportSize({
-      width: Math.max(MIN_VIEWPORT_WIDTH_PX, Math.round(chromeWidth + targetPaneWidthPx) - 1),
+      width: Math.max(minViewportWidthPx, Math.round(chromeWidth + targetPaneWidthPx) - 1),
       height: initial.height,
     });
     await waitForPaneWidthSettled(page);
@@ -784,11 +788,15 @@ async function waitForPaneWidthSettled(page: Page): Promise<void> {
 
 const MIN_VIEWPORT_WIDTH_PX = 320;
 
-async function narrowPaneAsFarAsPossible(page: Page): Promise<void> {
-  await narrowPaneTo(page, 0).catch(() => {});
+async function narrowPaneAsFarAsPossible(
+  page: Page,
+  minViewportWidthPx = MIN_VIEWPORT_WIDTH_PX,
+): Promise<void> {
+  await narrowPaneTo(page, 0, minViewportWidthPx).catch(() => {});
 }
 
 const SELECTION_MID_PANE_INSET_PX = 200;
+const PICKER_MIN_VIEWPORT_WIDTH_PX = 260;
 
 async function readPaneWidth(page: Page): Promise<number> {
   return page.evaluate((scrollerSel) => {
@@ -1055,7 +1063,7 @@ for (const picker of PICKERS) {
       expect(await previewColumnCount(page), 'preview column up in a roomy pane').toBe(1);
     }
 
-    await narrowPaneAsFarAsPossible(page);
+    await narrowPaneAsFarAsPossible(page, PICKER_MIN_VIEWPORT_WIDTH_PX);
     const region = await readFloatingSurfaceGeometry(page, picker.selector);
     await parkCaretAtViewportY(page, region.regionTop + 40);
     await openPicker(page, picker.selector, picker.trigger);
