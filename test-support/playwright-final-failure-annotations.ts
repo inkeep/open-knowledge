@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { cwd, env, stdout } from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +11,7 @@ export const GITHUB_TITLE_LIMIT = 255;
 const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const TRUNCATION_MARK = '…';
 const NOT_A_VERDICT = new Set(['skipped', 'interrupted']);
+const REJECTED_CASES_RECORD_ENV = 'OK_PLAYWRIGHT_REJECTED_CASES_FILE';
 
 interface Location {
   file: string;
@@ -99,7 +101,9 @@ export default class FinalFailureAnnotations {
   private configTags: string[] = [];
   private run: Run = { allTests: () => [] };
   private readonly annotated = new Set<string>();
+  private readonly attemptExpectations = new WeakMap<Attempt, string>();
   private readonly runErrors: string[] = [];
+  private readonly rejectedCasesRecord = env[REJECTED_CASES_RECORD_ENV];
   private readonly roots: SourceRoots = {
     okRoot: OK_ROOT,
     workspace: env.GITHUB_WORKSPACE ?? cwd(),
@@ -117,6 +121,7 @@ export default class FinalFailureAnnotations {
   }
 
   onTestEnd(test: Case): void {
+    this.attemptExpectations.set(test.results[test.results.length - 1], test.expectedStatus);
     if (test.outcome() === 'unexpected' && test.results.length > test.retries)
       this.annotateFailure(test);
   }
@@ -129,14 +134,38 @@ export default class FinalFailureAnnotations {
     );
   }
 
-  onEnd(result: RunResult): void {
+  async onEnd(result: RunResult): Promise<{ status: 'failed' } | undefined> {
     const tests = this.run.allTests();
-    for (const test of tests) if (test.outcome() === 'unexpected') this.annotateFailure(test);
-    if (result.status === 'passed' || this.runErrors.length === 0) return;
-    const noTestRan = tests.every((test) => test.results.length === 0);
-    const level =
-      result.status === 'failed' && this.annotated.size === 0 && !noTestRan ? 'warning' : 'error';
-    stdout.write(`\n::${level}::${data(this.runErrors.join('\n\n'))}\n`);
+    const rejectedCases: string[] = [];
+    for (const test of tests) {
+      const tries = this.metExpectationByTry(test);
+      if (tries.length > 0 && !tries.includes(true)) {
+        rejectedCases.push(this.title(test));
+        this.annotateFailure(
+          test,
+          test.outcome() === 'flaky'
+            ? 'No attempt met its expected status, though Playwright scored the case flaky.'
+            : undefined,
+        );
+      } else if (test.outcome() === 'unexpected') {
+        this.annotateFailure(test);
+      }
+    }
+    if (this.rejectedCasesRecord !== undefined) {
+      writeFileSync(
+        this.rejectedCasesRecord,
+        JSON.stringify({ rejectedCases: rejectedCases.map((title) => ({ title })) }),
+      );
+    }
+    if (result.status !== 'passed' && this.runErrors.length > 0) {
+      const noTestRan = tests.every((test) => test.results.length === 0);
+      const level =
+        result.status === 'failed' && this.annotated.size === 0 && !noTestRan ? 'warning' : 'error';
+      stdout.write(`\n::${level}::${data(this.runErrors.join('\n\n'))}\n`);
+    }
+    return rejectedCases.length > 0 && result.status === 'passed'
+      ? { status: 'failed' }
+      : undefined;
   }
 
   private title(test: Case): string {
@@ -156,10 +185,14 @@ export default class FinalFailureAnnotations {
       return tries === 1
         ? 'Failed its only try.'
         : `Failed all ${tries} tries; the error below is from the last.`;
-    const failed = test.results.filter(
-      ({ status }) => !NOT_A_VERDICT.has(status) && status !== test.expectedStatus,
-    ).length;
+    const failed = this.metExpectationByTry(test).filter((met) => !met).length;
     return `Failed ${failed} of ${allowed} allowed tries; the run stopped before the rest.`;
+  }
+
+  private metExpectationByTry(test: Case): boolean[] {
+    return test.results
+      .filter(({ status }) => !NOT_A_VERDICT.has(status))
+      .map((attempt) => attempt.status === this.attemptExpectations.get(attempt));
   }
 
   private thrownAt(error: ReportedError | undefined, spec: string): string {
@@ -168,7 +201,7 @@ export default class FinalFailureAnnotations {
     return `Thrown at ${sourcePath(where.file, this.roots)}:${where.line}:${where.column}`;
   }
 
-  private annotateFailure(test: Case): void {
+  private annotateFailure(test: Case, verdict = this.verdict(test)): void {
     if (this.annotated.has(test.id)) return;
     this.annotated.add(test.id);
     const errors =
@@ -183,7 +216,7 @@ export default class FinalFailureAnnotations {
     const more = errors.length - 1;
     const message = [
       `${this.annotated.size}) ${title}`,
-      this.verdict(test),
+      verdict,
       stripVTControlCharacters(error?.message ?? error?.value ?? 'Expected to fail, but passed.'),
       this.thrownAt(error, spec),
       stripVTControlCharacters(error?.snippet ?? ''),

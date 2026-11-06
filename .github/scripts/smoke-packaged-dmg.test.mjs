@@ -1,12 +1,14 @@
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { existsSync, readFileSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { parse } from 'yaml';
+import { execFileSync } from './child-tripwire.test-helper.mjs';
 import { DmgMountError, MOUNT_ERROR_CODES } from './dmg-mount.mjs';
 import { selectPromotion } from './select-beta-to-promote.mjs';
 import {
@@ -94,6 +96,27 @@ describe('classifyRun', () => {
     });
     expect(v.verdict).toBe(VERDICT.error);
     expect(v.reason).toContain('exited 3');
+  });
+
+  test('a case the reporter recorded as never meeting its expectation is a fail that names it, though Playwright scored it flaky', () => {
+    const rejected = 'tests/smoke/cold.e2e.ts:3:1 › opens the file';
+    const v = classifyRun({
+      runExitCode: 1,
+      report: report({ expected: 3, unexpected: 0, flaky: 1, skipped: 0 }),
+      rejectedCases: [rejected],
+    });
+    expect(v.verdict).toBe(VERDICT.fail);
+    expect(v.reason).toContain(rejected);
+  });
+
+  test('a non-zero exit beside a recovered flaky case stays an error when the reporter recorded no rejected case', () => {
+    const v = classifyRun({
+      runExitCode: 1,
+      report: report({ expected: 3, unexpected: 0, flaky: 1, skipped: 0 }),
+      rejectedCases: [],
+    });
+    expect(v.verdict).toBe(VERDICT.error);
+    expect(v.reason).toContain('exited 1');
   });
 });
 
@@ -787,4 +810,170 @@ describe('a progress file the reporter cannot write is said in the runner output
     expect(kinds).toContain('test-end');
     expect(run.stderr).toBe('');
   });
+});
+
+const RETRY_OUTCOMES_DIR = join(DESKTOP_DIR, 'tests/support/fixtures/final-failure-annotations');
+const FAST_TIER_CANDIDATE = 'v9.9.9-beta.1';
+
+async function smokeRetryOutcomes({ grep, globalTeardownFails }) {
+  const dir = await mkdtemp(join(tmpdir(), 'ok-smoke-gate-verdict-'));
+  try {
+    const jsonReport = join(dir, 'results.json');
+    const teardown = join(dir, 'failing-teardown.mjs');
+    await writeFile(
+      teardown,
+      "export default () => { throw new Error('the global teardown failed'); };\n",
+    );
+    const config = join(dir, 'playwright.config.mts');
+    await writeFile(
+      config,
+      `import config from ${JSON.stringify(join(DESKTOP_DIR, 'playwright.packaged.config.ts'))};
+export default {
+  ...config,
+  testDir: ${JSON.stringify(RETRY_OUTCOMES_DIR)},
+  testMatch: 'retry-outcomes.fixture-spec.ts',
+  globalTeardown: ${globalTeardownFails ? JSON.stringify(teardown) : 'undefined'},
+  outputDir: ${JSON.stringify(join(dir, 'artifacts'))},
+  reporter: config.reporter.map(([name, options]) =>
+    name === 'json' ? [name, { ...options, outputFile: ${JSON.stringify(jsonReport)} }] : [name, options]),
+};
+`,
+    );
+    const githubOutput = join(dir, 'github-output');
+    await writeFile(githubOutput, '');
+    const env = { CI: '1', FORCE_COLOR: '0' };
+    for (const name of ['PATH', 'SystemRoot', 'SYSTEMROOT', 'TEMP', 'TMP', 'TMPDIR']) {
+      env[name] = process.env[name];
+    }
+    const cli = createRequire(join(DESKTOP_DIR, 'package.json')).resolve('@playwright/test/cli');
+    const output = [];
+    const exitCode = await runDriver(['node', DRIVER_PATH, join(dir, 'OpenKnowledge.dmg')], {
+      withMountedDmg: async (_dmg, run) => run(join(dir, 'OpenKnowledge.app')),
+      runPlaywright: (appPath) =>
+        runWatchedPlaywright({
+          command: process.execPath,
+          args: [cli, 'test', '--config', config, '--grep', grep],
+          cwd: DESKTOP_DIR,
+          env: { ...env, OK_DESKTOP_PACKAGED_APP: appPath },
+          out: (chunk) => output.push(chunk.toString()),
+          err: (chunk) => output.push(chunk.toString()),
+          log: (line) => output.push(`${line}\n`),
+          signalSource: new EventEmitter(),
+        }),
+      readReport: async () => JSON.parse(await readFile(jsonReport, 'utf8')),
+      log: (line) => output.push(`${line}\n`),
+      env: { GITHUB_OUTPUT: githubOutput },
+    });
+    const published = Object.fromEntries(
+      (await readFile(githubOutput, 'utf8'))
+        .split('\n')
+        .filter((line) => line !== '')
+        .map((line) => {
+          const at = line.indexOf('=');
+          if (at === -1) throw new Error(`GITHUB_OUTPUT line without '=': ${line}`);
+          return [line.slice(0, at), line.slice(at + 1)];
+        }),
+    );
+    const { stats } = JSON.parse(await readFile(jsonReport, 'utf8'));
+    return { exitCode, published, stats, output: output.join('') };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+function fastTierFailureMarker(verdict) {
+  const { jobs } = parse(
+    readFileSync(
+      join(dirname(DRIVER_PATH), '..', 'workflows', 'select-beta-to-promote.yml'),
+      'utf8',
+    ),
+  );
+  expect(jobs['smoke-fast-tier-candidate'].outputs.verdict).toMatch(
+    /^\$\{\{ steps\.smoke\.outputs\.verdict \}\}$/,
+  );
+  const remember = jobs['remember-smoke-failure'];
+  const condition =
+    /^always\(\) && needs\.smoke-fast-tier-candidate\.outputs\.verdict == '([a-z]+)'$/.exec(
+      remember.if,
+    );
+  expect(condition, `remember-smoke-failure runs if: ${remember.if}`).not.toBeNull();
+  if (verdict !== condition[1]) return null;
+  const write = remember.steps.find((step) => step.name === 'Write the failure marker');
+  const dir = mkdtempSync(join(tmpdir(), 'ok-smoke-failure-marker-'));
+  try {
+    execFileSync('bash', ['-c', write.run], {
+      cwd: dir,
+      env: { PATH: process.env.PATH, CANDIDATE: FAST_TIER_CANDIDATE },
+    });
+    return readFileSync(join(dir, 'fast-tier-smoke-failed', 'candidate'), 'utf8');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+describe('the packaged gate over the real reporter chain, through the fast tier failure marker', () => {
+  test.for([
+    {
+      name: 'a case with no attempt meeting its expectation fails the gate and marks the candidate',
+      grep: 'fails then skips its retry',
+      globalTeardownFails: false,
+      stats: { unexpected: 0, flaky: 1 },
+      verdict: VERDICT.fail,
+      reasonNames: 'fails then skips its retry',
+    },
+    {
+      name: 'a runner failure after a passing test stays an infrastructure error',
+      grep: 'passes its only try',
+      globalTeardownFails: true,
+      stats: { expected: 1, unexpected: 0, flaky: 0 },
+      verdict: VERDICT.error,
+      reasonNames: 'exited 1',
+    },
+    {
+      name: 'a runner failure in a run that also recovered a flaky case stays an infrastructure error',
+      grep: 'fails then passes its retry',
+      globalTeardownFails: true,
+      stats: { unexpected: 0, flaky: 1 },
+      verdict: VERDICT.error,
+      reasonNames: 'exited 1',
+    },
+    {
+      name: 'a case that fails every try fails the gate and marks the candidate',
+      grep: 'fails every try',
+      globalTeardownFails: false,
+      stats: { unexpected: 1 },
+      verdict: VERDICT.fail,
+      reasonNames: '1 of 1 executed',
+    },
+    {
+      name: 'a clean run passes',
+      grep: 'passes its only try',
+      globalTeardownFails: false,
+      stats: { expected: 1, unexpected: 0, flaky: 0 },
+      verdict: VERDICT.pass,
+      reasonNames: 'all 1 executed',
+    },
+    {
+      name: 'a run whose only flaky case recovered passes',
+      grep: 'fails then passes its retry',
+      globalTeardownFails: false,
+      stats: { unexpected: 0, flaky: 1 },
+      verdict: VERDICT.pass,
+      reasonNames: '1 flaky',
+    },
+  ])(
+    '$name',
+    { timeout: 90_000 },
+    async ({ grep, globalTeardownFails, stats, verdict, reasonNames }) => {
+      const run = await smokeRetryOutcomes({ grep, globalTeardownFails });
+
+      expect(run.stats, run.output).toMatchObject(stats);
+      expect(run.published.verdict, run.output).toBe(verdict);
+      expect(run.published.reason, run.output).toContain(reasonNames);
+      expect(run.exitCode, run.output).toBe(EXIT_CODES[verdict]);
+      expect(fastTierFailureMarker(run.published.verdict)).toBe(
+        verdict === VERDICT.fail ? `${FAST_TIER_CANDIDATE}\n` : null,
+      );
+    },
+  );
 });
