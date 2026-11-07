@@ -29,6 +29,24 @@ function assertByteExact(source: string, occurrences: LocalTargetOccurrence[]): 
   }
 }
 
+describe('footnote definitions', () => {
+  test('footnote bodies remain prose while their actual inline links are retained', () => {
+    const markdown = 'Fact[^note]\n\n[^note]: [source](./source.md)';
+    expect(
+      extractLocalTargetOccurrences(markdown).map(({ sourceForm, href }) => ({ sourceForm, href })),
+    ).toEqual([{ sourceForm: 'markdown-inline', href: './source.md' }]);
+    expect(extractLocalTargetOccurrences('Fact[^note]\n\n[^note]: ./not-a-link.md')).toEqual([]);
+  });
+
+  test('multiline footnotes cannot register link reference destinations', () => {
+    expect(extractLocalTargetOccurrences('Fact[^note]\n\n[^note]:\n  ./not-a-link.md')).toEqual([]);
+    const markdown = 'Fact[^note]\n\n[^note]:\n  [source](./source.md)';
+    expect(
+      extractLocalTargetOccurrences(markdown).map(({ sourceForm, href }) => ({ sourceForm, href })),
+    ).toEqual([{ sourceForm: 'markdown-inline', href: './source.md' }]);
+  });
+});
+
 describe('admitted inline forms', () => {
   test('inline markdown link', () => {
     const md = 'See [the doc](./guide.md) now.';
