@@ -6006,7 +6006,7 @@ function installDockIcon(instanceLabel: string | null) {
   if (process.platform !== 'darwin') return;
   if (app.isPackaged) return;
   /*
-   * UPSTREAM(electron@44.5.1): an unpackaged app runs out of Electron's own
+   * UPSTREAM(electron@44.9.1): an unpackaged app runs out of Electron's own
    * bundle, so macOS reads the Dock tile name from that Info.plist and
    * `app.setName()` cannot reach it. A badge is the only runtime way to put an
    * instance label on the Dock icon.

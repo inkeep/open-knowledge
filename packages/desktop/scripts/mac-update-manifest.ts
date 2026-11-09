@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 
-// UPSTREAM(electron@44.5.1, electron-updater@6.8.4): Electron 44 requires macOS 13, which `os.release()` reports as Darwin 22; electron-updater skips a manifest whose `minimumSystemVersion` is above that value.
+// UPSTREAM(electron@44.9.1, electron-updater@6.8.4): Electron 44 requires macOS 13, which `os.release()` reports as Darwin 22; electron-updater skips a manifest whose `minimumSystemVersion` is above that value.
 export const MAC_UPDATE_MINIMUM_DARWIN_VERSION = '22.0.0';
 
 export function withMacMinimumSystemVersion(
