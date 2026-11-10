@@ -11,6 +11,7 @@ import {
   startupMarkLine,
   UTILITY_INIT_HARD_CAP_MS,
 } from '../../../src/shared/boot-narration.ts';
+import { smokeDesktopProduct } from './desktop-product.ts';
 import type { DesktopLaunchMode } from './launch-desktop';
 
 export const DECLARED_UTILITY_BUDGET_CEILING_MS = UTILITY_INIT_HARD_CAP_MS;
@@ -79,7 +80,7 @@ export interface BootLogSnapshot {
 }
 
 export function bootLogDirFor(home: string): string {
-  return join(home, '.ok', 'logs');
+  return join(home, smokeDesktopProduct().userHomeDirName, 'logs');
 }
 
 function emptyBootLog(dir: string, unreadableReason?: string): BootLogSnapshot {
