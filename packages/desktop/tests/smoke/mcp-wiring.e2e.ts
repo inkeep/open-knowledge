@@ -8,11 +8,13 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
+import { smokeDesktopProduct } from './_helpers/desktop-product.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { mcpStatusMarkerPath as markerPath } from './_helpers/mcp-consent.ts';
 import {
   homeEnv,
   PLATFORM_SKIP_REASON,
@@ -23,6 +25,7 @@ import { findProjectEditorWindow } from './_helpers/project-editor-window';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
+const PRODUCT = smokeDesktopProduct();
 
 const WINDOWS = process.platform === 'win32';
 
@@ -30,12 +33,12 @@ const EXPECTED_CHAIN = WINDOWS
   ? {
       command: 'powershell',
       prefixArgs: ['-NoProfile', '-NonInteractive', '-Command'] as const,
-      sentinel: '# ok-mcp-win-v1',
+      sentinel: `# ok-mcp${PRODUCT.mcpChainTag}-win-v1`,
     }
   : {
       command: '/bin/sh',
       prefixArgs: ['-l', '-c'] as const,
-      sentinel: '# ok-mcp-v2',
+      sentinel: `# ok-mcp${PRODUCT.mcpChainTag}-v2`,
     };
 
 interface LaunchOpts {
@@ -71,10 +74,6 @@ function seedEditorDetectionDirs(tmpHome: string, editorHints: readonly string[]
   for (const rel of editorHints) {
     mkdirSync(join(tmpHome, rel), { recursive: true });
   }
-}
-
-function markerPath(tmpHome: string): string {
-  return join(tmpHome, '.ok', 'mcp-status.json');
 }
 
 function readMarker(tmpHome: string): Record<string, unknown> | null {
@@ -169,9 +168,9 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       const claudeConfigPath = join(tmpHome, '.claude.json');
       expect(existsSync(claudeConfigPath)).toBe(true);
       const claudeConfig = JSON.parse(readFileSync(claudeConfigPath, 'utf8')) as {
-        mcpServers?: { 'open-knowledge'?: { command?: string; args?: string[] } };
+        mcpServers?: Record<string, { command?: string; args?: string[] }>;
       };
-      const okEntry = claudeConfig.mcpServers?.['open-knowledge'];
+      const okEntry = claudeConfig.mcpServers?.[PRODUCT.mcpServerName];
       expect(okEntry).toBeDefined();
       expect(okEntry?.command).toBe(EXPECTED_CHAIN.command);
       expect(okEntry?.args?.slice(0, EXPECTED_CHAIN.prefixArgs.length)).toEqual([
@@ -288,14 +287,13 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
     captureStderrFor,
   }) => {
     const tmpHome = createTmpHome('idempotent');
-    mkdirSync(join(tmpHome, '.ok'), { recursive: true });
+    mkdirSync(dirname(markerPath(tmpHome)), { recursive: true });
     writeFileSync(
       markerPath(tmpHome),
       JSON.stringify({
         configured: true,
         configuredAt: new Date().toISOString(),
         editors: ['claude'],
-        cliPath: '/usr/local/bin/ok',
       }),
     );
     seedEditorDetectionDirs(tmpHome, ['.claude']);

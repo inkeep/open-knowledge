@@ -3,7 +3,10 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { _electron as electron } from '@playwright/test';
 import { SPAWN_STARTUP_DEADLINE_MS } from '../../../src/shared/boot-narration.ts';
+import { PACKAGED_APP_ENV } from './desktop-product.ts';
 import { readinessGiveUpBoundMs } from './launch-readiness';
+
+export { PACKAGED_APP_ENV } from './desktop-product.ts';
 
 type ElectronLaunchOptions = NonNullable<Parameters<typeof electron.launch>[0]>;
 export type SmokeLaunchEnv = NonNullable<ElectronLaunchOptions['env']>;
@@ -11,8 +14,6 @@ export type SmokeLaunchEnv = NonNullable<ElectronLaunchOptions['env']>;
 const HELPERS_DIR = dirname(fileURLToPath(import.meta.url));
 
 export const DESKTOP_ROOT = resolve(HELPERS_DIR, '..', '..', '..');
-
-export const PACKAGED_APP_ENV = 'OK_DESKTOP_PACKAGED_APP';
 
 export const UNPACKAGED_MAIN_ENTRY = join(DESKTOP_ROOT, 'out', 'main', 'index.js');
 

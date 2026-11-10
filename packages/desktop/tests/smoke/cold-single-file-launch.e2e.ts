@@ -21,18 +21,21 @@ import {
   configureProjectGitRepositories,
   readTestServerRepository,
 } from '../support/git-fixture.test-helper';
+import { smokeDesktopProduct } from './_helpers/desktop-product.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { bootLogDirFor } from './_helpers/launch-readiness.ts';
 import { homeEnv, userDataDirFor } from './_helpers/platform-gate';
 import { test } from './_helpers/smoke-test';
 import { waitForShellReady } from './_helpers/terminal-ready';
 import { terminalSmokeShellCommands } from './_helpers/terminal-smoke-shell';
 
 const TARGET = resolveDesktopTarget({ requirePackaged: true });
+const PRODUCT = smokeDesktopProduct();
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
 
 const APP_NAME = TARGET.appPath ? basename(TARGET.appPath, '.app') : 'OpenKnowledge';
-const LOG_DIR = join(process.env.HOME ?? '', '.ok', 'logs');
+const LOG_DIR = bootLogDirFor(process.env.HOME ?? '');
 
 function appIsRunning(): boolean {
   try {
@@ -219,7 +222,7 @@ test.describe('cold launch with an explicit target owns the initial window set',
     test.setTimeout(180_000);
 
     const project = makeProjectFixture();
-    const share = 'openknowledge://share?url=https://github.com/inkeep/not-cloned-repo/tree/main';
+    const share = `${PRODUCT.protocolScheme}://share?url=https://github.com/inkeep/not-cloned-repo/tree/main`;
 
     try {
       await establishRestoreSnapshot(project.file);
@@ -267,7 +270,7 @@ test.describe('packaged single-file shared shell', () => {
           target: TARGET,
           args: [
             `--user-data-dir=${userDataDirFor(tmpHome)}`,
-            `openknowledge://open?file=${encodeURIComponent(loose.file)}`,
+            `${PRODUCT.protocolScheme}://open?file=${encodeURIComponent(loose.file)}`,
           ],
           env: {
             ...process.env,
