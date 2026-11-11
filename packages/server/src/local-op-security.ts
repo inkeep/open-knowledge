@@ -157,7 +157,7 @@ export function hasValidLocalOpOrigin(req: IncomingMessage, policy?: IngressPoli
       hostname === '[::1]' ||
       hostname === '::1'
     ) {
-      return true;
+      return url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'file:';
     }
     if (policy === undefined) return false;
     if (

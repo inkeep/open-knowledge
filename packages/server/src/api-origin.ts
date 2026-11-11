@@ -11,7 +11,8 @@ export function isOpaqueOrigin(origin: string): boolean {
 export function isAllowedApiOrigin(origin: string): boolean {
   if (origin === 'file://') return true;
   try {
-    const { hostname } = new URL(origin);
+    const { hostname, protocol } = new URL(origin);
+    if (protocol !== 'http:' && protocol !== 'https:' && protocol !== 'file:') return false;
     return (
       hostname === 'localhost' ||
       hostname === '::1' ||
