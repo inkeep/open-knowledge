@@ -1,6 +1,9 @@
 import { writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
 import { describe, expect, test } from 'vitest';
+import { spawnUnderOwnerLifeline } from '../../../../test-support/owner-lifeline.ts';
 import { getLogger } from '../logger.ts';
 import { acquisitionFailureContract } from './acquisition-contract.test-helper.ts';
 import { resolveRegistryLaunch, spawnAcpAgent } from './launch.ts';
@@ -149,3 +152,82 @@ describe('live package acquisition policy and native dispatch', () => {
     180_000,
   );
 });
+
+const managedRuntimeTimeoutMs = 300_000;
+const managedAgentPackage = '@agentclientprotocol/codex-acp@1.11.0';
+const tsxLoader = createRequire(import.meta.url).resolve('tsx');
+
+test(
+  'the product installs Node v24.22.3 and initializes an ACP agent',
+  async (ctx) => {
+    const started = performance.now();
+    await withLiveAcquisitionHome(async (home) => {
+      const entry = {
+        ...registryPackage(managedAgentPackage),
+        distribution: { npx: { package: managedAgentPackage } },
+      };
+      const probe = String.raw`
+import { spawn, execFileSync } from 'node:child_process';
+import { once } from 'node:events';
+import { createInterface } from 'node:readline';
+import { join } from 'node:path';
+import { ensureManagedRuntime } from ${JSON.stringify(new URL('./managed-runtime.ts', import.meta.url).href)};
+import { resolveRegistryLaunch, rewriteLaunchToManagedRuntime } from ${JSON.stringify(new URL('./launch.ts', import.meta.url).href)};
+import { PinoLogger } from ${JSON.stringify(new URL('../logger.ts', import.meta.url).href)};
+const log = new PinoLogger('managed-runtime-network-probe', { consoleDestination: 2 });
+const runtime = await ensureManagedRuntime('node', log, { root: join(process.env.HOME, 'runtimes') });
+const launch = rewriteLaunchToManagedRuntime(await resolveRegistryLaunch(${JSON.stringify(entry)}, null, log), runtime);
+const node = join(runtime.binDir, process.platform === 'win32' ? 'node.exe' : 'node');
+const agent = spawn(launch.cmd, launch.args, {
+  cwd: process.env.HOME, env: launch.env, stdio: ['pipe', 'pipe', 'inherit'],
+});
+const closed = once(agent, 'close');
+const lines = createInterface({ input: agent.stdout });
+agent.stdin.write(JSON.stringify({
+  jsonrpc: '2.0', id: 1, method: 'initialize',
+  params: { protocolVersion: ${JSON.stringify(PROTOCOL_VERSION)}, clientCapabilities: {},
+    clientInfo: { name: 'managed-runtime-network-test', version: '1.0.0' } },
+}) + '\n');
+let initialized = false;
+for await (const line of lines) {
+  const message = JSON.parse(line);
+  if (message.id !== 1 || message.method !== undefined) continue;
+  if (message.error || message.result?.protocolVersion !== ${JSON.stringify(PROTOCOL_VERSION)}) {
+    throw new Error('ACP initialize failed: ' + JSON.stringify(message));
+  }
+  process.stderr.write('ACP initialized: ' + JSON.stringify(message.result.agentInfo) + '\n');
+  initialized = true;
+  agent.stdin.end();
+  break;
+}
+if (!initialized) throw new Error('ACP agent closed before initialize completed');
+const [code, signal] = await closed;
+if (code !== 0 || signal !== null) throw new Error('ACP agent exit: ' + JSON.stringify({ code, signal }));
+console.log(execFileSync(node, ['--version'], { encoding: 'utf8' }).trim());
+`;
+      ctx.signal.throwIfAborted();
+      const remaining = Math.floor(managedRuntimeTimeoutMs - (performance.now() - started));
+      if (remaining <= 0) throw new Error('No test budget remains for the managed agent probe');
+      const holder = spawnUnderOwnerLifeline(
+        process.execPath,
+        ['--import', tsxLoader, '--conditions=development', '--input-type=module', '--eval', probe],
+        { cwd: home, env: process.env },
+      );
+      const captured = captureChild(holder.child, { timeoutMs: remaining });
+      ctx.onTestFinished(async () => {
+        holder.child.stdin.destroy();
+        const result = await captured;
+        if (ctx.signal.aborted) console.error(result.stderr);
+      });
+      const result = await captured;
+      const status = await holder.commandResult;
+      if (status === null || status.code !== 0 || status.signal !== null) {
+        throw new Error(`Managed agent probe failed: ${JSON.stringify(status)}\n${result.stderr}`);
+      }
+      expect(result.stdout.trim(), result.stderr).toBe('v24.22.3');
+      console.info('Managed Node version:', result.stdout.trim());
+      console.info(result.stderr.split('\n').find((line) => line.startsWith('ACP initialized:')));
+    });
+  },
+  managedRuntimeTimeoutMs,
+);
