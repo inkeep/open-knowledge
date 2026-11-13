@@ -18,7 +18,7 @@ import { cleanupStaleInstallArtifacts, stagedInstall } from './staged-install.ts
 
 export type ManagedRuntimeKind = 'node' | 'uv';
 
-const PINNED_NODE_VERSION = 'v24.18.0';
+const PINNED_NODE_VERSION = 'v24.22.3';
 const PINNED_UV_VERSION = '0.11.28';
 
 const NODE_DIST_BASE = 'https://nodejs.org/dist';

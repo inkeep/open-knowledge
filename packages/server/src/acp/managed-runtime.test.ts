@@ -118,6 +118,7 @@ describe('descriptors', () => {
   test('describeRuntime carries the download disclosure', () => {
     const node = describeRuntime('node');
     expect(node.displayName).toBe('Node.js');
+    expect(node.version).toBe('v24.22.3');
     expect(node.provides).toBe('npx');
     expect(node.sourceHost).toBe('nodejs.org');
     expect(node.approxSizeMB).toBeGreaterThan(0);
