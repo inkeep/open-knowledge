@@ -29,6 +29,7 @@ function walkTestFiles(dir, out = []) {
     else if (
       isTestOnlySourceFile(entry.name, 'vitest') &&
       entry.name.endsWith('.ts') &&
+      !entry.name.endsWith('.network.test.ts') &&
       !isUncachedTestFile(entry.name)
     )
       out.push(full);
@@ -199,7 +200,7 @@ function main() {
   }
   console.log(
     `check:server-test-inputs: OK - ${swept} cross-package path(s) DERIVED from ` +
-      `packages/server/**/*.test.ts outside the uncached tier (quoted '../' literals and statically resolvable ` +
+      `packages/server/**/*.test.ts outside the uncached and network tiers (quoted '../' literals and statically resolvable ` +
       `join(<*ROOT*>, ...) calls) are declared inputs, plus ` +
       `${Object.keys(KNOWN_UNSWEPT).length} pinned by name because their readers use ` +
       `shapes this sweep does not recognise.`,
