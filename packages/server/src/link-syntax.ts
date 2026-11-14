@@ -139,7 +139,7 @@ const MD_REFERENCE_SOURCE = String.raw`(!?)\[([^\]\n]*)\](?:\[([^\]\n]*)\])?`;
 const MD_REFERENCE_AT_RE = new RegExp(MD_REFERENCE_SOURCE, 'y');
 
 const REFERENCE_DEFINITION_RE =
-  /^( {0,3}\[([^\]\n]+)\]:[ \t]*)(<[^>\n]*>|[^\s\n]+)((?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*)$/;
+  /^( {0,3}\[(?!\^)([^\]\n]+)\]:[ \t]*)(<[^>\n]*>|[^\s\n]+)((?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*)$/;
 
 type MarkdownReferenceForm = 'full' | 'collapsed' | 'shortcut';
 
