@@ -724,7 +724,7 @@ Theme discipline. Chrome colors come from the active theme, so a custom or bundl
 
 **Neutrals are out of scope.** Grays (`slate`, `gray`, `zinc`, `neutral`, `stone`) and `black`/`white` are not palette hues; the rule does not flag them.
 
-The rule does NOT catch hex, `rgb()` or `oklch()` literals, which canvas-drawn surfaces such as the graph view use, or colors in stylesheets.
+The rule does NOT catch hex, `rgb()` or `oklch()` literals, or colors in stylesheets.
 
 Included: `packages/app/src/**/*.ts`, `packages/app/src/**/*.tsx`, `packages/desktop/src/**/*.ts`, `packages/desktop/src/**/*.tsx`, `packages/plugin/src/**/*.ts`, `packages/plugin/src/**/*.tsx`, `lint-plugins/ok-rules/__fixtures__/no-fixed-palette-color.fixture.tsx`. Excluded: `**/*.test.ts`, `**/*.test.tsx`, `**/*.dom.test.tsx`, `**/*.test-helper.ts`, `**/*.test-helper.tsx`.
 

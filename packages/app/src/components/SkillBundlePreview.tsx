@@ -209,11 +209,11 @@ export function SkillBundlePreview({
         <div className="flex flex-1 items-center justify-center p-4">
           {noPreviewFallback ?? (
             <div
-              className={`flex aspect-[2/1] w-full max-w-xl flex-col justify-end rounded-xl bg-gradient-to-br p-5 ${skillTint(tintKey)}`}
+              className={`flex aspect-[2/1] w-full max-w-xl flex-col justify-end rounded-xl border border-border bg-gradient-to-br p-5 ${skillTint(tintKey)}`}
               aria-hidden
             >
-              <span className="truncate font-semibold text-2xl text-neutral-900">{name}</span>
-              <span className="truncate text-neutral-900/70 text-sm">{subtitle}</span>
+              <span className="truncate font-semibold text-2xl text-foreground">{name}</span>
+              <span className="truncate text-foreground text-sm">{subtitle}</span>
             </div>
           )}
         </div>

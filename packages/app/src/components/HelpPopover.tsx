@@ -70,7 +70,7 @@ const sections: ResourceSection[] = [
 const WHATS_NEW_HREF = `${GITHUB_REPO_URL}/releases`;
 
 const rowClassName =
-  'group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-azure-900/5 dark:hover:bg-white/20 hover:text-primary';
+  'group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-hover dark:hover:bg-sidebar-hover hover:text-sidebar-hover-foreground';
 
 function formatStarCount(count: number): string {
   if (count < 1000) return String(count);
@@ -84,7 +84,7 @@ const StarCount: FC<{ count: number }> = ({ count }) => {
   return (
     <span
       role="img"
-      className="ml-auto flex items-center gap-1 text-xs tabular-nums text-muted-foreground"
+      className="ml-auto flex items-center gap-1 text-xs tabular-nums text-muted-foreground group-hover:text-sidebar-hover-muted-foreground"
       aria-label={t`${formatted} GitHub stars`}
     >
       <Star className="size-3 fill-current" aria-hidden="true" />
@@ -314,7 +314,7 @@ export const HelpPopover: FC = () => {
                 data-testid="help-popover-version"
               >
                 <span className="min-w-0 max-w-full truncate">v{appVersion}</span>{' '}
-                <span className="font-sans text-muted-foreground">
+                <span className="font-sans text-muted-foreground group-hover:text-sidebar-hover-muted-foreground">
                   <Trans>About & updates</Trans>
                 </span>
               </Button>

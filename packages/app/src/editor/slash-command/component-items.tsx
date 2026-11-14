@@ -533,7 +533,7 @@ export function getInlineComponentItems(): SlashCommandItem[] {
           <p className="leading-7 text-sm">
             <Trans>
               See{' '}
-              <span className="font-medium text-azure-blue underline underline-offset-2 dark:text-sky-blue">
+              <span className="font-medium text-link underline underline-offset-2">
                 Architecture
               </span>{' '}
               for the system overview.

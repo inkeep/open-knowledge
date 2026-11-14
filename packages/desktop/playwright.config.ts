@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import { FINAL_FAILURE_ANNOTATIONS } from '../../test-support/playwright-final-failure-annotations.ts';
 import { ONE_LAUNCH_AND_ITS_READINESS_VERDICT_MS } from './tests/smoke/_helpers/launch-desktop';
 
 /**
@@ -50,6 +51,7 @@ export default defineConfig({
     ['list'],
     ['html', { open: 'never' }],
     ['json', { outputFile: 'test-results/desktop-smoke-results.json' }],
+    ...(process.env.CI ? [[FINAL_FAILURE_ANNOTATIONS] as const] : []),
   ],
   use: {
     // No baseURL — these tests don't hit HTTP.

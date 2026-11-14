@@ -86,7 +86,7 @@ export function TextWidget({ keyName, value, onCommit, onSubmit }: CommonWidgetP
           }}
           aria-label={t`Open ${keyName} in browser`}
           title={value}
-          className="block min-w-0 flex-1 truncate px-2 py-1 text-sm leading-tight text-azure-blue underline decoration-azure-blue/40 underline-offset-2 hover:decoration-azure-blue focus-visible:outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring dark:text-sky-blue dark:decoration-sky-blue/40 dark:hover:decoration-sky-blue"
+          className="block min-w-0 flex-1 truncate px-2 py-1 text-sm leading-tight text-link underline decoration-link/40 underline-offset-2 hover:decoration-link focus-visible:outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring"
         >
           {value}
         </a>

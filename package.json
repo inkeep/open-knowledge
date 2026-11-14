@@ -83,7 +83,7 @@
     "eslint-plugin-unicorn": "^79.0.0",
     "husky": "^9.1.7",
     "knip": "^6.26.0",
-    "lint-staged": "^16.4.0",
+    "lint-staged": "17.5.1",
     "oxlint": "1.80.0",
     "oxlint-plugin-eslint": "^1.80.0",
     "oxlint-tsgolint": "^7.0.2001",

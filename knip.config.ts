@@ -111,7 +111,7 @@ export default {
         'test-support/fixtures/read-declarations/*.cjs',
         'scripts/check-no-major-changeset.mjs',
       ],
-      vitest: { entry: ['**/*.uncached.test.{ts,tsx,mjs}'] },
+      vitest: { entry: ['**/*.uncached.test.{ts,tsx,mjs}', '!.{agents,codex}/skills/**'] },
     },
     'packages/app': {
       entry: [
@@ -180,6 +180,8 @@ export default {
         'scripts/*.mjs',
         'tests/**/*.test.ts',
         'tests/**/*.test.mjs',
+        'tests/support/fixtures/final-failure-annotations/*.ts',
+        'tests/support/final-failure-annotations.type-tests.ts',
       ],
       ignoreDependencies: ['@inkeep/open-knowledge-native-config', 'culori'],
       project: 'src/**',

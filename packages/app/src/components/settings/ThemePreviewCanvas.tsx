@@ -67,7 +67,7 @@ export function ThemePreviewCanvas({ scheme, highlightSlot, className }: ThemePr
           </span>
         </Lit>
         <Lit slot="base04" active={hl} className="flex-1 truncate">
-          <span style={{ color: p.base04 }}>notes / release-plan.md</span>
+          <span style={{ color: tok['muted-foreground'] }}>notes / release-plan.md</span>
         </Lit>
       </div>
 
@@ -85,10 +85,10 @@ export function ThemePreviewCanvas({ scheme, highlightSlot, className }: ThemePr
             <span style={{ color: p.base05 }}>release-plan</span>
           </Lit>
           <Lit slot="base04" active={hl} className="block px-1">
-            <span style={{ color: p.base04 }}>backlog</span>
+            <span style={{ color: tok['muted-foreground'] }}>backlog</span>
           </Lit>
           <Lit slot="base04" active={hl} className="block px-1">
-            <span style={{ color: p.base04 }}>archive</span>
+            <span style={{ color: tok['muted-foreground'] }}>archive</span>
           </Lit>
         </div>
 
@@ -153,7 +153,7 @@ export function ThemePreviewCanvas({ scheme, highlightSlot, className }: ThemePr
             className="flex items-center gap-1 rounded px-1.5 py-1 font-mono"
             style={{ backgroundColor: p.base00, border: `1px solid ${p.base02}` }}
           >
-            <span style={{ color: p.base04 }}>$</span>
+            <span style={{ color: tok['muted-foreground'] }}>$</span>
             {(
               [
                 ['base08', tok['ansi-red']],

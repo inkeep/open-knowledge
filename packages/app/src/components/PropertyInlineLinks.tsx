@@ -43,7 +43,7 @@ function renderSegment(seg: PropertyInlineSegment, index: number): ReactNode {
           data-target={seg.target}
           title={seg.target}
           className={cn(
-            'rounded-sm px-0.5 text-azure-blue underline decoration-azure-blue/40 underline-offset-2 hover:decoration-azure-blue dark:text-sky-blue dark:decoration-sky-blue/40 dark:hover:decoration-sky-blue',
+            'rounded-sm px-0.5 text-link underline decoration-link/40 underline-offset-2 hover:decoration-link',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           )}
         >
@@ -66,7 +66,7 @@ function renderSegment(seg: PropertyInlineSegment, index: number): ReactNode {
           }}
           title={seg.url}
           className={cn(
-            'text-azure-blue underline decoration-azure-blue/40 underline-offset-2 hover:decoration-azure-blue dark:text-sky-blue dark:decoration-sky-blue/40 dark:hover:decoration-sky-blue',
+            'text-link underline decoration-link/40 underline-offset-2 hover:decoration-link',
             'focus-visible:outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring',
           )}
         >
@@ -88,7 +88,7 @@ function renderSegment(seg: PropertyInlineSegment, index: number): ReactNode {
           }}
           title={seg.url}
           className={cn(
-            'text-azure-blue underline decoration-azure-blue/40 underline-offset-2 hover:decoration-azure-blue dark:text-sky-blue dark:decoration-sky-blue/40 dark:hover:decoration-sky-blue',
+            'text-link underline decoration-link/40 underline-offset-2 hover:decoration-link',
             'focus-visible:outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring',
           )}
         >

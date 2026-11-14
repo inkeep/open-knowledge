@@ -131,6 +131,17 @@ describe('check-server-test-inputs', () => {
     expect(globalDependencyCovers('patches/*.patch', 'patches/nested/a.patch')).toBe(false);
   });
 
+  test('network-tier reads are outside the cached sweep while ordinary readers stay guarded', () => {
+    const root = fixtureRootReading('reads-docs.network.test.ts');
+    writeFileSync(
+      join(root, 'packages/server/src/reads-docs.test.ts'),
+      readFileSync(join(root, 'packages/server/src/reads-docs.network.test.ts'), 'utf-8'),
+    );
+    expect(uncoveredReads(root)).toEqual([
+      { target: 'docs/guide.md', readers: ['src/reads-docs.test.ts'] },
+    ]);
+  });
+
   test('globalDependencyCovers honours a trailing globstar like its sibling', () => {
     expect(globalDependencyCovers('generated/**', 'generated')).toBe(true);
     expect(globalDependencyCovers('generated/**', 'generated/a/b.ts')).toBe(true);

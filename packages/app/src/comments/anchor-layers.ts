@@ -1,3 +1,5 @@
+import { COMMENT_RESTING_LINE_ALPHA } from '@inkeep/open-knowledge-core/theme/base16';
+
 export interface PlacedAnchor {
   id: string | null;
   from: number;
@@ -13,7 +15,7 @@ export interface AnchorSegment {
 
 const COMMENT_HUE = 'var(--ok-comment-hue, rgb(37 99 235))';
 
-const RESTING = { fill: 0.22, line: 0.7 };
+const RESTING = { fill: 0.22, line: COMMENT_RESTING_LINE_ALPHA };
 
 const ACTIVE = { fill: 0.45, line: 1 };
 

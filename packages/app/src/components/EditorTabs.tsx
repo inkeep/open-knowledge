@@ -4,7 +4,7 @@
 
 import { useDndContext } from '@dnd-kit/core';
 import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
-import { isEditableTextDocFile } from '@inkeep/open-knowledge-core/constants/code-languages';
+import { isMarkdownDocFile } from '@inkeep/open-knowledge-core/constants/upload';
 import { Trans, useLingui } from '@lingui/react/macro';
 import {
   AlertTriangle,
@@ -1281,7 +1281,7 @@ export function EditorTabs({
                 const docName = tab.docName;
                 const skill = editableSkillsByTabId.get(docName);
                 const metadataDocExt = pageMeta.get(docName)?.docExt;
-                const docExt = metadataDocExt ?? (isEditableTextDocFile(docName) ? '' : '.md');
+                const docExt = metadataDocExt ?? (isMarkdownDocFile(docName) ? '.md' : '');
                 const bundleFile = skill
                   ? null
                   : skillFileForDocName(docName, editableSkills, docExt);

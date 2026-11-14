@@ -688,6 +688,66 @@ describe('the smoke harness comes from the workflow SHA, not the release tag', (
   test('the overlay degrades to the tag copy instead of blocking the release', () => {
     expect(smokeStep()).toContain('::warning::Could not read the smoke harness');
   });
+
+  test("a tag cut before the workflow's verdict reporter smokes under the workflow's copy of the reporter its packaged config registers, with that config kept at the tag", () => {
+    const okRoot = join(WORKFLOWS, '..', '..');
+    const packagedConfig = 'packages/desktop/playwright.packaged.config.ts';
+    const registered = readFileSync(join(okRoot, packagedConfig), 'utf8').match(
+      /^import \{ FINAL_FAILURE_ANNOTATIONS \} from '([^']+)';$/m,
+    )?.[1];
+    expect(registered).toBeDefined();
+    const reporter = join('packages/desktop', registered).split('\\').join('/');
+    expect(existsSync(join(okRoot, reporter))).toBe(true);
+    const run = Object.values(parse(desktopRelease).jobs)
+      .flatMap((job) => job.steps ?? [])
+      .find((step) => step.name === 'Smoke the packaged DMG (FR5b)').run;
+    const driverLine = run.match(/^DRIVER=.*$/m)?.[0];
+    const overlayStart = run.indexOf('if git fetch --depth=1 origin "$GITHUB_SHA"');
+    const overlayEnd = run.indexOf('\nfi\n', overlayStart);
+    expect(driverLine).toBeDefined();
+    expect(overlayStart).toBeGreaterThan(-1);
+    expect(overlayEnd).toBeGreaterThan(overlayStart);
+    const overlay = `${driverLine}\n${run.slice(overlayStart, overlayEnd + 3)}`;
+
+    const repo = mkdtempSync(join(tmpdir(), 'release-smoke-overlay-'));
+    try {
+      const env = gitCleanEnv();
+      const git = (...args) => execFileSync('git', args, { cwd: repo, env, encoding: 'utf8' });
+      git('init', '-q', '-b', 'main');
+      env.GIT_TRACE2_EVENT = join(repo, '.git', 'fixture-maintenance.jsonl');
+      configureTestGitRepository(repo, (args) => git(...args));
+      const files = ['.github/scripts/smoke-packaged-dmg.mjs', '.github/scripts/dmg-mount.mjs', reporter, packagedConfig];
+      const commitAll = (content) => {
+        for (const file of files) {
+          mkdirSync(dirname(join(repo, file)), { recursive: true });
+          writeFileSync(join(repo, file), content);
+        }
+        git('add', '-A');
+        git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', content);
+        return git('rev-parse', 'HEAD').trim();
+      };
+      const tag = commitAll('release tag');
+      const workflowSha = commitAll('workflow sha');
+      git('checkout', '-q', '--detach', tag);
+      git('remote', 'add', 'origin', repo);
+      const stdout = execFileSync('bash', ['-euo', 'pipefail', '-c', overlay], {
+        cwd: repo,
+        env: { ...env, GITHUB_SHA: workflowSha, RELEASE_TAG: 'v0.0.0-fixture' },
+        encoding: 'utf8',
+      });
+      expect(stdout).toContain(`::notice::Smoke harness taken from ${workflowSha}`);
+      const at = (file) => readFileSync(join(repo, file), 'utf8');
+      expect({
+        driver: at('.github/scripts/smoke-packaged-dmg.mjs'),
+        mount: at('.github/scripts/dmg-mount.mjs'),
+        reporter: at(reporter),
+        config: at(packagedConfig),
+      }).toEqual({ driver: 'workflow sha', mount: 'workflow sha', reporter: 'workflow sha', config: 'release tag' });
+      expectNoAutomaticGitMaintenance(repo, env);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('the stable gate does not touch the beta cadence', () => {

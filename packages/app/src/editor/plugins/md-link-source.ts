@@ -170,7 +170,7 @@ const mdLinkClickHandler = EditorView.domEventHandlers({
 
 const mdLinkTheme = EditorView.theme({
   '.cm-md-internal-link': {
-    color: 'oklch(52.7% 0.154 228.4)',
+    color: 'var(--link-color)',
     fontWeight: '500',
   },
   '.cm-md-internal-link:hover': {

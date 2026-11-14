@@ -8,7 +8,7 @@ run-name: ${{ inputs.sha && format('Beta cut at {0}', inputs.sha) || '' }}
 # OK_BETA_CUT picks which one does. Unset or `push` (the default): the
 # push trigger below cuts. `inertia`: Inertia on agents-private
 # (.github/workflows/ok-inertia.yml there) cuts, by dispatching this
-# workflow with a `sha` input once its hourly full-suite run on
+# workflow with a `sha` input once its scheduled full-suite run on
 # agents-private main is green, and a push here skips with a summary line.
 # Any other value fails the push run rather than guess. RELEASES.md
 # "Beta cadence" has the rollout and the way back.

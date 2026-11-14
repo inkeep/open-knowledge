@@ -2105,8 +2105,11 @@ export {
   BASE16_SLOTS,
   base16ToTokens,
   base16ToYaml,
+  contrastRatio,
   isBase16Hex,
+  MINIMUM_CONTRAST_RATIO,
   mixHex,
+  nearestReading,
   parseBase16Scheme,
   relativeLuminance,
 } from './theme/base16.ts';

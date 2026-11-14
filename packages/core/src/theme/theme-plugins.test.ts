@@ -3,8 +3,16 @@ import {
   BASE16_SLOTS,
   type Base16Palette,
   base16ToTokens,
+  CALLOUT_WASH_TINT,
+  COMMENT_RESTING_LINE_ALPHA,
+  DIFF_DELETION_OPACITY,
+  DIFF_DELETION_TINT,
+  EDITOR_FIND_ACTIVE_TINT,
+  EDITOR_FIND_TINT,
   mixHex,
   relativeLuminance,
+  VIEWER_FIND_ACTIVE_TINT,
+  VIEWER_FIND_TINT,
 } from './base16.ts';
 import {
   colorThemeMode,
@@ -25,6 +33,8 @@ import {
 
 const NON_STATIC = new Set(['default', 'custom']);
 
+const HEX_TOKEN = /^#[0-9a-f]{6}$/i;
+
 function contrast(a: string, b: string): number {
   const la = relativeLuminance(a);
   const lb = relativeLuminance(b);
@@ -42,6 +52,86 @@ function expectStatusTextReadable(label: string, tokens: Record<string, string>)
         `${label} ${status} on its 25% tint over ${surface}`,
       ).toBeGreaterThanOrEqual(4.5);
     }
+  }
+}
+
+function expectMutedTextReadable(label: string, tokens: Record<string, string>): void {
+  for (const surface of ['background', 'card', 'popover', 'sidebar'] as const) {
+    expect(
+      contrast(tokens['muted-foreground'] ?? '', tokens[surface] ?? ''),
+      `${label} muted text on ${surface}`,
+    ).toBeGreaterThanOrEqual(4.5);
+  }
+}
+
+function expectEditorMarksReadable(label: string, tokens: Record<string, string>): void {
+  for (const name of [
+    'ok-codeblock-title-bg',
+    'ok-codeblock-title-foreground',
+    'ok-comment-hue',
+    'ok-diff-del',
+    'ok-diff-del-foreground',
+    'ok-unresolved-link',
+    'broken-link-color',
+  ]) {
+    expect(tokens[name], `${label} ${name}`).toMatch(HEX_TOKEN);
+  }
+  const page = tokens.background ?? '';
+  expect(
+    contrast(tokens['ok-codeblock-title-foreground'] ?? '', tokens['ok-codeblock-title-bg'] ?? ''),
+    `${label} code block title`,
+  ).toBeGreaterThanOrEqual(4.5);
+  expect(
+    contrast(mixHex(page, tokens['ok-comment-hue'] ?? '', COMMENT_RESTING_LINE_ALPHA), page),
+    `${label} resting comment underline`,
+  ).toBeGreaterThanOrEqual(3);
+  const faded = (color: string) => mixHex(page, color, DIFF_DELETION_OPACITY);
+  expect(
+    contrast(
+      faded(tokens['ok-diff-del-foreground'] ?? ''),
+      faded(mixHex(page, tokens['ok-diff-del'] ?? '', DIFF_DELETION_TINT)),
+    ),
+    `${label} deleted text in a rendered diff`,
+  ).toBeGreaterThanOrEqual(4.5);
+  const calloutWashes = Object.entries(tokens)
+    .filter(([token]) => token.startsWith('callout-'))
+    .map(([token, accent]) => [`${token} wash`, mixHex(page, accent, CALLOUT_WASH_TINT)] as const);
+  expect(calloutWashes.length, `${label} callout colors`).toBeGreaterThan(0);
+  for (const name of ['ok-unresolved-link', 'broken-link-color', 'link-color']) {
+    for (const [surface, color] of [
+      ['background', page],
+      ['muted', tokens.muted ?? ''],
+      ...calloutWashes,
+    ] as const) {
+      expect(
+        contrast(tokens[name] ?? '', color),
+        `${label} ${name} on ${surface}`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  }
+}
+
+function expectTextReadableUnderFindHighlights(
+  label: string,
+  tokens: Record<string, string>,
+): void {
+  const page = tokens.background ?? '';
+  const text = tokens['ok-editor-text'] ?? '';
+  for (const [name, tint, highlight] of [
+    ['ok-find-match', EDITOR_FIND_TINT, 'editor find match'],
+    ['ok-find-match-active', EDITOR_FIND_ACTIVE_TINT, 'active editor find match'],
+    ['ok-viewer-find-match', VIEWER_FIND_TINT, 'viewer find match'],
+    [
+      'ok-viewer-find-match',
+      1 - (1 - VIEWER_FIND_TINT) * (1 - VIEWER_FIND_ACTIVE_TINT),
+      'active viewer find match',
+    ],
+  ] as const) {
+    expect(tokens[name], `${label} ${name}`).toMatch(HEX_TOKEN);
+    expect(
+      contrast(text, mixHex(page, tokens[name] ?? '', tint)),
+      `${label} text under the ${highlight}`,
+    ).toBeGreaterThanOrEqual(4.5);
   }
 }
 
@@ -214,7 +304,7 @@ describe('token mapping + generateColorThemesCss', () => {
     }
   });
 
-  test('every generated palette theme keeps sidebar row text and actions readable', () => {
+  test('every generated palette theme keeps sidebar row text and actions readable, and file tree glyphs visible on the resting sidebar', () => {
     for (const theme of THEME_PLUGINS) {
       if (!theme.toTokens) continue;
       const tokens = theme.toTokens();
@@ -225,6 +315,7 @@ describe('token mapping + generateColorThemesCss', () => {
         ['sidebar-selected', 'sidebar-selected-foreground', 4.5],
         ['sidebar-selected', 'sidebar-selected-muted-foreground', 4.5],
         ['sidebar-selected', 'sidebar-selected-destructive-foreground', 3],
+        ['sidebar', 'ok-tree-muted', 3],
       ] as const) {
         const background = relativeLuminance(tokens[backgroundToken] ?? '');
         const foreground = relativeLuminance(tokens[foregroundToken] ?? '');
@@ -235,6 +326,26 @@ describe('token mapping + generateColorThemesCss', () => {
     }
   });
 
+  test('every generated palette theme keeps muted text readable on the page and on cards, menus and the sidebar', () => {
+    for (const theme of THEME_PLUGINS) {
+      if (!theme.toTokens) continue;
+      expectMutedTextReadable(theme.id, theme.toTokens());
+    }
+  });
+
+  test('Catppuccin Latte and Frappé muted text moves only as far as it takes to read on the page and on cards', () => {
+    for (const id of ['catppuccin-latte', 'catppuccin-frappe']) {
+      const tokens = THEME_PLUGINS.find((theme) => theme.id === id)?.toTokens?.() ?? {};
+      const muted = tokens['muted-foreground'] ?? '';
+      const weakest = Math.min(
+        contrast(muted, tokens.background ?? ''),
+        contrast(muted, tokens.card ?? ''),
+      );
+      expect(weakest, `${id} muted text on its weakest surface`).toBeGreaterThanOrEqual(4.5);
+      expect(weakest, `${id} muted text on its weakest surface`).toBeLessThan(4.6);
+    }
+  });
+
   test('every generated palette theme keeps status text readable on the page, cards and its own tint', () => {
     for (const theme of THEME_PLUGINS) {
       if (!theme.toTokens) continue;
@@ -242,7 +353,34 @@ describe('token mapping + generateColorThemesCss', () => {
     }
   });
 
-  test('custom low-contrast palettes receive readable sidebar row foregrounds', () => {
+  test('every generated palette theme keeps code block titles, unresolved links and deleted diff text readable, and comment underlines visible', () => {
+    for (const theme of THEME_PLUGINS) {
+      if (!theme.toTokens) continue;
+      expectEditorMarksReadable(theme.id, theme.toTokens());
+    }
+  });
+
+  test('every generated palette theme keeps links readable on the page, cards and menus', () => {
+    for (const theme of THEME_PLUGINS) {
+      if (!theme.toTokens) continue;
+      const tokens = theme.toTokens();
+      for (const surface of ['background', 'card', 'popover'] as const) {
+        expect(
+          contrast(tokens['link-color'] ?? '', tokens[surface] ?? ''),
+          `${theme.id} link-color on ${surface}`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  test('every generated palette theme keeps document text readable under find highlights', () => {
+    for (const theme of THEME_PLUGINS) {
+      if (!theme.toTokens) continue;
+      expectTextReadableUnderFindHighlights(theme.id, theme.toTokens());
+    }
+  });
+
+  test('custom low-contrast palettes receive readable sidebar row foregrounds and file tree glyphs visible on the resting sidebar', () => {
     const palette: Base16Palette = {
       base00: '#e0e0e0',
       base01: '#d9d9d9',
@@ -268,6 +406,8 @@ describe('token mapping + generateColorThemesCss', () => {
       palette,
     });
     expectStatusTextReadable('low contrast', tokens);
+    expectMutedTextReadable('low contrast', tokens);
+    expectEditorMarksReadable('low contrast', tokens);
     for (const [backgroundToken, foregroundToken] of [
       ['sidebar-hover', 'sidebar-hover-foreground'],
       ['sidebar-hover', 'sidebar-hover-muted-foreground'],
@@ -283,6 +423,7 @@ describe('token mapping + generateColorThemesCss', () => {
     for (const [backgroundToken, foregroundToken] of [
       ['sidebar-hover', 'sidebar-hover-destructive-foreground'],
       ['sidebar-selected', 'sidebar-selected-destructive-foreground'],
+      ['sidebar', 'ok-tree-muted'],
     ] as const) {
       const background = relativeLuminance(tokens[backgroundToken] ?? '');
       const foreground = relativeLuminance(tokens[foregroundToken] ?? '');

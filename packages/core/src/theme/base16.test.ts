@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, onTestFinished, test, vi } from 'vitest';
 import {
   BASE16_SLOT_ROLES,
   BASE16_SLOTS,
@@ -55,6 +55,15 @@ base0D: "81a2be"
 base0E: "b294bb"
 base0F: "a3685a"
 `;
+
+async function freshBase16() {
+  vi.resetModules();
+  return import('./base16.ts');
+}
+
+function mutedPalette(text: string): Base16Scheme['palette'] {
+  return { ...paletteOf(), base00: '#1e1e2e', base01: '#181825', base05: text };
+}
 
 function paletteOf(entries: Partial<Record<string, string>> = {}): Base16Scheme['palette'] {
   const palette = {} as Base16Scheme['palette'];
@@ -207,11 +216,76 @@ describe('base16ToTokens', () => {
     expect(t.sidebar).toBe(p.base01);
     expect(t.border).toBe(p.base02);
     expect(t['selection-soft']).toBe(p.base02);
-    expect(t['muted-foreground']).toBe(p.base04);
     expect(t.primary).toBe(p.base0D);
     expect(t['syntax-string']).toBe(p.base0B);
     expect(t['syntax-keyword']).toBe(p.base0E);
     expect(t['syntax-comment']).toBe(p.base03);
+    expect(t['ok-editor-text']).toBe(p.base05);
+    expect(t['ok-table-resize-handle']).toBe(p.base0D);
+    expect(t['ok-diff-ins']).toBe(p.base0B);
+    expect(t['ok-diff-del']).toBe(p.base08);
+    expect(t['ok-agent-thread-text']).toBe(p.base05);
+  });
+
+  test('muted text is the palette slot meant for it while that slot reads on pages and cards', () => {
+    const palette = paletteOf({ base00: '#ffffff', base01: '#f5f5f5', base04: '#595959' });
+    const t = base16ToTokens({ name: 'T', variant: 'light', palette });
+    expect(t['muted-foreground']).toBe('#595959');
+  });
+
+  test('the file tree muted color is the comment slot while it reads on the sidebar', () => {
+    const palette = paletteOf({ base01: '#ffffff', base03: '#8a8a8a' });
+    const t = base16ToTokens({ name: 'T', variant: 'light', palette });
+    expect(t['ok-tree-muted']).toBe('#8a8a8a');
+  });
+
+  test('find highlights and unresolved links keep the palette color when text already reads', () => {
+    const palette = {
+      ...paletteOf(),
+      base00: '#000000',
+      base05: '#e0e0e0',
+      base08: '#ff9090',
+      base0A: '#806020',
+    };
+    const t = base16ToTokens({ name: 'Readable', variant: 'dark', palette });
+    expect(t['ok-find-match']).toBe(palette.base0A);
+    expect(t['ok-viewer-find-match']).toBe(palette.base0A);
+    expect(t['ok-unresolved-link']).toBe(palette.base08);
+    expect(t['broken-link-color']).toBe(palette.base08);
+  });
+
+  test('a find highlight no fill can make readable is reported once per palette', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    onTestFinished(() => warn.mockRestore());
+    const { base16ToTokens: tokensOf } = await freshBase16();
+    const scheme: Base16Scheme = {
+      name: 'Muted',
+      variant: 'dark',
+      palette: mutedPalette('#787878'),
+    };
+    const findReports = () =>
+      warn.mock.calls.filter(([message]) => String(message).includes(scheme.palette.base05));
+    tokensOf(scheme);
+    expect(findReports()).toHaveLength(3);
+    tokensOf(scheme);
+    expect(findReports()).toHaveLength(3);
+  });
+
+  test('reports stop growing however many unreachable colors one slot is dragged through', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    onTestFinished(() => warn.mockRestore());
+    const reportsAfterDragging = async (steps: number) => {
+      warn.mockClear();
+      const { base16ToTokens: tokensOf } = await freshBase16();
+      for (let step = 0; step < steps; step += 1) {
+        const text = `#${(0x40 + step).toString(16).repeat(3)}`;
+        tokensOf({ name: 'Muted', variant: 'dark', palette: mutedPalette(text) });
+      }
+      return warn.mock.calls.length;
+    };
+    const shortDrag = await reportsAfterDragging(16);
+    expect(shortDrag).toBeGreaterThan(0);
+    expect(await reportsAfterDragging(48)).toBe(shortDrag);
   });
 
   test("status tokens use the palette's own colors, nudged only as far as their own tint needs", () => {

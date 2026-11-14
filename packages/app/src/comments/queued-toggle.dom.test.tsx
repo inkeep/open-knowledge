@@ -90,7 +90,7 @@ describe('opening an edit', () => {
 describe('the active-thread tint', () => {
   test.each([
     ['doc', 'before:opacity-100'],
-    ['project', 'bg-azure-800/5'],
+    ['project', 'bg-foreground/5'],
   ] as const)('the active %s card carries its layout tint', (layout, tint) => {
     render(
       <TooltipProvider>

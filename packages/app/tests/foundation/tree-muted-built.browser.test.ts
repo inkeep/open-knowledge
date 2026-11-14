@@ -2,6 +2,7 @@ import { FileTree } from '@pierre/trees';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { commands } from 'vitest/browser';
 import { createFileTreeStyle, FILE_TREE_DENSITY_OPTIONS } from '@/components/file-tree-density';
+import { resolveColorTheme } from '@/lib/color-themes';
 
 let css: string;
 let frame: HTMLIFrameElement | undefined;
@@ -66,6 +67,15 @@ async function renderColor(mode: 'light' | 'dark', theme: string, consumer: stri
   return view.getComputedStyle(chevron).color;
 }
 
+function themeTreeMuted(theme: string) {
+  const hex = resolveColorTheme(theme).toTokens?.()['ok-tree-muted'];
+  if (!hex) throw new Error(`${theme} declares no file tree muted color`);
+  const [red, green, blue] = [1, 3, 5].map((start) =>
+    Number.parseInt(hex.slice(start, start + 2), 16),
+  );
+  return `rgb(${red}, ${green}, ${blue})`;
+}
+
 describe('built tree muted colors', () => {
   for (const consumer of ['sidebar utility', 'tree disclosure']) {
     test(`${consumer} uses the intended default light color`, async () => {
@@ -76,14 +86,14 @@ describe('built tree muted colors', () => {
       expect(await renderColor('dark', 'default', consumer)).toBe('oklch(0.553 0.013 58.071)');
     });
 
-    test(`${consumer} retains the named light theme color`, async () => {
+    test(`${consumer} repaints with the named light theme's tree color`, async () => {
       expect(await renderColor('light', 'catppuccin-latte', consumer)).toBe(
-        'oklch(0.709 0.01 56.259)',
+        themeTreeMuted('catppuccin-latte'),
       );
     });
 
-    test(`${consumer} retains the named dark theme color`, async () => {
-      expect(await renderColor('dark', 'dracula', consumer)).toBe('oklch(0.553 0.013 58.071)');
+    test(`${consumer} repaints with the named dark theme's tree color`, async () => {
+      expect(await renderColor('dark', 'dracula', consumer)).toBe(themeTreeMuted('dracula'));
     });
   }
 });

@@ -1026,7 +1026,7 @@ jobs:
           # Without this, a fix to the copy logic only reaches tags cut AFTER it
           # lands, so every tag already cut stays permanently unreleasable:
           # promote-stable tags the stable at the beta's SHA, and a soaked beta
-          # is by definition older than the fix. Overlaying only these two files
+          # is by definition older than the fix. Overlaying only these files
           # keeps the config and the smoke tests themselves pinned to the
           # release, which is right — they assert the app's behavior.
           # Deliberately AFTER the absent-gate check above, so a ref predating
@@ -1034,7 +1034,7 @@ jobs:
           # a file it never carried. Best-effort: on failure keep the tag's
           # copy rather than block.
           if git fetch --depth=1 origin "$GITHUB_SHA" >/dev/null 2>&1 &&
-             git checkout "$GITHUB_SHA" -- "$DRIVER" .github/scripts/dmg-mount.mjs 2>/dev/null; then
+             git checkout "$GITHUB_SHA" -- "$DRIVER" .github/scripts/dmg-mount.mjs test-support/playwright-final-failure-annotations.ts 2>/dev/null; then
             echo "::notice::Smoke harness taken from ${GITHUB_SHA} rather than ${RELEASE_TAG}."
           else
             echo "::warning::Could not read the smoke harness from ${GITHUB_SHA}; using the copy carried by ${RELEASE_TAG}."

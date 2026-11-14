@@ -724,8 +724,11 @@ export type {
   Base16Slot,
   base16ToTokens,
   base16ToYaml,
+  contrastRatio,
   isBase16Hex,
+  MINIMUM_CONTRAST_RATIO,
   mixHex,
+  nearestReading,
   parseBase16Scheme,
   relativeLuminance,
 } from '@inkeep/open-knowledge-core/theme/base16';

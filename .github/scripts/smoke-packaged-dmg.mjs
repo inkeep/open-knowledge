@@ -29,6 +29,7 @@ export const PACKAGED_REPORT = join('test-results', 'desktop-smoke-packaged-resu
 
 export const PROGRESS_FILE_ENV = 'OK_SMOKE_PROGRESS_FILE';
 export const PLAYWRIGHT_REPORTER_ENV = 'PW_TEST_REPORTER';
+const REJECTED_CASES_RECORD_ENV = 'OK_PLAYWRIGHT_REJECTED_CASES_FILE';
 
 export const WATCHDOG = {
   stallWindowMs: 10 * 60_000,
@@ -171,7 +172,7 @@ export function stallReason(stall) {
   return `the smoke stalled: no Playwright progress for ${formatDuration(stall.silentMs)} (watchdog window ${formatDuration(stall.windowMs)}); the last progress was ${describeProgressEvent(last)}. The run was stopped, and its diagnostics are in the step log`;
 }
 
-export function classifyRun({ runExitCode, runSignal, report, runnerError, stall }) {
+export function classifyRun({ runExitCode, runSignal, report, runnerError, stall, rejectedCases }) {
   if (stall) {
     return { verdict: VERDICT.error, reason: stallReason(stall) };
   }
@@ -206,6 +207,12 @@ export function classifyRun({ runExitCode, runSignal, report, runnerError, stall
     return {
       verdict: VERDICT.fail,
       reason: `${unexpected} of ${executed} executed smoke tests failed against the packaged app`,
+    };
+  }
+  if (rejectedCases?.length > 0) {
+    return {
+      verdict: VERDICT.fail,
+      reason: `${rejectedCases.length} of ${executed} executed smoke tests had no attempt that met its expected status against the packaged app: ${rejectedCases.join('; ')}`,
     };
   }
   if (runExitCode !== 0) {
@@ -269,6 +276,17 @@ function parseProgressLine(line) {
   } catch {
     return { kind: 'unparsed', raw: line.slice(0, 200) };
   }
+}
+
+async function readRejectedCases(file) {
+  let text;
+  try {
+    text = await readFile(file, 'utf8');
+  } catch (err) {
+    if (err?.code === 'ENOENT') return null;
+    throw err;
+  }
+  return JSON.parse(text).rejectedCases.map((rejected) => rejected.title);
 }
 
 async function readNewProgress(progress) {
@@ -475,13 +493,19 @@ export async function runWatchedPlaywright({
     recent: [],
     lastAt: null,
   };
+  const rejectedCasesFile = join(progressDir, 'rejected-cases.json');
   const outputTail = createLineTail(OUTPUT_TAIL_LINES);
 
   let child;
   try {
     child = spawnImpl(command, args, {
       cwd,
-      env: { ...env, [PROGRESS_FILE_ENV]: progress.file, [PLAYWRIGHT_REPORTER_ENV]: SCRIPT_PATH },
+      env: {
+        ...env,
+        [PROGRESS_FILE_ENV]: progress.file,
+        [PLAYWRIGHT_REPORTER_ENV]: SCRIPT_PATH,
+        [REJECTED_CASES_RECORD_ENV]: rejectedCasesFile,
+      },
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -531,6 +555,7 @@ export async function runWatchedPlaywright({
   let progressUnreadable = false;
   let stall = null;
   let settled = null;
+  let rejectedCases = null;
   try {
     while (settled === null) {
       const tick = cancellableDelay(settings.pollMs);
@@ -615,6 +640,8 @@ export async function runWatchedPlaywright({
           `The Playwright runner (${child.pid}) had not exited ${formatDuration(settings.stopGraceMs)} after ${lastSent ?? 'the stall'}; leaving it.`,
         );
       }
+    } else {
+      rejectedCases = await readRejectedCases(rejectedCasesFile);
     }
   } finally {
     for (const remove of forwarders) remove();
@@ -633,7 +660,7 @@ export async function runWatchedPlaywright({
       stall,
     };
   }
-  return { exitCode: settled?.code ?? 1, signal: settled?.signal ?? null, stall };
+  return { exitCode: settled?.code ?? 1, signal: settled?.signal ?? null, stall, rejectedCases };
 }
 
 async function defaultRunPlaywright(appPath, deps = {}) {
@@ -669,7 +696,8 @@ export async function smokePackagedDmg(dmgPath, deps = {}) {
     return await withMount(
       dmgPath,
       async (appPath) => {
-        const { exitCode, signal, runnerError, stall } = await runPlaywright(appPath);
+        const { exitCode, signal, runnerError, stall, rejectedCases } =
+          await runPlaywright(appPath);
         const report = stall ? null : await readReport(appPath);
         return classifyRun({
           runExitCode: exitCode,
@@ -677,6 +705,7 @@ export async function smokePackagedDmg(dmgPath, deps = {}) {
           report,
           runnerError,
           stall,
+          rejectedCases,
         });
       },
       deps,

@@ -182,7 +182,7 @@ function mount(children: ReactElement) {
 
 async function expectUnclippedFocus(target: HTMLElement, focus: () => Promise<void>) {
   await document.fonts.ready;
-  expect(target.checkVisibility({ contentVisibilityAuto: true })).toBe(true);
+  await expect.poll(() => target.checkVisibility({ contentVisibilityAuto: true })).toBe(true);
   const before = ancestors(target).map((element) => ({ element, paint: readPaint(element) }));
   await focus();
   await expect.element(target).toHaveFocus();

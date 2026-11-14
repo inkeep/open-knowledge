@@ -37,7 +37,7 @@ if [ ! -f "$CLI" ] || [ ! -x "$ELECTRON" ]; then
   exit 69
 fi
 
-# UPSTREAM(electron@44.5.1): an ELECTRON_RUN_AS_NODE boot reads its own basename
+# UPSTREAM(electron@44.9.1): an ELECTRON_RUN_AS_NODE boot reads its own basename
 #   via _NSGetExecutablePath() and SIGTRAPs on anything but "<product> Helper",
 #   so the executable name below is fixed by Electron, not by us.
 RUNTIME="$ELECTRON"
