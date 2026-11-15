@@ -11,7 +11,7 @@ const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 let fixture;
 
 beforeEach(() => {
-  fixture = mkdtempSync(join(tmpdir(), 'ok-windows-icons-'));
+  fixture = mkdtempSync(join(tmpdir(), 'ok-build-icons-'));
   vi.stubEnv('ELECTRON_BUILDER_ICONS_TOOLSET_DIR', join(fixture, 'unavailable-toolset'));
 });
 
@@ -84,10 +84,33 @@ describe('Windows build icons', () => {
       { file: join(desktopRoot, `build/${asset}.ico`), size: 256 },
     ]);
   });
+});
 
-  test('preserves the Linux PNG without a conversion tool', async () => {
-    await expect(resolveIcon(baseConfig(), 'linux', 'set')).resolves.toEqual([
-      { file: join(desktopRoot, 'build/icon.png'), size: 1024 },
-    ]);
-  });
+const HICOLOR_SIZES = [16, 24, 32, 48, 64, 128, 256, 512];
+
+function pngSize(file) {
+  const bytes = readFileSync(file);
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
+describe('Linux build icons', () => {
+  test.each([
+    ['direct Linux', null, 'linux-icons'],
+    ['stable Linux release', 'stable', 'linux-icons'],
+    ['beta Linux release', 'beta', 'linux-icons-beta'],
+    ['legacy-beta Linux release', 'legacy-beta', 'linux-icons'],
+  ])(
+    'resolves every hicolor size for the %s icon without a conversion tool',
+    async (_label, variant, folder) => {
+      const config = variant === null ? baseConfig() : releaseConfig(variant);
+      const expected = HICOLOR_SIZES.map((size) => ({
+        file: join(desktopRoot, `build/${folder}/${size}x${size}.png`),
+        size,
+      }));
+      await expect(resolveIcon(config, 'linux', 'set')).resolves.toEqual(expected);
+      for (const { file, size } of expected) {
+        expect(pngSize(file), file).toEqual({ width: size, height: size });
+      }
+    },
+  );
 });

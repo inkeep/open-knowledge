@@ -16,6 +16,7 @@ interface DesktopVariantIdentity {
   readonly instanceLabel: string | null;
   readonly iconPath: string;
   readonly windowsIconPath: string;
+  readonly linuxIconsPath: string;
   readonly linuxExecutableName: string;
   readonly linuxPackageNames: {
     readonly deb: string;
@@ -42,6 +43,7 @@ const DESKTOP_PRODUCT_VARIANTS = {
     instanceLabel: null,
     iconPath: 'build/icon.png',
     windowsIconPath: 'build/icon.ico',
+    linuxIconsPath: 'build/linux-icons',
     linuxExecutableName: DESKTOP_PRODUCTS.stable.linuxExecutableName,
     linuxPackageNames: DESKTOP_PRODUCTS.stable.linuxPackageNames,
     retiredLinuxPackageNames: DESKTOP_PRODUCTS.stable.retiredLinuxPackageNames,
@@ -60,6 +62,7 @@ const DESKTOP_PRODUCT_VARIANTS = {
     instanceLabel: 'Beta',
     iconPath: 'build/icon-beta.png',
     windowsIconPath: 'build/icon-beta.ico',
+    linuxIconsPath: 'build/linux-icons-beta',
     linuxExecutableName: DESKTOP_PRODUCTS.beta.linuxExecutableName,
     linuxPackageNames: DESKTOP_PRODUCTS.beta.linuxPackageNames,
     retiredLinuxPackageNames: DESKTOP_PRODUCTS.beta.retiredLinuxPackageNames,
