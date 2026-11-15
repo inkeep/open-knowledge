@@ -499,7 +499,7 @@ nsis:
   include: build/installer.nsh
 
 linux:
-  icon: build/icon.png
+  icon: build/linux-icons
   # Pinned (matches electron-builder's default lowercase-sanitized product
   # name) because three other artifacts embed it: resources/cli/bin/
   # ok-linux.sh ($ROOT_DIR/openknowledge), the deb maintainer scripts'

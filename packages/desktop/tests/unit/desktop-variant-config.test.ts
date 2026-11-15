@@ -382,6 +382,21 @@ describe('desktop variant builder config', () => {
     expect(config.win.icon).toBe(icon);
   });
 
+  test.each([
+    { variant: 'stable', icons: 'build/linux-icons' },
+    { variant: 'beta', icons: 'build/linux-icons-beta' },
+    { variant: 'legacy-beta', icons: 'build/linux-icons' },
+  ] as const)('selects the committed Linux icon set for $variant', ({ variant, icons }) => {
+    expect(existsSync(resolve(desktopRoot, icons, '512x512.png')), icons).toBe(true);
+    const config = createVariantBuilderConfig(
+      parseBuilderConfig(configSource),
+      variant,
+      paths,
+      '0.77.7',
+    );
+    expect(config.linux.icon).toBe(icons);
+  });
+
   test('selects the matching signed profile when it is available', () => {
     const beta = createVariantBuilderConfig(
       parseBuilderConfig(configSource),
