@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { withFsCopyCompletionObserver } from '../../../server/src/fs-copy-observer.test-helper.ts';
+import { resolveDefaultSkillHomeRel } from '../../../server/src/in-place-skills.ts';
 import { connectMcpTestClient } from '../../../server/src/mcp/client.test-helper.ts';
 import { moveSkillCrossScope } from '../../../server/src/mcp/tools/skill-target.ts';
 import { createTestServer, HARNESS_BOOT_TIMEOUT_MS, type TestServer } from './test-harness.ts';
@@ -631,6 +632,7 @@ describe('MCP cross-scope move', () => {
       expect(readFileSync(join(destination, 'SKILL.md'), 'utf8')).toBe(original);
     } finally {
       chmodSync(source, 0o755);
+      if (existsSync(destination)) chmodSync(destination, 0o755);
       rmSync(destination, { recursive: true, force: true });
     }
   });
@@ -675,6 +677,7 @@ describe('MCP cross-scope move', () => {
       chmodSync(localDir, 0o755);
       chmodSync(source, 0o755);
       writeFileSync(ledgerPath, ledgerBefore);
+      if (existsSync(destination)) chmodSync(destination, 0o755);
       rmSync(destination, { recursive: true, force: true });
       rmSync(source, { recursive: true, force: true });
     }
@@ -699,6 +702,7 @@ describe('MCP cross-scope move', () => {
       chmodSync(source, 0o755);
     }
 
+    if (existsSync(destination)) chmodSync(destination, 0o755);
     rmSync(destination, { recursive: true, force: true });
     expect((await move()).status).toBe(200);
     expect(retentionLedger()[`global:${name}`]).toBeUndefined();
@@ -777,6 +781,7 @@ describe('MCP cross-scope move', () => {
       chmodSync(source, 0o755);
     }
 
+    if (existsSync(destination)) chmodSync(destination, 0o755);
     rmSync(destination, { recursive: true, force: true });
     mkdirSync(destination, { recursive: true });
     writeFileSync(
@@ -881,6 +886,7 @@ describe('MCP cross-scope move', () => {
     } finally {
       chmodSync(source, 0o755);
       if (existsSync(destinationBundleFile)) chmodSync(destinationBundleFile, 0o644);
+      if (existsSync(destination)) chmodSync(destination, 0o755);
       rmSync(destination, { recursive: true, force: true });
       rmSync(source, { recursive: true, force: true });
     }
@@ -1252,7 +1258,9 @@ describe('MCP cross-scope move', () => {
     ).toBe(200);
     expect(readFileSync(join(swept, 'SKILL.md'), 'utf8')).toBe(body);
     expect(readFileSync(join(hostable, 'SKILL.md'), 'utf8')).toBe(body);
-    const destination = join(server.contentDir, '.claude', 'skills', name);
+    const destinationHome = resolveDefaultSkillHomeRel(server.contentDir, 'project');
+    if (destinationHome === null) throw new Error('Project skill home is missing');
+    const destination = join(server.contentDir, destinationHome, name);
     chmodSync(source, 0o555);
     try {
       const response = await post('/api/skill/move-scope', {
@@ -1264,11 +1272,13 @@ describe('MCP cross-scope move', () => {
 
       expect(response.status).toBe(500);
       expect(result.moveState).toBe('destination-retained');
+      expect(existsSync(destination)).toBe(true);
       expect(existsSync(swept)).toBe(false);
       expect(existsSync(hostable)).toBe(false);
       expect(result.droppedLocations).toEqual(['cursor', 'lm-studio']);
     } finally {
       chmodSync(source, 0o755);
+      if (existsSync(destination)) chmodSync(destination, 0o755);
       rmSync(destination, { recursive: true, force: true });
       rmSync(source, { recursive: true, force: true });
       rmSync(hostable, { recursive: true, force: true });

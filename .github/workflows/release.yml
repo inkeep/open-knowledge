@@ -814,7 +814,7 @@ jobs:
       - name: Setup Node for npm OIDC publish
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "24.21.0"
+          node-version: "24.22.3"
           registry-url: "https://registry.npmjs.org"
 
       # UPSTREAM(npm/cli#9722): npm 12.0.0 shipped without the sigstore module libnpmpublish loads for provenance.

@@ -134,8 +134,8 @@ export type LifetimeObservation = {
 export async function observeWorkerLifetime(
   mode: 'dev-server' | 'prebuilt',
 ): Promise<LifetimeObservation> {
-  if (process.version !== 'v24.21.0')
-    throw new Error(`worker lifetime substrate requires Node24.21.0, got ${process.version}`);
+  if (process.version !== 'v24.22.3')
+    throw new Error(`worker lifetime substrate requires Node24.22.3, got ${process.version}`);
   const require = createRequire(import.meta.url);
   const browser: { chromium: { executablePath(): string } } = require('@playwright/test');
   if (!existsSync(browser.chromium.executablePath()))
