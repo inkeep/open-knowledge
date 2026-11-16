@@ -1579,6 +1579,9 @@ msgstr "আপনার পরিবর্তন প্রয়োগ করা
 msgid "Applying…"
 msgstr "প্রয়োগ করা হচ্ছে…"
 
+msgid "Approval request timed out"
+msgstr "অনুমোদনের অনুরোধের সময় শেষ হয়েছে"
+
 msgid "Approve"
 msgstr "অনুমোদন করুন"
 
@@ -1593,6 +1596,9 @@ msgstr "অনুমোদিত — {optionName}"
 
 msgid "Approved and ready to merge"
 msgstr "অনুমোদিত এবং মার্জের জন্য প্রস্তুত"
+
+msgid "Approved without verification"
+msgstr "যাচাই ছাড়া অনুমোদিত"
 
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "আপনি কি নিশ্চিত যে এই ফাইলটিকে টেমপ্লেটে রূপান্তর করতে চান? মূল ফাইলটি মুছে ফেলা হবে। এই কাজ ফেরানো যাবে না।"
@@ -6800,6 +6806,9 @@ msgstr "আপনার খোঁজের সঙ্গে কোনো চ্�
 msgid "No chats yet."
 msgstr "এখনও কোনো চ্যাট নেই।"
 
+msgid "No checksum is available to verify this agent. Approval is required for every run, including installed copies. This agent will run with your permissions. Continue only if you trust the source below."
+msgstr "এই এজেন্ট যাচাই করার জন্য কোনো চেকসাম নেই। ইনস্টল করা কপিসহ প্রতিবার চালানোর জন্য অনুমোদন প্রয়োজন। এই এজেন্ট আপনার অনুমতি নিয়ে চলবে। নিচের উৎসটি বিশ্বাস করলেই চালিয়ে যান।"
+
 msgid "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
 msgstr "এই ওয়ার্কট্রির জন্য কোনো সহযোগিতা সার্ভার নেই — এখানে <0>{cliCommand} start</0> চালান, নয়তো প্রকল্পটি আবার খুলুন।"
 
@@ -7063,6 +7072,9 @@ msgstr "এখনও কোনো AI টুলে যোগ করা হয়�
 
 msgid "Not answered"
 msgstr "উত্তর দেওয়া হয়নি"
+
+msgid "Not approved"
+msgstr "অনুমোদিত নয়"
 
 msgid "Not attached to desktop bridge"
 msgstr "ডেস্কটপ ব্রিজের সাথে সংযুক্ত নয়"
@@ -9035,6 +9047,9 @@ msgstr "ভেবে দেখা হচ্ছে…"
 
 msgid "Run"
 msgstr "চালানো"
+
+msgid "Run {0} {1} without verification?"
+msgstr "যাচাই ছাড়া {0} {1} চালাবেন?"
 
 msgid "Run a project audit from the Problems panel."
 msgstr "Problems প্যানেল থেকে একটি প্রকল্প নিরীক্ষা চালান।"
@@ -11405,6 +11420,9 @@ msgstr "OpenKnowledge-এর নেভিগেশন ইতিহাসে স�
 
 msgid "Tree view options"
 msgstr "ট্রি দৃশ্যের বিকল্প"
+
+msgid "Trust source and continue"
+msgstr "উৎসটি বিশ্বাস করে এগিয়ে যান"
 
 msgid "Try a prompt"
 msgstr "একটি প্রম্পট চেষ্টা করে দেখুন"

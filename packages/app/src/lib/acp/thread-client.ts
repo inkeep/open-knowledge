@@ -348,6 +348,14 @@ export class AgentThreadClient {
     this.send({ op: 'permission_response', threadId, requestId, outcome });
   }
 
+  respondBinaryConsent(
+    threadId: string,
+    requestId: string,
+    outcome: { kind: 'granted' } | { kind: 'declined' },
+  ): boolean {
+    return this.send({ op: 'binary_consent_response', threadId, requestId, outcome });
+  }
+
   respondRuntimeConsent(
     threadId: string,
     requestId: string,
@@ -634,12 +642,15 @@ export class AgentThreadClient {
     }, delay);
   }
 
-  private send(frame: ThreadClientFrame): void {
+  private send(frame: ThreadClientFrame): boolean {
     const ws = this.ws;
-    if (ws === null || ws.readyState !== WebSocket.OPEN) return;
+    if (ws === null || ws.readyState !== WebSocket.OPEN) return false;
     try {
       ws.send(JSON.stringify(frame));
-    } catch {}
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   receiveServerFrame(data: string): void {

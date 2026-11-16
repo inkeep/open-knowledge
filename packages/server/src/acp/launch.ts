@@ -69,6 +69,12 @@ export class AgentLaunchError extends Error {
   }
 }
 
+class BinaryVerificationError extends AgentLaunchError {
+  constructor(message: string, options?: ErrorOptions) {
+    super('install-failed', message, options);
+  }
+}
+
 function defaultBinaryCacheDir(): string {
   return join(okUserHomeDir(), 'acp-agents');
 }
@@ -127,6 +133,7 @@ type RegistryAcquisitionOptions = {
   install?: boolean;
   onAcquiring?: () => void;
   onResolved?: (resolution: ResolvedNpmAcquisition) => void;
+  confirmUnverifiedBinary?: (target: RegistryBinaryTarget) => Promise<boolean>;
 };
 
 export function resolveRegistryLaunch(
@@ -223,6 +230,7 @@ export async function resolveRegistryLaunch(
     const target = dist.binary[platformKey];
     const root = await ensureBinaryInstalled(agent.id, agent.version, target, binaryCacheDir, log, {
       onDownloadStart: reporting.onAcquiring,
+      confirmUnverified: acquisition?.confirmUnverifiedBinary,
     });
     const cmd = resolve(root, target.cmd.replace(/\\/g, '/'));
     if (!isWithin(root, cmd)) {
@@ -792,6 +800,7 @@ function prependPath(dir: string, existing: string | undefined): string {
 }
 
 export interface EnsureBinaryInstallOptions {
+  confirmUnverified?: (target: RegistryBinaryTarget) => Promise<boolean>;
   fetchImpl?: typeof fetch;
   onDownloadStart?: () => void;
   beforeCommit?: () => Promise<void>;
@@ -887,7 +896,7 @@ interface InFlightBinaryInstall {
 
 const inFlightBinaryInstalls = new Map<string, InFlightBinaryInstall>();
 
-export function ensureBinaryInstalled(
+export async function ensureBinaryInstalled(
   id: string,
   version: string,
   target: RegistryBinaryTarget,
@@ -895,6 +904,21 @@ export function ensureBinaryInstalled(
   log: PinoLogger,
   opts: EnsureBinaryInstallOptions = {},
 ): Promise<string> {
+  const checksum: unknown = target.sha256;
+  if (checksum != null && (typeof checksum !== 'string' || !/^[a-f\d]{64}$/i.test(checksum))) {
+    throw new BinaryVerificationError('The agent binary manifest contains an invalid checksum.');
+  }
+  if (checksum == null) {
+    const archiveUrl = typeof target.archive === 'string' ? URL.parse(target.archive) : null;
+    if (archiveUrl === null || !['https:', 'http:'].includes(archiveUrl.protocol)) {
+      throw new BinaryVerificationError('Invalid URL for the agent binary archive.');
+    }
+    if ((await opts.confirmUnverified?.(target)) !== true) {
+      throw new BinaryVerificationError(
+        'Explicit approval is required to install or run an agent binary without a checksum.',
+      );
+    }
+  }
   const key = JSON.stringify([
     resolve(cacheDir),
     id,
@@ -916,13 +940,20 @@ export function ensureBinaryInstalled(
     downloading: false,
     downloadStartListeners: opts.onDownloadStart === undefined ? [] : [opts.onDownloadStart],
   };
-  entry.result = installBinary(id, version, target, cacheDir, log, {
-    ...opts,
-    onDownloadStart: () => {
-      entry.downloading = true;
-      for (const notify of entry.downloadStartListeners) notify();
+  entry.result = installBinary(
+    id,
+    version,
+    { ...target, sha256: checksum ?? undefined },
+    cacheDir,
+    log,
+    {
+      ...opts,
+      onDownloadStart: () => {
+        entry.downloading = true;
+        for (const notify of entry.downloadStartListeners) notify();
+      },
     },
-  }).finally(() => inFlightBinaryInstalls.delete(key));
+  ).finally(() => inFlightBinaryInstalls.delete(key));
   inFlightBinaryInstalls.set(key, entry);
   return entry.result;
 }
@@ -969,7 +1000,9 @@ async function installBinary(
         );
         if (target.sha256 !== undefined) {
           if (sha !== target.sha256.toLowerCase()) {
-            throw new Error(`archive checksum mismatch: expected ${target.sha256}, got ${sha}`);
+            throw new BinaryVerificationError(
+              `archive checksum mismatch: expected ${target.sha256}, got ${sha}`,
+            );
           }
         } else {
           log.warn(
@@ -1002,6 +1035,11 @@ async function installBinary(
       commitLockTimeoutMs: opts.commitLockTimeoutMs,
     });
   } catch (err) {
+    if (err instanceof BinaryVerificationError) {
+      throw new BinaryVerificationError(`installing ${id}@${version} failed: ${err.message}`, {
+        cause: err,
+      });
+    }
     if (err instanceof DeterministicInstallError) {
       await writeInstallFailureMarker(markerPath, target, err.message, log);
     }

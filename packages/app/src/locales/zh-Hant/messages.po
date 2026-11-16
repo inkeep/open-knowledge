@@ -1583,6 +1583,9 @@ msgstr "正在套用你的變更"
 msgid "Applying…"
 msgstr "套用中…"
 
+msgid "Approval request timed out"
+msgstr "核准請求已逾時"
+
 msgid "Approve"
 msgstr "核准"
 
@@ -1597,6 +1600,9 @@ msgstr "已核准 — {optionName}"
 
 msgid "Approved and ready to merge"
 msgstr "已核准，可以合併"
+
+msgid "Approved without verification"
+msgstr "已核准，未經驗證"
 
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "確定要把這個檔案轉換成範本嗎？原始檔案會被刪除。這個動作無法復原。"
@@ -6804,6 +6810,9 @@ msgstr "沒有符合搜尋條件的聊天"
 msgid "No chats yet."
 msgstr "尚無聊天。"
 
+msgid "No checksum is available to verify this agent. Approval is required for every run, including installed copies. This agent will run with your permissions. Continue only if you trust the source below."
+msgstr "沒有可用於驗證此代理程式的總和檢查碼。每次執行都需要核准，包括已安裝的副本。此代理程式將以你的權限執行。只有在信任以下來源時才繼續。"
+
 msgid "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
 msgstr "這個 worktree 沒有協作伺服器——請在這裡執行 <0>{cliCommand} start</0>，或重新開啟專案。"
 
@@ -7067,6 +7076,9 @@ msgstr "尚未新增到任何 AI 工具。"
 
 msgid "Not answered"
 msgstr "未回答"
+
+msgid "Not approved"
+msgstr "未核准"
 
 msgid "Not attached to desktop bridge"
 msgstr "未連接到桌面橋接"
@@ -9039,6 +9051,9 @@ msgstr "反覆琢磨中…"
 
 msgid "Run"
 msgstr "執行"
+
+msgid "Run {0} {1} without verification?"
+msgstr "要在未經驗證的情況下執行 {0} {1} 嗎？"
 
 msgid "Run a project audit from the Problems panel."
 msgstr "在「問題」面板中執行一次專案稽核。"
@@ -11409,6 +11424,9 @@ msgstr "在 OpenKnowledge 的導覽記錄中往前走。"
 
 msgid "Tree view options"
 msgstr "樹狀檢視選項"
+
+msgid "Trust source and continue"
+msgstr "信任來源並繼續"
 
 msgid "Try a prompt"
 msgstr "試試一段提示"

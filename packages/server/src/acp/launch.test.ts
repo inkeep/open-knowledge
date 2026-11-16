@@ -726,7 +726,93 @@ describe('ensureBinaryInstalled', () => {
     ).rejects.toThrow(/no usable command/i);
   });
 
-  test('installs with a loud warning when the manifest omits sha256', async () => {
+  test.each([undefined, async () => false])(
+    'refuses an unverified binary without approval (%s)',
+    async (confirmUnverified) => {
+      const source = tmp();
+      const cacheDir = tmp();
+      const artifact = buildBinaryTarball(source);
+      const downloads: string[] = [];
+      const fetchImpl: typeof fetch = async (url) => {
+        downloads.push(String(url));
+        return binaryFetch(artifact.bytes)(url);
+      };
+      await expect(
+        ensureBinaryInstalled('test-agent', '1.0.0', artifact.target, cacheDir, log, {
+          fetchImpl,
+          confirmUnverified,
+        }),
+      ).rejects.toThrow(/approval/i);
+      expect(downloads).toEqual([]);
+      expect(existsSync(join(cacheDir, 'test-agent', '1.0.0'))).toBe(false);
+    },
+  );
+
+  test.each([null, '', 17, 'not-a-checksum'])(
+    'rejects unverified registry checksum metadata before downloading: %s',
+    async (sha256) => {
+      const artifact = buildBinaryTarball(tmp());
+      const target: RegistryBinaryTarget = JSON.parse(
+        JSON.stringify({ ...artifact.target, sha256 }),
+      );
+      const downloads: string[] = [];
+      const confirmUnverified = vi.fn(async () => true);
+      await expect(
+        ensureBinaryInstalled('test-agent', '1.0.0', target, tmp(), log, {
+          confirmUnverified: sha256 === null ? undefined : confirmUnverified,
+          fetchImpl: async (url) => {
+            downloads.push(String(url));
+            return binaryFetch(artifact.bytes)(url);
+          },
+        }),
+      ).rejects.toThrow(sha256 === null ? /approval/i : /invalid checksum/i);
+      expect(confirmUnverified).not.toHaveBeenCalled();
+      expect(downloads).toEqual([]);
+    },
+  );
+
+  test('installs a null-checksum registry target only after approval', async () => {
+    const artifact = buildBinaryTarball(tmp());
+    const target: RegistryBinaryTarget = JSON.parse(
+      JSON.stringify({ ...artifact.target, sha256: null }),
+    );
+    const installed = await ensureBinaryInstalled('test-agent', '1.0.0', target, tmp(), log, {
+      confirmUnverified: async () => true,
+      fetchImpl: binaryFetch(artifact.bytes),
+    });
+    expect(existsSync(join(installed, 'package', 'bin', 'agent'))).toBe(true);
+  });
+
+  test('waits for approval before downloading an unverified binary', async () => {
+    const artifact = buildBinaryTarball(tmp());
+    const cacheDir = tmp();
+    const { promise: approval, resolve: approve } = Promise.withResolvers<boolean>();
+    const downloads: string[] = [];
+    const installation = ensureBinaryInstalled(
+      'test-agent',
+      '1.0.0',
+      artifact.target,
+      cacheDir,
+      log,
+      {
+        confirmUnverified: () => approval,
+        fetchImpl: async (url) => {
+          downloads.push(String(url));
+          return binaryFetch(artifact.bytes)(url);
+        },
+      },
+    );
+    expect(downloads).toEqual([]);
+    approve(true);
+    const installed = await installation;
+    expect(downloads).toEqual([artifact.target.archive]);
+    expect(existsSync(join(installed, 'package', 'bin', 'agent'))).toBe(true);
+    await expect(
+      ensureBinaryInstalled('test-agent', '1.0.0', artifact.target, cacheDir, log),
+    ).rejects.toThrow(/approval/i);
+  });
+
+  test('installs with approval and a warning when the manifest omits sha256', async () => {
     const source = tmp();
     const cacheDir = tmp();
     const artifact = buildBinaryTarball(source);
@@ -744,7 +830,7 @@ describe('ensureBinaryInstalled', () => {
       artifact.target,
       cacheDir,
       warnLog,
-      { fetchImpl: binaryFetch(artifact.bytes) },
+      { fetchImpl: binaryFetch(artifact.bytes), confirmUnverified: async () => true },
     );
 
     expect(installed).toBe(join(cacheDir, 'test-agent', '1.0.0'));
@@ -857,7 +943,7 @@ describe('ensureBinaryInstalled', () => {
       ensureBinaryInstalled(
         'test-agent',
         '1.0.0',
-        { archive: 'not a url', cmd: './bin/agent' },
+        { archive: 'not a url', cmd: './bin/agent', sha256: '0'.repeat(64) },
         cacheDir,
         log,
         {

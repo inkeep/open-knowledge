@@ -219,50 +219,53 @@ describe('parseThreadClientFrame', () => {
     ).toBeNull();
   });
 
-  test('runtime_consent_response validates the granted/declined outcome', () => {
-    expect(
-      parseThreadClientFrame(
-        JSON.stringify({
-          op: 'runtime_consent_response',
-          threadId: 't',
-          requestId: 'c',
-          outcome: { kind: 'granted', remember: true },
-        }),
-      ),
-    ).toMatchObject({
-      op: 'runtime_consent_response',
-      outcome: { kind: 'granted' },
-    });
-    expect(
-      parseThreadClientFrame(
-        JSON.stringify({
-          op: 'runtime_consent_response',
-          threadId: 't',
-          requestId: 'c',
-          outcome: { kind: 'declined' },
-        }),
-      ),
-    ).toMatchObject({ outcome: { kind: 'declined' } });
-    expect(
-      parseThreadClientFrame(
-        JSON.stringify({
-          op: 'runtime_consent_response',
-          threadId: 't',
-          requestId: 'c',
-          outcome: { kind: 'maybe' },
-        }),
-      ),
-    ).toBeNull();
-    expect(
-      parseThreadClientFrame(
-        JSON.stringify({
-          op: 'runtime_consent_response',
-          threadId: 't',
-          outcome: { kind: 'granted' },
-        }),
-      ),
-    ).toBeNull();
-  });
+  test.each(['runtime_consent_response', 'binary_consent_response'] as const)(
+    '%s validates the granted/declined outcome',
+    (op) => {
+      expect(
+        parseThreadClientFrame(
+          JSON.stringify({
+            op,
+            threadId: 't',
+            requestId: 'c',
+            outcome: { kind: 'granted', remember: true },
+          }),
+        ),
+      ).toMatchObject({
+        op,
+        outcome: { kind: 'granted' },
+      });
+      expect(
+        parseThreadClientFrame(
+          JSON.stringify({
+            op,
+            threadId: 't',
+            requestId: 'c',
+            outcome: { kind: 'declined' },
+          }),
+        ),
+      ).toMatchObject({ outcome: { kind: 'declined' } });
+      expect(
+        parseThreadClientFrame(
+          JSON.stringify({
+            op,
+            threadId: 't',
+            requestId: 'c',
+            outcome: { kind: 'maybe' },
+          }),
+        ),
+      ).toBeNull();
+      expect(
+        parseThreadClientFrame(
+          JSON.stringify({
+            op,
+            threadId: 't',
+            outcome: { kind: 'granted' },
+          }),
+        ),
+      ).toBeNull();
+    },
+  );
 
   test('pi_bridge_consent_response validates the granted/declined outcome', () => {
     expect(

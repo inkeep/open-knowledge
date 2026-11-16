@@ -152,6 +152,10 @@ export function attachAcpThreadSocket(
             manager.respondPermission(frame.threadId, frame.requestId, frame.outcome);
             return;
           }
+          case 'binary_consent_response': {
+            manager.respondBinaryConsent(frame.threadId, frame.requestId, frame.outcome);
+            return;
+          }
           case 'runtime_consent_response': {
             manager.respondRuntimeConsent(frame.threadId, frame.requestId, frame.outcome);
             return;

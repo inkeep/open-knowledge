@@ -8462,6 +8462,78 @@ describe.skipIf(process.platform === 'win32')(
       });
     }, 90_000);
 
+    test.each(['granted', 'declined', 'closed', 'timeout'] as const)(
+      'unverified binaries wait for approval: %s',
+      async (decision) => {
+        await withHeldInstallRegistry(async (held) => {
+          const distribution = binaryDistribution(held);
+          for (const target of Object.values(distribution.binary ?? {})) delete target.sha256;
+          const { agentId, manager } = heldInstallManager(held, distribution);
+          const events: ThreadEvent[] = [];
+          try {
+            if (decision === 'timeout') vi.useFakeTimers({ shouldAdvanceTime: true });
+            const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+            await manager.subscribe(info.threadId, 0, (frame) => {
+              if (frame.op === 'event') events.push(frame.event);
+              if (frame.op === 'events') events.push(...frame.events);
+            });
+            await waitUntil(
+              () => events.some((event) => event.kind === 'binary_consent_request'),
+              10_000,
+              'binary approval request',
+            );
+            const request = events.find((event) => event.kind === 'binary_consent_request');
+            if (request?.kind !== 'binary_consent_request')
+              throw new Error('missing binary approval');
+            expect(request.archive).toBe(held.binaryTarget.archive);
+            expect(held.requested('binary-archive')).toBe(0);
+            if (decision === 'closed') {
+              await manager.closeThread(info.threadId);
+              expect(() =>
+                manager.respondBinaryConsent(info.threadId, request.requestId, { kind: 'granted' }),
+              ).toThrow(/no thread/);
+            } else if (decision === 'timeout') {
+              await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1);
+              await waitUntil(
+                () =>
+                  events.some(
+                    (event) =>
+                      event.kind === 'binary_consent_resolved' && event.decision === 'timeout',
+                  ),
+                10_000,
+                'approval timeout to be delivered',
+              );
+              vi.useRealTimers();
+            } else {
+              manager.respondBinaryConsent(info.threadId, request.requestId, { kind: decision });
+            }
+            if (decision === 'granted') {
+              await waitUntil(
+                () => held.requested('binary-archive') > 0,
+                10_000,
+                'approved download',
+              );
+              held.release('binary-archive');
+              await expect
+                .poll(() => manager.getInfo(info.threadId)?.status, { timeout: 30_000 })
+                .toBe('ready');
+            } else {
+              if (decision === 'closed') expect(manager.getInfo(info.threadId)).toBeUndefined();
+              else
+                await expect
+                  .poll(() => manager.getInfo(info.threadId)?.status, { timeout: 10_000 })
+                  .toBe('error');
+              expect(held.requested('binary-archive')).toBe(0);
+            }
+          } finally {
+            vi.useRealTimers();
+            await manager.destroy();
+          }
+        });
+      },
+      60_000,
+    );
+
     test('a cold binary agent launch reports installing while its archive downloads', async () => {
       await withHeldInstallRegistry(async (held) => {
         const { agentId, manager } = heldInstallManager(held, binaryDistribution(held));

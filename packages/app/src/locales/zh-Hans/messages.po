@@ -1583,6 +1583,9 @@ msgstr "正在应用你的更改"
 msgid "Applying…"
 msgstr "正在应用…"
 
+msgid "Approval request timed out"
+msgstr "批准请求已超时"
+
 msgid "Approve"
 msgstr "批准"
 
@@ -1597,6 +1600,9 @@ msgstr "已批准 — {optionName}"
 
 msgid "Approved and ready to merge"
 msgstr "已批准，可以合并"
+
+msgid "Approved without verification"
+msgstr "已批准，未经验证"
 
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "确定要把这个文件转换成模板吗？原文件会被删除。此操作无法撤销。"
@@ -6804,6 +6810,9 @@ msgstr "没有与搜索匹配的聊天"
 msgid "No chats yet."
 msgstr "还没有聊天。"
 
+msgid "No checksum is available to verify this agent. Approval is required for every run, including installed copies. This agent will run with your permissions. Continue only if you trust the source below."
+msgstr "没有可用于验证此代理的校验和。每次运行都需要批准，包括已安装的副本。此代理将以你的权限运行。仅当你信任以下来源时才继续。"
+
 msgid "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
 msgstr "这个 worktree 没有协作服务器——请在这里运行 <0>{cliCommand} start</0>，或重新打开项目。"
 
@@ -7067,6 +7076,9 @@ msgstr "尚未添加到任何 AI 工具。"
 
 msgid "Not answered"
 msgstr "未回答"
+
+msgid "Not approved"
+msgstr "未批准"
 
 msgid "Not attached to desktop bridge"
 msgstr "未连接到桌面桥接"
@@ -9039,6 +9051,9 @@ msgstr "正在反复琢磨…"
 
 msgid "Run"
 msgstr "运行"
+
+msgid "Run {0} {1} without verification?"
+msgstr "不经验证运行 {0} {1}？"
 
 msgid "Run a project audit from the Problems panel."
 msgstr "在「问题」面板中运行一次项目审查。"
@@ -11409,6 +11424,9 @@ msgstr "在 OpenKnowledge 的导航历史中前进。"
 
 msgid "Tree view options"
 msgstr "树状视图选项"
+
+msgid "Trust source and continue"
+msgstr "信任来源并继续"
 
 msgid "Try a prompt"
 msgstr "试试一段提示词"

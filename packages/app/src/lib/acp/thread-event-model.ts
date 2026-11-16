@@ -89,6 +89,15 @@ export interface RenderedTerminal {
 
 const TERMINAL_RENDER_CHAR_CAP = 64_000;
 
+interface RenderedBinaryConsent {
+  kind: 'binary_consent';
+  requestId: string;
+  agentName: string;
+  version: string;
+  archive: string;
+  resolved: 'granted' | 'declined' | 'timeout' | 'closed' | null;
+}
+
 interface RenderedRuntimeConsent {
   kind: 'runtime_consent';
   requestId: string;
@@ -138,6 +147,7 @@ export type RenderedItem =
   | RenderedNotice
   | RenderedAgentNotice
   | RenderedBrowserUnavailable
+  | RenderedBinaryConsent
   | RenderedRuntimeConsent
   | RenderedPiBridge;
 
@@ -245,6 +255,15 @@ export class ThreadRenderModelBuilder {
     this.dirty = true;
   }
 
+  private closePendingBinaryConsents(): void {
+    for (let index = 0; index < this.items.length; index += 1) {
+      const item = this.items[index];
+      if (item.kind === 'binary_consent' && item.resolved === null) {
+        this.items[index] = { ...item, resolved: 'closed' };
+      }
+    }
+  }
+
   private applyEvent(event: ThreadEvent, seq: number): void {
     this.dirty = true;
     switch (event.kind) {
@@ -274,6 +293,7 @@ export class ThreadRenderModelBuilder {
         this.messageIndex.clear();
         break;
       case 'status':
+        this.closePendingBinaryConsents();
         if (event.status === 'exited') this.turnActive = false;
         if (this.lastConsentIndex !== null) {
           const c = this.items[this.lastConsentIndex];
@@ -367,6 +387,19 @@ export class ThreadRenderModelBuilder {
         if (resolved.toolCallId !== null) {
           this.permissionsByToolCall[resolved.toolCallId] = resolved;
         }
+        break;
+      }
+      case 'binary_consent_request':
+        this.closePendingBinaryConsents();
+        this.items.push({ ...event, kind: 'binary_consent', resolved: null });
+        break;
+      case 'binary_consent_resolved': {
+        const index = this.items.findIndex(
+          (item) => item.kind === 'binary_consent' && item.requestId === event.requestId,
+        );
+        const item = this.items[index];
+        if (item?.kind === 'binary_consent')
+          this.items[index] = { ...item, resolved: event.decision };
         break;
       }
       case 'runtime_consent_request':

@@ -380,6 +380,7 @@ interface ThreadRecord {
   browserInjected: boolean;
   browserNotice: BrowserUnavailableReason | null;
   pendingRuntimeConsent: Map<string, PendingConsent>;
+  pendingBinaryConsent: Map<string, PendingConsent>;
   pendingPiBridgeConsent: Map<string, PendingConsent>;
   piBridgeDeclined: boolean;
   lastPiBridgeStatus: PiBridgeThreadState | null;
@@ -746,6 +747,7 @@ export class AcpThreadManager {
       browserInjected: false,
       browserNotice: null,
       pendingRuntimeConsent: new Map(),
+      pendingBinaryConsent: new Map(),
       pendingPiBridgeConsent: new Map(),
       piBridgeDeclined: false,
       lastPiBridgeStatus: null,
@@ -895,6 +897,16 @@ export class AcpThreadManager {
           {
             reacquire: acquisition === 'reacquire',
             install: true,
+            confirmUnverifiedBinary: async (target) => {
+              if (!isCurrentLaunch(record, ticket)) return false;
+              const decision = await this.requestBinaryConsent(
+                record,
+                manifest.version,
+                target.archive,
+                consentBudgetMs,
+              );
+              return decision === 'granted' && isCurrentLaunch(record, ticket);
+            },
             onAcquiring: () => {
               if (isCurrentLaunch(record, ticket)) this.emitStatus(record, 'installing');
             },
@@ -1638,6 +1650,56 @@ export class AcpThreadManager {
         `couldn't install ${name}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+  }
+
+  private requestBinaryConsent(
+    record: ThreadRecord,
+    version: string,
+    archive: string,
+    consentBudgetMs: number,
+  ): Promise<'granted' | 'declined' | 'timeout' | 'closed'> {
+    const requestId = crypto.randomUUID();
+    return new Promise((resolvePromise) => {
+      const timer = setTimeout(() => {
+        record.pendingBinaryConsent.delete(requestId);
+        this.appendEvent(record, {
+          kind: 'binary_consent_resolved',
+          requestId,
+          decision: 'timeout',
+          ts: Date.now(),
+        });
+        resolvePromise('timeout');
+      }, consentBudgetMs);
+      timer.unref?.();
+      record.pendingBinaryConsent.set(requestId, { resolve: resolvePromise, timer });
+      this.appendEvent(record, {
+        kind: 'binary_consent_request',
+        requestId,
+        agentName: record.info.agent.name,
+        version,
+        archive,
+        ts: Date.now(),
+      });
+    });
+  }
+
+  respondBinaryConsent(
+    threadId: string,
+    requestId: string,
+    outcome: { kind: 'granted' } | { kind: 'declined' },
+  ): void {
+    const record = this.mustGet(threadId);
+    const pending = record.pendingBinaryConsent.get(requestId);
+    if (pending === undefined) return;
+    record.pendingBinaryConsent.delete(requestId);
+    clearTimeout(pending.timer);
+    this.appendEvent(record, {
+      kind: 'binary_consent_resolved',
+      requestId,
+      decision: outcome.kind,
+      ts: Date.now(),
+    });
+    pending.resolve(outcome.kind);
   }
 
   private requestRuntimeConsent(
@@ -4078,7 +4140,7 @@ export class AcpThreadManager {
   }
 
   private failPendingConsents(t: ThreadRecord): void {
-    for (const map of [t.pendingRuntimeConsent, t.pendingPiBridgeConsent]) {
+    for (const map of [t.pendingRuntimeConsent, t.pendingPiBridgeConsent, t.pendingBinaryConsent]) {
       for (const pending of map.values()) {
         clearTimeout(pending.timer);
         pending.resolve('closed');
@@ -4235,6 +4297,7 @@ function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
     browserInjected: false,
     browserNotice: meta.browserNotice ?? null,
     pendingRuntimeConsent: new Map(),
+    pendingBinaryConsent: new Map(),
     pendingPiBridgeConsent: new Map(),
     piBridgeDeclined: false,
     lastPiBridgeStatus: null,
