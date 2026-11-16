@@ -222,6 +222,20 @@ export type ThreadEvent =
   | { kind: 'agent_stderr'; line: string; ts: number }
   | { kind: 'browser_unavailable'; reason: BrowserUnavailableReason; ts: number }
   | {
+      kind: 'binary_consent_request';
+      requestId: string;
+      agentName: string;
+      version: string;
+      archive: string;
+      ts: number;
+    }
+  | {
+      kind: 'binary_consent_resolved';
+      requestId: string;
+      decision: 'granted' | 'declined' | 'timeout';
+      ts: number;
+    }
+  | {
       kind: 'runtime_consent_request';
       requestId: string;
       runtime: ManagedRuntimeKind;
@@ -358,6 +372,12 @@ export type ThreadClientFrame =
     }
   | { op: 'cancel'; threadId: string }
   | {
+      op: 'binary_consent_response';
+      threadId: string;
+      requestId: string;
+      outcome: { kind: 'granted' } | { kind: 'declined' };
+    }
+  | {
       op: 'runtime_consent_response';
       threadId: string;
       requestId: string;
@@ -469,6 +489,7 @@ const CLIENT_OPS = new Set([
   'set_chat_grant',
   'permission_response',
   'runtime_consent_response',
+  'binary_consent_response',
   'pi_bridge_consent_response',
   'cancel',
   'set_mode',
@@ -605,6 +626,7 @@ export function parseThreadClientFrame(raw: string): ThreadClientFrame | null {
       }
       return frame as unknown as ThreadClientFrame;
     }
+    case 'binary_consent_response':
     case 'runtime_consent_response': {
       if (!str('threadId') || !str('requestId')) return null;
       const outcome = frame.outcome as Record<string, unknown> | undefined;

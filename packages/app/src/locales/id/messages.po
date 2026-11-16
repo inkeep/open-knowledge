@@ -1579,6 +1579,9 @@ msgstr "Menerapkan perubahan Anda"
 msgid "Applying…"
 msgstr "Menerapkan…"
 
+msgid "Approval request timed out"
+msgstr "Permintaan persetujuan kehabisan waktu"
+
 msgid "Approve"
 msgstr "Setujui"
 
@@ -1593,6 +1596,9 @@ msgstr "Disetujui — {optionName}"
 
 msgid "Approved and ready to merge"
 msgstr "Disetujui dan siap di-merge"
+
+msgid "Approved without verification"
+msgstr "Disetujui tanpa verifikasi"
 
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "Yakin ingin mengubah berkas ini menjadi templat? Berkas aslinya akan dihapus. Tindakan ini tidak bisa dibatalkan."
@@ -6800,6 +6806,9 @@ msgstr "Tidak ada chat yang cocok dengan pencarian Anda"
 msgid "No chats yet."
 msgstr "Belum ada chat."
 
+msgid "No checksum is available to verify this agent. Approval is required for every run, including installed copies. This agent will run with your permissions. Continue only if you trust the source below."
+msgstr "Tidak ada checksum untuk memverifikasi agen ini. Persetujuan diperlukan setiap kali agen dijalankan, termasuk salinan yang sudah terinstal. Agen ini akan berjalan dengan izin Anda. Lanjutkan hanya jika Anda memercayai sumber di bawah ini."
+
 msgid "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
 msgstr "Tidak ada server kolaborasi untuk worktree ini — jalankan <0>{cliCommand} start</0> di sini, atau buka lagi proyeknya."
 
@@ -7063,6 +7072,9 @@ msgstr "Belum ditambahkan ke alat AI mana pun."
 
 msgid "Not answered"
 msgstr "Belum dijawab"
+
+msgid "Not approved"
+msgstr "Tidak disetujui"
 
 msgid "Not attached to desktop bridge"
 msgstr "Tidak terhubung ke bridge desktop"
@@ -9035,6 +9047,9 @@ msgstr "Merenung…"
 
 msgid "Run"
 msgstr "Jalankan"
+
+msgid "Run {0} {1} without verification?"
+msgstr "Jalankan {0} {1} tanpa verifikasi?"
 
 msgid "Run a project audit from the Problems panel."
 msgstr "Jalankan audit proyek dari panel Masalah."
@@ -11405,6 +11420,9 @@ msgstr "Menyusuri riwayat navigasi OpenKnowledge ke depan."
 
 msgid "Tree view options"
 msgstr "Opsi tampilan pohon"
+
+msgid "Trust source and continue"
+msgstr "Percayai sumber dan lanjutkan"
 
 msgid "Try a prompt"
 msgstr "Coba sebuah prompt"

@@ -1583,6 +1583,9 @@ msgstr "آپ کی تبدیلی لاگو کی جا رہی ہے"
 msgid "Applying…"
 msgstr "لاگو کیا جا رہا ہے…"
 
+msgid "Approval request timed out"
+msgstr "منظوری کی درخواست کا وقت ختم ہو گیا"
+
 msgid "Approve"
 msgstr "منظوری دیں"
 
@@ -1597,6 +1600,9 @@ msgstr "منظور شدہ — {optionName}"
 
 msgid "Approved and ready to merge"
 msgstr "منظور شدہ اور مرج کے لیے تیار"
+
+msgid "Approved without verification"
+msgstr "تصدیق کے بغیر منظور شدہ"
 
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "کیا آپ واقعی اس فائل کو ٹیمپلیٹ میں تبدیل کرنا چاہتے ہیں؟ اصل فائل حذف ہو جائے گی۔ یہ عمل واپس نہیں لیا جا سکتا۔"
@@ -6804,6 +6810,9 @@ msgstr "آپ کی تلاش سے کوئی چیٹ مماثل نہیں"
 msgid "No chats yet."
 msgstr "ابھی کوئی چیٹ نہیں۔"
 
+msgid "No checksum is available to verify this agent. Approval is required for every run, including installed copies. This agent will run with your permissions. Continue only if you trust the source below."
+msgstr "اس ایجنٹ کی تصدیق کے لیے کوئی چیک سم دستیاب نہیں ہے۔ پہلے سے انسٹال شدہ کاپیوں سمیت، ہر بار چلانے کے لیے منظوری درکار ہے۔ یہ ایجنٹ آپ کی اجازتوں کے ساتھ چلے گا۔ صرف اسی صورت میں جاری رکھیں جب آپ نیچے دیے گئے ماخذ پر بھروسا کرتے ہوں۔"
+
 msgid "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
 msgstr "اس ورک ٹری کے لیے کوئی اشتراکی سرور نہیں — یہاں <0>{cliCommand} start</0> چلائیں، یا پروجیکٹ دوبارہ کھولیں۔"
 
@@ -7067,6 +7076,9 @@ msgstr "ابھی تک کسی AI ٹول میں شامل نہیں کیا گیا۔"
 
 msgid "Not answered"
 msgstr "جواب نہیں دیا گیا"
+
+msgid "Not approved"
+msgstr "منظور نہیں ہوا"
 
 msgid "Not attached to desktop bridge"
 msgstr "ڈیسک ٹاپ برج سے منسلک نہیں"
@@ -9039,6 +9051,9 @@ msgstr "گہری سوچ جاری ہے…"
 
 msgid "Run"
 msgstr "چلانا"
+
+msgid "Run {0} {1} without verification?"
+msgstr "کیا {0} {1} کو تصدیق کے بغیر چلائیں؟"
 
 msgid "Run a project audit from the Problems panel."
 msgstr "مسائل کے پینل سے پروجیکٹ کا آڈٹ چلائیں۔"
@@ -11409,6 +11424,9 @@ msgstr "OpenKnowledge کی نیویگیشن تاریخ میں آگے جائیں�
 
 msgid "Tree view options"
 msgstr "ٹری منظر کے آپشنز"
+
+msgid "Trust source and continue"
+msgstr "ماخذ پر بھروسا کریں اور جاری رکھیں"
 
 msgid "Try a prompt"
 msgstr "کوئی پرامپٹ آزمائیں"

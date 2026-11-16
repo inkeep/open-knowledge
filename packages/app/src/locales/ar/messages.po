@@ -1583,6 +1583,9 @@ msgstr "يجري تطبيق تغييرك"
 msgid "Applying…"
 msgstr "جارٍ التطبيق…"
 
+msgid "Approval request timed out"
+msgstr "انتهت مهلة طلب الموافقة"
+
 msgid "Approve"
 msgstr "موافقة"
 
@@ -1597,6 +1600,9 @@ msgstr "موافق عليه — {optionName}"
 
 msgid "Approved and ready to merge"
 msgstr "معتمد وجاهز للدمج"
+
+msgid "Approved without verification"
+msgstr "تمت الموافقة دون تحقق"
 
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "هل أنت متأكد أنك تريد تحويل هذا الملف إلى قالب؟ سيُحذف الملف الأصلي. لا يمكن التراجع عن هذا الإجراء."
@@ -6804,6 +6810,9 @@ msgstr "لا توجد دردشات تطابق بحثك"
 msgid "No chats yet."
 msgstr "لا توجد دردشات بعد."
 
+msgid "No checksum is available to verify this agent. Approval is required for every run, including installed copies. This agent will run with your permissions. Continue only if you trust the source below."
+msgstr "لا تتوفر قيمة تحقق للتحقق من هذا الوكيل. تتطلب كل عملية تشغيل موافقة، بما في ذلك النسخ المثبتة. سيعمل هذا الوكيل بصلاحياتك. تابع فقط إذا كنت تثق بالمصدر أدناه."
+
 msgid "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
 msgstr "لا يوجد خادم تعاون لشجرة العمل هذه — شغّل <0>{cliCommand} start</0> هنا، أو أعد فتح المشروع."
 
@@ -7067,6 +7076,9 @@ msgstr "لم تتم إضافته إلى أي أداة ذكاء اصطناعي ب
 
 msgid "Not answered"
 msgstr "بلا إجابة"
+
+msgid "Not approved"
+msgstr "لم تتم الموافقة"
 
 msgid "Not attached to desktop bridge"
 msgstr "غير متصل بجسر سطح المكتب"
@@ -9039,6 +9051,9 @@ msgstr "يجري التفكير مليًا…"
 
 msgid "Run"
 msgstr "تشغيل"
+
+msgid "Run {0} {1} without verification?"
+msgstr "هل تريد تشغيل {0} {1} دون تحقق؟"
 
 msgid "Run a project audit from the Problems panel."
 msgstr "شغّل مراجعة مشروع من لوحة المشكلات."
@@ -11409,6 +11424,9 @@ msgstr "تنقّل في سجل تنقّل OpenKnowledge إلى الأمام."
 
 msgid "Tree view options"
 msgstr "خيارات عرض الشجرة"
+
+msgid "Trust source and continue"
+msgstr "الوثوق بالمصدر والمتابعة"
 
 msgid "Try a prompt"
 msgstr "جرّب موجّهًا"

@@ -12,6 +12,80 @@ function ev(event: ThreadEvent): ThreadEvent {
 }
 
 describe('buildThreadRenderModel', () => {
+  test.each([
+    'spawning',
+    'installing',
+    'ready',
+    'running',
+    'auth_required',
+    'error',
+    'exited',
+  ] as const)('retires abandoned binary approval on %s', (status) => {
+    const request = ev({
+      kind: 'binary_consent_request',
+      requestId: 'binary-1',
+      agentName: 'Agent',
+      version: '1',
+      archive: 'https://example.com/agent.tgz',
+      ts: 1,
+    });
+    const model = buildThreadRenderModel([request, ev({ kind: 'status', status, ts: 2 })], null);
+    expect(model.items[0]).toMatchObject({ kind: 'binary_consent', resolved: 'closed' });
+  });
+
+  test('only the newest binary approval stays pending across replay', () => {
+    const request = ev({
+      kind: 'binary_consent_request',
+      requestId: 'binary-1',
+      agentName: 'Agent',
+      version: '1',
+      archive: 'https://example.com/agent.tgz',
+      ts: 1,
+    });
+    const model = buildThreadRenderModel(
+      [request, ev({ ...request, requestId: 'binary-2', ts: 2 })],
+      null,
+    );
+    expect(model.items).toMatchObject([
+      { kind: 'binary_consent', requestId: 'binary-1', resolved: 'closed' },
+      { kind: 'binary_consent', requestId: 'binary-2', resolved: null },
+    ]);
+  });
+
+  test.each(['granted', 'declined', 'timeout'] as const)(
+    'replays binary approval as %s',
+    (decision) => {
+      const request = {
+        kind: 'binary_consent_request',
+        requestId: 'binary-1',
+        agentName: 'Agent',
+        version: '1',
+        archive: 'https://example.com/agent.tgz',
+        ts: 1,
+      } as const;
+      const pending = buildThreadRenderModel([request], null);
+      expect(pending.items[0]).toMatchObject({
+        kind: 'binary_consent',
+        archive: request.archive,
+        resolved: null,
+      });
+      const resolved = buildThreadRenderModel(
+        [
+          request,
+          { kind: 'binary_consent_resolved', requestId: request.requestId, decision, ts: 2 },
+          { kind: 'status', status: 'ready', ts: 3 },
+        ],
+        null,
+      );
+      expect(resolved.items).toHaveLength(1);
+      expect(resolved.items[0]).toMatchObject({
+        kind: 'binary_consent',
+        archive: request.archive,
+        resolved: decision,
+      });
+    },
+  );
+
   test('keeps a browser_unavailable event as its own transcript item', () => {
     const model = buildThreadRenderModel(
       [

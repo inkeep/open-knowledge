@@ -1579,6 +1579,9 @@ msgstr "आपका बदलाव लागू किया जा रहा 
 msgid "Applying…"
 msgstr "लागू किया जा रहा है…"
 
+msgid "Approval request timed out"
+msgstr "अनुमोदन अनुरोध का समय समाप्त हो गया"
+
 msgid "Approve"
 msgstr "स्वीकृति दें"
 
@@ -1593,6 +1596,9 @@ msgstr "स्वीकृत — {optionName}"
 
 msgid "Approved and ready to merge"
 msgstr "स्वीकृत और मर्ज के लिए तैयार"
+
+msgid "Approved without verification"
+msgstr "सत्यापन के बिना अनुमोदित"
 
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "क्या आप वाकई इस फ़ाइल को टेम्पलेट में बदलना चाहते हैं? मूल फ़ाइल हटा दी जाएगी। यह क्रिया वापस नहीं ली जा सकती।"
@@ -6800,6 +6806,9 @@ msgstr "आपकी खोज से कोई चैट मेल नहीं
 msgid "No chats yet."
 msgstr "अभी तक कोई चैट नहीं है।"
 
+msgid "No checksum is available to verify this agent. Approval is required for every run, including installed copies. This agent will run with your permissions. Continue only if you trust the source below."
+msgstr "इस एजेंट की पुष्टि के लिए कोई चेकसम उपलब्ध नहीं है। पहले से इंस्टॉल की गई कॉपी समेत हर बार चलाने के लिए अनुमति ज़रूरी है। यह एजेंट आपकी अनुमतियों के साथ चलेगा। केवल तभी आगे बढ़ें जब आप नीचे दिए गए स्रोत पर भरोसा करते हों।"
+
 msgid "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
 msgstr "इस वर्कट्री के लिए कोई सहयोग सर्वर नहीं — यहाँ <0>{cliCommand} start</0> चलाएँ, या प्रोजेक्ट दोबारा खोलें।"
 
@@ -7063,6 +7072,9 @@ msgstr "अभी तक किसी AI टूल में नहीं जो
 
 msgid "Not answered"
 msgstr "उत्तर नहीं दिया गया"
+
+msgid "Not approved"
+msgstr "अनुमोदित नहीं"
 
 msgid "Not attached to desktop bridge"
 msgstr "डेस्कटॉप ब्रिज से नहीं जुड़ा है"
@@ -9035,6 +9047,9 @@ msgstr "मनन किया जा रहा है…"
 
 msgid "Run"
 msgstr "चलाना"
+
+msgid "Run {0} {1} without verification?"
+msgstr "क्या {0} {1} को सत्यापन के बिना चलाएँ?"
 
 msgid "Run a project audit from the Problems panel."
 msgstr "Problems पैनल से एक प्रोजेक्ट ऑडिट चलाएँ।"
@@ -11405,6 +11420,9 @@ msgstr "OpenKnowledge के नेविगेशन इतिहास मे�
 
 msgid "Tree view options"
 msgstr "ट्री दृश्य के विकल्प"
+
+msgid "Trust source and continue"
+msgstr "स्रोत पर भरोसा करें और जारी रखें"
 
 msgid "Try a prompt"
 msgstr "कोई प्रॉम्प्ट आज़माएँ"

@@ -177,6 +177,12 @@ A custom command that installs its package as it starts, such as `npx -y <packag
 
 To make an agent appear for everyone without per-machine configuration, publish its manifest to the ACP registry; it then flows into the catalog on its own.
 
+### Approving an unverified agent binary
+
+Some registry agents are downloaded as binary archives. When an entry has no published checksum, OpenKnowledge asks for approval **on every launch**, including a new conversation, resume or restart using an already installed copy. The prompt shows the agent, version, source host and archive URL. Approval permits that launch; it does not verify the binary or remember trust for later launches.
+
+Choose **Trust source and continue** only if you trust that source. **Not now**, Escape or an expired request stops the launch. Closing the conversation cancels it too. To try again after a refusal or timeout, retry the agent in the conversation or start a new conversation. A cached copy still needs approval, but starting that exact installed version does not need an archive download. An agent with a published checksum follows the existing installation path and fails if its downloaded bytes do not match.
+
 ### From a text selection
 
 Select text in the WYSIWYG editor and the selection bubble menu shows a **Comment** button (Sparkles icon) alongside the formatting controls. Clicking it — or pressing `Cmd+Shift+M` — opens a composer on the selection. What you write there is a [comment](/docs/features/comments): it goes into the project's comment queue rather than to an agent, and you hand a batch of comments over as a separate, deliberate step from the **Comments** tab.

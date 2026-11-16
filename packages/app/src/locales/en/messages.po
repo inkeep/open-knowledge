@@ -1583,6 +1583,9 @@ msgstr "Applying your change"
 msgid "Applying…"
 msgstr "Applying…"
 
+msgid "Approval request timed out"
+msgstr "Approval request timed out"
+
 msgid "Approve"
 msgstr "Approve"
 
@@ -1597,6 +1600,9 @@ msgstr "Approved — {optionName}"
 
 msgid "Approved and ready to merge"
 msgstr "Approved and ready to merge"
+
+msgid "Approved without verification"
+msgstr "Approved without verification"
 
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
@@ -6804,6 +6810,9 @@ msgstr "No chats match your search"
 msgid "No chats yet."
 msgstr "No chats yet."
 
+msgid "No checksum is available to verify this agent. Approval is required for every run, including installed copies. This agent will run with your permissions. Continue only if you trust the source below."
+msgstr "No checksum is available to verify this agent. Approval is required for every run, including installed copies. This agent will run with your permissions. Continue only if you trust the source below."
+
 msgid "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
 msgstr "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
 
@@ -7067,6 +7076,9 @@ msgstr "Not added to any AI tool yet."
 
 msgid "Not answered"
 msgstr "Not answered"
+
+msgid "Not approved"
+msgstr "Not approved"
 
 msgid "Not attached to desktop bridge"
 msgstr "Not attached to desktop bridge"
@@ -9039,6 +9051,9 @@ msgstr "Ruminating…"
 
 msgid "Run"
 msgstr "Run"
+
+msgid "Run {0} {1} without verification?"
+msgstr "Run {0} {1} without verification?"
 
 msgid "Run a project audit from the Problems panel."
 msgstr "Run a project audit from the Problems panel."
@@ -11409,6 +11424,9 @@ msgstr "Traverse OpenKnowledge navigation history forward."
 
 msgid "Tree view options"
 msgstr "Tree view options"
+
+msgid "Trust source and continue"
+msgstr "Trust source and continue"
 
 msgid "Try a prompt"
 msgstr "Try a prompt"

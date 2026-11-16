@@ -1579,6 +1579,9 @@ msgstr "Aplicando sua alteração"
 msgid "Applying…"
 msgstr "Aplicando…"
 
+msgid "Approval request timed out"
+msgstr "A solicitação de aprovação expirou"
+
 msgid "Approve"
 msgstr "Aprovar"
 
@@ -1593,6 +1596,9 @@ msgstr "Aprovado — {optionName}"
 
 msgid "Approved and ready to merge"
 msgstr "Aprovado e pronto para mesclar"
+
+msgid "Approved without verification"
+msgstr "Aprovado sem verificação"
 
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "Tem certeza de que quer converter este arquivo em um modelo? O arquivo original será excluído. Esta ação não pode ser desfeita."
@@ -6800,6 +6806,9 @@ msgstr "Nenhum chat corresponde à sua busca"
 msgid "No chats yet."
 msgstr "Ainda não há chats."
 
+msgid "No checksum is available to verify this agent. Approval is required for every run, including installed copies. This agent will run with your permissions. Continue only if you trust the source below."
+msgstr "Não há uma soma de verificação para verificar este agente. Cada execução exige aprovação, inclusive de cópias já instaladas. Este agente será executado com suas permissões. Continue apenas se você confiar na fonte abaixo."
+
 msgid "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
 msgstr "Não há servidor de colaboração para este worktree — rode <0>{cliCommand} start</0> aqui ou abra o projeto de novo."
 
@@ -7063,6 +7072,9 @@ msgstr "Ainda não adicionada a nenhuma ferramenta de IA."
 
 msgid "Not answered"
 msgstr "Sem resposta"
+
+msgid "Not approved"
+msgstr "Não aprovado"
 
 msgid "Not attached to desktop bridge"
 msgstr "Sem conexão com a ponte do desktop"
@@ -9035,6 +9047,9 @@ msgstr "Remoendo…"
 
 msgid "Run"
 msgstr "Executar"
+
+msgid "Run {0} {1} without verification?"
+msgstr "Executar {0} {1} sem verificação?"
 
 msgid "Run a project audit from the Problems panel."
 msgstr "Rode uma auditoria do projeto pelo painel Problemas."
@@ -11405,6 +11420,9 @@ msgstr "Avança pelo histórico de navegação do OpenKnowledge."
 
 msgid "Tree view options"
 msgstr "Opções da visualização em árvore"
+
+msgid "Trust source and continue"
+msgstr "Confiar na fonte e continuar"
 
 msgid "Try a prompt"
 msgstr "Experimente um prompt"

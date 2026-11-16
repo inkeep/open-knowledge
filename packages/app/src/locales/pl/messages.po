@@ -1583,6 +1583,9 @@ msgstr "Stosowanie Twojej zmiany"
 msgid "Applying…"
 msgstr "Stosowanie…"
 
+msgid "Approval request timed out"
+msgstr "Upłynął czas na zatwierdzenie"
+
 msgid "Approve"
 msgstr "Zatwierdź"
 
@@ -1597,6 +1600,9 @@ msgstr "Zatwierdzone — {optionName}"
 
 msgid "Approved and ready to merge"
 msgstr "Zatwierdzone i gotowe do scalenia"
+
+msgid "Approved without verification"
+msgstr "Zatwierdzono bez weryfikacji"
 
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "Czy na pewno chcesz przekonwertować ten plik na szablon? Oryginalny plik zostanie usunięty. Tej akcji nie można cofnąć."
@@ -6804,6 +6810,9 @@ msgstr "Żaden czat nie pasuje do wyszukiwania"
 msgid "No chats yet."
 msgstr "Brak czatów."
 
+msgid "No checksum is available to verify this agent. Approval is required for every run, including installed copies. This agent will run with your permissions. Continue only if you trust the source below."
+msgstr "Brak sumy kontrolnej do zweryfikowania tego agenta. Każde uruchomienie wymaga zgody, również w przypadku zainstalowanych kopii. Ten agent będzie działał z Twoimi uprawnieniami. Kontynuuj tylko wtedy, gdy ufasz poniższemu źródłu."
+
 msgid "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
 msgstr "Brak serwera współpracy dla tego worktree — uruchom <0>{cliCommand} start</0> tutaj albo otwórz projekt ponownie."
 
@@ -7067,6 +7076,9 @@ msgstr "Jeszcze nie dodano do żadnego narzędzia AI."
 
 msgid "Not answered"
 msgstr "Bez odpowiedzi"
+
+msgid "Not approved"
+msgstr "Nie zatwierdzono"
 
 msgid "Not attached to desktop bridge"
 msgstr "Nie podłączono do mostka pulpitu"
@@ -9039,6 +9051,9 @@ msgstr "Przetrawiam…"
 
 msgid "Run"
 msgstr "Uruchom"
+
+msgid "Run {0} {1} without verification?"
+msgstr "Uruchomić {0} {1} bez weryfikacji?"
 
 msgid "Run a project audit from the Problems panel."
 msgstr "Uruchom audyt projektu z panelu Problemy."
@@ -11409,6 +11424,9 @@ msgstr "Przechodź do przodu po historii nawigacji OpenKnowledge."
 
 msgid "Tree view options"
 msgstr "Opcje widoku drzewa"
+
+msgid "Trust source and continue"
+msgstr "Zaufaj źródłu i kontynuuj"
 
 msgid "Try a prompt"
 msgstr "Wypróbuj prompt"

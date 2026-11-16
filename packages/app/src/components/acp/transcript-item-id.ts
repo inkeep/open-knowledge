@@ -8,6 +8,8 @@ export function transcriptItemId(item: RenderedItem, index: number): string {
       return `tool:${item.toolCallId}`;
     case 'permission':
       return `perm:${item.requestId}`;
+    case 'binary_consent':
+      return `binary-consent:${item.requestId}`;
     case 'runtime_consent':
       return `consent:${item.requestId}`;
     case 'pi_bridge':
