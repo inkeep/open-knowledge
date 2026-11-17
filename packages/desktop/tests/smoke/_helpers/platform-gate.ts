@@ -29,6 +29,7 @@ export const SPEC_PLATFORM_GATES = {
   'consent-dialog.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'create-new-project.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'deep-link.e2e.ts': ['!DARWIN'],
+  'electron-runtime.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'external-link.e2e.ts': ['!DARWIN'],
   'liveness-watchdog.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'mcp-wiring.e2e.ts': ['!PLATFORM_SUPPORTED', 'WINDOWS', "WINDOWS || TARGET.mode === 'packaged'"],
