@@ -101,10 +101,11 @@ program
     const actionOpts = actionCommand.opts<{ json?: boolean }>();
     const actionName = actionCommand.name();
     if (
-      actionOpts.json === true &&
-      (actionName === 'clone' ||
-        actionName === 'init' ||
-        (actionName === 'status' && actionCommand.parent?.name() === 'embeddings'))
+      actionName === 'mcp' ||
+      (actionOpts.json === true &&
+        (actionName === 'clone' ||
+          actionName === 'init' ||
+          (actionName === 'status' && actionCommand.parent?.name() === 'embeddings')))
     ) {
       loggerFactory.configure({ pinoConfig: { consoleDestination: 2 } });
     }
