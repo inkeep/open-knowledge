@@ -549,7 +549,14 @@ if ((process as NodeJS.Process & { parentPort?: unknown }).parentPort) {
   setupUtility({
     parentPort: (process as NodeJS.Process & { parentPort: SetupUtilityDeps['parentPort'] })
       .parentPort,
-    importServer: () => afterZodCompile(() => import('@inkeep/open-knowledge-server')),
+    importServer: () =>
+      afterZodCompile(async () => {
+        const { excludeWorkingDirectoryFromProgramLookup } = await import(
+          '@inkeep/open-knowledge-core/util/windows-program-lookup'
+        );
+        excludeWorkingDirectoryFromProgramLookup();
+        return import('@inkeep/open-knowledge-server');
+      }),
     exit: (code) => process.exit(code),
     parentPid: process.ppid,
     killProbe: (pid, signal) => {

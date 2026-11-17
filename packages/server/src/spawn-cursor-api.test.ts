@@ -1,7 +1,13 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { tmpdir } from 'node:os';
+import { delimiter, dirname, isAbsolute, join } from 'node:path';
 import { Readable } from 'node:stream';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { resolveWindowsCommand } from './acp/launch.ts';
 import {
+  findCursorCommand,
   type HandleSpawnCursorDeps,
   handleSpawnCursor,
   isPathWithinDir,
@@ -375,5 +381,115 @@ describe('isPathWithinDir', () => {
     expect(
       isPathWithinDir('C:\\Users\\who\\dragons\\specs', 'C:\\Users\\who\\dragons', 'win32'),
     ).toBe(true);
+  });
+});
+
+describe('findCursorCommand', () => {
+  const made: string[] = [];
+  const directory = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ok-cursor-command-'));
+    made.push(dir);
+    return dir;
+  };
+  afterEach(() => {
+    for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('on Windows, finds the Cursor command line in a PATH directory', async () => {
+    const elsewhere = directory();
+    const bin = directory();
+    writeFileSync(join(bin, 'cursor.CMD'), '@echo off\r\n');
+    await expect(
+      findCursorCommand(1_000, 'win32', { PATH: [elsewhere, bin].join(delimiter) }),
+    ).resolves.toBe(join(bin, 'cursor.CMD'));
+  });
+
+  test('on Windows, reports no Cursor command line when no PATH directory has one', async () => {
+    await expect(findCursorCommand(1_000, 'win32', { PATH: directory() })).resolves.toBeNull();
+  });
+
+  test('on Windows, looks where and in the order the agent launcher does', async () => {
+    const first = directory();
+    const second = directory();
+    writeFileSync(join(first, 'cursor.CMD'), '@echo off\r\n');
+    writeFileSync(join(first, 'cursor.BAT'), '@echo off\r\n');
+    writeFileSync(join(second, 'cursor.EXE'), '');
+    const PATH = [first, second].join(delimiter);
+    const found = await findCursorCommand(1_000, 'win32', { PATH });
+    expect(found).toBe(join(first, 'cursor.BAT'));
+    expect(found).toBe(resolveWindowsCommand('cursor', PATH));
+  });
+
+  test('on Windows, a PATH directory that does not answer leaves the lookup waiting only until its time limit, then not found', async ({
+    onTestFinished,
+  }) => {
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const silent = directory();
+    const bin = directory();
+    writeFileSync(join(bin, 'cursor.CMD'), '@echo off\r\n');
+    const checkFile = (candidate: string) =>
+      dirname(candidate) === silent
+        ? new Promise<boolean>(() => {})
+        : stat(candidate).then(
+            (found) => found.isFile(),
+            () => false,
+          );
+    let settled: { found: string | null } | undefined;
+    void findCursorCommand(500, 'win32', { PATH: [silent, bin].join(delimiter) }, checkFile).then(
+      (found) => {
+        settled = { found };
+      },
+    );
+    await vi.advanceTimersByTimeAsync(499);
+    expect(settled).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toEqual({ found: null });
+  });
+
+  test('on Windows, a later lookup waits on a PATH directory that has still not answered instead of asking it again', async ({
+    onTestFinished,
+  }) => {
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const silent = directory();
+    const asked: string[] = [];
+    const checkFile = (candidate: string) => {
+      asked.push(candidate);
+      return new Promise<boolean>(() => {});
+    };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const lookup = findCursorCommand(500, 'win32', { PATH: silent }, checkFile);
+      await vi.advanceTimersByTimeAsync(500);
+      await expect(lookup).resolves.toBeNull();
+    }
+    expect(asked).toEqual([join(silent, 'cursor.COM')]);
+  });
+
+  test('on Windows, skips a relative PATH entry and reports only an absolute path', async () => {
+    const bin = directory();
+    const asked: string[] = [];
+    const checkFile = async (candidate: string) => {
+      asked.push(candidate);
+      return candidate.endsWith('cursor.CMD');
+    };
+    await expect(
+      findCursorCommand(1_000, 'win32', { PATH: ['tools', bin].join(delimiter) }, checkFile),
+    ).resolves.toBe(join(bin, 'cursor.CMD'));
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.filter((candidate) => !isAbsolute(candidate))).toEqual([]);
+  });
+
+  test('on Windows, finds the Cursor command line installed after an earlier lookup missed it', async () => {
+    const bin = directory();
+    await expect(findCursorCommand(1_000, 'win32', { PATH: bin })).resolves.toBeNull();
+    writeFileSync(join(bin, 'cursor.CMD'), '@echo off\r\n');
+    await expect(findCursorCommand(1_000, 'win32', { PATH: bin })).resolves.toBe(
+      join(bin, 'cursor.CMD'),
+    );
   });
 });

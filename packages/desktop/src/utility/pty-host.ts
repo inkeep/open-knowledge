@@ -17,6 +17,7 @@ import {
   type WindowsShellLaunchFailureReason,
 } from '@inkeep/open-knowledge-core';
 import { isTerminalShellNoticeReason } from '@inkeep/open-knowledge-core/desktop-bridge';
+import { withReceivedProgramLookup } from '@inkeep/open-knowledge-core/util/windows-program-lookup';
 import type {
   TerminalShellNoticeReason,
   TerminalSupportFileNoticeReason,
@@ -873,7 +874,7 @@ export function buildShellEnv(
   if (hasNoResolvableOkHome(childOptions)) {
     options.logger?.warn({ event: 'pty-host-no-ok-managed-home', platform: childOptions.platform });
   }
-  const out = composeOkChildEnv(parentEnv, childOptions);
+  const out = withReceivedProgramLookup(composeOkChildEnv(parentEnv, childOptions));
   out[OK_DESKTOP_TERMINAL_ENV] = '1';
   return { env: out, managedBinDirs: okManagedBinDirs(childOptions) };
 }

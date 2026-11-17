@@ -1,12 +1,24 @@
 import { spawn as nodeSpawn, type SpawnOptions } from 'node:child_process';
+import { win32 } from 'node:path';
+import { withReceivedProgramLookup } from '@inkeep/open-knowledge-core/util/windows-program-lookup';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import { getLogger } from './logger.ts';
 
-const DETACHED_IGNORED_STDIO_OPTIONS: Pick<SpawnOptions, 'detached' | 'stdio' | 'shell'> = {
-  detached: true,
-  stdio: 'ignore',
-  shell: false,
-};
+function systemDirectory(): string {
+  return process.platform === 'win32'
+    ? win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32')
+    : '/';
+}
+
+function personAppOptions(): SpawnOptions {
+  return {
+    detached: true,
+    stdio: 'ignore',
+    shell: false,
+    cwd: systemDirectory(),
+    env: withReceivedProgramLookup(process.env),
+  };
+}
 
 export type SpawnDetachedOutcome =
   | { ok: true }
@@ -33,11 +45,7 @@ export function spawnDetached(
     };
     const timer = setTimeout(() => settle({ ok: false, reason: 'timeout' }), timeoutMs);
     try {
-      const child = nodeSpawn(
-        exec,
-        [...args],
-        withHiddenWindowsConsole(DETACHED_IGNORED_STDIO_OPTIONS),
-      );
+      const child = nodeSpawn(exec, [...args], withHiddenWindowsConsole(personAppOptions()));
       child.once('error', (err) => {
         clearTimeout(timer);
         settle(classifySpawnError(err));

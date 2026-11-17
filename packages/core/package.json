@@ -707,6 +707,12 @@
       "types": "./dist/util-doc-name.d.mts",
       "default": "./dist/util-doc-name.mjs"
     },
+    "./util/windows-program-lookup": {
+      "@inkeep/source": "./src/util/windows-program-lookup.ts",
+      "development": "./src/util/windows-program-lookup.ts",
+      "types": "./dist/util-windows-program-lookup.d.mts",
+      "default": "./dist/util-windows-program-lookup.mjs"
+    },
     "./utils/asset-href": {
       "@inkeep/source": "./src/utils/asset-href.ts",
       "development": "./src/utils/asset-href.ts",

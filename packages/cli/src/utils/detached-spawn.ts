@@ -3,6 +3,7 @@ import {
   type spawn as NativeSpawn,
   spawn as nativeSpawn,
 } from 'node:child_process';
+import { withReceivedProgramLookup } from '@inkeep/open-knowledge-core/util/windows-program-lookup';
 import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 
 function scrubElectronRunAsNode(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -36,7 +37,7 @@ function detachedSpawnOptions(env: NodeJS.ProcessEnv): Parameters<typeof nativeS
     detached: true,
     stdio: 'ignore' as const,
     shell: false,
-    env: scrubElectronRunAsNode(env),
+    env: withReceivedProgramLookup(scrubElectronRunAsNode(env)),
   });
 }
 

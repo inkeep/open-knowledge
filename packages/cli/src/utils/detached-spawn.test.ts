@@ -1,5 +1,6 @@
 import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { excludeWorkingDirectoryFromProgramLookup } from '@inkeep/open-knowledge-core/util/windows-program-lookup';
 import { describe, expect, test } from 'vitest';
 import { spawnDetachedScrubbed, spawnDetachedScrubbedAndWait } from './detached-spawn.ts';
 
@@ -62,6 +63,38 @@ describe('spawnDetachedScrubbed', () => {
     } finally {
       if (prevValue === undefined) delete process.env.ELECTRON_RUN_AS_NODE;
       else process.env.ELECTRON_RUN_AS_NODE = prevValue;
+    }
+  });
+
+  test('an app it opens gets the program lookup switch as the command line received it', async () => {
+    for (const received of [undefined, '1']) {
+      const env: NodeJS.ProcessEnv = { PATH: '/usr/bin' };
+      if (received !== undefined) env.NoDefaultCurrentDirectoryInExePath = received;
+      excludeWorkingDirectoryFromProgramLookup(env, 'win32');
+
+      const opened: Captured = {};
+      spawnDetachedScrubbed('explorer.exe', ['target'], {
+        spawn: makeFakeSpawn(opened, () => {}),
+        env,
+      });
+      expect(opened.opts?.env?.NoDefaultCurrentDirectoryInExePath).toBe(received);
+
+      const waited: Captured = {};
+      await spawnDetachedScrubbedAndWait(
+        'rundll32.exe',
+        ['url.dll,FileProtocolHandler', 'target'],
+        {
+          env,
+          timeoutMs: 1,
+          spawn: ((_command: string, _args: readonly string[], opts: SpawnOptions) => {
+            waited.opts = opts;
+            const child = new EventEmitter() as ChildProcess;
+            child.unref = () => child;
+            return child;
+          }) as typeof import('node:child_process').spawn,
+        },
+      );
+      expect(waited.opts?.env?.NoDefaultCurrentDirectoryInExePath).toBe(received);
     }
   });
 
