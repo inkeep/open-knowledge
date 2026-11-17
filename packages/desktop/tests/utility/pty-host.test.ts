@@ -7,6 +7,7 @@ import {
   shellSingleQuote,
 } from '@inkeep/open-knowledge-core';
 import { TERMINAL_SHELL_NOTICE_REASONS } from '@inkeep/open-knowledge-core/desktop-bridge';
+import { excludeWorkingDirectoryFromProgramLookup } from '@inkeep/open-knowledge-core/util/windows-program-lookup';
 import { describe, expect, test, vi } from 'vitest';
 
 vi.mock('node:os', async (importOriginal) => {
@@ -2466,6 +2467,19 @@ describe('buildShellEnv', () => {
     );
     expect(env.PATH).toBeUndefined();
     expect(env.Path).not.toContain('.ok\\bin');
+  });
+
+  test('a Windows terminal gets the program lookup switch as the app received it', () => {
+    const switchName = 'NoDefaultCurrentDirectoryInExePath';
+    for (const received of [{}, { [switchName]: '1' }]) {
+      const appEnv: Record<string, string | undefined> = {
+        Path: 'C:\\Windows\\System32',
+        ...received,
+      };
+      excludeWorkingDirectoryFromProgramLookup(appEnv, 'win32');
+      const { env } = buildShellEnv(appEnv, { platform: 'win32' });
+      expect(env[switchName]).toBe(received[switchName]);
+    }
   });
 });
 

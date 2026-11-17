@@ -1315,20 +1315,25 @@ async function isExecutableFile(candidate: string): Promise<boolean> {
   }
 }
 
-export function resolveWindowsCommand(cmd: string, pathEnv: string | undefined): string {
-  if (isAbsolute(cmd) || cmd.includes('\\') || cmd.includes('/')) return cmd;
+export function windowsCommandCandidates(cmd: string, pathEnv: string | undefined): string[] {
   const exts = (process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD')
     .split(';')
     .map((e) => e.trim())
     .filter((e) => e !== '');
+  const candidates: string[] = [];
   for (const dir of (pathEnv ?? '').split(delimiter)) {
     if (dir === '') continue;
-    for (const ext of exts) {
-      const candidate = join(dir, cmd + ext);
-      try {
-        if (statSync(candidate).isFile()) return candidate;
-      } catch {}
-    }
+    for (const ext of exts) candidates.push(join(dir, cmd + ext));
+  }
+  return candidates;
+}
+
+export function resolveWindowsCommand(cmd: string, pathEnv: string | undefined): string {
+  if (isAbsolute(cmd) || cmd.includes('\\') || cmd.includes('/')) return cmd;
+  for (const candidate of windowsCommandCandidates(cmd, pathEnv)) {
+    try {
+      if (statSync(candidate).isFile()) return candidate;
+    } catch {}
   }
   return cmd;
 }

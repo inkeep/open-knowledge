@@ -1,7 +1,9 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { type AddressInfo, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { join, win32 } from 'node:path';
+import { excludeWorkingDirectoryFromProgramLookup } from '@inkeep/open-knowledge-core/util/windows-program-lookup';
+import { describe, expect, onTestFinished, test } from 'vitest';
 import { spawnDetached } from './spawn-detached.ts';
 
 const NEVER_HIT = 5_000;
@@ -39,5 +41,63 @@ describe('spawnDetached — error classification', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+const SWITCH = 'NoDefaultCurrentDirectoryInExePath';
+
+const REPORT = `const socket = require('node:net').connect(Number(process.argv[1]), '127.0.0.1', () => socket.end(JSON.stringify({ cwd: process.cwd(), value: process.env.${SWITCH} ?? null })));`;
+
+async function launchedReport(): Promise<{ cwd: string; value: string | null }> {
+  const server = createServer();
+  onTestFinished(() => new Promise((resolve) => server.close(() => resolve(undefined))));
+  const report = new Promise<{ cwd: string; value: string | null }>((resolve) => {
+    server.on('connection', (socket) => {
+      let text = '';
+      socket.setEncoding('utf8');
+      socket.on('data', (chunk: string) => {
+        text += chunk;
+      });
+      socket.on('end', () => resolve(JSON.parse(text)));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  const outcome = await spawnDetached(process.execPath, ['-e', REPORT, String(port)], NEVER_HIT);
+  expect(outcome).toEqual({ ok: true });
+  return report;
+}
+
+function restoreSwitchAfterTest(): void {
+  const before = process.env[SWITCH];
+  onTestFinished(() => {
+    if (before === undefined) delete process.env[SWITCH];
+    else process.env[SWITCH] = before;
+  });
+}
+
+function receivedThenStarted(received: string | undefined): void {
+  delete process.env[SWITCH];
+  if (received !== undefined) process.env[SWITCH] = received;
+  excludeWorkingDirectoryFromProgramLookup(process.env, 'win32');
+}
+
+describe('spawnDetached — the app it starts belongs to the person', () => {
+  test('starts the app outside the launching process working directory, in a system directory', async () => {
+    const { cwd } = await launchedReport();
+    expect(cwd).not.toBe(process.cwd());
+    expect(cwd).toBe(
+      process.platform === 'win32'
+        ? win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32')
+        : '/',
+    );
+  });
+
+  test('passes the program lookup switch on as the launching process received it', async () => {
+    restoreSwitchAfterTest();
+    receivedThenStarted(undefined);
+    expect((await launchedReport()).value).toBeNull();
+    receivedThenStarted('1');
+    expect((await launchedReport()).value).toBe('1');
   });
 });

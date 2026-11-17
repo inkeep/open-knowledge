@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { excludeWorkingDirectoryFromProgramLookup } from '@inkeep/open-knowledge-core/util/windows-program-lookup';
 import { app } from 'electron';
 import {
   parseDesktopUninstallResultArgs,
@@ -9,6 +10,7 @@ import { applyUnpackagedDevChannel } from './dev-channel.ts';
 import { isExecutableFileSync } from './executable-file.ts';
 import { clearAmbientCapsBeforeBoot } from './linux-ambient-caps.ts';
 
+excludeWorkingDirectoryFromProgramLookup();
 clearAmbientCapsBeforeBoot({
   platform: process.platform,
   uid: process.getuid?.() ?? -1,

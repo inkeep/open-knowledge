@@ -61,3 +61,8 @@ export {
   projectSpawnErrorLogPath,
 } from './util/project-logs-dir.ts';
 export { openSpawnErrorLog } from './util/spawn-error-log-open.ts';
+export {
+  excludeWorkingDirectoryFromProgramLookup,
+  isProgramLookupSwitch,
+  withReceivedProgramLookup,
+} from './util/windows-program-lookup.ts';

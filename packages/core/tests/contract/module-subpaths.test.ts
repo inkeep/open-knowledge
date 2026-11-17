@@ -104,6 +104,7 @@ import * as typesTimelineSubpath from '@inkeep/open-knowledge-core/types/timelin
 import * as uninstallBridgeSubpath from '@inkeep/open-knowledge-core/uninstall-bridge';
 import * as utilAtomicYamlWriteSubpath from '@inkeep/open-knowledge-core/util/atomic-yaml-write';
 import * as utilDocNameSubpath from '@inkeep/open-knowledge-core/util/doc-name';
+import * as utilWindowsProgramLookupSubpath from '@inkeep/open-knowledge-core/util/windows-program-lookup';
 import * as utilsAssetHrefSubpath from '@inkeep/open-knowledge-core/utils/asset-href';
 import * as utilsChunkedInsertSubpath from '@inkeep/open-knowledge-core/utils/chunked-insert';
 import * as utilsCodeFenceTrackerSubpath from '@inkeep/open-knowledge-core/utils/code-fence-tracker';
@@ -278,6 +279,7 @@ const MODULE_SUBPATHS: Record<string, object> = {
 const SERVER_MODULE_SUBPATHS: Record<string, object> = {
   './constants/ok-user-home': constantsOkUserHomeSubpath,
   './util/atomic-yaml-write': utilAtomicYamlWriteSubpath,
+  './util/windows-program-lookup': utilWindowsProgramLookupSubpath,
 };
 
 const CONDITION_ORDER = ['@inkeep/source', 'development', 'types', 'default'];

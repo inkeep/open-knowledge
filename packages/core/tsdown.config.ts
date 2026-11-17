@@ -118,6 +118,7 @@ const entry = {
   'uninstall-bridge': 'src/uninstall-bridge.ts',
   'util-atomic-yaml-write': 'src/util/atomic-yaml-write.ts',
   'util-doc-name': 'src/util/doc-name.ts',
+  'util-windows-program-lookup': 'src/util/windows-program-lookup.ts',
   'utils-asset-href': 'src/utils/asset-href.ts',
   'utils-chunked-insert': 'src/utils/chunked-insert.ts',
   'utils-code-fence-tracker': 'src/utils/code-fence-tracker.ts',

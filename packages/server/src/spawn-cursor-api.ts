@@ -5,11 +5,12 @@
  */
 
 import { execFile } from 'node:child_process';
-import { access, constants as fsConstants } from 'node:fs/promises';
+import { access, constants as fsConstants, stat } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { posix as pathPosix, win32 as pathWin32 } from 'node:path';
 import { SpawnCursorSuccessSchema } from '@inkeep/open-knowledge-core';
+import { windowsCommandCandidates } from './acp/launch.ts';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import { errorResponse } from './http/error-response.ts';
 import {
@@ -210,12 +211,77 @@ export async function resolveCursorBinaryDefault(timeoutMs: number): Promise<str
       }
     }
   }
+  return findCursorCommand(timeoutMs);
+}
+
+const POSIX_PATH_LOOKUP = 'which';
+
+type CheckFile = (candidate: string) => Promise<boolean>;
+
+const pendingChecks = new WeakMap<CheckFile, Map<string, Promise<boolean>>>();
+
+function checkOnce(checkFile: CheckFile, candidate: string): Promise<boolean> {
+  const pending = pendingChecks.get(checkFile) ?? new Map<string, Promise<boolean>>();
+  pendingChecks.set(checkFile, pending);
+  const inFlight = pending.get(candidate);
+  if (inFlight) return inFlight;
+  const check = checkFile(candidate).finally(() => pending.delete(candidate));
+  pending.set(candidate, check);
+  return check;
+}
+
+async function isFile(candidate: string): Promise<boolean> {
+  try {
+    return (await stat(candidate)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function firstFileWithin(
+  candidates: readonly string[],
+  timeoutMs: number,
+  checkFile: CheckFile,
+): Promise<string | null> {
+  let expired = false;
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<null>((resolve) => {
+    timer = setTimeout(() => {
+      expired = true;
+      resolve(null);
+    }, timeoutMs);
+  });
+  const search = (async () => {
+    for (const candidate of candidates) {
+      if (expired) return null;
+      if (await checkOnce(checkFile, candidate)) return candidate;
+    }
+    return null;
+  })();
+  try {
+    return await Promise.race([search, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function findCursorCommand(
+  timeoutMs: number,
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  checkFile: CheckFile = isFile,
+): Promise<string | null> {
+  if (platform === 'win32') {
+    const candidates = windowsCommandCandidates('cursor', env.PATH).filter((candidate) =>
+      pathWin32.isAbsolute(candidate),
+    );
+    return firstFileWithin(candidates, timeoutMs, checkFile);
+  }
   return new Promise((resolve) => {
-    const cmd = process.platform === 'win32' ? 'where' : 'which';
     execFile(
-      cmd,
+      POSIX_PATH_LOOKUP,
       ['cursor'],
-      withHiddenWindowsConsole({ timeout: timeoutMs, encoding: 'utf-8' }),
+      withHiddenWindowsConsole({ timeout: timeoutMs, encoding: 'utf-8', env }),
       (err, stdout) => {
         if (err) {
           resolve(null);
