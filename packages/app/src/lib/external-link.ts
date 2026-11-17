@@ -1,6 +1,11 @@
 import { isSafeNavigationUrl } from '@/editor/safe-navigation-url';
 
 export function dispatchExternalLinkClick(e: { preventDefault: () => void }, url: string): void {
+  if (!isSafeNavigationUrl(url)) {
+    e.preventDefault();
+    console.warn('[external-link] blocked non-safe scheme', url);
+    return;
+  }
   const openExternal = window.okDesktop?.shell?.openExternal;
   if (!openExternal) return;
   e.preventDefault();

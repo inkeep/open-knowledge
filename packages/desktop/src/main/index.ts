@@ -14,6 +14,7 @@ import {
 import { createServer as createHttpServer } from 'node:http';
 import { homedir as osHomedir, hostname as osHostname, release as osRelease } from 'node:os';
 import { basename, dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   ALL_EDITOR_IDS,
   addOkPathsToGitExclude,
@@ -515,6 +516,7 @@ import {
   windowRestoreKey,
 } from './state-store.ts';
 import { stopCommandLine } from './stop-command.ts';
+import { applySystemHandoffRules, createPermissionRequestHandler } from './system-handoff.ts';
 import { createMacMemoryPressureProbe, readSystemMemorySample } from './system-memory-sample.ts';
 import { isTerminalAvailable, withTerminalCapabilityArg } from './terminal-capability.ts';
 import {
@@ -6383,7 +6385,13 @@ function bootPrimaryInstance(): void {
     if (crashReason) flushDesktopLogger();
   });
 
+  const systemHandoffLog = getLogger('system-handoff');
+  const systemHandoffPermissionHandler = createPermissionRequestHandler(
+    rendererDevUrl ?? pathToFileURL(join(rendererRoot(), 'index.html')).href,
+    systemHandoffLog,
+  );
   app.on('web-contents-created', (_event, contents) => {
+    applySystemHandoffRules(contents, systemHandoffPermissionHandler, systemHandoffLog);
     attachRendererConsoleCapture(contents);
     contents.on('render-process-gone', (_e, details) => {
       let rendererPid: number | null = null;

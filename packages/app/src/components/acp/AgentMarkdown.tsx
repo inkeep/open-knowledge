@@ -6,6 +6,7 @@ import { codeHighlighter } from '@/lib/acp/code-highlighter';
 import { remarkHardBreaks } from '@/lib/acp/remark-hard-breaks';
 import { remarkUntrustedContent } from '@/lib/acp/remark-untrusted-content';
 import { docNameFromHash } from '@/lib/doc-hash';
+import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { cn } from '@/lib/utils';
 import { remarkDocPathLinks } from './doc-path-links';
 import { DocPathResolverReadyContext } from './doc-path-links-context';
@@ -46,6 +47,12 @@ function AgentAnchor(props: { href?: string; children?: ReactNode }): ReactNode 
       rel="noopener noreferrer"
       data-streamdown="link"
       className={EXTERNAL_LINK_CLASS}
+      onClick={(e) => {
+        if (href !== undefined) dispatchExternalLinkClick(e, href);
+      }}
+      onAuxClick={(e) => {
+        if (href !== undefined && e.button === 1) dispatchExternalLinkClick(e, href);
+      }}
     >
       {children}
     </a>

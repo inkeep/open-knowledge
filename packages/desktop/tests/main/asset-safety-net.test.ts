@@ -1,83 +1,11 @@
 import { describe, expect, test, vi } from 'vitest';
 import {
   attachAssetSafetyNet,
-  matchAssetUrl,
   matchInAppApiNavigation,
   matchInAppRoute,
 } from '../../src/main/asset-safety-net.ts';
 
 const ORIGIN = 'http://localhost:5173';
-
-describe('matchAssetUrl', () => {
-  test('same-origin asset URL → project-relative path', () => {
-    expect(matchAssetUrl('http://localhost:5173/notes/meeting.pdf', ORIGIN)).toBe(
-      'notes/meeting.pdf',
-    );
-  });
-
-  test('nested subdir asset → full relative path', () => {
-    expect(matchAssetUrl('http://localhost:5173/docs/assets/photo.png', ORIGIN)).toBe(
-      'docs/assets/photo.png',
-    );
-  });
-
-  test('different origin (https external) → null', () => {
-    expect(matchAssetUrl('https://example.com/notes/meeting.pdf', ORIGIN)).toBeNull();
-  });
-
-  test('app bundle (index.html) → null', () => {
-    expect(matchAssetUrl('http://localhost:5173/index.html', ORIGIN)).toBeNull();
-  });
-
-  test('content html/htm → null (handled by the renderer dispatcher, not the safety net)', () => {
-    expect(matchAssetUrl('http://localhost:5173/fishing-log/trip-viewer.html', ORIGIN)).toBeNull();
-    expect(matchAssetUrl('http://localhost:5173/notes/legacy.htm', ORIGIN)).toBeNull();
-  });
-
-  test('app bundle without explicit path → null', () => {
-    expect(matchAssetUrl('http://localhost:5173/', ORIGIN)).toBeNull();
-  });
-
-  test('Vite HMR client (/@vite/client) → null', () => {
-    expect(matchAssetUrl('http://localhost:5173/@vite/client', ORIGIN)).toBeNull();
-  });
-
-  test('extensionless path → null', () => {
-    expect(matchAssetUrl('http://localhost:5173/api/document', ORIGIN)).toBeNull();
-  });
-
-  test('non-asset extension (.ts, .js, .css) → null', () => {
-    expect(matchAssetUrl('http://localhost:5173/src/main.ts', ORIGIN)).toBeNull();
-    expect(matchAssetUrl('http://localhost:5173/styles.css', ORIGIN)).toBeNull();
-  });
-
-  test('bogus URL → null (no throw)', () => {
-    expect(matchAssetUrl('not a url', ORIGIN)).toBeNull();
-  });
-
-  test('PDF via alternate localhost port still matches if origin matches', () => {
-    expect(matchAssetUrl('http://localhost:9999/notes/meeting.pdf', 'http://localhost:9999')).toBe(
-      'notes/meeting.pdf',
-    );
-  });
-
-  test('percent-encoded space in filename decodes to literal space', () => {
-    expect(matchAssetUrl('http://localhost:5173/my%20photo.png', ORIGIN)).toBe('my photo.png');
-  });
-
-  test('percent-encoded Unicode (Japanese) decodes to literal characters', () => {
-    expect(matchAssetUrl('http://localhost:5173/%E6%97%A5%E6%9C%AC.pdf', ORIGIN)).toBe('日本.pdf');
-  });
-
-  test('malformed percent-encoding → null (no throw)', () => {
-    expect(matchAssetUrl('http://localhost:5173/%ZZ.png', ORIGIN)).toBeNull();
-    expect(matchAssetUrl('http://localhost:5173/%E0%A4.png', ORIGIN)).toBeNull();
-  });
-
-  test('encoded traversal (`%2E%2E`) is canonicalized by the URL parser', () => {
-    expect(matchAssetUrl('http://localhost:5173/%2E%2E/secret.pdf', ORIGIN)).toBe('secret.pdf');
-  });
-});
 
 describe('matchInAppApiNavigation', () => {
   const IN_APP = [ORIGIN, 'http://localhost:8765'];
@@ -169,7 +97,7 @@ function noopOpenExternal(_: string): Promise<void> {
 }
 
 describe('attachAssetSafetyNet — setWindowOpenHandler', () => {
-  test('asset URL new-window request → denied + openAsset fires', async () => {
+  test('a new-window request for a project file opens nothing, from any frame', async () => {
     const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
     const openExternal = vi.fn(noopOpenExternal);
     const log = vi.fn((_: unknown) => {});
@@ -192,9 +120,11 @@ describe('attachAssetSafetyNet — setWindowOpenHandler', () => {
 
     await Promise.resolve();
     await Promise.resolve();
-    expect(openAsset).toHaveBeenCalledWith('notes/meeting.pdf');
+    expect(openAsset).not.toHaveBeenCalled();
     expect(openExternal).not.toHaveBeenCalled();
-    expect(log).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { relPath: 'notes/meeting.pdf' } }),
+    );
   });
 
   test('cross-origin https new-window → denied + openExternal fires', async () => {
@@ -219,11 +149,9 @@ describe('attachAssetSafetyNet — setWindowOpenHandler', () => {
     expect(openExternal).toHaveBeenCalledWith('https://example.com/path');
   });
 
-  test('disallowed scheme new-window (javascript:) → denied + openExternal throw is logged', async () => {
+  test('a new-window request passes web addresses only: any other address is refused, never handed over', async () => {
     const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
-    const openExternal = vi.fn(async (_: string) => {
-      throw new Error('shell.openExternal blocked: scheme-not-allowed: javascript:');
-    });
+    const openExternal = vi.fn(noopOpenExternal);
     const logEvents: unknown[] = [];
 
     let installedHandler: ((details: { url: string }) => { action: 'allow' | 'deny' }) | null =
@@ -233,55 +161,33 @@ describe('attachAssetSafetyNet — setWindowOpenHandler', () => {
         installedHandler = handler;
       },
       on: () => {},
+      getURL: () => 'http://localhost:5173/#/home',
     };
 
     attachAssetSafetyNet(webContents, {
       openAsset,
       openExternal,
-      editorOrigin: ORIGIN,
+      editorOrigin: 'http://localhost:8765',
       log: (evt) => logEvents.push(evt),
     });
 
-    const result = installedHandler?.({ url: 'javascript:alert(1)' });
-    expect(result).toEqual({ action: 'deny' });
+    const refused = [
+      'mailto:someone@example.com',
+      'openknowledge://open?project=%2Ftmp%2Fnotes',
+      'tel:+15550100',
+      'javascript:alert(1)',
+    ];
+    for (const url of refused) {
+      expect(installedHandler?.({ url })).toEqual({ action: 'deny' });
+    }
     await Promise.resolve();
     await Promise.resolve();
+    expect(openExternal).not.toHaveBeenCalled();
     expect(openAsset).not.toHaveBeenCalled();
-    expect(openExternal).toHaveBeenCalledWith('javascript:alert(1)');
-    expect(logEvents).toHaveLength(1);
-    expect(logEvents[0]).toMatchObject({
-      level: 'warn',
-      message: 'openExternal refused from setWindowOpenHandler',
-    });
-  });
-
-  test('openAsset refusal (path-escape on pdf) is logged', async () => {
-    const openAsset = vi.fn(async (_: string) => ({ ok: false, reason: 'path-escape' }) as const);
-    const openExternal = vi.fn(noopOpenExternal);
-    const logEvents: unknown[] = [];
-    const log = (evt: unknown) => {
-      logEvents.push(evt);
-    };
-
-    let installedHandler: ((details: { url: string }) => { action: 'allow' | 'deny' }) | null =
-      null;
-    const webContents = {
-      setWindowOpenHandler(handler: (details: { url: string }) => { action: 'allow' | 'deny' }) {
-        installedHandler = handler;
-      },
-      on: () => {},
-    };
-
-    attachAssetSafetyNet(webContents, { openAsset, openExternal, editorOrigin: ORIGIN, log });
-
-    installedHandler?.({ url: 'http://localhost:5173/notes/meeting.pdf' });
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(logEvents).toHaveLength(1);
-    expect(logEvents[0]).toMatchObject({
-      level: 'warn',
-      data: { reason: 'path-escape' },
-    });
+    expect(logEvents).toHaveLength(refused.length);
+    for (const [index, url] of refused.entries()) {
+      expect(logEvents[index]).toMatchObject({ level: 'warn', data: { url } });
+    }
   });
 
   test('same-renderer-origin in-app route (open-in-new-tab) → navigated in-app, NOT openExternal', async () => {
@@ -347,32 +253,104 @@ describe('attachAssetSafetyNet — setWindowOpenHandler', () => {
   });
 });
 
+interface NavigationEventFake {
+  preventDefault: () => void;
+  initiator?: { parent: unknown } | null;
+}
+
+const TOP_LEVEL_FRAME = { parent: null };
+const FRAME_INSIDE_THE_PAGE = { parent: TOP_LEVEL_FRAME };
+
+function attachForNavigation(deps: {
+  openAsset: (relPath: string) => Promise<{ ok: true }>;
+  openExternal: (url: string) => Promise<void>;
+  editorOrigin: string;
+  rendererUrl?: string;
+  log?: (event: unknown) => void;
+}): (event: NavigationEventFake, url: string) => void {
+  const installed: { navigate?: (event: NavigationEventFake, url: string) => void } = {};
+  attachAssetSafetyNet(
+    {
+      setWindowOpenHandler: () => {},
+      on(event: 'will-navigate', handler: (event: NavigationEventFake, url: string) => void) {
+        if (event === 'will-navigate') installed.navigate = handler;
+      },
+      ...(deps.rendererUrl === undefined ? {} : { getURL: () => deps.rendererUrl as string }),
+    },
+    {
+      openAsset: deps.openAsset,
+      openExternal: deps.openExternal,
+      editorOrigin: deps.editorOrigin,
+      ...(deps.log === undefined ? {} : { log: deps.log }),
+    },
+  );
+  const navigate = installed.navigate;
+  if (navigate === undefined) throw new Error('the safety net registered no will-navigate handler');
+  return navigate;
+}
+
 describe('attachAssetSafetyNet — will-navigate', () => {
-  test('asset URL navigation → preventDefault + openAsset fires', async () => {
+  test('a project file navigation started by the page itself opens the file', async () => {
     const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
     const openExternal = vi.fn(noopOpenExternal);
-
-    let installedHandler: ((event: { preventDefault: () => void }, url: string) => void) | null =
-      null;
-    const webContents = {
-      setWindowOpenHandler: () => {},
-      on(
-        event: 'will-navigate',
-        handler: (event: { preventDefault: () => void }, url: string) => void,
-      ) {
-        if (event === 'will-navigate') installedHandler = handler;
-      },
-    };
-
-    attachAssetSafetyNet(webContents, { openAsset, openExternal, editorOrigin: ORIGIN });
+    const navigate = attachForNavigation({ openAsset, openExternal, editorOrigin: ORIGIN });
 
     const preventDefault = vi.fn(() => {});
-    installedHandler?.({ preventDefault }, 'http://localhost:5173/notes/meeting.pdf');
+    navigate(
+      { preventDefault, initiator: TOP_LEVEL_FRAME },
+      'http://localhost:5173/notes/meeting.pdf',
+    );
     expect(preventDefault).toHaveBeenCalledTimes(1);
     await Promise.resolve();
     await Promise.resolve();
     expect(openAsset).toHaveBeenCalledWith('notes/meeting.pdf');
     expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  test('a project file opens only from the page itself: a navigation started by any other frame opens nothing and stays on the page', async () => {
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
+    const logEvents: unknown[] = [];
+    const navigate = attachForNavigation({
+      openAsset,
+      openExternal,
+      editorOrigin: ORIGIN,
+      log: (evt) => logEvents.push(evt),
+    });
+
+    const initiators: NavigationEventFake['initiator'][] = [FRAME_INSIDE_THE_PAGE, null, undefined];
+    for (const initiator of initiators) {
+      const preventDefault = vi.fn(() => {});
+      navigate({ preventDefault, initiator }, 'http://localhost:5173/notes/meeting.pdf');
+      expect(preventDefault).toHaveBeenCalledTimes(1);
+    }
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(openAsset).not.toHaveBeenCalled();
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(logEvents).toHaveLength(initiators.length);
+  });
+
+  test('a top-level navigation to a non-web address is left to the permission rule, never handed over here', async () => {
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
+    const navigate = attachForNavigation({
+      openAsset,
+      openExternal,
+      editorOrigin: 'http://localhost:8765',
+      rendererUrl: 'http://localhost:5173/#/home',
+    });
+
+    for (const url of ['mailto:someone@example.com', 'openknowledge://open?project=%2Ftmp']) {
+      for (const initiator of [TOP_LEVEL_FRAME, FRAME_INSIDE_THE_PAGE]) {
+        const preventDefault = vi.fn(() => {});
+        navigate({ preventDefault, initiator }, url);
+        expect(preventDefault).not.toHaveBeenCalled();
+      }
+    }
+    await Promise.resolve();
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(openAsset).not.toHaveBeenCalled();
   });
 
   test('same-origin navigation (Vite reload, app bundle) → no preventDefault, no delegation', async () => {
@@ -571,14 +549,10 @@ describe('attachAssetSafetyNet — will-navigate', () => {
     const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
     const openExternal = vi.fn(noopOpenExternal);
 
-    let installedHandler: ((event: { preventDefault: () => void }, url: string) => void) | null =
-      null;
+    let installedHandler: ((event: NavigationEventFake, url: string) => void) | null = null;
     const webContents = {
       setWindowOpenHandler: () => {},
-      on(
-        event: 'will-navigate',
-        handler: (event: { preventDefault: () => void }, url: string) => void,
-      ) {
+      on(event: 'will-navigate', handler: (event: NavigationEventFake, url: string) => void) {
         if (event === 'will-navigate') installedHandler = handler;
       },
     };
@@ -586,7 +560,10 @@ describe('attachAssetSafetyNet — will-navigate', () => {
     attachAssetSafetyNet(webContents, { openAsset, openExternal, editorOrigin: ORIGIN });
 
     const preventDefault = vi.fn(() => {});
-    installedHandler?.({ preventDefault }, 'http://localhost:5173/notes/meeting.pdf');
+    installedHandler?.(
+      { preventDefault, initiator: TOP_LEVEL_FRAME },
+      'http://localhost:5173/notes/meeting.pdf',
+    );
     await Promise.resolve();
     await Promise.resolve();
     expect(openAsset).toHaveBeenCalledWith('notes/meeting.pdf');

@@ -12,7 +12,6 @@ import { hashFromAssetPath, hashFromDocName, isSameHash } from '../lib/doc-hash'
 import { openExternalUrl } from '../lib/external-link';
 import { requestRepeatAnchorNavigation } from './anchor-navigation-event';
 import { dispatchAssetClick } from './asset-dispatch';
-import { isSafeNavigationUrl } from './safe-navigation-url';
 
 export function getCurrentDocNameFromHash(locationHash = window.location.hash): string {
   const hashMatch = locationHash.match(/^#\/([^?#]+)/);
@@ -34,10 +33,10 @@ export function toInternalHashHref({
 }
 
 export function openHashHrefInNewTab(href: string): void {
-  if (href.startsWith('#') || isSafeNavigationUrl(href)) {
+  if (href.startsWith('#')) {
     window.open(href, '_blank', 'noopener,noreferrer');
   } else {
-    console.warn('[safe-nav] blocked non-safe scheme:', href);
+    openExternalUrl(href);
   }
 }
 

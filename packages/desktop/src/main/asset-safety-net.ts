@@ -1,12 +1,15 @@
-import { ASSET_EXTENSIONS } from '@inkeep/open-knowledge-core';
+import { matchAssetUrl } from '@inkeep/open-knowledge-core/utils/asset-href';
 import type { AssetOpenResult } from './asset-allowlist.ts';
+import { isWebAddress } from './system-handoff.ts';
+
+interface NavigationEventLike {
+  preventDefault(): void;
+  readonly initiator?: { readonly parent: unknown } | null;
+}
 
 interface WebContentsLike {
   setWindowOpenHandler(handler: (details: { url: string }) => { action: 'allow' | 'deny' }): void;
-  on(
-    event: 'will-navigate',
-    handler: (event: { preventDefault: () => void }, url: string) => void,
-  ): void;
+  on(event: 'will-navigate', handler: (event: NavigationEventLike, url: string) => void): void;
   getURL?(): string;
   executeJavaScript?(code: string): Promise<unknown>;
 }
@@ -25,35 +28,6 @@ interface AttachAssetSafetyNetDeps {
 const DEFAULT_LOG: Required<AttachAssetSafetyNetDeps>['log'] = (event) => {
   console.warn(`[asset-safety-net] ${event.message}`, event.data);
 };
-
-export function matchAssetUrl(url: string, editorOrigin: string): string | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
-  const origin = parsed.origin;
-  if (origin !== editorOrigin) return null;
-
-  const raw = parsed.pathname.startsWith('/') ? parsed.pathname.slice(1) : parsed.pathname;
-  let path: string;
-  try {
-    path = decodeURIComponent(raw);
-  } catch {
-    return null;
-  }
-  if (!path) return null;
-
-  const lastSegment = path.split('/').pop() ?? '';
-  const extMatch = lastSegment.match(/\.([a-z0-9]+)$/i);
-  if (!extMatch) return null;
-  const ext = (extMatch[1] ?? '').toLowerCase();
-  if (ext === 'html' || ext === 'htm') return null;
-  if (!ASSET_EXTENSIONS.has(ext)) return null;
-
-  return path;
-}
 
 export function matchInAppApiNavigation(
   url: string,
@@ -90,6 +64,10 @@ export function matchInAppRoute(url: string, rendererOrigin: string | null): str
   return parsed.hash.startsWith('#/') ? parsed.hash : null;
 }
 
+function startedByTopLevelFrame(event: NavigationEventLike): boolean {
+  return event.initiator != null && event.initiator.parent === null;
+}
+
 function navigateToHashScript(hash: string): string {
   return `window.location.hash = ${JSON.stringify(hash)};`;
 }
@@ -103,14 +81,10 @@ export function attachAssetSafetyNet(
   webContents.setWindowOpenHandler((details) => {
     const relPath = matchAssetUrl(details.url, deps.editorOrigin);
     if (relPath !== null) {
-      void deps.openAsset(relPath).then((result) => {
-        if (!result.ok) {
-          log({
-            level: 'warn',
-            message: 'openAsset refused from setWindowOpenHandler',
-            data: { relPath, reason: result.reason },
-          });
-        }
+      log({
+        level: 'warn',
+        message: 'refused a new-window request for a project file',
+        data: { relPath },
       });
       return { action: 'deny' };
     }
@@ -128,6 +102,14 @@ export function attachAssetSafetyNet(
       }
       return { action: 'deny' };
     }
+    if (!isWebAddress(details.url)) {
+      log({
+        level: 'warn',
+        message: 'refused a new-window request for a non-web address',
+        data: { url: details.url },
+      });
+      return { action: 'deny' };
+    }
     void deps.openExternal(details.url).catch((err: unknown) => {
       log({
         level: 'warn',
@@ -142,6 +124,14 @@ export function attachAssetSafetyNet(
     const relPath = matchAssetUrl(url, deps.editorOrigin);
     if (relPath !== null) {
       event.preventDefault();
+      if (!startedByTopLevelFrame(event)) {
+        log({
+          level: 'warn',
+          message: 'refused a project file navigation not started by the page',
+          data: { relPath },
+        });
+        return;
+      }
       void deps.openAsset(relPath).then((result) => {
         if (!result.ok) {
           log({
@@ -169,6 +159,7 @@ export function attachAssetSafetyNet(
     } catch {
       return;
     }
+    if (!isWebAddress(url)) return;
     if (parsed.origin === deps.editorOrigin || parsed.origin === rendererOrigin) {
       return;
     }

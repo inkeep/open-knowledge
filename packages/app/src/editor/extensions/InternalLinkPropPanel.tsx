@@ -31,6 +31,7 @@ import { useConfigContext } from '../../lib/config-provider';
 import { type CreatePageSeed, createPageFromSeedAndUpdate } from '../../lib/create-page';
 import { hashFromDocName } from '../../lib/doc-hash';
 import { normalizeDocNameInput } from '../../lib/doc-paths';
+import { dispatchExternalLinkClick } from '../../lib/external-link';
 import { cn } from '../../lib/utils';
 import {
   buildCurrentRelativeMarkdownHref,
@@ -523,6 +524,7 @@ export function InternalLinkPropPanel({
         : target?.kind === 'external' && isSafeNavigationUrl(target.url)
           ? target.url
           : null;
+  const externalHref = isExternalLink ? linkHref : null;
   const navigable =
     !loading &&
     linkHref !== null &&
@@ -599,6 +601,10 @@ export function InternalLinkPropPanel({
                     href={linkHref ?? undefined}
                     {...(isExternalLink ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                     onClick={(e) => handleChipLinkClick(e, onNavigate, onClose)}
+                    onAuxClick={(e) => {
+                      if (e.button === 1 && externalHref)
+                        dispatchExternalLinkClick(e, externalHref);
+                    }}
                     data-slot="internal-link-prop-panel-text"
                     className="block truncate text-sm font-medium text-foreground underline-offset-2 hover:underline focus-visible:underline"
                   >
