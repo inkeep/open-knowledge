@@ -1,7 +1,11 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { stdSerializers } from 'pino';
+import type { Dispatcher } from 'undici';
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest';
 import { getLogger } from '../logger.ts';
 import {
   ACP_AGENT_EDITOR_IDS,
@@ -65,6 +69,52 @@ afterEach(() => {
   dirs = [];
 });
 
+async function startTunnelRecorder(): Promise<{ url: string; tunnelTargets: string[] }> {
+  const tunnelTargets: string[] = [];
+  const proxy = createServer();
+  proxy.on('connect', (request, socket) => {
+    tunnelTargets.push(request.url ?? '');
+    socket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
+  });
+  await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+  onTestFinished(() => new Promise<void>((resolve) => proxy.close(() => resolve())));
+  return { url: `http://127.0.0.1:${(proxy.address() as AddressInfo).port}`, tunnelTargets };
+}
+
+async function catalogDispatcher(): Promise<Dispatcher | undefined> {
+  const dispatchers: (Dispatcher | undefined)[] = [];
+  await new AcpRegistry({
+    localDir: tmp(),
+    log,
+    fetchImpl: async (_url, init?: RequestInit & { dispatcher?: Dispatcher }) => {
+      dispatchers.push(init?.dispatcher);
+      return new Response(CATALOG, { status: 200 });
+    },
+  }).getCatalog();
+  expect(dispatchers).toHaveLength(1);
+  return dispatchers[0];
+}
+
+async function expectTunnelledThrough(
+  dispatcher: Dispatcher | undefined,
+  proxy: { tunnelTargets: string[] },
+): Promise<void> {
+  expect(dispatcher).toBeDefined();
+  const init = { dispatcher };
+  await expect(fetch('https://127.0.0.1:65000/', init)).rejects.toThrow();
+  expect(proxy.tunnelTargets).toEqual(['127.0.0.1:65000']);
+}
+
+function stubProxyEnv(proxyUrl: string): void {
+  for (const name of ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy']) {
+    vi.stubEnv(name, proxyUrl);
+  }
+  vi.stubEnv('NO_PROXY', '');
+  vi.stubEnv('no_proxy', '');
+  vi.stubEnv('NODE_USE_ENV_PROXY', undefined);
+  onTestFinished(() => vi.unstubAllEnvs());
+}
+
 describe('AcpRegistry', () => {
   test('parses the catalog, drops malformed entries, writes the disk cache', async () => {
     const localDir = tmp();
@@ -104,6 +154,88 @@ describe('AcpRegistry', () => {
       }) as typeof fetch,
     });
     await expect(registry.getCatalog()).rejects.toThrow('offline');
+  });
+  test('dispatches the catalog request through the proxy the environment names', async () => {
+    const proxy = await startTunnelRecorder();
+    stubProxyEnv(proxy.url);
+
+    await expectTunnelledThrough(await catalogDispatcher(), proxy);
+  });
+
+  test('an unusable http_proxy does not disable a usable HTTPS_PROXY', async () => {
+    const proxy = await startTunnelRecorder();
+    stubProxyEnv(proxy.url);
+    vi.stubEnv('http_proxy', 'socks5://proxy.corp:1080');
+    vi.stubEnv('HTTP_PROXY', 'socks5://proxy.corp:1080');
+
+    await expectTunnelledThrough(await catalogDispatcher(), proxy);
+  });
+
+  test('treats a proxy value without a scheme as an http:// proxy', async () => {
+    const proxy = await startTunnelRecorder();
+    stubProxyEnv(proxy.url.replace('http://', ''));
+
+    await expectTunnelledThrough(await catalogDispatcher(), proxy);
+  });
+
+  test('falls back to HTTP_PROXY when no HTTPS proxy is set', async () => {
+    const proxy = await startTunnelRecorder();
+    stubProxyEnv(proxy.url);
+    for (const name of ['https_proxy', 'HTTPS_PROXY', 'http_proxy']) vi.stubEnv(name, undefined);
+
+    await expectTunnelledThrough(await catalogDispatcher(), proxy);
+  });
+
+  test.each(['0', 'false'])(
+    'NODE_USE_ENV_PROXY=%s keeps the catalog request off the proxy',
+    async (mode) => {
+      stubProxyEnv('http://127.0.0.1:9');
+      vi.stubEnv('NODE_USE_ENV_PROXY', mode);
+
+      expect(await catalogDispatcher()).toBeUndefined();
+    },
+  );
+
+  test.each(['socks5://proxy.corp:1080', 'ftp://proxy.corp:21'])(
+    'a proxy value %s leaves the catalog request direct and names the variable',
+    async (value) => {
+      stubProxyEnv(value);
+      const warn = vi.spyOn(log, 'warn');
+      onTestFinished(() => warn.mockRestore());
+      const fetchImpl = vi.fn<typeof fetch>(async () => new Response(CATALOG, { status: 200 }));
+
+      const result = await new AcpRegistry({ localDir: tmp(), log, fetchImpl }).getCatalog();
+
+      expect(result).toMatchObject({ stale: false, agents: [{ id: 'gemini' }] });
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({ dispatcher: undefined });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[1]).toContain('https_proxy');
+    },
+  );
+
+  test('an unusable proxy value is not written to the log', async () => {
+    stubProxyEnv('http://user:s3cr#t@proxy.corp:3128');
+    const warn = vi.spyOn(log, 'warn');
+    onTestFinished(() => warn.mockRestore());
+
+    await new AcpRegistry({
+      localDir: tmp(),
+      log,
+      fetchImpl: async () => new Response(CATALOG),
+    }).getCatalog();
+
+    const logged = warn.mock.calls
+      .map(
+        ([data, message]) =>
+          `${JSON.stringify(data, (_key, value) =>
+            value instanceof Error ? stdSerializers.err(value) : value,
+          )} ${message}`,
+      )
+      .join('\n');
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(logged).toContain('https_proxy is not a usable proxy URL');
+    expect(logged).not.toContain('s3cr');
   });
 });
 

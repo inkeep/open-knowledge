@@ -1403,6 +1403,9 @@ importers:
       sirv:
         specifier: ^3.0.1
         version: 3.0.2(patch_hash=c18b28f0bc922fd0abed32545bae498c471d8f715f8d5fac40e84840d4e23842)
+      undici:
+        specifier: ~7.29.0
+        version: 7.29.0
       ws:
         specifier: ^8.20.0
         version: 8.22.0
