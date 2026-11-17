@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 import { EMPTY_DETECTION_SNAPSHOT, EMPTY_PROBE_SNAPSHOT } from '@inkeep/open-knowledge-core';
 import { describe, expect, test, vi } from 'vitest';
-import { windowsCmdWrap } from './acp/launch.ts';
+import { LauncherArgumentError, windowsCmdWrap } from './acp/launch.ts';
 import {
   type HandleHandoffDispatchDeps,
   handleHandoffDispatch,
@@ -270,6 +270,35 @@ describe('handleHandoffDispatch — cursor cross-platform (cli-binary)', () => {
       args: ['url.dll,FileProtocolHandler', CURSOR_URL],
     });
     expect(sleep).toHaveBeenCalledTimes(1);
+  });
+
+  test('Windows cursor: a workspace path the launcher script cannot receive as written fails the launch and starts nothing', async () => {
+    const cmdPath =
+      'C:\\Users\\who\\AppData\\Local\\Programs\\cursor\\resources\\app\\bin\\cursor.cmd';
+    const spawnDetached = vi.fn(async () => ({ ok: true }) as SpawnOutcome);
+    const { res, captured } = makeRes();
+    await handleHandoffDispatch(
+      makeReq('POST', {
+        target: 'cursor',
+        url: CURSOR_URL,
+        workspacePath: 'C:\\Users\\who\\dragons\\two\nlines',
+      }),
+      res,
+      makeDeps({
+        platform: 'win32',
+        contentDir: 'C:\\Users\\who\\dragons',
+        spawnDetached,
+        sleep: vi.fn(async (_ms: number) => undefined),
+        resolveCursorBinary: async () => cmdPath,
+      }),
+    );
+    expect(captured.status).toBe(502);
+    expect(captured.body).toMatchObject({
+      type: 'urn:ok:error:handoff-spawn-failed',
+      title: 'Handoff spawn failed.',
+      detail: new LauncherArgumentError().message,
+    });
+    expect(spawnDetached).not.toHaveBeenCalled();
   });
 
   test('Linux cursor: cursor <path> → sleep → xdg-open URL fire', async () => {

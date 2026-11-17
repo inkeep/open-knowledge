@@ -437,6 +437,26 @@ describe('isPathWithinProject — Review M5 confined-path check', () => {
 });
 
 describe('spawnCursor', () => {
+  test('on Windows, a path the launcher script cannot receive as written fails the launch without spawning', async () => {
+    let spawnCalls = 0;
+    const result = await spawnCursor(
+      {
+        platform: 'win32',
+        projectPath: 'C:\\Users\\x\\project',
+        getApplicationInfoForProtocol: async () => ({ name: '', path: '' }),
+        resolveCursorBinary: async () =>
+          'C:\\Users\\x\\AppData\\Local\\Programs\\cursor\\resources\\app\\bin\\cursor.cmd',
+        spawn: async () => {
+          spawnCalls++;
+          return { ok: true };
+        },
+      },
+      'C:\\Users\\x\\project\\two\nlines',
+    );
+    expect(result).toEqual({ ok: false, reason: 'spawn-error' });
+    expect(spawnCalls).toBe(0);
+  });
+
   test('rejects invalid path without calling resolve / spawn', async () => {
     let resolveCalls = 0;
     let spawnCalls = 0;

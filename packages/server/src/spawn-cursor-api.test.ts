@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, isAbsolute, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { resolveWindowsCommand, windowsCmdWrap } from './acp/launch.ts';
+import { LauncherArgumentError, resolveWindowsCommand, windowsCmdWrap } from './acp/launch.ts';
 import {
   findCursorCommand,
   type HandleSpawnCursorDeps,
@@ -343,6 +343,30 @@ describe('handleSpawnCursor — Cursor binary discovery (per-platform)', () => {
         options: { windowsVerbatimArguments: true },
       },
     ]);
+  });
+
+  test('windows: a path the launcher script cannot receive as written fails the launch and starts nothing', async () => {
+    const cmdPath =
+      'C:\\Users\\who\\AppData\\Local\\Programs\\cursor\\resources\\app\\bin\\cursor.cmd';
+    const spawnDetached = vi.fn(async () => ({ ok: true }) as SpawnCursorOutcome);
+    const { res, captured } = makeRes();
+    await handleSpawnCursor(
+      makeReq('POST', { path: 'C:\\Users\\who\\dragons\\two\nlines' }),
+      res,
+      makeDeps({
+        platform: 'win32',
+        contentDir: 'C:\\Users\\who\\dragons',
+        resolveCursorBinary: async () => cmdPath,
+        spawnDetached,
+      }),
+    );
+    expect(captured.status).toBe(502);
+    expect(captured.body).toMatchObject({
+      type: 'urn:ok:error:cursor-spawn-failed',
+      title: 'Cursor spawn failed.',
+      detail: new LauncherArgumentError().message,
+    });
+    expect(spawnDetached).not.toHaveBeenCalled();
   });
 
   test('linux: PATH lookup is the only viable strategy (no bundle paths registered)', async () => {

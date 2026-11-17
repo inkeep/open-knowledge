@@ -10,7 +10,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { posix as pathPosix, win32 as pathWin32 } from 'node:path';
 import { SpawnCursorSuccessSchema } from '@inkeep/open-knowledge-core';
-import { windowsCmdWrap, windowsCommandCandidates } from './acp/launch.ts';
+import { LauncherArgumentError, windowsCmdWrap, windowsCommandCandidates } from './acp/launch.ts';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import { errorResponse } from './http/error-response.ts';
 import {
@@ -134,7 +134,17 @@ export async function handleSpawnCursor(
     return;
   }
 
-  const invocation = resolveCursorSpawnInvocation(exec, userPath, deps.platform);
+  let invocation: CursorSpawnInvocation;
+  try {
+    invocation = resolveCursorSpawnInvocation(exec, userPath, deps.platform);
+  } catch (err) {
+    if (!(err instanceof LauncherArgumentError)) throw err;
+    errorResponse(res, 502, 'urn:ok:error:cursor-spawn-failed', 'Cursor spawn failed.', {
+      handler: HANDLER,
+      detail: err.message,
+    });
+    return;
+  }
   const spawnDetached = deps.spawnDetached ?? spawnDetachedReal;
   const outcome = await spawnDetached(
     invocation.exec,

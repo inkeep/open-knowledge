@@ -118,6 +118,7 @@ import {
   incompatibleManagedRuntimeHint,
   incompatibleNodeHint,
   isPathQualified,
+  LauncherArgumentError,
   type NpxCacheEntry,
   npxInstallRefused,
   packageAcquisitionFailure,
@@ -2566,6 +2567,9 @@ export class AcpThreadManager {
             err.message,
           );
         }
+        if (err instanceof LauncherArgumentError) {
+          throw new ThreadOpError('spawn-failed', err.message);
+        }
         this.opts.log.warn({ err, threadId }, '[acp-threads] resume rejected by the agent');
         throw new ThreadOpError(
           'resume-unsupported',
@@ -4402,7 +4406,11 @@ async function connectionFailureDetail(
   ownsStderrTail: boolean,
 ): Promise<ThreadFailureDetail> {
   const detail =
-    err instanceof AgentLaunchError || err instanceof ThreadOpError ? err.message : String(err);
+    err instanceof AgentLaunchError ||
+    err instanceof LauncherArgumentError ||
+    err instanceof ThreadOpError
+      ? err.message
+      : String(err);
   return {
     reason: 'connect',
     agentMessage: detail,

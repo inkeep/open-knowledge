@@ -6,6 +6,7 @@ import {
   type HostSnapshot,
 } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
+import { LauncherArgumentError } from './acp/launch.ts';
 import { observeReadiness } from './agent-registry-gate.ts';
 import { createOsProbe, type InstalledAgentScheme } from './handoff-api.ts';
 import { errorResponse } from './http/error-response.ts';
@@ -19,6 +20,7 @@ import {
 import { successResponse } from './http/success-response.ts';
 import { getLogger } from './logger.ts';
 import {
+  type CursorSpawnInvocation,
   isPathWithinDir,
   resolveCursorBinaryDefault,
   resolveCursorSpawnInvocation,
@@ -280,7 +282,18 @@ export async function handleHandoffDispatch(
     );
     return;
   }
-  const invocation = resolveCursorSpawnInvocation(cursorBin, workspacePath, deps.platform);
+  let invocation: CursorSpawnInvocation;
+  try {
+    invocation = resolveCursorSpawnInvocation(cursorBin, workspacePath, deps.platform);
+  } catch (err) {
+    if (!(err instanceof LauncherArgumentError)) throw err;
+    errorResponse(res, 502, 'urn:ok:error:handoff-spawn-failed', 'Handoff spawn failed.', {
+      handler: HANDLER,
+      detail: err.message,
+      extensions: { target },
+    });
+    return;
+  }
   const spawnBinary = await spawnDetached(invocation.exec, invocation.args, SPAWN_TIMEOUT_MS, {
     windowsVerbatimArguments: invocation.windowsVerbatimArguments,
   });
