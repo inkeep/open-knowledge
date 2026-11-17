@@ -688,6 +688,31 @@ describe('spawnCursor', () => {
     );
     expect(seenTimeout).toBe(1234);
   });
+
+  test('on Windows, starts a .cmd Cursor command line with verbatim arguments and a direct executable without them', async () => {
+    const seen: Array<{ exec: string; windowsVerbatimArguments: boolean }> = [];
+    for (const binary of [
+      'C:\\Users\\x\\AppData\\Local\\Programs\\cursor\\resources\\app\\bin\\cursor.cmd',
+      'C:\\Users\\x\\AppData\\Local\\Programs\\cursor\\Cursor.exe',
+    ]) {
+      const result = await spawnCursor(
+        {
+          platform: 'win32',
+          getApplicationInfoForProtocol: async () => ({ name: '', path: '' }),
+          resolveCursorBinary: async () => binary,
+          spawn: async (exec, _args, _timeoutMs, { windowsVerbatimArguments }) => {
+            seen.push({ exec, windowsVerbatimArguments });
+            return { ok: true };
+          },
+        },
+        'C:\\Users\\x\\project',
+      );
+      expect(result).toEqual({ ok: true });
+    }
+    expect(seen).toHaveLength(2);
+    expect(seen[0]?.exec.toLowerCase().endsWith('cmd.exe')).toBe(true);
+    expect(seen.map((call) => call.windowsVerbatimArguments)).toEqual([true, false]);
+  });
 });
 
 describe('recordHandoff', () => {

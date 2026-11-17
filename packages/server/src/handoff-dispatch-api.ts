@@ -23,7 +23,11 @@ import {
   resolveCursorBinaryDefault,
   resolveCursorSpawnInvocation,
 } from './spawn-cursor-api.ts';
-import { type SpawnDetachedOutcome, spawnDetached as spawnDetachedReal } from './spawn-detached.ts';
+import {
+  type SpawnDetachedOptions,
+  type SpawnDetachedOutcome,
+  spawnDetached as spawnDetachedReal,
+} from './spawn-detached.ts';
 
 const log = getLogger('handoff-dispatch');
 
@@ -105,6 +109,7 @@ export interface HandleHandoffDispatchDeps {
     exec: string,
     args: ReadonlyArray<string>,
     timeoutMs: number,
+    options?: SpawnDetachedOptions,
   ) => Promise<SpawnDetachedOutcome>;
   readonly resolveCursorBinary?: (timeoutMs: number) => Promise<string | null>;
   readonly isSchemeRegistered?: (scheme: InstalledAgentScheme) => Promise<boolean>;
@@ -276,7 +281,9 @@ export async function handleHandoffDispatch(
     return;
   }
   const invocation = resolveCursorSpawnInvocation(cursorBin, workspacePath, deps.platform);
-  const spawnBinary = await spawnDetached(invocation.exec, invocation.args, SPAWN_TIMEOUT_MS);
+  const spawnBinary = await spawnDetached(invocation.exec, invocation.args, SPAWN_TIMEOUT_MS, {
+    windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+  });
   if (!spawnBinary.ok) {
     emitSpawnFailure(res, target, spawnBinary.reason);
     return;

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, isAbsolute, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { resolveWindowsCommand } from './acp/launch.ts';
+import { resolveWindowsCommand, windowsCmdWrap } from './acp/launch.ts';
 import {
   findCursorCommand,
   type HandleSpawnCursorDeps,
@@ -13,6 +13,7 @@ import {
   isPathWithinDir,
   type SpawnCursorOutcome,
 } from './spawn-cursor-api.ts';
+import type { SpawnDetachedOptions } from './spawn-detached.ts';
 
 const CONTENT_DIR = '/Users/who/dragons';
 const VALID_PATH = '/Users/who/dragons';
@@ -302,31 +303,46 @@ describe('handleSpawnCursor — Cursor binary discovery (per-platform)', () => {
     expect(whichCalled).toBe(true);
   });
 
-  test('windows: .cmd shim is routed through cmd.exe (shell:false cannot exec .cmd — CVE-2024-27980)', async () => {
+  test("windows: the .cmd shim runs through cmd.exe on the agent launcher's command line, verbatim", async () => {
     const cmdPath =
       'C:\\Users\\who\\AppData\\Local\\Programs\\cursor\\resources\\app\\bin\\cursor.cmd';
-    let capturedExec = '';
-    let capturedArgs: ReadonlyArray<string> = [];
-    const spawnDetached = vi.fn(async (exec: string, args: ReadonlyArray<string>) => {
-      capturedExec = exec;
-      capturedArgs = [...args];
-      return { ok: true } as SpawnCursorOutcome;
-    });
+    const project = 'C:\\Users\\who\\R&D notes (draft)';
+    const calls: Array<{ exec: string; args: string[]; options?: SpawnDetachedOptions }> = [];
+    const spawnDetached = vi.fn(
+      async (
+        exec: string,
+        args: ReadonlyArray<string>,
+        _timeoutMs: number,
+        options?: SpawnDetachedOptions,
+      ) => {
+        calls.push(
+          options === undefined ? { exec, args: [...args] } : { exec, args: [...args], options },
+        );
+        return { ok: true } as SpawnCursorOutcome;
+      },
+    );
     const { res, captured } = makeRes();
     await handleSpawnCursor(
-      makeReq('POST', { path: 'C:\\Users\\who\\dragons' }),
+      makeReq('POST', { path: project }),
       res,
       makeDeps({
         platform: 'win32',
-        contentDir: 'C:\\Users\\who\\dragons',
+        contentDir: project,
         resolveCursorBinary: async () => cmdPath,
         spawnDetached,
       }),
     );
     expect(captured.status).toBe(200);
     expect(captured.body).toEqual({});
-    expect(capturedExec.toLowerCase().endsWith('cmd.exe')).toBe(true);
-    expect(capturedArgs).toEqual(['/d', '/c', cmdPath, 'C:\\Users\\who\\dragons']);
+    const launcherCommandLine = windowsCmdWrap(cmdPath, [project]);
+    expect(launcherCommandLine.cmd.toLowerCase().endsWith('cmd.exe')).toBe(true);
+    expect(calls).toEqual([
+      {
+        exec: launcherCommandLine.cmd,
+        args: launcherCommandLine.args,
+        options: { windowsVerbatimArguments: true },
+      },
+    ]);
   });
 
   test('linux: PATH lookup is the only viable strategy (no bundle paths registered)', async () => {

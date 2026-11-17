@@ -113,7 +113,12 @@ export async function detectProtocol(
 interface SpawnCursorDeps {
   resolveCursorBinary?: (timeoutMs: number) => Promise<string | null>;
   getApplicationInfoForProtocol: (url: string) => Promise<AppInfo>;
-  spawn: (exec: string, args: ReadonlyArray<string>, timeoutMs: number) => Promise<SpawnOutcome>;
+  spawn: (
+    exec: string,
+    args: ReadonlyArray<string>,
+    timeoutMs: number,
+    options: { readonly windowsVerbatimArguments: boolean },
+  ) => Promise<SpawnOutcome>;
   platform: NodeJS.Platform;
   projectPath?: string;
   resolveTimeoutMs?: number;
@@ -152,8 +157,14 @@ export async function spawnCursor(deps: SpawnCursorDeps, path: string): Promise<
     return { ok: false, reason: 'not-installed' };
   }
 
-  const { exec, args } = resolveCursorSpawnInvocation(binaryPath, path, deps.platform);
-  return deps.spawn(exec, args, deps.spawnTimeoutMs ?? SPAWN_TIMEOUT_MS);
+  const { exec, args, windowsVerbatimArguments } = resolveCursorSpawnInvocation(
+    binaryPath,
+    path,
+    deps.platform,
+  );
+  return deps.spawn(exec, args, deps.spawnTimeoutMs ?? SPAWN_TIMEOUT_MS, {
+    windowsVerbatimArguments,
+  });
 }
 
 type ShowItemInFolderOutcome =

@@ -2,12 +2,14 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 import { EMPTY_DETECTION_SNAPSHOT, EMPTY_PROBE_SNAPSHOT } from '@inkeep/open-knowledge-core';
 import { describe, expect, test, vi } from 'vitest';
+import { windowsCmdWrap } from './acp/launch.ts';
 import {
   type HandleHandoffDispatchDeps,
   handleHandoffDispatch,
   resolveUrlOpenInvocation,
   type SpawnOutcome,
 } from './handoff-dispatch-api.ts';
+import type { SpawnDetachedOptions } from './spawn-detached.ts';
 
 const CONTENT_DIR = '/Users/who/dragons';
 const VALID_PATH = '/Users/who/dragons/specs';
@@ -219,16 +221,29 @@ describe('handleHandoffDispatch — app-bundle cross-platform (Windows / Linux)'
 });
 
 describe('handleHandoffDispatch — cursor cross-platform (cli-binary)', () => {
-  test('Windows cursor: .cmd shim via cmd.exe /d /c → sleep → rundll32 URL fire', async () => {
-    const winContentDir = 'C:\\Users\\who\\dragons';
-    const winWorkspace = 'C:\\Users\\who\\dragons\\specs';
+  test("Windows cursor: the .cmd shim runs on the agent launcher's command line, verbatim → sleep → rundll32 URL fire", async () => {
+    const winContentDir = 'C:\\Users\\who\\R&D notes (draft)';
+    const winWorkspace = 'C:\\Users\\who\\R&D notes (draft)\\specs';
     const cmdPath =
       'C:\\Users\\who\\AppData\\Local\\Programs\\cursor\\resources\\app\\bin\\cursor.cmd';
-    const calls: Array<{ exec: string; args: ReadonlyArray<string> }> = [];
-    const spawnDetached = vi.fn(async (exec: string, args: ReadonlyArray<string>) => {
-      calls.push({ exec, args: [...args] });
-      return { ok: true } as SpawnOutcome;
-    });
+    const calls: Array<{
+      exec: string;
+      args: ReadonlyArray<string>;
+      options?: SpawnDetachedOptions;
+    }> = [];
+    const spawnDetached = vi.fn(
+      async (
+        exec: string,
+        args: ReadonlyArray<string>,
+        _timeoutMs: number,
+        options?: SpawnDetachedOptions,
+      ) => {
+        calls.push(
+          options === undefined ? { exec, args: [...args] } : { exec, args: [...args], options },
+        );
+        return { ok: true } as SpawnOutcome;
+      },
+    );
     const sleep = vi.fn(async (_ms: number) => undefined);
     const { res, captured } = makeRes();
     await handleHandoffDispatch(
@@ -244,8 +259,12 @@ describe('handleHandoffDispatch — cursor cross-platform (cli-binary)', () => {
     );
     expect(captured.status).toBe(200);
     expect(calls.length).toBe(2);
-    expect(calls[0]?.exec.toLowerCase().endsWith('cmd.exe')).toBe(true);
-    expect(calls[0]?.args).toEqual(['/d', '/c', cmdPath, winWorkspace]);
+    const launcherCommandLine = windowsCmdWrap(cmdPath, [winWorkspace]);
+    expect(calls[0]).toEqual({
+      exec: launcherCommandLine.cmd,
+      args: launcherCommandLine.args,
+      options: { windowsVerbatimArguments: true },
+    });
     expect(calls[1]).toEqual({
       exec: 'rundll32.exe',
       args: ['url.dll,FileProtocolHandler', CURSOR_URL],

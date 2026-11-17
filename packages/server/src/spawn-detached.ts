@@ -20,6 +20,10 @@ function personAppOptions(): SpawnOptions {
   };
 }
 
+export interface SpawnDetachedOptions {
+  readonly windowsVerbatimArguments?: boolean;
+}
+
 export type SpawnDetachedOutcome =
   | { ok: true }
   | { ok: false; reason: 'not-installed' | 'timeout' | 'spawn-error' };
@@ -35,6 +39,7 @@ export function spawnDetached(
   exec: string,
   args: ReadonlyArray<string>,
   timeoutMs: number,
+  options: SpawnDetachedOptions = {},
 ): Promise<SpawnDetachedOutcome> {
   return new Promise((resolve) => {
     let settled = false;
@@ -45,7 +50,11 @@ export function spawnDetached(
     };
     const timer = setTimeout(() => settle({ ok: false, reason: 'timeout' }), timeoutMs);
     try {
-      const child = nodeSpawn(exec, [...args], withHiddenWindowsConsole(personAppOptions()));
+      const child = nodeSpawn(
+        exec,
+        [...args],
+        withHiddenWindowsConsole({ ...personAppOptions(), ...options }),
+      );
       child.once('error', (err) => {
         clearTimeout(timer);
         settle(classifySpawnError(err));
