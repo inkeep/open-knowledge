@@ -4293,7 +4293,7 @@ function registerIpcHandlers() {
         platform: process.platform,
         projectPath: callerProjectPath,
         getApplicationInfoForProtocol: (url) => app.getApplicationInfoForProtocol(url),
-        spawn: (exec, args, timeoutMs) =>
+        spawn: (exec, args, timeoutMs, { windowsVerbatimArguments }) =>
           new Promise((resolve) => {
             try {
               const child = spawn(exec, [...args], {
@@ -4301,6 +4301,7 @@ function registerIpcHandlers() {
                 timeout: timeoutMs,
                 stdio: ['ignore', 'ignore', 'pipe'],
                 windowsHide: true,
+                windowsVerbatimArguments,
               });
               child.stderr?.on('data', () => {});
               child.once('spawn', () => resolve({ ok: true }));

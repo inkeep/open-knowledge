@@ -10,7 +10,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { posix as pathPosix, win32 as pathWin32 } from 'node:path';
 import { SpawnCursorSuccessSchema } from '@inkeep/open-knowledge-core';
-import { windowsCommandCandidates } from './acp/launch.ts';
+import { windowsCmdWrap, windowsCommandCandidates } from './acp/launch.ts';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import { errorResponse } from './http/error-response.ts';
 import {
@@ -22,7 +22,7 @@ import {
 } from './http/request-validation.ts';
 import { successResponse } from './http/success-response.ts';
 import { getLogger } from './logger.ts';
-import { spawnDetached as spawnDetachedReal } from './spawn-detached.ts';
+import { type SpawnDetachedOptions, spawnDetached as spawnDetachedReal } from './spawn-detached.ts';
 
 const SPAWN_CURSOR_WHICH_TIMEOUT_MS = 500;
 const SPAWN_CURSOR_SPAWN_TIMEOUT_MS = 2000;
@@ -46,6 +46,7 @@ export interface HandleSpawnCursorDeps {
     exec: string,
     args: ReadonlyArray<string>,
     timeoutMs: number,
+    options?: SpawnDetachedOptions,
   ) => Promise<SpawnCursorOutcome>;
 }
 
@@ -139,6 +140,7 @@ export async function handleSpawnCursor(
     invocation.exec,
     invocation.args,
     SPAWN_CURSOR_SPAWN_TIMEOUT_MS,
+    { windowsVerbatimArguments: invocation.windowsVerbatimArguments },
   );
   if (outcome.ok) {
     successResponse(res, 200, SpawnCursorSuccessSchema, {}, { handler: HANDLER });
@@ -294,22 +296,30 @@ export async function findCursorCommand(
   });
 }
 
+export interface CursorSpawnInvocation {
+  readonly exec: string;
+  readonly args: ReadonlyArray<string>;
+  readonly windowsVerbatimArguments: boolean;
+}
+
 export function resolveCursorSpawnInvocation(
   resolvedPath: string,
   userPath: string,
   platform: NodeJS.Platform,
-): { exec: string; args: ReadonlyArray<string> } {
+): CursorSpawnInvocation {
   if (platform === 'darwin' && /\.app\/?$/.test(resolvedPath)) {
     const bundle = resolvedPath.replace(/\/$/, '');
-    return { exec: '/usr/bin/open', args: ['-a', bundle, userPath] };
-  }
-  if (platform === 'win32' && /\.(cmd|bat)$/i.test(resolvedPath)) {
     return {
-      exec: process.env.ComSpec || 'cmd.exe',
-      args: ['/d', '/c', resolvedPath, userPath],
+      exec: '/usr/bin/open',
+      args: ['-a', bundle, userPath],
+      windowsVerbatimArguments: false,
     };
   }
-  return { exec: resolvedPath, args: [userPath] };
+  if (platform === 'win32' && /\.(cmd|bat)$/i.test(resolvedPath)) {
+    const { cmd, args } = windowsCmdWrap(resolvedPath, [userPath]);
+    return { exec: cmd, args, windowsVerbatimArguments: true };
+  }
+  return { exec: resolvedPath, args: [userPath], windowsVerbatimArguments: false };
 }
 
 export function isPathWithinDir(
