@@ -6,6 +6,7 @@ import {
   ACP_FEATURED_AGENT_IDS,
   type EditorId,
 } from '@inkeep/open-knowledge-core';
+import { type Dispatcher, EnvHttpProxyAgent } from 'undici';
 import type { PinoLogger } from '../logger.ts';
 
 const ACP_REGISTRY_URL = 'https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json';
@@ -116,11 +117,46 @@ function parseCatalogJson(text: string): RegistryAgent[] | null {
     .map((agent) => ({ ...agent, name: normalizeAgentDisplayName(agent.id, agent.name) }));
 }
 
+const REGISTRY_PROXY_VARIABLES = [
+  'https_proxy',
+  'HTTPS_PROXY',
+  'http_proxy',
+  'HTTP_PROXY',
+] as const;
+
+function envProxyDispatcher(log: PinoLogger): Dispatcher | undefined {
+  const mode = process.env.NODE_USE_ENV_PROXY;
+  if (mode !== undefined && mode !== '1') return undefined;
+  for (const variable of REGISTRY_PROXY_VARIABLES) {
+    const proxy = process.env[variable];
+    if (!proxy) continue;
+    const unusable = (reason: string) => {
+      log.warn(
+        { variable, reason },
+        `[acp-registry] ${variable} is not a usable proxy URL; fetching the registry directly`,
+      );
+      return undefined;
+    };
+    const hasScheme = proxy.includes('://');
+    if (hasScheme && !/^https?:\/\//i.test(proxy)) {
+      return unusable('only http:// and https:// proxies are supported');
+    }
+    const proxyUrl = hasScheme ? proxy : `http://${proxy}`;
+    try {
+      return new EnvHttpProxyAgent({ httpProxy: proxyUrl, httpsProxy: proxyUrl });
+    } catch (err) {
+      return unusable(err instanceof Error ? err.message : 'unparseable');
+    }
+  }
+  return undefined;
+}
+
 export class AcpRegistry {
   private readonly localDir: string;
   private readonly log: PinoLogger;
   private readonly ttlMs: number;
   private readonly fetchImpl: typeof fetch;
+  private readonly dispatcher: Dispatcher | undefined;
   private memory: CatalogResult | null = null;
   private inflight: Promise<CatalogResult> | null = null;
 
@@ -134,6 +170,7 @@ export class AcpRegistry {
     this.log = opts.log;
     this.ttlMs = opts.ttlMs ?? DEFAULT_TTL_MS;
     this.fetchImpl = opts.fetchImpl ?? fetch;
+    this.dispatcher = envProxyDispatcher(this.log);
   }
 
   async getCatalog(): Promise<CatalogResult> {
@@ -158,9 +195,8 @@ export class AcpRegistry {
 
   private async refresh(): Promise<CatalogResult> {
     try {
-      const res = await this.fetchImpl(ACP_REGISTRY_URL, {
-        signal: AbortSignal.timeout(15_000),
-      });
+      const init = { signal: AbortSignal.timeout(15_000), dispatcher: this.dispatcher };
+      const res = await this.fetchImpl(ACP_REGISTRY_URL, init);
       if (!res.ok) throw new Error(`registry fetch failed: HTTP ${res.status}`);
       const text = await res.text();
       const agents = parseCatalogJson(text);
