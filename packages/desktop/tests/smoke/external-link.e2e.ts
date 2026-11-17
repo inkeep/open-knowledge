@@ -1,4 +1,6 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
@@ -103,5 +105,154 @@ test.describe('external-link safety-net delegation', () => {
       });
       expect(callsAfterBridge).toContain('https://docs.example.com/help');
     }).toPass({ timeout: 15_000 });
+  });
+  test('an embedded page is refused a non-web new window and a non-web navigation of its own frame', async ({
+    captureStderrFor,
+  }) => {
+    const popupAddress = 'openknowledge://ok-smoke-embedded-page/new-window';
+    const frameAddress = 'openknowledge://ok-smoke-embedded-page/own-frame';
+    const frameRequests: string[] = [];
+    const embeddedPage = createServer((req, res) => {
+      frameRequests.push(req.url ?? '');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(
+        `<!doctype html><title>embedded</title><script>setTimeout(() => {` +
+          `window.open(${JSON.stringify(popupAddress)});` +
+          `location.href = ${JSON.stringify(frameAddress)};` +
+          `}, 500);</script>`,
+      );
+    });
+    await new Promise<void>((resolveListen) => embeddedPage.listen(0, '127.0.0.1', resolveListen));
+    const embeddedOrigin = `http://127.0.0.1:${(embeddedPage.address() as AddressInfo).port}`;
+
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-embedded-page-'));
+    mkdirSync(join(projectDir, '.ok'), { recursive: true });
+    writeFileSync(
+      join(projectDir, '.ok', 'config.yml'),
+      "content:\n  dir: '.'\n  include: ['**/*.md']\n  exclude: []\n",
+    );
+    writeFileSync(
+      join(projectDir, 'doc.md'),
+      `# Embedded Page Test\n\n<Embed src="${embeddedOrigin}/frame.html" title="Embedded page" />\n`,
+    );
+
+    try {
+      const app = await electron.launch(
+        desktopLaunchOptions({
+          target: TARGET,
+          args: [`--user-data-dir=${join(projectDir, 'electron-userdata')}`],
+          timeout: 30_000,
+          env: {
+            ...process.env,
+            OK_TEST_OPEN_PROJECT: projectDir,
+          },
+        }),
+      );
+      captureStderrFor(app, { cleanupDirs: [projectDir] });
+      const mainOutput: string[] = [];
+      app.process().stderr?.on('data', (chunk: Buffer | string) => mainOutput.push(String(chunk)));
+      app.process().stdout?.on('data', (chunk: Buffer | string) => mainOutput.push(String(chunk)));
+
+      await app.evaluate(({ session, shell }) => {
+        const g = globalThis as unknown as Record<string, unknown>;
+        const calls: string[] = [];
+        g.__okExternalCalls = calls;
+        (shell as unknown as { openExternal: (url: string) => Promise<void> }).openExternal = (
+          url: string,
+        ) => {
+          calls.push(url);
+          return Promise.resolve();
+        };
+        type Details = { isMainFrame: boolean; requestingUrl: string; externalURL?: string };
+        type Handler = (
+          contents: unknown,
+          permission: string,
+          callback: (granted: boolean) => void,
+          details: Details,
+        ) => void;
+        const decisions: {
+          granted: boolean;
+          isMainFrame: boolean;
+          requestingUrl: string;
+          externalURL: string;
+        }[] = [];
+        g.__okHandoffDecisions = decisions;
+        const sessionPrototype = Object.getPrototypeOf(session.defaultSession) as {
+          setPermissionRequestHandler: (handler: Handler | null) => void;
+        };
+        const install = sessionPrototype.setPermissionRequestHandler;
+        sessionPrototype.setPermissionRequestHandler = function (this: unknown, handler) {
+          if (handler === null) return install.call(this, handler);
+          return install.call(this, (contents, permission, callback, details) =>
+            handler(
+              contents,
+              permission,
+              (granted) => {
+                if (permission === 'openExternal') {
+                  decisions.push({
+                    granted,
+                    isMainFrame: details.isMainFrame,
+                    requestingUrl: details.requestingUrl,
+                    externalURL: details.externalURL ?? '',
+                  });
+                }
+                callback(granted);
+              },
+              details,
+            ),
+          );
+        };
+      });
+
+      await app.firstWindow({ timeout: 15_000 });
+      const { execSync } = await import('node:child_process');
+      const deepLink = `openknowledge://open?project=${encodeURIComponent(projectDir)}&doc=doc`;
+      execSync(`open -g "${deepLink}"`, { stdio: 'pipe' });
+
+      let editorPage: import('@playwright/test').Page | undefined;
+      await expect(async () => {
+        for (const page of app.windows()) {
+          const hash = await page.evaluate(() => window.location.hash).catch(() => '');
+          if (hash.endsWith('#/doc')) {
+            editorPage = page;
+            return;
+          }
+        }
+        throw new Error('editor page with doc hash not yet ready');
+      }).toPass({ timeout: 15_000 });
+      if (!editorPage) throw new Error('unreachable');
+      await configureDesktopGitRepositories(editorPage, projectDir);
+
+      await expect(async () => {
+        expect(frameRequests).toContain('/frame.html');
+      }).toPass({ timeout: 15_000 });
+
+      await expect(async () => {
+        const decisions = await app.evaluate(() => {
+          const g = globalThis as unknown as { __okHandoffDecisions?: unknown[] };
+          return g.__okHandoffDecisions ?? [];
+        });
+        expect(decisions).toContainEqual({
+          granted: false,
+          isMainFrame: false,
+          requestingUrl: `${embeddedOrigin}/frame.html`,
+          externalURL: frameAddress,
+        });
+      }).toPass({ timeout: 15_000 });
+
+      await expect(async () => {
+        const output = mainOutput.join('');
+        expect(output).toContain('refused a new-window request for a non-web address');
+        expect(output).toContain(popupAddress);
+      }).toPass({ timeout: 15_000 });
+
+      const externalCalls = await app.evaluate(() => {
+        const g = globalThis as unknown as { __okExternalCalls?: string[] };
+        return g.__okExternalCalls ?? [];
+      });
+      expect(externalCalls).not.toContain(popupAddress);
+    } finally {
+      await new Promise<void>((resolveClose) => embeddedPage.close(() => resolveClose()));
+    }
   });
 });

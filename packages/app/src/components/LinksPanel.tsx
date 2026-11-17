@@ -22,7 +22,7 @@ import {
   Image as ImageIcon,
   TriangleAlert,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { resolveLinkTargetIntent } from '@/components/link-target-intent';
@@ -45,6 +45,7 @@ import { HttpResponseParseError } from '@/editor/http-client';
 import { rememberPendingSourceNavigation } from '@/editor/source-editor-navigation';
 import { type CreatePageSeed, createPageFromSeedAndUpdate } from '@/lib/create-page';
 import { hashFromDocName } from '@/lib/doc-hash';
+import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { cn } from '@/lib/utils';
 import { resolveTargetNavigationIntent } from './target-navigation-intent';
 
@@ -163,7 +164,8 @@ interface LinkRowProps {
   href?: string;
   external?: boolean;
   disabled?: boolean;
-  onClick?: () => void;
+  onClick?: (event: MouseEvent<HTMLElement>) => void;
+  onAuxClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
   trailing?: ReactNode;
 }
 
@@ -181,6 +183,7 @@ function LinkRow({
   external,
   disabled,
   onClick,
+  onAuxClick,
   trailing,
 }: LinkRowProps) {
   const showPath = path !== undefined && path !== title;
@@ -198,6 +201,7 @@ function LinkRow({
       aria-label={ariaLabel}
       title={titleHover}
       onClick={onClick}
+      onAuxClick={onAuxClick}
       className={overlayClassName}
     >
       {title}
@@ -421,6 +425,10 @@ function ForwardLinksSection({
           snippet={link.snippet}
           href={link.url}
           external
+          onClick={(e) => dispatchExternalLinkClick(e, link.url)}
+          onAuxClick={(e) => {
+            if (e.button === 1) dispatchExternalLinkClick(e, link.url);
+          }}
         />
       );
     }

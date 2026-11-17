@@ -38,6 +38,7 @@ import { Input } from '../../components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { type CreatePageSeed, createPageFromSeedAndUpdate } from '../../lib/create-page';
 import { hashFromAssetPath, hashFromDocName } from '../../lib/doc-hash';
+import { dispatchExternalLinkClick } from '../../lib/external-link';
 import { cn } from '../../lib/utils';
 import { handleChipLinkClick, toInternalHashHref } from '../internal-link-helpers';
 import {
@@ -408,6 +409,7 @@ export function WikiLinkPropPanel({ editor, getPos, onClose, onNavigate }: WikiL
       : isResolved && linkIntent?.kind === 'navigate'
         ? toInternalHashHref({ docName: linkIntent.hashDocName, anchor })
         : null;
+  const externalHref = isExternalLink ? linkHref : null;
   const navigable = !loading && linkHref !== null && (isExternalLink || isAsset || isResolved);
 
   let stateLabel: { icon: React.ReactNode; text: string; className: string };
@@ -512,6 +514,10 @@ export function WikiLinkPropPanel({ editor, getPos, onClose, onNavigate }: WikiL
                     href={linkHref ?? undefined}
                     {...(isExternalLink ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                     onClick={(e) => handleChipLinkClick(e, onNavigate, onClose)}
+                    onAuxClick={(e) => {
+                      if (e.button === 1 && externalHref)
+                        dispatchExternalLinkClick(e, externalHref);
+                    }}
                     data-slot="wiki-link-prop-panel-text"
                     className="block truncate text-sm font-medium text-foreground underline-offset-2 hover:underline focus-visible:underline"
                   >

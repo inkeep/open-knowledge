@@ -5,6 +5,7 @@ import {
   buildCurrentRelativeMarkdownHref,
   handleChipLinkClick,
   navigateToMarkdownTarget,
+  openHashHrefInNewTab,
   toInternalHashHref,
 } from './internal-link-helpers';
 
@@ -220,6 +221,74 @@ describe('navigateToMarkdownTarget — external routing', () => {
     stubWindow({ okDesktop: { shell: { openExternal } }, open: openWindow });
 
     navigateToMarkdownTarget({ kind: 'external', url: 'javascript:alert(1)' });
+
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(openWindow).not.toHaveBeenCalled();
+  });
+});
+
+describe('openHashHrefInNewTab', () => {
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow,
+      writable: true,
+    });
+  });
+
+  function stubWindow(overrides: { okDesktop?: unknown; open?: unknown }): void {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { location: { hash: '' }, open: overrides.open, okDesktop: overrides.okDesktop },
+      writable: true,
+    });
+  }
+
+  it('desktop: a mail or web link opens through okDesktop.shell.openExternal, not a new window', () => {
+    const openExternal = vi.fn(async (_url: string) => {});
+    const openWindow = vi.fn(() => null);
+    stubWindow({ okDesktop: { shell: { openExternal } }, open: openWindow });
+
+    openHashHrefInNewTab('mailto:someone@example.com');
+    openHashHrefInNewTab('https://example.com/page');
+
+    expect(openExternal.mock.calls).toEqual([
+      ['mailto:someone@example.com'],
+      ['https://example.com/page'],
+    ]);
+    expect(openWindow).not.toHaveBeenCalled();
+  });
+
+  it('an in-app route still opens as a new-tab request', () => {
+    const openExternal = vi.fn(async (_url: string) => {});
+    const openWindow = vi.fn(() => null);
+    stubWindow({ okDesktop: { shell: { openExternal } }, open: openWindow });
+
+    openHashHrefInNewTab('#/notes/today');
+
+    expect(openWindow).toHaveBeenCalledWith('#/notes/today', '_blank', 'noopener,noreferrer');
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it('web (no bridge): a web link still opens in a new tab', () => {
+    const openWindow = vi.fn(() => null);
+    stubWindow({ okDesktop: undefined, open: openWindow });
+
+    openHashHrefInNewTab('https://example.com/page');
+
+    expect(openWindow).toHaveBeenCalledWith(
+      'https://example.com/page',
+      '_blank',
+      'noopener,noreferrer',
+    );
+  });
+
+  it('an address outside the safe list opens nothing', () => {
+    const openExternal = vi.fn(async (_url: string) => {});
+    const openWindow = vi.fn(() => null);
+    stubWindow({ okDesktop: { shell: { openExternal } }, open: openWindow });
+
+    openHashHrefInNewTab('javascript:alert(1)');
 
     expect(openExternal).not.toHaveBeenCalled();
     expect(openWindow).not.toHaveBeenCalled();
