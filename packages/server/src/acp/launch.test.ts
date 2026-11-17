@@ -25,6 +25,7 @@ import {
   ensureBinaryInstalled,
   incompatibleNodeHint,
   isPathQualified,
+  LauncherArgumentError,
   MINIMUM_NPX_NODE_MAJOR,
   mergedEnv,
   npxInstallRefused,
@@ -176,8 +177,8 @@ describe('package acquisition descriptor boundaries', () => {
         operand,
         '--json',
       ]);
-      expect(wrapped.args[3]).toContain(`"${operand}"`);
-      expect(wrapped.args.slice(0, 3)).toEqual(['/d', '/s', '/c']);
+      expect(wrapped.args[5]).toContain(`"${operand}"`);
+      expect(wrapped.args.slice(0, 5)).toEqual(['/e:ON', '/v:OFF', '/d', '/s', '/c']);
     },
   );
 });
@@ -1457,14 +1458,59 @@ describe('windows cmd wrapping (spawn on Windows)', () => {
   test('outer-quotes the whole command so a spaced launcher path survives /s', () => {
     const { cmd, args } = windowsCmdWrap('C:\\Program Files\\nodejs\\npx.cmd', ['-y', 'pkg']);
     expect(cmd.toLowerCase()).toContain('cmd');
-    expect(args.slice(0, 3)).toEqual(['/d', '/s', '/c']);
-    expect(args[3]).toBe('""C:\\Program Files\\nodejs\\npx.cmd" -y pkg"');
+    expect(args.slice(0, 5)).toEqual(['/e:ON', '/v:OFF', '/d', '/s', '/c']);
+    expect(args[5]).toBe('""C:\\Program Files\\nodejs\\npx.cmd" -y pkg"');
   });
 
   test('quotes args that would otherwise split or be interpreted by cmd', () => {
     const { args } = windowsCmdWrap('tool', ['a b', 'safe', 'a&b', '']);
-    expect(args[3]).toBe('""tool" "a b" safe "a&b" """');
+    expect(args[5]).toBe('""tool" "a b" safe "a&b" """');
   });
+
+  test.each([
+    ['-y', '-y'],
+    ['@scope/agent@1.2.3', '@scope/agent@1.2.3'],
+    ['C:\\work\\notes', 'C:\\work\\notes'],
+    ['', '""'],
+    ['a b', '"a b"'],
+    ['R&D (draft)', '"R&D (draft)"'],
+    ['a"b', '"a""b"'],
+    ['a\\"b', '"a\\\\""b"'],
+    ['C:\\work\\', '"C:\\work\\\\"'],
+    ['50%', '"50%%cd:~,%"'],
+    ['%PATH%', '"%%cd:~,%PATH%%cd:~,%"'],
+    ['!PATH!', '"!PATH!"'],
+    ['a^b', '"a^b"'],
+    ['a|b', '"a|b"'],
+    ['a<b', '"a<b"'],
+    ['a>b', '"a>b"'],
+    ['tab\there', '"tab\there"'],
+    ['café', '"café"'],
+  ])('prepares the argument %j so a launcher script receives it as written', (arg, prepared) => {
+    const { args } = windowsCmdWrap('C:\\tools\\tool.cmd', [arg]);
+    expect(args).toEqual([
+      '/e:ON',
+      '/v:OFF',
+      '/d',
+      '/s',
+      '/c',
+      `""C:\\tools\\tool.cmd" ${prepared}"`,
+    ]);
+  });
+
+  test('keeps a launcher script path holding a percent sign literal', () => {
+    const { args } = windowsCmdWrap('C:\\Users\\a%b\\tool.cmd', []);
+    expect(args[5]).toBe('""C:\\Users\\a%%cd:~,%b\\tool.cmd""');
+  });
+
+  test.each(['line\nbreak', 'carriage\rreturn', 'nul\u0000char'])(
+    'refuses the launch when the argument %j cannot reach a launcher script as written',
+    (arg) => {
+      expect(() => windowsCmdWrap('C:\\tools\\tool.cmd', ['ok', arg])).toThrow(
+        LauncherArgumentError,
+      );
+    },
+  );
 });
 
 describe('terminateAgentTree', () => {

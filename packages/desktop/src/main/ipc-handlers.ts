@@ -4,10 +4,12 @@ import { okBugReportsDir } from '@inkeep/open-knowledge';
 import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { userGlobalSkillRoots } from '@inkeep/open-knowledge-core/skills-catalog';
 import {
+  type CursorSpawnInvocation,
   createOsProbe,
   type ExecFileLike,
   INSTALLED_AGENTS_SCHEMES,
   type InstalledAgentScheme,
+  LauncherArgumentError,
   resolveCursorBinaryDefault,
   resolveCursorSpawnInvocation,
 } from '@inkeep/open-knowledge-server';
@@ -157,11 +159,14 @@ export async function spawnCursor(deps: SpawnCursorDeps, path: string): Promise<
     return { ok: false, reason: 'not-installed' };
   }
 
-  const { exec, args, windowsVerbatimArguments } = resolveCursorSpawnInvocation(
-    binaryPath,
-    path,
-    deps.platform,
-  );
+  let invocation: CursorSpawnInvocation;
+  try {
+    invocation = resolveCursorSpawnInvocation(binaryPath, path, deps.platform);
+  } catch (err) {
+    if (!(err instanceof LauncherArgumentError)) throw err;
+    return { ok: false, reason: 'spawn-error' };
+  }
+  const { exec, args, windowsVerbatimArguments } = invocation;
   return deps.spawn(exec, args, deps.spawnTimeoutMs ?? SPAWN_TIMEOUT_MS, {
     windowsVerbatimArguments,
   });

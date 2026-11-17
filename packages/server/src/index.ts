@@ -5,6 +5,7 @@ export {
   MalformedGitPointerError,
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 export { type StreamedChunk, streamedChunkOf } from './acp/event-log-bounds.ts';
+export { LauncherArgumentError } from './acp/launch.ts';
 export { AcpPermissionStore, readAgentBrowserTools } from './acp/permissions.ts';
 export { AcpRegistry, FEATURED_AGENT_IDS, loadCustomAgents } from './acp/registry.ts';
 export {
@@ -678,6 +679,7 @@ export {
 } from './skills-sh-install-report.ts';
 export {
   CURSOR_BUNDLE_PATHS_BY_PLATFORM,
+  type CursorSpawnInvocation,
   type HandleSpawnCursorDeps,
   handleSpawnCursor,
   isPathWithinDir,

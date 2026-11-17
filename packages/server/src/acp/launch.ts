@@ -1359,14 +1359,43 @@ export function resolveNpxNodeCommand(
   return resolveWindowsCommand('node', pathEnv);
 }
 
+export class LauncherArgumentError extends Error {
+  constructor() {
+    super('An argument cannot be passed safely to a Windows launcher script.');
+    this.name = 'LauncherArgumentError';
+  }
+}
+
+const CMD_UNQUOTED_ARG = /^[A-Za-z0-9#$*+\-./:?@\\_]+$/;
+const CMD_UNPASSABLE_ARG = /[\0\r\n]/;
+const CMD_PERCENT_LITERAL = '%%cd:~,';
+
 function quoteCmdArg(arg: string): string {
-  if (arg === '') return '""';
-  return /[\s"&()<>^|%]/.test(arg) ? `"${arg.replace(/"/g, '""')}"` : arg;
+  if (CMD_UNPASSABLE_ARG.test(arg)) throw new LauncherArgumentError();
+  const quote = !CMD_UNQUOTED_ARG.test(arg) || arg.endsWith('\\');
+  let text = '';
+  let backslashes = 0;
+  for (const ch of arg) {
+    if (ch === '\\') {
+      backslashes += 1;
+      text += ch;
+      continue;
+    }
+    if (ch === '"') text += `${'\\'.repeat(backslashes)}"`;
+    if (ch === '%') text += CMD_PERCENT_LITERAL;
+    backslashes = 0;
+    text += ch;
+  }
+  return quote ? `"${text}${'\\'.repeat(backslashes)}"` : text;
 }
 
 export function windowsCmdWrap(cmd: string, args: string[]): { cmd: string; args: string[] } {
-  const inner = [`"${cmd}"`, ...args.map(quoteCmdArg)].join(' ');
-  return { cmd: process.env.ComSpec ?? 'cmd.exe', args: ['/d', '/s', '/c', `"${inner}"`] };
+  const script = cmd.replaceAll('%', `${CMD_PERCENT_LITERAL}%`);
+  const inner = [`"${script}"`, ...args.map(quoteCmdArg)].join(' ');
+  return {
+    cmd: process.env.ComSpec ?? 'cmd.exe',
+    args: ['/e:ON', '/v:OFF', '/d', '/s', '/c', `"${inner}"`],
+  };
 }
 
 function acpNpxIsolatedCwd(): string {
