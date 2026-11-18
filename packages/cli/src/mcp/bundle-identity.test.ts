@@ -526,7 +526,7 @@ describe('bundle identity log lines', () => {
     );
     if (state.kind !== 'replaced') throw new Error(`expected replaced, got ${state.kind}`);
     expect(formatBundleReplacedLine(REAL_ANCHOR_PATH, state, '1.2.3')).toBe(
-      `[mcp] bundle replaced anchor=${REAL_ANCHOR_PATH} bootDev=16777232 bootInode=299520753 onDiskDev=16777240 onDiskInode=299520753 version=1.2.3 — exiting for host respawn`,
+      `[mcp] bundle replaced anchor=${REAL_ANCHOR_PATH} bootDev=16777232 bootInode=299520753 onDiskDev=16777240 onDiskInode=299520753 version=1.2.3 — handing the session to the new bundle's server`,
     );
   });
 });
