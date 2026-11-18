@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { realpathSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -26,11 +26,17 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { createProjectConfigResolver } from '../config/loader.ts';
 import {
   type BundleIdentityWatcherHandle,
+  bundleWrapperFor,
   captureBootIdentity,
+  createBundleHandoverRelay,
   detectBundleIdentity,
   formatBootIdentityLine,
   formatBundleReplacedLine,
+  handoverStateMessage,
+  processExitCode,
+  relayedServerEnv,
   startBundleIdentityWatcher,
+  takeRelayHandover,
 } from './bundle-identity.ts';
 import { type HostLivenessWatchHandle, startHostLivenessWatch } from './host-liveness.ts';
 import { attachLifecycleLogging } from './lifecycle-logging.ts';
@@ -306,6 +312,7 @@ export async function startGlobalMcpServer(
   stderr.write('[mcp] global stdio server ready (per-call project routing)\n');
 
   let shuttingDown = false;
+  let exitStatus = 0;
   const shutdown = (): void => {
     if (shuttingDown) return;
     shuttingDown = true;
@@ -314,7 +321,7 @@ export async function startGlobalMcpServer(
       process.exit(1);
     }, 5000).unref();
     void close().finally(() => {
-      process.exit(0);
+      process.exit(exitStatus);
     });
   };
   process.once('SIGINT', shutdown);
@@ -345,8 +352,35 @@ export async function startGlobalMcpServer(
     stdin: process.stdin,
   });
 
-  const bundleAnchorPath = process.platform === 'darwin' ? opts.bundleAnchorPath : undefined;
-  if (process.platform === 'darwin' && bundleAnchorPath === undefined) {
+  const { relayed: relayedByParent, state: handedOver } = takeRelayHandover(process.env, (m) =>
+    stderr.write(`${m}\n`),
+  );
+  if (typeof handedOver?.stickyProjectDir === 'string') {
+    stickyProjectDir = handedOver.stickyProjectDir;
+  }
+  let reportedStickyProjectDir = stickyProjectDir;
+  const changedHandoverState = () => {
+    if (stickyProjectDir === undefined || stickyProjectDir === reportedStickyProjectDir) {
+      return undefined;
+    }
+    reportedStickyProjectDir = stickyProjectDir;
+    return handoverStateMessage({ stickyProjectDir });
+  };
+  if (relayedByParent) {
+    const send = transport.send.bind(transport);
+    transport.send = async (message) => {
+      const state = changedHandoverState();
+      if (state !== undefined) await send(state);
+      return send(message);
+    };
+  }
+  const bundleAnchorPath =
+    process.platform === 'darwin' && !relayedByParent ? opts.bundleAnchorPath : undefined;
+  if (relayedByParent) {
+    stderr.write(
+      '[mcp] bundle identity watcher off: the process that launched this server hands the session to the next bundle\n',
+    );
+  } else if (process.platform === 'darwin' && bundleAnchorPath === undefined) {
     stderr.write('[mcp] bundle identity watcher off: no CLI entry path was recorded\n');
   }
   if (bundleAnchorPath !== undefined) {
@@ -358,7 +392,60 @@ export async function startGlobalMcpServer(
     if (bootIdentity !== undefined) {
       stderr.write(`${formatBootIdentityLine(bootIdentity, RUNTIME_VERSION)}\n`);
       const { resolvedPath: capturedAnchorPath, inode: capturedInode } = bootIdentity;
-      bundleWatcher = startBundleIdentityWatcher({
+      const deliverToServer = transport.onmessage;
+      const sendToHost = transport.send.bind(transport);
+      const handoverRelay = createBundleHandoverRelay({
+        toHost: (message) => sendToHost(message),
+        spawnServer: (launch) => {
+          const wrapper = bundleWrapperFor(bundleAnchorPath);
+          const env = relayedServerEnv(
+            wrapper !== undefined && process.env.OK_NODE_OPTIONS !== undefined
+              ? { ...process.env, NODE_OPTIONS: process.env.OK_NODE_OPTIONS }
+              : process.env,
+            launch,
+          );
+          const [command, args] =
+            wrapper === undefined
+              ? [
+                  process.execPath,
+                  [...process.execArgv, bundleAnchorPath, ...process.argv.slice(2)],
+                ]
+              : [wrapper, process.argv.slice(2)];
+          return spawn(command, args, {
+            env,
+            stdio: ['pipe', 'pipe', 'inherit'],
+            detached: true,
+            windowsHide: true,
+          });
+        },
+        watch: { anchorPath: bundleAnchorPath, platform: process.platform },
+        log: (line) => stderr.write(`${line}\n`),
+        onServerExit: (exit) => {
+          exitStatus = processExitCode(exit);
+          shutdown();
+        },
+        onUnrecoverable: () => {
+          exitStatus = 1;
+          process.stdout.write('', shutdown);
+        },
+      });
+      const fromServer = handoverRelay.adoptInProcess(
+        {
+          deliver: (message) => deliverToServer?.(message),
+          retire: () => {
+            for (const handle of keepalivesByProject.values()) handle.close();
+            keepalivesByProject.clear();
+          },
+        },
+        capturedInode,
+      );
+      transport.send = (message) => {
+        const state = changedHandoverState();
+        if (state !== undefined) void fromServer(state);
+        return fromServer(message);
+      };
+      transport.onmessage = (message) => handoverRelay.fromHost(message);
+      const firstServerWatcher = startBundleIdentityWatcher({
         detect: () =>
           detectBundleIdentity({
             bundleAnchorPath,
@@ -369,10 +456,16 @@ export async function startGlobalMcpServer(
           }),
         onReplaced: (state) => {
           stderr.write(`${formatBundleReplacedLine(capturedAnchorPath, state, RUNTIME_VERSION)}\n`);
-          shutdown();
+          handoverRelay.handover();
         },
         log: (msg) => stderr.write(`[mcp] ${msg}\n`),
       });
+      bundleWatcher = {
+        stop: () => {
+          firstServerWatcher.stop();
+          handoverRelay.stop();
+        },
+      };
     }
   }
 
