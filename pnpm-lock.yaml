@@ -1263,8 +1263,8 @@ importers:
         specifier: ^4.0.2
         version: 4.0.2
       electron:
-        specifier: 44.11.3
-        version: 44.11.3(supports-color@7.2.0)
+        specifier: 45.3.3
+        version: 45.3.3(supports-color@7.2.0)
       electron-builder:
         specifier: ^26.16.1
         version: 26.16.1(electron-builder-squirrel-windows@26.16.1)(supports-color@7.2.0)
@@ -7856,8 +7856,8 @@ packages:
     resolution: {integrity: sha512-bO3y10YikuUwUuDUQRM4KfwNkKhnpVO7IPdbsrejwN9/AABJzzTQ4GeHwyzNSrVO+tEH3/Np255a3sVZpZDjvg==}
     engines: {node: '>=8.0.0'}
 
-  electron@44.11.3:
-    resolution: {integrity: sha512-yVzJBAM7hfK/gkD3LHvFD4gfHLj1f6cL3yYgzX8pHQyWyz8U9FTfTj9WOFdwzLj5ta+/oIKDD4BsBTLYiFa2Tg==}
+  electron@45.3.3:
+    resolution: {integrity: sha512-YS01j/AMWGbPAfbXijkLOUJGFhmrIg6pf9An8+LzY1PIc5sjwqEcSMsEBXgUQiWw1lSfPCP7RpxbvkN1JQRD8A==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -9914,12 +9914,12 @@ packages:
       sass:
         optional: true
 
-  node-abi@3.94.0:
-    resolution: {integrity: sha512-W5ZNO5KRPB5TkYmGVD9F6YqhsglXJzE6etpbmT+f6EQElhiX/UTG551cnsRGvLG3fyZEg9HwaDmNmj5nwJ4z9g==}
+  node-abi@3.101.0:
+    resolution: {integrity: sha512-bkb/RkuWCE64eWu1PCh3Fu2pGc9mKRs+kOE+FU2bGHRYlQa86/D321DSATV54AsCQMKz3/xSt9sRgraZTpqdhQ==}
     engines: {node: '>=10'}
 
-  node-abi@4.33.0:
-    resolution: {integrity: sha512-vLBWCKb+7LWsX+TbfzWOkw0W81m377tyx3hOweBTjO43CXZnRGS1/JPWs20fr0PgZyDXk6ROYrylsEycK8raDA==}
+  node-abi@4.40.0:
+    resolution: {integrity: sha512-GuvqvtrOk+AC27RidBxBsMzVNkwNl7PjHgc4NXbmdvSVLgIUjpaqcG1FjNRYnt2Yn9Ytq+Ln37XsBaglUcte/w==}
     engines: {node: '>=22.12.0'}
 
   node-addon-api@7.1.1:
@@ -13198,7 +13198,7 @@ snapshots:
     dependencies:
       '@malept/cross-spawn-promise': 2.0.0
       debug: 4.4.3(supports-color@7.2.0)
-      node-abi: 4.33.0
+      node-abi: 4.40.0
       node-api-version: 0.2.1
       node-gyp: 12.4.0
       read-binary-file-arch: 1.0.6(supports-color@7.2.0)
@@ -18852,7 +18852,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron@44.11.3(supports-color@7.2.0):
+  electron@45.3.3(supports-color@7.2.0):
     dependencies:
       '@electron-internal/extract-zip': 1.0.5
       '@electron/get': 5.1.0(supports-color@7.2.0)
@@ -21555,12 +21555,12 @@ snapshots:
       - '@types/node'
       - babel-plugin-macros
 
-  node-abi@3.94.0:
+  node-abi@3.101.0:
     dependencies:
       semver: 7.8.5
     optional: true
 
-  node-abi@4.33.0:
+  node-abi@4.40.0:
     dependencies:
       semver: 7.7.4
 
@@ -22135,7 +22135,7 @@ snapshots:
       minimist: 1.2.8
       mkdirp-classic: 0.5.3
       napi-build-utils: 2.0.0
-      node-abi: 3.94.0
+      node-abi: 3.101.0
       pump: 3.0.4
       rc: 1.2.8
       simple-get: 4.0.1

@@ -4647,7 +4647,7 @@ Homepage: https://github.com/pacocoursey/next-themes
 
 Copyright (c) 2022 Paco Coursey
 
-### `node-abi@3.94.0`
+### `node-abi@3.101.0`
 Homepage: https://github.com/electron/node-abi#readme
 
 Copyright (c) 2016 Lukas Geiger

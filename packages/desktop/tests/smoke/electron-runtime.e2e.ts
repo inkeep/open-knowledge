@@ -21,7 +21,7 @@ test.describe('desktop Electron runtime', () => {
   test.skip(!PLATFORM_SUPPORTED, PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
-  test('runs Electron 44 with the current runtime updates', async ({ captureStderrFor }) => {
+  test('runs Electron 45 with the current runtime updates', async ({ captureStderrFor }) => {
     const home = mkdtempSync(join(tmpdir(), 'ok-electron-runtime-'));
     const app = await electron.launch(
       desktopLaunchOptions({
@@ -45,7 +45,7 @@ test.describe('desktop Electron runtime', () => {
       };
     });
     console.log('Desktop runtime:', runtime);
-    expect(satisfies(runtime.electron, '^44.11.2'), `running Electron ${runtime.electron}`).toBe(
+    expect(satisfies(runtime.electron, '^45.3.3'), `running Electron ${runtime.electron}`).toBe(
       true,
     );
   });
