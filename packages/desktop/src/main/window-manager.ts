@@ -1962,7 +1962,7 @@ export class WindowManager {
         this.deps.flushLog?.();
       };
       const terminate = (): 'killed' | 'deferred-until-spawn' | 'kill-refused' => {
-        // UPSTREAM(electron@44.11.3): kill() before spawn returns false and leaves the launch running.
+        // UPSTREAM(electron@45.3.3): kill() before spawn returns false and leaves the launch running.
         if (utility.kill()) return 'killed';
         if (utility.pid !== undefined) return 'kill-refused';
         utility.once('spawn', killOnceSpawned);

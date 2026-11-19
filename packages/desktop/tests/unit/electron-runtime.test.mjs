@@ -11,10 +11,10 @@ const { getConfig } = builderRequire('app-builder-lib/out/util/config/config');
 const { getElectronVersion } = builderRequire('app-builder-lib/out/electron/electronVersion');
 
 describe('desktop Electron runtime', () => {
-  test('selects Electron 44 with the current runtime updates', async () => {
+  test('selects Electron 45 with the current runtime updates', async () => {
     const config = await getConfig(desktopRoot, resolve(desktopRoot, 'electron-builder.yml'), null);
     const version = await getElectronVersion(desktopRoot, config);
 
-    expect(satisfies(version, '^44.11.2'), `selected Electron ${version}`).toBe(true);
+    expect(satisfies(version, '^45.3.3'), `selected Electron ${version}`).toBe(true);
   });
 });

@@ -8,20 +8,10 @@ import { describe, expect, test } from 'vitest';
 
 const desktopRoot = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 
-/* UPSTREAM(electron@44.11.3): a sandboxed preload's require resolves only the module names that
-   lib/sandboxed_renderer/init.ts maps, and lib/sandboxed_renderer/preload.ts throws
-   "module not found" for any other name, Node builtins such as fs included. */
-const SANDBOXED_PRELOAD_MODULES = new Set([
-  'electron',
-  'electron/common',
-  'electron/renderer',
-  'events',
-  'node:events',
-  'timers',
-  'node:timers',
-  'url',
-  'node:url',
-]);
+/* UPSTREAM(electron@45.3.3): a sandboxed preload's require resolves only the module names that
+   Require in shell/renderer/preload_environment.cc admits, and throws "module not found" for
+   any other name, Node builtins such as events and fs included. */
+const SANDBOXED_PRELOAD_MODULES = new Set(['electron', 'electron/common', 'electron/renderer']);
 
 function requiredModules(source: string): string[] {
   return [...source.matchAll(/require\(["']([^"']+)["']\)/g)].flatMap((match) =>
@@ -72,14 +62,23 @@ describe('preload bundle self-containment', () => {
   test("the sandbox's module map admits Electron's names and refuses the rest", () => {
     expect(
       unresolvableInSandbox(
-        'require("electron/renderer"); require("node:events"); require("timers"); require("url");',
+        'require("electron"); require("electron/common"); require("electron/renderer");',
       ),
     ).toEqual([]);
     expect(
       unresolvableInSandbox(
-        'require("node:fs"); require("fs"); require("./chunks/shared.js"); require("@inkeep/open-knowledge-core");',
+        'require("node:events"); require("events"); require("timers"); require("url"); require("node:fs"); require("fs"); require("./chunks/shared.js"); require("@inkeep/open-knowledge-core");',
       ),
-    ).toEqual(['node:fs', 'fs', './chunks/shared.js', '@inkeep/open-knowledge-core']);
+    ).toEqual([
+      'node:events',
+      'events',
+      'timers',
+      'url',
+      'node:fs',
+      'fs',
+      './chunks/shared.js',
+      '@inkeep/open-knowledge-core',
+    ]);
   });
 
   test('the production preload bundle requires only modules the sandbox resolves', async () => {
