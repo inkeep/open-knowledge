@@ -1,10 +1,15 @@
 import { describe, expect, test } from 'vitest';
 import {
   BETA_DMG_ASSET_NAME,
+  betaChannel,
+  CLOUD_CHANNEL,
+  CLOUD_DMG_ASSET_NAME,
   createBetaResolver,
+  createCloudResolver,
   DMG_ASSET_NAME,
   FALLBACK_CACHE_CONTROL,
-  pickLatestBetaAssetUrl,
+  MAX_RELEASE_PAGES,
+  pickLatestPrereleaseAssetUrl,
   RELEASES_PAGE_URL,
   STABLE_DMG_URL,
   SUCCESS_CACHE_CONTROL,
@@ -36,21 +41,44 @@ function dmgUrl(tag: string, assetName = BETA_DMG_ASSET_NAME) {
   return `https://github.com/inkeep/open-knowledge/releases/download/${tag}/${assetName}`;
 }
 
+function pickLatestBeta(payload: unknown) {
+  return pickLatestPrereleaseAssetUrl(payload, betaChannel());
+}
+
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), { status });
 }
 
-describe('pickLatestBetaAssetUrl', () => {
+function cloudRelease(counter: number) {
+  return release(`v0.89.13-cloud.${counter}`, { assetNames: [CLOUD_DMG_ASSET_NAME] });
+}
+
+function fullPageOfCloudReleases(page: number) {
+  return Array.from({ length: 100 }, (_, i) => cloudRelease(20_000 - page * 100 - i));
+}
+
+function pagedReleases(pages: Record<number, unknown>, requestedPages: number[] = []) {
+  return async (input: RequestInfo | URL) => {
+    const page = Number(new URL(String(input)).searchParams.get('page'));
+    requestedPages.push(page);
+    const body = pages[page] ?? [];
+    return body instanceof Response ? body : jsonResponse(body);
+  };
+}
+
+describe('pickLatestPrereleaseAssetUrl for the beta channel', () => {
   test('keeps a platform on its latest available release when a newer release omits it', () => {
     const releases = [
       release('v0.78.0-beta.7', { assetNames: ['beta-mac.yml', DMG_ASSET_NAME] }),
       release('v0.78.0-beta.6', { assetNames: ['beta.yml', 'beta-linux-arm64.yml'] }),
     ];
-    expect(pickLatestBetaAssetUrl(releases, 'beta.yml')).toBe(dmgUrl('v0.78.0-beta.6', 'beta.yml'));
-    expect(pickLatestBetaAssetUrl(releases, 'beta-linux-arm64.yml')).toBe(
+    expect(pickLatestPrereleaseAssetUrl(releases, betaChannel('beta.yml'))).toBe(
+      dmgUrl('v0.78.0-beta.6', 'beta.yml'),
+    );
+    expect(pickLatestPrereleaseAssetUrl(releases, betaChannel('beta-linux-arm64.yml'))).toBe(
       dmgUrl('v0.78.0-beta.6', 'beta-linux-arm64.yml'),
     );
-    expect(pickLatestBetaAssetUrl(releases, 'beta-mac.yml')).toBe(
+    expect(pickLatestPrereleaseAssetUrl(releases, betaChannel('beta-mac.yml'))).toBe(
       dmgUrl('v0.78.0-beta.7', 'beta-mac.yml'),
     );
   });
@@ -60,14 +88,14 @@ describe('pickLatestBetaAssetUrl', () => {
       release('v0.78.0-beta.6', { assetNames: [DMG_ASSET_NAME, BETA_DMG_ASSET_NAME] }),
       release('v0.78.0-beta.7', { assetNames: [BETA_DMG_ASSET_NAME] }),
     ];
-    expect(pickLatestBetaAssetUrl(releases, DMG_ASSET_NAME)).toBe(
+    expect(pickLatestPrereleaseAssetUrl(releases, betaChannel(DMG_ASSET_NAME))).toBe(
       dmgUrl('v0.78.0-beta.6', DMG_ASSET_NAME),
     );
-    expect(pickLatestBetaAssetUrl(releases)).toBe(dmgUrl('v0.78.0-beta.7'));
+    expect(pickLatestPrereleaseAssetUrl(releases, betaChannel())).toBe(dmgUrl('v0.78.0-beta.7'));
   });
 
   test('picks the highest-versioned published beta', () => {
-    const url = pickLatestBetaAssetUrl([
+    const url = pickLatestBeta([
       release('v0.12.0-beta.7'),
       release('v0.12.0-beta.6'),
       release('v0.11.0', { prerelease: false }),
@@ -76,7 +104,7 @@ describe('pickLatestBetaAssetUrl', () => {
   });
 
   test('ranks by version, not the array order GitHub returns (older beta listed first)', () => {
-    const url = pickLatestBetaAssetUrl([
+    const url = pickLatestBeta([
       release('v0.20.0-beta.9'),
       release('v0.20.0-beta.8'),
       release('v0.20.0-beta.13'),
@@ -87,12 +115,12 @@ describe('pickLatestBetaAssetUrl', () => {
   });
 
   test('beta.10 outranks beta.9 (no lexical tag compare)', () => {
-    const url = pickLatestBetaAssetUrl([release('v0.20.0-beta.9'), release('v0.20.0-beta.10')]);
+    const url = pickLatestBeta([release('v0.20.0-beta.9'), release('v0.20.0-beta.10')]);
     expect(url).toBe(dmgUrl('v0.20.0-beta.10'));
   });
 
   test('ranks across base versions (minor/patch), not just the beta counter', () => {
-    const url = pickLatestBetaAssetUrl([
+    const url = pickLatestBeta([
       release('v0.20.0-beta.99'),
       release('v0.21.0-beta.1'),
       release('v0.20.1-beta.2'),
@@ -101,7 +129,7 @@ describe('pickLatestBetaAssetUrl', () => {
   });
 
   test('skips the newest beta when its DMG is missing, ranking the next-newest', () => {
-    const url = pickLatestBetaAssetUrl([
+    const url = pickLatestBeta([
       release('v0.20.0-beta.13', { assetNames: ['beta-mac.yml'] }),
       release('v0.20.0-beta.12'),
       release('v0.20.0-beta.9'),
@@ -110,7 +138,7 @@ describe('pickLatestBetaAssetUrl', () => {
   });
 
   test('skips stable releases even when they appear first', () => {
-    const url = pickLatestBetaAssetUrl([
+    const url = pickLatestBeta([
       release('v0.11.0', { prerelease: false }),
       release('v0.11.0-beta.3'),
     ]);
@@ -118,7 +146,7 @@ describe('pickLatestBetaAssetUrl', () => {
   });
 
   test('skips a beta whose DMG never uploaded and falls back to the previous one', () => {
-    const url = pickLatestBetaAssetUrl([
+    const url = pickLatestBeta([
       release('v0.12.0-beta.7', { assetNames: ['beta-mac.yml'] }),
       release('v0.12.0-beta.6'),
     ]);
@@ -126,7 +154,7 @@ describe('pickLatestBetaAssetUrl', () => {
   });
 
   test('skips drafts', () => {
-    const url = pickLatestBetaAssetUrl([
+    const url = pickLatestBeta([
       release('v0.12.0-beta.7', { draft: true }),
       release('v0.12.0-beta.6'),
     ]);
@@ -134,7 +162,7 @@ describe('pickLatestBetaAssetUrl', () => {
   });
 
   test('skips prereleases that are not -beta.N tags', () => {
-    const url = pickLatestBetaAssetUrl([
+    const url = pickLatestBeta([
       release('v0.12.0-rc.1'),
       release('beta-latest'),
       release('v0.12.0-beta'),
@@ -144,7 +172,7 @@ describe('pickLatestBetaAssetUrl', () => {
   });
 
   test('skips legacy shared-identity beta artifacts', () => {
-    const url = pickLatestBetaAssetUrl([
+    const url = pickLatestBeta([
       release('v0.12.0-beta.8', { assetNames: [DMG_ASSET_NAME] }),
       release('v0.12.0-beta.7'),
     ]);
@@ -152,7 +180,7 @@ describe('pickLatestBetaAssetUrl', () => {
   });
 
   test('rejects asset URLs outside our release-download prefix', () => {
-    const url = pickLatestBetaAssetUrl([
+    const url = pickLatestBeta([
       release('v0.12.0-beta.7', { assetHost: 'https://evil.example.com/releases/download' }),
       release('v0.12.0-beta.6'),
     ]);
@@ -160,14 +188,14 @@ describe('pickLatestBetaAssetUrl', () => {
   });
 
   test('returns null when no published beta carries the DMG', () => {
-    expect(pickLatestBetaAssetUrl([release('v0.11.0', { prerelease: false })])).toBeNull();
-    expect(pickLatestBetaAssetUrl([])).toBeNull();
+    expect(pickLatestBeta([release('v0.11.0', { prerelease: false })])).toBeNull();
+    expect(pickLatestBeta([])).toBeNull();
   });
 
   test('returns null on malformed payloads instead of throwing', () => {
-    expect(pickLatestBetaAssetUrl(null)).toBeNull();
-    expect(pickLatestBetaAssetUrl({ message: 'API rate limit exceeded' })).toBeNull();
-    expect(pickLatestBetaAssetUrl([{ tag_name: 42 }])).toBeNull();
+    expect(pickLatestBeta(null)).toBeNull();
+    expect(pickLatestBeta({ message: 'API rate limit exceeded' })).toBeNull();
+    expect(pickLatestBeta([{ tag_name: 42 }])).toBeNull();
   });
 });
 
@@ -260,6 +288,217 @@ describe('createBetaResolver', () => {
     expect(result.kind).toBe('fallback');
     if (result.kind === 'fallback') {
       expect(result.cause).toBe('ECONNRESET');
+    }
+  });
+});
+
+describe('beta resolution behind a flood of Cloud prereleases', () => {
+  test('finds the newest beta on a later page when a full page of Cloud prereleases precedes it', async () => {
+    const resolve = createBetaResolver({
+      fetchImpl: pagedReleases({
+        1: fullPageOfCloudReleases(1),
+        2: [release('v0.89.13-beta.1'), release('v0.89.12', { prerelease: false })],
+      }),
+      now: () => 0,
+    });
+    expect(await resolve()).toEqual({ kind: 'fresh', url: dmgUrl('v0.89.13-beta.1') });
+  });
+
+  test('a beta update manifest resolves past the Cloud prereleases too', async () => {
+    const resolve = createBetaResolver({
+      assetName: 'beta-mac.yml',
+      fetchImpl: pagedReleases({
+        1: fullPageOfCloudReleases(1),
+        2: fullPageOfCloudReleases(2),
+        3: [release('v0.89.13-beta.1', { assetNames: ['beta-mac.yml'] })],
+      }),
+      now: () => 0,
+    });
+    expect(await resolve()).toEqual({
+      kind: 'fresh',
+      url: dmgUrl('v0.89.13-beta.1', 'beta-mac.yml'),
+    });
+  });
+
+  test('gives up after a bounded number of pages and falls back to the releases page', async () => {
+    const requestedPages: number[] = [];
+    const pages = Object.fromEntries(
+      Array.from({ length: MAX_RELEASE_PAGES + 1 }, (_, i) => [
+        i + 1,
+        fullPageOfCloudReleases(i + 1),
+      ]),
+    );
+    pages[MAX_RELEASE_PAGES + 1] = [release('v0.89.13-beta.1')];
+    const resolve = createBetaResolver({
+      fetchImpl: pagedReleases(pages, requestedPages),
+      now: () => 0,
+    });
+    const result = await resolve();
+    expect(result.kind).toBe('fallback');
+    expect(result.url).toBe(RELEASES_PAGE_URL);
+    expect(requestedPages).toEqual(Array.from({ length: MAX_RELEASE_PAGES }, (_, i) => i + 1));
+  });
+
+  test('a failed later page falls back with its status rather than reporting no beta', async () => {
+    const resolve = createBetaResolver({
+      fetchImpl: pagedReleases({
+        1: fullPageOfCloudReleases(1),
+        2: jsonResponse({ message: 'rate limited' }, 403),
+      }),
+      now: () => 0,
+    });
+    const result = await resolve();
+    expect(result.kind).toBe('fallback');
+    if (result.kind === 'fallback') {
+      expect(result.cause).toContain('403');
+    }
+  });
+});
+
+describe('resolver upstream budget', () => {
+  test('a walk that finds nothing is not repeated until the TTL passes, then picks up a new release', async () => {
+    let clock = 0;
+    const requestedPages: number[] = [];
+    const pages: Record<number, unknown> = Object.fromEntries(
+      Array.from({ length: MAX_RELEASE_PAGES }, (_, i) => [
+        i + 1,
+        Array.from({ length: 100 }, (_, j) => release(`v0.89.${i}-beta.${j}`)),
+      ]),
+    );
+    const resolve = createCloudResolver({
+      fetchImpl: pagedReleases(pages, requestedPages),
+      now: () => clock,
+    });
+
+    expect((await resolve()).kind).toBe('fallback');
+    expect(requestedPages).toHaveLength(MAX_RELEASE_PAGES);
+    clock = 299_000;
+    const repeated = await resolve();
+    expect(repeated.kind).toBe('fallback');
+    expect(requestedPages).toHaveLength(MAX_RELEASE_PAGES);
+
+    pages[1] = [cloudRelease(17243)];
+    clock = 300_000;
+    expect(await resolve()).toEqual({
+      kind: 'fresh',
+      url: dmgUrl('v0.89.13-cloud.17243', CLOUD_DMG_ASSET_NAME),
+    });
+  });
+
+  test('a failed refresh keeps serving the stale LKG without refetching until the TTL passes', async () => {
+    let clock = 0;
+    let calls = 0;
+    const resolve = createBetaResolver({
+      fetchImpl: async () => {
+        calls++;
+        if (calls === 1) return jsonResponse([release('v0.12.0-beta.7')]);
+        return jsonResponse({ message: 'rate limited' }, 403);
+      },
+      now: () => clock,
+    });
+
+    await resolve();
+    clock = 300_000;
+    expect((await resolve()).kind).toBe('stale-lkg');
+    clock = 599_000;
+    const repeated = await resolve();
+    expect(repeated).toEqual({
+      kind: 'stale-lkg',
+      url: dmgUrl('v0.12.0-beta.7'),
+      refreshError: 'GitHub releases API responded 403',
+    });
+    expect(calls).toBe(2);
+  });
+
+  test('concurrent requests share one refresh', async () => {
+    const pending: ((response: Response) => void)[] = [];
+    const resolve = createBetaResolver({
+      fetchImpl: () =>
+        new Promise<Response>((settle) => {
+          pending.push(settle);
+        }),
+      now: () => 0,
+    });
+
+    const first = resolve();
+    const second = resolve();
+    expect(pending.length).toBeGreaterThan(0);
+    for (const settle of pending) settle(jsonResponse([release('v0.12.0-beta.7')]));
+    const expected = { kind: 'fresh', url: dmgUrl('v0.12.0-beta.7') };
+    expect(await first).toEqual(expected);
+    expect(await second).toEqual(expected);
+    expect(pending).toHaveLength(1);
+  });
+});
+
+describe('Cloud prerelease resolution', () => {
+  test('picks the newest Cloud prerelease carrying the Cloud DMG and ignores betas, stables and drafts', () => {
+    const url = pickLatestPrereleaseAssetUrl(
+      [
+        release('v0.89.14-beta.0', { assetNames: [BETA_DMG_ASSET_NAME, CLOUD_DMG_ASSET_NAME] }),
+        release('v0.89.14', { prerelease: false, assetNames: [CLOUD_DMG_ASSET_NAME] }),
+        release('v0.89.13-cloud.17252', { draft: true, assetNames: [CLOUD_DMG_ASSET_NAME] }),
+        release('v0.89.13-cloud.17251', { assetNames: ['cloud-mac.yml'] }),
+        cloudRelease(17243),
+        cloudRelease(17250),
+      ],
+      CLOUD_CHANNEL,
+    );
+    expect(url).toBe(dmgUrl('v0.89.13-cloud.17250', CLOUD_DMG_ASSET_NAME));
+  });
+
+  test('ranks Cloud prereleases by version, not by counter alone', () => {
+    const url = pickLatestPrereleaseAssetUrl(
+      [cloudRelease(17299), release('v0.90.0-cloud.17260', { assetNames: [CLOUD_DMG_ASSET_NAME] })],
+      CLOUD_CHANNEL,
+    );
+    expect(url).toBe(dmgUrl('v0.90.0-cloud.17260', CLOUD_DMG_ASSET_NAME));
+  });
+
+  test('the beta channel never serves a Cloud prerelease', () => {
+    expect(
+      pickLatestPrereleaseAssetUrl(
+        [release('v0.89.13-cloud.17250', { assetNames: [BETA_DMG_ASSET_NAME] })],
+        betaChannel(),
+      ),
+    ).toBeNull();
+  });
+
+  test('resolves the newest Cloud DMG and serves it from the LKG inside the TTL', async () => {
+    let clock = 0;
+    const requestedPages: number[] = [];
+    const resolve = createCloudResolver({
+      fetchImpl: pagedReleases(
+        {
+          1: [
+            release('v0.89.13-beta.1'),
+            cloudRelease(17243),
+            release('v0.89.12', { prerelease: false }),
+          ],
+        },
+        requestedPages,
+      ),
+      now: () => clock,
+    });
+    const url = dmgUrl('v0.89.13-cloud.17243', CLOUD_DMG_ASSET_NAME);
+    expect(await resolve()).toEqual({ kind: 'fresh', url });
+    clock = 299_000;
+    expect(await resolve()).toEqual({ kind: 'cached', url });
+    expect(requestedPages).toEqual([1]);
+  });
+
+  test('falls back to the releases page while no Cloud prerelease is published', async () => {
+    const resolve = createCloudResolver({
+      fetchImpl: pagedReleases({
+        1: [release('v0.89.13-beta.1'), release('v0.89.12', { prerelease: false })],
+      }),
+      now: () => 0,
+    });
+    const result = await resolve();
+    expect(result.kind).toBe('fallback');
+    expect(result.url).toBe(RELEASES_PAGE_URL);
+    if (result.kind === 'fallback') {
+      expect(result.cause).toContain(CLOUD_DMG_ASSET_NAME);
     }
   });
 });

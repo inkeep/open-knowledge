@@ -100,7 +100,10 @@ async function latestBetaTag(
       `[updates/beta] serving stale LKG tag after refresh failure: ${redirect.refreshError}`,
     );
   }
-  if (redirect.kind === 'fallback') return null;
+  if (redirect.kind === 'fallback') {
+    console.error(`[updates/beta] ${manifest} resolver fell back: ${redirect.cause}`);
+    return null;
+  }
   return TAG_FROM_URL.exec(redirect.url)?.[1] ?? null;
 }
 

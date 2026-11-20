@@ -3013,7 +3013,7 @@ describe('the release App credential never shares a job with installed packages'
       const COMPUTE_STEP = 'Compute next beta base version + render release notes';
       const BETA_PATH = "github.event_name == 'push' || github.event_name == 'workflow_dispatch'";
 
-      test('read-releases always runs, runs only gh release list and view and the stable Release listing, and build takes its outputs under their own names', () => {
+      test('read-releases always runs, runs only the beta Release listing, gh release view and the stable Release listing, and build takes its outputs under their own names', () => {
         const { 'read-releases': readReleases, build } = releaseWorkflow.jobs;
         expect(readReleases.if).toBeUndefined();
         expect(readReleases.needs).toBeUndefined();
@@ -3023,7 +3023,7 @@ describe('the release App credential never shares a job with installed packages'
         expect(read.if).toBe(BETA_PATH);
         expect(read.if).toBe(stepNamed(build, COMPUTE_STEP).if);
         expect(read.env).toEqual({ GH_TOKEN: '${{ github.token }}' });
-        expect(commands(read).match(/\bgh\s+\S+\s+\S+/g)).toEqual(['gh release list', 'gh release view', 'gh api -X']);
+        expect(commands(read).match(/\bgh\s+\S+\s+\S+/g)).toEqual(['gh api graphql', 'gh release view', 'gh api -X']);
         expect(build.needs).toEqual(['cut-commit', 'read-releases']);
         const names = Object.keys(readReleases.outputs);
         expect(names.length).toBeGreaterThan(0);
@@ -3054,17 +3054,24 @@ describe('the release App credential never shares a job with installed packages'
           'const args = process.argv.slice(2);',
           "appendFileSync(process.env.STUB_LOG, `${JSON.stringify(args)}\\n`);",
           'const world = JSON.parse(process.env.STUB_WORLD);',
-          "const failure = (world.fail ?? {})[args[0] === 'api' ? 'api' : args[1]];",
+          "const call = args[0] === 'api' ? (args[1] === 'graphql' ? 'list' : 'api') : args[1];",
+          'const failure = (world.fail ?? {})[call];',
           "if (failure) { process.stderr.write(failure.stderr ?? ''); process.exit(failure.status); }",
           "const visible = world.releases.filter((release) => world.token === 'write' || !release.isDraft);",
-          "if (args[0] === 'api') {",
-          '  const stable = visible.filter((release) => /^v[0-9]+\\.[0-9]+\\.[0-9]+$/.test(release.tagName));',
-          "  process.stdout.write(stable.map((release) => `${JSON.stringify({ tag_name: release.tagName, draft: release.isDraft })}\\n`).join(''));",
+          "if (call === 'list') {",
+          "  if (world.listErrorBody) { process.stdout.write(world.listErrorBody); process.stderr.write('gh: API rate limit exceeded\\n'); process.exit(1); }",
+          "  const first = Number(/first: (\\d+)/.exec(args.find((arg) => arg.startsWith('query=')))[1]);",
+          '  const pages = [];',
+          '  for (let i = 0; i < visible.length; i += first) pages.push(visible.slice(i, i + first));',
+          "  const served = (args.includes('--paginate') ? pages : pages.slice(0, 1)).slice(0, world.listFailsAfterPage ?? Infinity);",
+          '  const betas = served.flat().filter((release) => release.isPrerelease && /^v[0-9]+\\.[0-9]+\\.[0-9]+-beta\\.[0-9]+$/.test(release.tagName));',
+          "  process.stdout.write(betas.map((release) => `${release.tagName}\\n`).join(''));",
+          "  if (world.listFailsAfterPage !== undefined) { process.stderr.write('HTTP 502: Bad Gateway\\n'); process.exit(1); }",
           '  process.exit(0);',
           '}',
-          "if (args[1] === 'list') {",
-          '  const first = visible.find((release) => release.isPrerelease && /^v[0-9]+\\.[0-9]+\\.[0-9]+-beta\\.[0-9]+$/.test(release.tagName));',
-          "  process.stdout.write(`${first ? first.tagName : ''}\\n`);",
+          "if (call === 'api') {",
+          '  const stable = visible.filter((release) => /^v[0-9]+\\.[0-9]+\\.[0-9]+$/.test(release.tagName));',
+          "  process.stdout.write(stable.map((release) => `${JSON.stringify({ tag_name: release.tagName, draft: release.isDraft })}\\n`).join(''));",
           '  process.exit(0);',
           '}',
           'const release = visible.find((candidate) => candidate.tagName === args[2]);',
@@ -3150,8 +3157,32 @@ describe('the release App credential never shares a job with installed packages'
           stable('v0.81.4'),
         ],
       };
+      const cloudFlood = {
+        releases: [
+          ...Array.from({ length: 150 }, (_, i) => ({
+            tagName: `v0.82.0-cloud.${17_400 - i}`,
+            isDraft: false,
+            isPrerelease: true,
+            body: 'Cloud.',
+          })),
+          beta('v0.82.0-beta.8', marker(['a'])),
+          beta('v0.82.0-beta.7', marker([])),
+          stable('v0.81.4'),
+        ],
+      };
+      const listFailsAfterThePreviousBeta = {
+        releases: [beta('v0.82.0-beta.8', marker(['a'])), ...cloudFlood.releases.slice(0, 150)],
+        listFailsAfterPage: 1,
+      };
+      const listFailsWithAnErrorBody = {
+        releases: draftNewest.releases,
+        listErrorBody: '{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}',
+      };
       const worlds = {
         'the previous beta is still a draft': draftNewest,
+        'the listing fails on its first page and gh prints the error body': listFailsWithAnErrorBody,
+        'the listing fails on a page after the one holding the previous beta': listFailsAfterThePreviousBeta,
+        'more than a page of Cloud prereleases is newer than the previous beta': cloudFlood,
         'the list fails': { releases: draftNewest.releases, fail: { list: { status: 1, stderr: 'HTTP 502: Bad Gateway\n' } } },
         'there is no beta Release': { releases: [{ tagName: 'v0.81.4', isDraft: false, isPrerelease: false, body: 'Stable.' }] },
         'the view fails': { releases: draftNewest.releases, fail: { view: { status: 1, stderr: 'HTTP 404\n' } } },
@@ -3162,12 +3193,12 @@ describe('the release App credential never shares a job with installed packages'
       };
 
       test.each(Object.keys(worlds))('when %s, build replays exactly what a contents: write gh read returns', async (name) => {
-        const { previousBeta, recordedReleases, RELEASE_LIST_ARGS, releaseViewArgs, STABLE_RELEASES_ARGS } = await import(
+        const { previousBeta, recordedReleases, PUBLIC_REPO, RELEASE_LIST_ARGS, releaseViewArgs, STABLE_RELEASES_ARGS } = await import(
           '../../scripts/compute-next-beta.mjs'
         );
         const { parseReleaseListing } = await import('./shipped-fix-containment.mjs');
         const world = worlds[name];
-        const { env, calls } = throughTheWorkflow(releaseWorkflow, world, RELEASE_LIST_ARGS[3]);
+        const { env, calls } = throughTheWorkflow(releaseWorkflow, world, PUBLIC_REPO);
         const replayed = previousBeta(recordedReleases(env));
         expect(replayed).toEqual(previousBeta(directly(world, 'write')));
         const listing = (res) => ({ status: res.status, releases: res.status === 0 ? parseReleaseListing(res.stdout) : null });
@@ -3178,17 +3209,40 @@ describe('the release App credential never shares a job with installed packages'
         ]);
       });
 
+      test('more than a page of newer Cloud prereleases does not hide the previous beta', async () => {
+        const { previousBeta, recordedReleases, PUBLIC_REPO } = await import('../../scripts/compute-next-beta.mjs');
+        const { env } = throughTheWorkflow(releaseWorkflow, cloudFlood, PUBLIC_REPO);
+        expect(previousBeta(recordedReleases(env))).toEqual({ prevBetaTag: 'v0.82.0-beta.8', recovered: ['a'] });
+        expect(env.RELEASE_LIST_STDOUT).toBe('v0.82.0-beta.8');
+      });
+
+      test('an error body gh prints for a failed first page never becomes the previous beta', async () => {
+        const { previousBeta, recordedReleases, PUBLIC_REPO } = await import('../../scripts/compute-next-beta.mjs');
+        const { env, calls } = throughTheWorkflow(releaseWorkflow, listFailsWithAnErrorBody, PUBLIC_REPO);
+        expect(env.RELEASE_LIST_STATUS).toBe('1');
+        expect(env.RELEASE_LIST_STDOUT).toBe('');
+        expect(calls.some((args) => args[1] === 'view')).toBe(false);
+        expect(previousBeta(recordedReleases(env))).toEqual({ prevBetaTag: null, recovered: null });
+      });
+
+      test('a listing that fails after the page holding the previous beta still hands build that beta', async () => {
+        const { previousBeta, recordedReleases, PUBLIC_REPO } = await import('../../scripts/compute-next-beta.mjs');
+        const { env } = throughTheWorkflow(releaseWorkflow, listFailsAfterThePreviousBeta, PUBLIC_REPO);
+        expect(env.RELEASE_LIST_STATUS).toBe('1');
+        expect(previousBeta(recordedReleases(env))).toEqual({ prevBetaTag: 'v0.82.0-beta.8', recovered: ['a'] });
+      });
+
       test('with the previous beta still a draft, the replay is the draft and not what a contents: read token sees', async () => {
-        const { previousBeta, recordedReleases, RELEASE_LIST_ARGS } = await import('../../scripts/compute-next-beta.mjs');
-        const { env } = throughTheWorkflow(releaseWorkflow, draftNewest, RELEASE_LIST_ARGS[3]);
+        const { previousBeta, recordedReleases, PUBLIC_REPO } = await import('../../scripts/compute-next-beta.mjs');
+        const { env } = throughTheWorkflow(releaseWorkflow, draftNewest, PUBLIC_REPO);
         expect(previousBeta(recordedReleases(env))).toEqual({ prevBetaTag: 'v0.82.0-beta.9', recovered: ['a', 'b'] });
         expect(previousBeta(directly(draftNewest, 'read'))).toEqual({ prevBetaTag: 'v0.82.0-beta.8', recovered: ['a'] });
       });
 
       test('the stable listing carries the draft stable a contents: read token cannot see', async () => {
-        const { recordedReleases, RELEASE_LIST_ARGS, STABLE_RELEASES_ARGS } = await import('../../scripts/compute-next-beta.mjs');
+        const { recordedReleases, PUBLIC_REPO, STABLE_RELEASES_ARGS } = await import('../../scripts/compute-next-beta.mjs');
         const { parseReleaseListing } = await import('./shipped-fix-containment.mjs');
-        const { env } = throughTheWorkflow(releaseWorkflow, draftNewest, RELEASE_LIST_ARGS[3]);
+        const { env } = throughTheWorkflow(releaseWorkflow, draftNewest, PUBLIC_REPO);
         expect(parseReleaseListing(recordedReleases(env)(STABLE_RELEASES_ARGS).stdout)).toEqual([
           { tag_name: 'v0.81.5', draft: true },
           { tag_name: 'v0.81.4', draft: false },
