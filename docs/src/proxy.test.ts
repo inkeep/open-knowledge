@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { proxy } from './proxy.ts';
 
 function run(host: string, pathAndQuery: string) {
@@ -115,6 +115,35 @@ describe('public HTML policy', () => {
     '/updates/stable/example.yml',
     '/images/overview.png',
   ])('does not change %s', (path) => expect(policy(path)).toBeNull());
+});
+
+describe('public connection policy', () => {
+  const enforced = 'content-security-policy';
+  const reporting = 'content-security-policy-report-only';
+  const connect = "connect-src 'self' https://api.inkeep.com https://api.io.inkeep.com";
+
+  test('reports on HTML with only the exact search destinations and self', () => {
+    const page = run(APEX, '/docs/get-started/quickstart');
+    expect(page.headers.get(reporting)).toBe(connect);
+    expect(page.headers.get(enforced)).not.toContain('connect-src');
+    expect(run(APEX, '/continue').headers.get(reporting)).toBe(connect);
+    expect(run(APEX, '/d/example').headers.get(reporting)).toBeNull();
+    expect(run(APEX, '/html-preview/example').headers.get(reporting)).toBeNull();
+    expect(run(APEX, '/api/search').headers.get(reporting)).toBeNull();
+  });
+
+  test('enforcement also preserves the baseline in the same policy', () => {
+    vi.stubEnv('OK_PUBLIC_CONNECT_CSP_MODE', 'enforce');
+    try {
+      const page = run(APEX, '/docs/get-started/quickstart');
+      expect(page.headers.get(enforced)).toBe(
+        `base-uri 'none'; object-src 'none'; script-src-attr 'none'; frame-ancestors 'none'; ${connect}`,
+      );
+      expect(page.headers.get(reporting)).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe('proxy: Accept negotiation', () => {

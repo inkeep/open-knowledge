@@ -2,6 +2,9 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { markdownRewrite } from './lib/accept-negotiation';
 import { markdownHandlerForPage } from './lib/markdown-routes';
 
+const BASELINE_CSP =
+  "base-uri 'none'; object-src 'none'; script-src-attr 'none'; frame-ancestors 'none'";
+const CONNECT_CSP = "connect-src 'self' https://api.inkeep.com https://api.io.inkeep.com";
 const APEX_HOST = 'openknowledge.ai';
 const WWW_HOST = `www.${APEX_HOST}`;
 const RESOURCE_PATH =
@@ -14,10 +17,14 @@ function publicHtmlResponse(request: NextRequest, response: NextResponse): NextR
     (request.method === 'GET' || request.method === 'HEAD') &&
     request.headers.get('rsc') !== '1'
   ) {
+    const enforceConnections = process.env.OK_PUBLIC_CONNECT_CSP_MODE === 'enforce';
     response.headers.append(
       'Content-Security-Policy',
-      "base-uri 'none'; object-src 'none'; script-src-attr 'none'; frame-ancestors 'none'",
+      enforceConnections ? `${BASELINE_CSP}; ${CONNECT_CSP}` : BASELINE_CSP,
     );
+    if (!enforceConnections) {
+      response.headers.append('Content-Security-Policy-Report-Only', CONNECT_CSP);
+    }
   }
   return response;
 }
