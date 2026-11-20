@@ -19,16 +19,16 @@ const nextConfig: NextConfig = {
       beforeFiles: markdownRewrites(),
       afterFiles: [
         {
-          source: '/ingest/static/:path*',
-          destination: 'https://us-assets.i.posthog.com/static/:path*',
+          source: '/ingest/array/:token(phc_[A-Za-z0-9]+)/config',
+          destination: 'https://us-assets.i.posthog.com/array/:token/config',
         },
         {
-          source: '/ingest/array/:path*',
-          destination: 'https://us-assets.i.posthog.com/array/:path*',
+          source: '/ingest/:endpoint(e|s|flags)/',
+          destination: 'https://us.i.posthog.com/:endpoint/',
         },
         {
-          source: '/ingest/:path*',
-          destination: 'https://us.i.posthog.com/:path*',
+          source: '/ingest/i/v0/e/',
+          destination: 'https://us.i.posthog.com/i/v0/e/',
         },
       ],
     };
