@@ -450,7 +450,7 @@ describe('round-trip: extractDeltaSection → parseSection → renderNotes', () 
 describe('previousBeta reads the previous beta through the gh calls it is handed', () => {
   const TAG = 'v0.82.0-beta.8';
   const answering = (list, view) => (args) => {
-    if (args[1] === 'list') return list;
+    if (args[1] === 'graphql') return list;
     if (args[1] === 'view' && args[2] === TAG) return view;
     throw new Error(`unexpected gh ${args.join(' ')}`);
   };
@@ -496,6 +496,28 @@ describe('previousBeta reads the previous beta through the gh calls it is handed
       { prevBetaTag: TAG, recovered: ['a', 'b'] },
     ],
     [
+      'a failed list whose output is an error body, not a beta tag, bootstraps',
+      {
+        status: 1,
+        stdout: '{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}',
+        stderr: 'gh: API rate limit exceeded',
+      },
+      null,
+      { prevBetaTag: null, recovered: null },
+    ],
+    [
+      'a list that failed after it listed the newest beta keeps that beta',
+      { status: 1, stdout: `${TAG}\nv0.82.0-beta.7\n`, stderr: 'HTTP 502' },
+      ok(body('<!-- ok-consumed-set: ["a"] -->')),
+      { prevBetaTag: TAG, recovered: ['a'] },
+    ],
+    [
+      'the first of the listed betas, newest first, is the previous beta',
+      ok(`${TAG}\nv0.82.0-beta.7\nv0.81.0-beta.3\n`),
+      ok(body('<!-- ok-consumed-set: ["a"] -->')),
+      { prevBetaTag: TAG, recovered: ['a'] },
+    ],
+    [
       'a quoted tag is unquoted',
       ok(`"${TAG}"\n`),
       ok(body('<!-- ok-consumed-set: ["a"] -->')),
@@ -509,12 +531,12 @@ describe('previousBeta reads the previous beta through the gh calls it is handed
     const calls = [];
     previousBeta((args) => {
       calls.push(args);
-      return args[1] === 'list' ? ok(`${TAG}\n`) : ok(body('<!-- ok-consumed-set: [] -->'));
+      return args[1] === 'graphql' ? ok(`${TAG}\n`) : ok(body('<!-- ok-consumed-set: [] -->'));
     });
     expect(calls).toEqual([RELEASE_LIST_ARGS, releaseViewArgs(TAG)]);
-    expect(RELEASE_LIST_ARGS.slice(0, 3)).toEqual(['release', 'list', '--repo']);
+    expect(RELEASE_LIST_ARGS.slice(0, 3)).toEqual(['api', 'graphql', '--paginate']);
     expect(RELEASE_LIST_ARGS.at(-1)).toBe(
-      '[.[] | select(.isPrerelease) | select(.tagName | test("^v[0-9]+\\\\.[0-9]+\\\\.[0-9]+-beta\\\\.[0-9]+$")) | .tagName] | first // ""',
+      '.data.repository.releases.nodes[] | select(.isPrerelease) | select(.tagName | test("^v[0-9]+\\\\.[0-9]+\\\\.[0-9]+-beta\\\\.[0-9]+$")) | .tagName',
     );
   });
 });
@@ -592,13 +614,23 @@ describe('recordedReleases replays what the read-releases job recorded', () => {
   });
 
   test.each([
-    ['0', { prevBetaTag: TAG, recovered: ['a'] }],
-    ['1', { prevBetaTag: null, recovered: null }],
-  ])('a recorded list status of %s behaves as the exit status it is', (listStatus, expected) => {
-    expect(
-      previousBeta(recordedReleases({ ...recorded, RELEASE_LIST_STATUS: listStatus })),
-    ).toEqual(expected);
-  });
+    ['0', TAG, { prevBetaTag: TAG, recovered: ['a'] }],
+    ['1', TAG, { prevBetaTag: TAG, recovered: ['a'] }],
+    ['1', '', { prevBetaTag: null, recovered: null }],
+  ])(
+    'a recorded list status of %s with listing %j keeps a listed beta and bootstraps only an empty listing',
+    (listStatus, listStdout, expected) => {
+      expect(
+        previousBeta(
+          recordedReleases({
+            ...recorded,
+            RELEASE_LIST_STATUS: listStatus,
+            RELEASE_LIST_STDOUT: listStdout,
+          }),
+        ),
+      ).toEqual(expected);
+    },
+  );
 
   test('a recorded view status of 1 keeps the tag and bootstraps the set', () => {
     expect(previousBeta(recordedReleases({ ...recorded, RELEASE_VIEW_STATUS: '1' }))).toEqual({

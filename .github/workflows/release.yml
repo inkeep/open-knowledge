@@ -235,27 +235,29 @@ jobs:
             printf '%s<<%s\n%s\n%s\n' "$1" "$delimiter" "$2" "$delimiter" >> "$GITHUB_OUTPUT"
           }
           list_stderr_file=$(mktemp)
-          if list_stdout=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName,isPrerelease --jq '[.[] | select(.isPrerelease) | select(.tagName | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-beta\\.[0-9]+$")) | .tagName] | first // ""' 2>"$list_stderr_file"); then
+          if list_stdout=$(gh api graphql --paginate -f owner="${GITHUB_REPOSITORY%%/*}" -f name="${GITHUB_REPOSITORY#*/}" -f query='query($owner: String!, $name: String!, $endCursor: String) { repository(owner: $owner, name: $name) { releases(first: 100, after: $endCursor, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { tagName isPrerelease } pageInfo { hasNextPage endCursor } } } }' --jq '.data.repository.releases.nodes[] | select(.isPrerelease) | select(.tagName | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-beta\\.[0-9]+$")) | .tagName' 2>"$list_stderr_file"); then
             list_status=0
           else
             list_status=$?
           fi
           list_stderr=$(cat "$list_stderr_file")
           cat "$list_stderr_file" >&2
+          prev_beta=${list_stdout%%$'\n'*}
+          [[ "$prev_beta" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]] || prev_beta=
           record release_list_status "$list_status"
-          record release_list_stdout "$list_stdout"
+          record release_list_stdout "$prev_beta"
           record release_list_stderr "$list_stderr"
-          if [[ "$list_status" -eq 0 && -n "$list_stdout" ]]; then
-            if view_stdout=$(gh release view "$list_stdout" --repo "$GITHUB_REPOSITORY" --json body --jq .body); then
+          if [[ -n "$prev_beta" ]]; then
+            if view_stdout=$(gh release view "$prev_beta" --repo "$GITHUB_REPOSITORY" --json body --jq .body); then
               view_status=0
             else
               view_status=$?
             fi
-            record release_view_tag "$list_stdout"
+            record release_view_tag "$prev_beta"
             record release_view_status "$view_status"
             record release_view_stdout "$view_stdout"
           fi
-          echo "Previous beta Release: ${list_stdout:-none} (list exit ${list_status}${view_status:+, view exit ${view_status}})"
+          echo "Previous beta Release: ${prev_beta:-none} (list exit ${list_status}${view_status:+, view exit ${view_status}})"
           stable_stderr_file=$(mktemp)
           if stable_stdout=$(gh api -X GET "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate --jq '.[] | select(.tag_name | test("^v[0-9]+[.][0-9]+[.][0-9]+$")) | {tag_name, draft}' 2>"$stable_stderr_file"); then
             stable_status=0

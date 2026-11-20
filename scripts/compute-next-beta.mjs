@@ -18,7 +18,7 @@ import { gitAt, releasedChangesetIds } from './compute-stable-version.mjs';
 const PRE_PATH = '.changeset/pre.json';
 const CONFIG_PATH = '.changeset/config.json';
 const STABLE_TAG_RE = /^v\d+\.\d+\.\d+$/;
-const PUBLIC_REPO = process.env.GITHUB_REPOSITORY || 'inkeep/open-knowledge';
+const BETA_TAG_RE = /^v\d+\.\d+\.\d+-beta\.\d+$/;
 const CHANGELOG_PKGS = ['cli', 'core', 'server', 'app', 'desktop'];
 const CONSUMED_MARKER_RE = /<!--\s*ok-consumed-set:\s*(\[[^\]]*\])\s*-->/;
 
@@ -26,17 +26,22 @@ function log(...args) {
   process.stderr.write(`${args.join(' ')}\n`);
 }
 
+export const PUBLIC_REPO = process.env.GITHUB_REPOSITORY || 'inkeep/open-knowledge';
+
+const [PUBLIC_REPO_OWNER, PUBLIC_REPO_NAME] = PUBLIC_REPO.split('/');
+
 export const RELEASE_LIST_ARGS = [
-  'release',
-  'list',
-  '--repo',
-  PUBLIC_REPO,
-  '--limit',
-  '50',
-  '--json',
-  'tagName,isPrerelease',
+  'api',
+  'graphql',
+  '--paginate',
+  '-f',
+  `owner=${PUBLIC_REPO_OWNER}`,
+  '-f',
+  `name=${PUBLIC_REPO_NAME}`,
+  '-f',
+  'query=query($owner: String!, $name: String!, $endCursor: String) { repository(owner: $owner, name: $name) { releases(first: 100, after: $endCursor, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { tagName isPrerelease } pageInfo { hasNextPage endCursor } } } }',
   '--jq',
-  '[.[] | select(.isPrerelease) | select(.tagName | test("^v[0-9]+\\\\.[0-9]+\\\\.[0-9]+-beta\\\\.[0-9]+$")) | .tagName] | first // ""',
+  '.data.repository.releases.nodes[] | select(.isPrerelease) | select(.tagName | test("^v[0-9]+\\\\.[0-9]+\\\\.[0-9]+-beta\\\\.[0-9]+$")) | .tagName',
 ];
 
 export const STABLE_RELEASES_ARGS = [
@@ -89,12 +94,16 @@ export function recordedReleases(env) {
 
 function findPrevBetaTag(gh) {
   const res = gh(RELEASE_LIST_ARGS);
+  const firstLine = res.stdout.trim().split('\n')[0].trim().replace(/^"|"$/g, '');
+  const tag = BETA_TAG_RE.test(firstLine) ? firstLine : '';
   if (res.status !== 0) {
-    log(`[warn] gh release list failed (exit ${res.status}); treating as bootstrap.`);
+    log(
+      tag
+        ? `[warn] the beta Release listing failed (exit ${res.status}) after it listed ${tag}, the newest beta; using it.`
+        : `[warn] the beta Release listing failed (exit ${res.status}); treating as bootstrap.`,
+    );
     log(res.stderr);
-    return null;
   }
-  const tag = res.stdout.trim().replace(/^"|"$/g, '');
   return tag || null;
 }
 
