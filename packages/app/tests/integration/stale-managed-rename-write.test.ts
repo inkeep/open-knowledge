@@ -1,25 +1,34 @@
+import { randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { HocuspocusProvider } from '@hocuspocus/provider';
 import { ForwardLinksSuccessSchema } from '@inkeep/open-knowledge-core';
-import { afterEach, expect, test, vi } from 'vitest';
+import { parseAuthRejectionWire } from '@inkeep/open-knowledge-server';
+import { afterEach, expect, onTestFailed, test, vi } from 'vitest';
+import * as Y from 'yjs';
 import * as fileWatcher from '../../../server/src/file-watcher.ts';
 import * as fsTraced from '../../../server/src/fs-traced.ts';
+import { withParentLock } from '../../../server/src/git-mutex.ts';
+import { managedRenameJournalPath } from '../../../server/src/managed-rename-journal.ts';
+import { connectMcpTestClient } from '../../../server/src/mcp/client.test-helper.ts';
 import * as parcelSubscription from '../../../server/src/parcel-subscription.ts';
 import * as persistenceModule from '../../../server/src/persistence.ts';
 import { runTeardownPhases } from '../stress/_helpers/teardown-fs.ts';
 import {
   createTestClient,
   createTestServer,
+  pollUntil,
   type TestClient,
   type TestServer,
 } from './test-harness.ts';
@@ -237,4 +246,171 @@ test('a direct managed rename rewrite adopts a recreated reference before its ol
   expect(running.instance.hocuspocus.documents.get(docName)).toBe(resident);
   expect(readFileSync(filePath, 'utf8')).toBe(SAVED);
   await expect.poll(() => connected.ytext.toString()).toBe(SAVED);
+});
+
+const MOVED =
+  '---\ntype: memo\ntitle: Before\ndescription: Description before\ntags:\n  - maple\n  - cedar\n---\n\n# Sample\n\nThis body stays.\n';
+const FRONTMATTER_PATCH = { title: 'After', description: 'Description after' };
+const MOVED_AFTER_PATCH = MOVED.replace('title: Before', 'title: After').replace(
+  'description: Description before',
+  'description: Description after',
+);
+
+type Admission = { kind: 'synced' } | { kind: 'refused'; reason: string };
+
+function openProvider(server: TestServer, docName: string) {
+  const doc = new Y.Doc();
+  const admission = Promise.withResolvers<Admission>();
+  const provider = new HocuspocusProvider({
+    url: `${server.wsUrl}/collab`,
+    name: docName,
+    document: doc,
+    onSynced: ({ state }) => {
+      if (state) admission.resolve({ kind: 'synced' });
+    },
+    onAuthenticationFailed: ({ reason }) => admission.resolve({ kind: 'refused', reason }),
+  });
+  cleanups.push(async () => {
+    provider.destroy();
+    doc.destroy();
+  });
+  return { admission: admission.promise, source: doc.getText('source') };
+}
+
+async function waitingFor<T>(what: string, pending: Promise<T>): Promise<T> {
+  let settled = false;
+  onTestFailed(() => {
+    if (!settled) throw new Error(`the test failed while still waiting for ${what}`);
+  });
+  try {
+    return await pending;
+  } finally {
+    settled = true;
+  }
+}
+
+async function movedDocumentRig(outsideContentDir?: string) {
+  const from = `moved-${randomUUID()}`;
+  const to = `${from}-renamed`;
+  if (outsideContentDir !== undefined) {
+    writeFileSync(join(outsideContentDir, `${from}.md`), MOVED, { flag: 'wx' });
+  }
+  const server = await createTestServer(
+    outsideContentDir === undefined ? {} : { contentDir: outsideContentDir },
+  );
+  cleanups.push(() => server.cleanup());
+  const mcp = await connectMcpTestClient(`${server.baseUrl}/mcp`, { name: 'moved-destination' });
+  cleanups.push(() => mcp.close());
+  const target = join(server.contentDir, `${to}.md`);
+  const callTool = async (name: string, args: Record<string, unknown>) => {
+    const result = await mcp.callTool({ name, arguments: args });
+    expect(result.isError, JSON.stringify(result.content)).toBeFalsy();
+  };
+  return {
+    server,
+    from,
+    to,
+    source: join(server.contentDir, `${from}.md`),
+    target,
+    closeClient: () => mcp.close(),
+    write: () => callTool('write', { document: { path: from, content: MOVED } }),
+    move: () => callTool('move', { from, to }),
+    async expectDestinationHoldsMovedDocument(openSources: Y.Text[]) {
+      expect(readFileSync(target, 'utf8')).toBe(MOVED);
+      for (const openSource of openSources) {
+        await expect.poll(() => openSource.toString()).toBe(MOVED);
+      }
+      const fresh = await createTestClient(server.port, to, { resetOnCleanup: false });
+      cleanups.push(() => fresh.cleanup());
+      expect(fresh.ytext.toString()).toBe(MOVED);
+      await callTool('edit', { document: { path: to, frontmatter: FRONTMATTER_PATCH } });
+      expect(readFileSync(target, 'utf8')).toBe(MOVED_AFTER_PATCH);
+    },
+  };
+}
+
+test('a managed move into a name an editor already has open keeps the moved content', async () => {
+  const rig = await movedDocumentRig();
+  await rig.write();
+  const early = await createTestClient(rig.server.port, rig.to, { resetOnCleanup: false });
+  cleanups.push(() => early.cleanup());
+  expect({ disk: existsSync(rig.target), editor: early.ytext.toString() }).toEqual({
+    disk: false,
+    editor: '',
+  });
+
+  await rig.move();
+
+  await rig.expectDestinationHoldsMovedDocument([early.ytext]);
+});
+
+test('an editor that follows the rename redirect before the file lands converges to the moved content', async () => {
+  const rig = await movedDocumentRig();
+  await rig.write();
+  const releaseGit = Promise.withResolvers<void>();
+  const gitHeld = withParentLock(() => releaseGit.promise);
+  const moving = rig.move();
+  const moveSettled = moving.then(
+    () => undefined,
+    () => undefined,
+  );
+  cleanups.push(async () => {
+    releaseGit.resolve();
+    await gitHeld;
+    await rig.closeClient();
+    await moveSettled;
+  });
+
+  await pollUntil(
+    () => existsSync(managedRenameJournalPath(rig.server.contentDir)),
+    undefined,
+    undefined,
+    'the managed move to write its journal',
+  );
+  expect({ source: existsSync(rig.source), target: existsSync(rig.target) }).toEqual({
+    source: true,
+    target: false,
+  });
+  const redirected = await waitingFor(
+    'the source name to redirect',
+    openProvider(rig.server, rig.from).admission,
+  );
+  if (redirected.kind !== 'refused') throw new Error('the source opened instead of redirecting');
+  expect(parseAuthRejectionWire(redirected.reason)).toMatchObject({
+    kind: 'rename-redirect',
+    payload: rig.to,
+  });
+  const followed = openProvider(rig.server, rig.to);
+  expect(await waitingFor('the destination editor to be admitted', followed.admission)).toEqual({
+    kind: 'synced',
+  });
+  expect(followed.source.toString()).toBe('');
+
+  releaseGit.resolve();
+  await gitHeld;
+  await moving;
+
+  await rig.expectDestinationHoldsMovedDocument([followed.source]);
+});
+
+test('an outside rename into a name an editor already has open keeps the moved content', async () => {
+  const contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-outside-rename-open-target-')));
+  cleanups.push(async () => rmSync(contentDir, { recursive: true, force: true }));
+  const rig = await movedDocumentRig(contentDir);
+  const sourcePeer = await createTestClient(rig.server.port, rig.from, { resetOnCleanup: false });
+  cleanups.push(() => sourcePeer.cleanup());
+  expect(sourcePeer.ytext.toString()).toBe(MOVED);
+  const early = await createTestClient(rig.server.port, rig.to, { resetOnCleanup: false });
+  cleanups.push(() => early.cleanup());
+  expect(early.ytext.toString()).toBe('');
+  const sourceClosed = Promise.withResolvers<void>();
+  sourcePeer.provider.on('close', () => sourceClosed.resolve());
+
+  renameSync(rig.source, rig.target);
+  await waitingFor('the rename to close the source editor', sourceClosed.promise);
+  expect(
+    rig.server.instance.hocuspocus.documents.get(rig.from)?.getMap('lifecycle').get('status'),
+  ).toBe('renamed');
+
+  await rig.expectDestinationHoldsMovedDocument([early.ytext]);
 });

@@ -68,7 +68,12 @@ import { AgentFocusBroadcaster } from './agent-focus.ts';
 import { AgentPresenceBroadcaster } from './agent-presence.ts';
 import type { AgentRegistryHostSeam } from './agent-registry-apply.ts';
 import { AgentSessionManager } from './agent-sessions.ts';
-import { type CommentDocHooks, createApiExtension, isSafeDocName } from './api-extension.ts';
+import {
+  adoptMovedContentIntoResidentDoc,
+  type CommentDocHooks,
+  createApiExtension,
+  isSafeDocName,
+} from './api-extension.ts';
 import { assetReferencesChanged } from './asset-references.ts';
 import { seedBasenameIndex, seedSingleDirBasenameIndex } from './asset-walk.ts';
 import {
@@ -2952,6 +2957,19 @@ export function createServer(options: ServerOptions): ServerInstance {
     return result;
   };
 
+  const adoptMovedContentIntoResident = (docName: string, content: string): void => {
+    const adopted = adoptMovedContentIntoResidentDoc(
+      durabilityState,
+      hocuspocus,
+      docName,
+      content,
+      resolveEmbed,
+      resolveSize,
+      bridgeLossReporter,
+    );
+    if (adopted) acceptConnectedDocument(docName, adopted);
+  };
+
   const refreshLoadedEmbeds = (
     needle: string,
     context: { reason: 'startup' } | { reason: 'asset-event'; assetBasename: string },
@@ -4207,6 +4225,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           durabilityState.beginRenameCarry(oldDocName);
           let carriedThrough: WrittenThrough | null = null;
           let retiredResident = false;
+          let adoptionFailure: { error: unknown } | undefined;
           try {
             const document = removal.document;
             const residentBeforeRename = removal.residentCurrent() && document ? document : null;
@@ -4259,7 +4278,11 @@ export function createServer(options: ServerOptions): ServerInstance {
               : undefined;
             const lateResident = loadedDuringIndex !== document ? loadedDuringIndex : undefined;
             if (lateResident) freezeAsRenamed(lateResident);
-            reviveFrozenResident(newDocName, content);
+            try {
+              adoptMovedContentIntoResident(newDocName, content);
+            } catch (error) {
+              adoptionFailure = { error };
+            }
             scheduleIndexRegeneration(newDocName);
             if (removal.namespaceCurrent()) {
               followRecordsAcrossRename(oldDocName, newDocName, event.newPath);
@@ -4305,18 +4328,19 @@ export function createServer(options: ServerOptions): ServerInstance {
                 },
                 `[reconcile] rename: ${oldDocName} not recorded as removed (stale removal)`,
               );
-              break;
+            } else {
+              console.info(
+                JSON.stringify({
+                  event: 'recently-removed-docs-populate',
+                  from: oldDocName,
+                  to: newDocName,
+                  kind: 'renamed',
+                  source: 'watcher-rename',
+                }),
+              );
+              scheduleIndexRegenerationAfterRemoval(oldDocName);
             }
-            console.info(
-              JSON.stringify({
-                event: 'recently-removed-docs-populate',
-                from: oldDocName,
-                to: newDocName,
-                kind: 'renamed',
-                source: 'watcher-rename',
-              }),
-            );
-            scheduleIndexRegenerationAfterRemoval(oldDocName);
+            if (adoptionFailure) throw adoptionFailure.error;
           } finally {
             durabilityState.settleRenameCarry(oldDocName, carriedThrough);
             if (!retiredResident) durabilityState.endRenameCarry(oldDocName);
