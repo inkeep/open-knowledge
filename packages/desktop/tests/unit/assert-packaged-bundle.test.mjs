@@ -9,6 +9,7 @@ import {
 } from '../../scripts/assert-packaged-bundle.mjs';
 import { writeHeaderOnlyAsar } from '../support/synthetic-asar.test-helper.ts';
 import { removeTempDirBestEffort } from '../support/temp-dir-cleanup.test-helper.ts';
+import { LIBRARY_NATIVE, SOUND_ASAR, SOUND_DISK } from './packaged-bundle.test-helper.ts';
 
 const tempDirs = [];
 
@@ -33,27 +34,6 @@ function packResources({ asarFiles, diskFiles }) {
   return resources;
 }
 
-const LIBRARY_NATIVE = 'app.asar.unpacked/node_modules/@inkeep/open-knowledge/dist/native';
-const SOUND_ASAR = [
-  'package.json',
-  'out/main/index.js',
-  'node_modules/@inkeep/open-knowledge-server/dist/index.mjs',
-  'node_modules/@inkeep/open-knowledge-core/dist/index.mjs',
-];
-const SOUND_DISK = [
-  'LICENSE',
-  'THIRD_PARTY_NOTICES.md',
-  'app/index.html',
-  'cli/dist/cli.mjs',
-  'cli/dist/native/index.js',
-  'cli/dist/native/native-config.linux-x64-gnu.node',
-  'cli/node_modules/@inkeep/open-knowledge-native-config/index.js',
-  'app.asar.unpacked/node_modules/@inkeep/open-knowledge/dist/index.mjs',
-  `${LIBRARY_NATIVE}/index.js`,
-  `${LIBRARY_NATIVE}/native-config.darwin-arm64.node`,
-  'app.asar.unpacked/node_modules/@napi-rs/keyring/index.js',
-  'locales/en/messages.json',
-];
 const SOUND_PATHS = [...SOUND_DISK, ...SOUND_ASAR.map((p) => `app.asar/${p}`)];
 
 describe('findForbiddenBundlePaths', () => {
