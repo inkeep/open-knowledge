@@ -41,6 +41,8 @@ const SOUND_ASAR = [
   'node_modules/@inkeep/open-knowledge-core/dist/index.mjs',
 ];
 const SOUND_DISK = [
+  'LICENSE',
+  'THIRD_PARTY_NOTICES.md',
   'app/index.html',
   'cli/dist/cli.mjs',
   'cli/dist/native/index.js',
@@ -92,6 +94,8 @@ describe('findMissingBundlePaths', () => {
     ['cli/dist/native/index.js', "bundled CLI's native-config loader"],
     ['cli/dist/native/native-config.linux-x64-gnu.node', "bundled CLI's native-config addon"],
     ['locales/en/messages.json', "main process's compiled menu catalog"],
+    ['LICENSE', "About panel's LICENSE"],
+    ['THIRD_PARTY_NOTICES.md', "About panel's THIRD_PARTY_NOTICES.md"],
   ])('reports a bundle without %s', (dropped, reasonFragment) => {
     const missing = findMissingBundlePaths(SOUND_PATHS.filter((p) => p !== dropped));
     expect(missing).toHaveLength(1);
@@ -109,7 +113,7 @@ describe('findMissingBundlePaths', () => {
 });
 
 describe('assertPackagedBundle', () => {
-  test('passes a packed bundle laid out the way its processes load it', () => {
+  test('passes a packed bundle laid out the way its processes and About panel expect', () => {
     const resources = packResources({ asarFiles: SOUND_ASAR, diskFiles: SOUND_DISK });
     expect(() => assertPackagedBundle(resources)).not.toThrow();
   });

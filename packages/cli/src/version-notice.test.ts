@@ -10,4 +10,12 @@ describe('buildVersionNotice', () => {
     expect(notice).toMatch(/free software/i);
     expect(notice).toMatch(/NO WARRANTY/);
   });
+
+  test('carries the LGPL node-liblzma copyright notice and points at its license text', () => {
+    const notice = buildVersionNotice('1.2.3');
+    expect(notice).toContain(
+      'node-liblzma, Copyright (C) 2014-2015 Olivier Orabona, under LGPL-3.0',
+    );
+    expect(notice).toContain('THIRD_PARTY_NOTICES.md');
+  });
 });

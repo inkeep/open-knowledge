@@ -16,6 +16,16 @@ describe('buildAboutPanelOptions', () => {
     expect(opts.copyright).toMatch(/NO WARRANTY/);
   });
 
+  test('names THIRD_PARTY_NOTICES.md in its copyright text', () => {
+    expect(buildAboutPanelOptions('9.9.9').copyright).toContain('THIRD_PARTY_NOTICES.md');
+  });
+
+  test('carries the LGPL node-liblzma copyright notice among its own', () => {
+    expect(buildAboutPanelOptions('9.9.9').copyright).toContain(
+      'node-liblzma, Copyright (C) 2014-2015 Olivier Orabona, under LGPL-3.0',
+    );
+  });
+
   test('names the installed product rather than the Stable app', () => {
     expect(buildAboutPanelOptions('9.9.9').applicationName).toBe('OpenKnowledge Beta');
   });

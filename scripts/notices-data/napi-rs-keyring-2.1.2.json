@@ -1,0 +1,905 @@
+{
+  "package": "@napi-rs/keyring",
+  "version": "2.1.2",
+  "source": "https://github.com/Brooooooklyn/keyring-node/tree/v2.1.2",
+  "derivation": "cargo tree --locked -e normal,no-proc-macro --target <target> --prefix none -f \"{p}|{l}|{r}\" in keyring-node v2.1.2, once per target below, deduplicated; proc-macro2, quote, syn and unicode-ident reach the tree only as macro helpers and are left out",
+  "targets": [
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu"
+  ],
+  "crates": [
+    {
+      "name": "aes",
+      "version": "0.8.4",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/block-ciphers"
+    },
+    {
+      "name": "aes",
+      "version": "0.9.3",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/block-ciphers"
+    },
+    {
+      "name": "aho-corasick",
+      "version": "1.1.5",
+      "license": "Unlicense OR MIT",
+      "repository": "https://github.com/BurntSushi/aho-corasick",
+      "copyright": "Copyright (c) 2015 Andrew Gallant"
+    },
+    {
+      "name": "anyhow",
+      "version": "1.0.104",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/dtolnay/anyhow"
+    },
+    {
+      "name": "apple-native-keyring-store",
+      "version": "1.0.2",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/open-source-cooperative/apple-native-keyring-store"
+    },
+    {
+      "name": "async-broadcast",
+      "version": "0.7.2",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/smol-rs/async-broadcast"
+    },
+    {
+      "name": "async-channel",
+      "version": "2.5.0",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/async-channel"
+    },
+    {
+      "name": "async-executor",
+      "version": "1.14.0",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/async-executor"
+    },
+    {
+      "name": "async-io",
+      "version": "2.6.0",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/async-io"
+    },
+    {
+      "name": "async-lock",
+      "version": "3.4.2",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/async-lock"
+    },
+    {
+      "name": "async-process",
+      "version": "2.5.0",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/async-process"
+    },
+    {
+      "name": "async-signal",
+      "version": "0.2.14",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/async-signal"
+    },
+    {
+      "name": "async-task",
+      "version": "4.7.1",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/async-task"
+    },
+    {
+      "name": "atomic-waker",
+      "version": "1.1.2",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/atomic-waker"
+    },
+    {
+      "name": "bitflags",
+      "version": "2.13.2",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/bitflags/bitflags"
+    },
+    {
+      "name": "block-buffer",
+      "version": "0.10.4",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/utils"
+    },
+    {
+      "name": "block-buffer",
+      "version": "0.12.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/utils"
+    },
+    {
+      "name": "block-padding",
+      "version": "0.3.3",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/utils"
+    },
+    {
+      "name": "block-padding",
+      "version": "0.4.2",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/utils"
+    },
+    {
+      "name": "blocking",
+      "version": "1.7.0",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/blocking"
+    },
+    {
+      "name": "byteorder",
+      "version": "1.5.0",
+      "license": "Unlicense OR MIT",
+      "repository": "https://github.com/BurntSushi/byteorder",
+      "copyright": "Copyright (c) 2015 Andrew Gallant"
+    },
+    {
+      "name": "cbc",
+      "version": "0.1.2",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/block-modes"
+    },
+    {
+      "name": "cbc",
+      "version": "0.2.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/block-modes"
+    },
+    {
+      "name": "cfg-if",
+      "version": "1.0.5",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/cfg-if"
+    },
+    {
+      "name": "cipher",
+      "version": "0.4.4",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/traits"
+    },
+    {
+      "name": "cipher",
+      "version": "0.5.2",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/traits"
+    },
+    {
+      "name": "cmov",
+      "version": "0.5.4",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/RustCrypto/utils"
+    },
+    {
+      "name": "concurrent-queue",
+      "version": "2.5.0",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/concurrent-queue"
+    },
+    {
+      "name": "const-oid",
+      "version": "0.10.2",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/RustCrypto/formats"
+    },
+    {
+      "name": "core-foundation",
+      "version": "0.10.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/servo/core-foundation-rs"
+    },
+    {
+      "name": "core-foundation-sys",
+      "version": "0.8.7",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/servo/core-foundation-rs"
+    },
+    {
+      "name": "cpubits",
+      "version": "0.1.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/utils"
+    },
+    {
+      "name": "cpufeatures",
+      "version": "0.2.17",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/utils"
+    },
+    {
+      "name": "cpufeatures",
+      "version": "0.3.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/utils"
+    },
+    {
+      "name": "crossbeam-utils",
+      "version": "0.8.23",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/crossbeam-rs/crossbeam"
+    },
+    {
+      "name": "crypto-common",
+      "version": "0.1.7",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/traits"
+    },
+    {
+      "name": "crypto-common",
+      "version": "0.2.2",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/traits"
+    },
+    {
+      "name": "ctor",
+      "version": "1.0.13",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/mmastrac/linktime"
+    },
+    {
+      "name": "ctutils",
+      "version": "0.4.3",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/RustCrypto/utils"
+    },
+    {
+      "name": "dbus",
+      "version": "0.9.12",
+      "license": "Apache-2.0/MIT",
+      "repository": "https://github.com/diwic/dbus-rs"
+    },
+    {
+      "name": "dbus-secret-service",
+      "version": "4.1.0",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/brotskydotcom/dbus-secret-service"
+    },
+    {
+      "name": "dbus-secret-service-keyring-store",
+      "version": "1.0.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/open-source-cooperative/dbus-secret-service-keyring-store"
+    },
+    {
+      "name": "digest",
+      "version": "0.10.7",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/traits"
+    },
+    {
+      "name": "digest",
+      "version": "0.11.3",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/traits"
+    },
+    {
+      "name": "endi",
+      "version": "1.1.1",
+      "license": "MIT",
+      "repository": "https://github.com/zeenix/endi",
+      "copyright": null
+    },
+    {
+      "name": "enumflags2",
+      "version": "0.7.12",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/meithecatte/enumflags2"
+    },
+    {
+      "name": "errno",
+      "version": "0.3.14",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/lambda-fairy/rust-errno"
+    },
+    {
+      "name": "event-listener",
+      "version": "5.4.2",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/event-listener"
+    },
+    {
+      "name": "event-listener-strategy",
+      "version": "0.5.4",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/event-listener-strategy"
+    },
+    {
+      "name": "fastrand",
+      "version": "2.5.0",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/fastrand"
+    },
+    {
+      "name": "futures",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/futures-rs"
+    },
+    {
+      "name": "futures-channel",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/futures-rs"
+    },
+    {
+      "name": "futures-core",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/futures-rs"
+    },
+    {
+      "name": "futures-executor",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/futures-rs"
+    },
+    {
+      "name": "futures-io",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/futures-rs"
+    },
+    {
+      "name": "futures-lite",
+      "version": "2.6.1",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/futures-lite"
+    },
+    {
+      "name": "futures-sink",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/futures-rs"
+    },
+    {
+      "name": "futures-task",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/futures-rs"
+    },
+    {
+      "name": "futures-util",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/futures-rs"
+    },
+    {
+      "name": "generic-array",
+      "version": "0.14.7",
+      "license": "MIT",
+      "repository": "https://github.com/fizyk20/generic-array",
+      "copyright": "Copyright (c) 2015 Bartłomiej Kamiński"
+    },
+    {
+      "name": "getrandom",
+      "version": "0.4.3",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-random/getrandom"
+    },
+    {
+      "name": "hex",
+      "version": "0.4.3",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/KokaKiwi/rust-hex"
+    },
+    {
+      "name": "hkdf",
+      "version": "0.12.4",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/KDFs"
+    },
+    {
+      "name": "hkdf",
+      "version": "0.13.0",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/KDFs"
+    },
+    {
+      "name": "hmac",
+      "version": "0.12.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/MACs"
+    },
+    {
+      "name": "hmac",
+      "version": "0.13.0",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/MACs"
+    },
+    {
+      "name": "hybrid-array",
+      "version": "0.4.15",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/hybrid-array"
+    },
+    {
+      "name": "inout",
+      "version": "0.1.4",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/utils"
+    },
+    {
+      "name": "inout",
+      "version": "0.2.4",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/utils"
+    },
+    {
+      "name": "keyring-core",
+      "version": "1.0.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/open-source-cooperative/keyring-core"
+    },
+    {
+      "name": "libc",
+      "version": "0.2.191",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/libc"
+    },
+    {
+      "name": "libdbus-sys",
+      "version": "0.2.7",
+      "license": "Apache-2.0/MIT",
+      "repository": "https://github.com/diwic/dbus-rs"
+    },
+    {
+      "name": "libloading",
+      "version": "0.9.0",
+      "license": "ISC",
+      "repository": "https://github.com/nagisa/rust_libloading",
+      "copyright": "Copyright © 2015, Simonas Kazlauskas"
+    },
+    {
+      "name": "linux-keyutils",
+      "version": "0.2.5",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/landhb/linux-keyutils"
+    },
+    {
+      "name": "linux-keyutils-keyring-store",
+      "version": "1.0.0",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/open-source-cooperative/linux-keyutils-keyring-store"
+    },
+    {
+      "name": "linux-raw-sys",
+      "version": "0.12.1",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "repository": "https://github.com/sunfishcode/linux-raw-sys"
+    },
+    {
+      "name": "log",
+      "version": "0.4.34",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/log"
+    },
+    {
+      "name": "memchr",
+      "version": "2.8.3",
+      "license": "Unlicense OR MIT",
+      "repository": "https://github.com/BurntSushi/memchr",
+      "copyright": "Copyright (c) 2015 Andrew Gallant"
+    },
+    {
+      "name": "napi",
+      "version": "3.14.2",
+      "license": "MIT",
+      "repository": "https://github.com/napi-rs/napi-rs",
+      "copyright": "Copyright (c) 2020-present LongYinan"
+    },
+    {
+      "name": "napi-sys",
+      "version": "3.4.0",
+      "license": "MIT",
+      "repository": "https://github.com/napi-rs/napi-rs",
+      "copyright": "Copyright (c) 2020-present LongYinan"
+    },
+    {
+      "name": "nohash-hasher",
+      "version": "0.2.0",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/paritytech/nohash-hasher"
+    },
+    {
+      "name": "num",
+      "version": "0.4.3",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-num/num"
+    },
+    {
+      "name": "num-bigint",
+      "version": "0.4.8",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-num/num-bigint"
+    },
+    {
+      "name": "num-complex",
+      "version": "0.4.6",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-num/num-complex"
+    },
+    {
+      "name": "num-integer",
+      "version": "0.1.47",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-num/num-integer"
+    },
+    {
+      "name": "num-iter",
+      "version": "0.1.46",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-num/num-iter"
+    },
+    {
+      "name": "num-rational",
+      "version": "0.4.2",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-num/num-rational"
+    },
+    {
+      "name": "num-traits",
+      "version": "0.2.19",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-num/num-traits"
+    },
+    {
+      "name": "once_cell",
+      "version": "1.21.4",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/matklad/once_cell"
+    },
+    {
+      "name": "ordered-stream",
+      "version": "0.2.0",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/danieldg/ordered-stream"
+    },
+    {
+      "name": "parking",
+      "version": "2.2.1",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/parking"
+    },
+    {
+      "name": "pin-project-lite",
+      "version": "0.2.17",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/taiki-e/pin-project-lite"
+    },
+    {
+      "name": "piper",
+      "version": "0.2.5",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/smol-rs/piper"
+    },
+    {
+      "name": "polling",
+      "version": "3.11.0",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/polling"
+    },
+    {
+      "name": "regex",
+      "version": "1.13.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/regex"
+    },
+    {
+      "name": "regex-automata",
+      "version": "0.4.18",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/regex"
+    },
+    {
+      "name": "regex-syntax",
+      "version": "0.8.11",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/regex"
+    },
+    {
+      "name": "rustc-hash",
+      "version": "2.1.3",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/rust-lang/rustc-hash"
+    },
+    {
+      "name": "rustix",
+      "version": "1.1.5",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "repository": "https://github.com/bytecodealliance/rustix"
+    },
+    {
+      "name": "secret-service",
+      "version": "5.2.0",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/hwchen/secret-service-rs"
+    },
+    {
+      "name": "security-framework",
+      "version": "3.7.0",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/kornelski/rust-security-framework"
+    },
+    {
+      "name": "security-framework-sys",
+      "version": "2.17.0",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/kornelski/rust-security-framework"
+    },
+    {
+      "name": "serde",
+      "version": "1.0.229",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/serde-rs/serde"
+    },
+    {
+      "name": "serde_core",
+      "version": "1.0.229",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/serde-rs/serde"
+    },
+    {
+      "name": "sha2",
+      "version": "0.10.9",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/hashes"
+    },
+    {
+      "name": "sha2",
+      "version": "0.11.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/RustCrypto/hashes"
+    },
+    {
+      "name": "signal-hook-registry",
+      "version": "1.4.8",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/vorner/signal-hook"
+    },
+    {
+      "name": "slab",
+      "version": "0.4.12",
+      "license": "MIT",
+      "repository": "https://github.com/tokio-rs/slab",
+      "copyright": "Copyright (c) 2019 Carl Lerche"
+    },
+    {
+      "name": "subtle",
+      "version": "2.6.1",
+      "license": "BSD-3-Clause",
+      "repository": "https://github.com/dalek-cryptography/subtle",
+      "copyright": "Copyright (c) 2016-2024 Isis Agora Lovecruft. All rights reserved. Copyright (c) 2016-2017 Isis Agora Lovecruft, Henry de Valence. All rights reserved."
+    },
+    {
+      "name": "tracing",
+      "version": "0.1.44",
+      "license": "MIT",
+      "repository": "https://github.com/tokio-rs/tracing",
+      "copyright": "Copyright (c) 2019 Tokio Contributors"
+    },
+    {
+      "name": "tracing-core",
+      "version": "0.1.36",
+      "license": "MIT",
+      "repository": "https://github.com/tokio-rs/tracing",
+      "copyright": "Copyright (c) 2019 Tokio Contributors"
+    },
+    {
+      "name": "typenum",
+      "version": "1.20.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/paholg/typenum"
+    },
+    {
+      "name": "uuid",
+      "version": "1.28.0",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/uuid-rs/uuid"
+    },
+    {
+      "name": "windows",
+      "version": "0.62.2",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/microsoft/windows-rs"
+    },
+    {
+      "name": "windows-collections",
+      "version": "0.3.2",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/microsoft/windows-rs"
+    },
+    {
+      "name": "windows-core",
+      "version": "0.62.2",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/microsoft/windows-rs"
+    },
+    {
+      "name": "windows-future",
+      "version": "0.3.2",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/microsoft/windows-rs"
+    },
+    {
+      "name": "windows-link",
+      "version": "0.2.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/microsoft/windows-rs"
+    },
+    {
+      "name": "windows-native-keyring-store",
+      "version": "1.1.0",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/open-source-cooperative/windows-native-keyring-store"
+    },
+    {
+      "name": "windows-numerics",
+      "version": "0.3.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/microsoft/windows-rs"
+    },
+    {
+      "name": "windows-result",
+      "version": "0.4.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/microsoft/windows-rs"
+    },
+    {
+      "name": "windows-strings",
+      "version": "0.5.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/microsoft/windows-rs"
+    },
+    {
+      "name": "windows-sys",
+      "version": "0.61.2",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/microsoft/windows-rs"
+    },
+    {
+      "name": "windows-threading",
+      "version": "0.2.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/microsoft/windows-rs"
+    },
+    {
+      "name": "winnow",
+      "version": "1.0.4",
+      "license": "MIT",
+      "repository": "https://github.com/winnow-rs/winnow",
+      "copyright": null
+    },
+    {
+      "name": "zbus",
+      "version": "5.19.0",
+      "license": "MIT",
+      "repository": "https://github.com/z-galaxy/zbus",
+      "copyright": "Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors"
+    },
+    {
+      "name": "zbus_names",
+      "version": "4.3.5",
+      "license": "MIT",
+      "repository": "https://github.com/z-galaxy/zbus",
+      "copyright": "Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors"
+    },
+    {
+      "name": "zcheapstr",
+      "version": "1.1.0",
+      "license": "MIT",
+      "repository": "https://github.com/z-galaxy/zcheapstr",
+      "copyright": "Copyright (c) 2026 Zeeshan Ali Khan & zcheapstr contributors"
+    },
+    {
+      "name": "zeroize",
+      "version": "1.9.1",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/RustCrypto/utils"
+    },
+    {
+      "name": "zvariant",
+      "version": "5.15.1",
+      "license": "MIT",
+      "repository": "https://github.com/z-galaxy/zbus",
+      "copyright": "Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors"
+    },
+    {
+      "name": "zvariant_utils",
+      "version": "4.2.0",
+      "license": "MIT",
+      "repository": "https://github.com/z-galaxy/zbus",
+      "copyright": null
+    }
+  ],
+  "vendoredC": [
+    {
+      "name": "libdbus",
+      "version": "1.14.4",
+      "license": "AFL-2.1 OR GPL-2.0-or-later",
+      "elected": "GPL-2.0-or-later",
+      "targets": [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu"
+      ],
+      "vendoredBy": "libdbus-sys@0.2.7",
+      "source": "https://crates.io/crates/libdbus-sys/0.2.7",
+      "derivation": "The 47 C files libdbus-sys 0.2.7's build_vendored.rs compiles for Linux (its SOURCE_FILES, INTERNAL_FILES and UNIX_SOURCES lists), read from the crate as published on crates.io. `copyrights` is every Copyright line in the header comment of those files, deduplicated and sorted; `notices` quotes the further notices in their source: the Tcl license in dbus-hash.c, the libassuan attribution in dbus-nonce.c and the Python Cryptography Toolkit notice in dbus-sha.c. Cross-checked against LICENSE.third-party.md in @napi-rs/keyring-linux-x64-gnu 2.1.2, which lists the same 47 files.",
+      "copyrights": [
+        "Copyright (C) 1995 A. M. Kuchling",
+        "Copyright (C) 2002  Red Hat, Inc.",
+        "Copyright (C) 2002 CodeFactory AB",
+        "Copyright (C) 2002, 2003  CodeFactory AB",
+        "Copyright (C) 2002, 2003  Red Hat Inc.",
+        "Copyright (C) 2002, 2003  Red Hat, Inc.",
+        "Copyright (C) 2002, 2003 Red Hat Inc.",
+        "Copyright (C) 2002, 2003, 2004  Red Hat Inc.",
+        "Copyright (C) 2002, 2003, 2004 Red Hat Inc.",
+        "Copyright (C) 2002, 2003, 2004, 2005  Red Hat Inc.",
+        "Copyright (C) 2002, 2003, 2004, 2005 Red Hat Inc.",
+        "Copyright (C) 2002, 2003, 2004, 2006  Red Hat Inc.",
+        "Copyright (C) 2002, 2003, 2006  Red Hat, Inc.",
+        "Copyright (C) 2002, 2003, 2006 Red Hat Inc.",
+        "Copyright (C) 2002, 2004  Red Hat Inc.",
+        "Copyright (C) 2002-2006  Red Hat Inc.",
+        "Copyright (C) 2003  CodeFactory AB",
+        "Copyright (C) 2003  Red Hat Inc.",
+        "Copyright (C) 2003  Red Hat, Inc.",
+        "Copyright (C) 2003 CodeFactory AB",
+        "Copyright (C) 2003 Red Hat Inc.",
+        "Copyright (C) 2003 Red Hat, Inc.",
+        "Copyright (C) 2003, 2004  Red Hat Inc.",
+        "Copyright (C) 2003, 2004  Red Hat, Inc.",
+        "Copyright (C) 2003, 2004, 2005 Red Hat, Inc.",
+        "Copyright (C) 2003, 2005  Red Hat Inc.",
+        "Copyright (C) 2004, 2005 Red Hat, Inc.",
+        "Copyright (C) 2004-2007  Red Hat, Inc.",
+        "Copyright (C) 2005  Red Hat, Inc.",
+        "Copyright (C) 2005 Red Hat, Inc.",
+        "Copyright (C) 2006  Red Hat, Inc.",
+        "Copyright (C) 2006 Red Hat, Inc.",
+        "Copyright (C) 2007  Ralf Habacker",
+        "Copyright (C) 2007 Red Hat Inc.",
+        "Copyright (C) 2009 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.net",
+        "Copyright (C) 2011-2012  Collabora Ltd.",
+        "Copyright (C) 2013  Chengwei Yang / Intel",
+        "Copyright 1991-1993 The Regents of the University of California.",
+        "Copyright 1994 Sun Microsystems, Inc.",
+        "Copyright 2002-2005 Red Hat, Inc.",
+        "Copyright 2002-2007 Red Hat, Inc.",
+        "Copyright 2003 CodeFactory AB",
+        "Copyright 2003 Joe Shaw",
+        "Copyright 2003 Mark McLoughlin",
+        "Copyright 2004 Michael Meeks",
+        "Copyright 2006 Sjoerd Simons",
+        "Copyright 2006-2014 Ralf Habacker <ralf.habacker@freenet.de>",
+        "Copyright 2006-2018 Collabora Ltd.",
+        "Copyright 2007 Allison Lortie",
+        "Copyright 2010 Fridrich Štrba",
+        "Copyright 2011 Roberto Guido",
+        "Copyright 2013 Chengwei Yang / Intel",
+        "Copyright 2016 Ralf Habacker",
+        "Copyright 2017 Endless Mobile, Inc.",
+        "Copyright © 2011 Nokia Corporation"
+      ],
+      "notices": [
+        {
+          "file": "vendor/dbus/dbus/dbus-hash.c",
+          "text": "The following copyright applies to code from the Tcl distribution.\n\nCopyright (c) 1991-1993 The Regents of the University of California.\nCopyright (c) 1994 Sun Microsystems, Inc.\n\nThis software is copyrighted by the Regents of the University of\nCalifornia, Sun Microsystems, Inc., Scriptics Corporation, and\nother parties.  The following terms apply to all files associated\nwith the software unless explicitly disclaimed in individual files.\n\nThe authors hereby grant permission to use, copy, modify,\ndistribute, and license this software and its documentation for any\npurpose, provided that existing copyright notices are retained in\nall copies and that this notice is included verbatim in any\ndistributions. No written agreement, license, or royalty fee is\nrequired for any of the authorized uses.  Modifications to this\nsoftware may be copyrighted by their authors and need not follow\nthe licensing terms described here, provided that the new terms are\nclearly indicated on the first page of each file where they apply.\n\nIN NO EVENT SHALL THE AUTHORS OR DISTRIBUTORS BE LIABLE TO ANY\nPARTY FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL\nDAMAGES ARISING OUT OF THE USE OF THIS SOFTWARE, ITS DOCUMENTATION,\nOR ANY DERIVATIVES THEREOF, EVEN IF THE AUTHORS HAVE BEEN ADVISED\nOF THE POSSIBILITY OF SUCH DAMAGE.\n\nTHE AUTHORS AND DISTRIBUTORS SPECIFICALLY DISCLAIM ANY WARRANTIES,\nINCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND\nNON-INFRINGEMENT.  THIS SOFTWARE IS PROVIDED ON AN \"AS IS\" BASIS,\nAND THE AUTHORS AND DISTRIBUTORS HAVE NO OBLIGATION TO PROVIDE\nMAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.\n\nGOVERNMENT USE: If you are acquiring this software on behalf of the\nU.S. government, the Government shall have only \"Restricted Rights\"\nin the software and related documentation as defined in the Federal\nAcquisition Regulations (FARs) in Clause 52.227.19 (c) (2).  If you\nare acquiring the software on behalf of the Department of Defense,\nthe software shall be classified as \"Commercial Computer Software\"\nand the Government shall have only \"Restricted Rights\" as defined\nin Clause 252.227-7013 (c) (1) of DFARs.  Notwithstanding the\nforegoing, the authors grant the U.S. Government and others acting\nin its behalf permission to use and distribute the software in\naccordance with the terms specified in this license."
+        },
+        {
+          "file": "vendor/dbus/dbus/dbus-nonce.c",
+          "text": "major sections of this file are modified code from libassuan, (C) FSF"
+        },
+        {
+          "file": "vendor/dbus/dbus/dbus-sha.c",
+          "text": "sha.h : Implementation of the Secure Hash Algorithm\n\nPart of the Python Cryptography Toolkit, version 1.0.0\n\nCopyright (C) 1995, A.M. Kuchling\n\nDistribute and use freely; there are no restrictions on further\ndissemination and usage except those imposed by the laws of your\ncountry of residence."
+        }
+      ]
+    }
+  ]
+}
