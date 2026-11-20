@@ -184,14 +184,24 @@ function realNewestStableTag() {
   return null;
 }
 
+function describeSpawnFailure(result) {
+  const outcome = result.signal
+    ? `killed by ${result.signal}`
+    : result.status === null
+      ? 'no exit status'
+      : `exit ${result.status}`;
+  const detail = [result.error?.message, String(result.stderr ?? '').trim()]
+    .filter(Boolean)
+    .join('; ');
+  return detail ? `${outcome} (${detail})` : outcome;
+}
+
 export function makeIsInStable(stable, git = (args) => spawnSync('git', args, { encoding: 'utf8', env: gitCleanEnv() })) {
   return (sha) => {
     const ancestry = git(['merge-base', '--is-ancestor', sha, stable]);
     if (ancestry.status === 0) return true;
     if (ancestry.status !== 1) {
-      throw new Error(
-        `git merge-base --is-ancestor ${sha} ${stable} failed (exit ${ancestry.status}): ${ancestry.error?.message ?? String(ancestry.stderr || '').trim()}`,
-      );
+      throw new Error(`git merge-base --is-ancestor ${sha} ${stable} failed: ${describeSpawnFailure(ancestry)}`);
     }
     const equivalent = git(['cherry', stable, sha, `${sha}^`]);
     if (equivalent.status !== 0) return false;

@@ -571,8 +571,28 @@ describe('listPrebuildRuns', () => {
         },
         sleep: () => {},
       }),
-    ).toThrow(/failed after 3 attempts: API rate limit exceeded/);
+    ).toThrow(/failed after 3 attempts: failed \(exit 1\): API rate limit exceeded/);
     expect(calls).toBe(3);
+  });
+
+  test('names the signal when gh is killed by one, and keeps its stderr', () => {
+    const bin = mkdtempSync(join(tmpdir(), 'ok-select-prebuild-killed-gh-'));
+    try {
+      const shim = join(bin, 'gh');
+      writeFileSync(shim, '#!/bin/sh\necho "fatal: out of memory" >&2\nkill -KILL $$\n', {
+        mode: 0o755,
+      });
+      expect(() =>
+        listPrebuildRuns({
+          run: (_cmd, args, options) => spawnSync(shim, args, options),
+          sleep: () => {},
+        }),
+      ).toThrow(
+        'gh run list for native-config-prebuild.yml failed after 3 attempts: killed by signal SIGKILL: fatal: out of memory',
+      );
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
   });
 });
 

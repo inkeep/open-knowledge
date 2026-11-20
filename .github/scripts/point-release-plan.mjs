@@ -35,6 +35,18 @@ import {
 } from './shipped-fix-containment.mjs';
 import { parseChangeset } from './write-back.mjs';
 
+function describeSpawnFailure(result) {
+  const outcome = result.signal
+    ? `killed by ${result.signal}`
+    : result.status === null
+      ? 'no exit status'
+      : `exit ${result.status}`;
+  const detail = [result.error?.message, String(result.stderr ?? '').trim()]
+    .filter(Boolean)
+    .join('; ');
+  return detail ? `${outcome} (${detail})` : outcome;
+}
+
 function refuse(code, message) {
   return { ok: false, code, message };
 }
@@ -766,9 +778,7 @@ export function realIo() {
         const res = spawnSync('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}`], { encoding: 'utf8' });
         if (res.status === 0) return true;
         if (res.status === 1) return false;
-        throw new Error(
-          `git rev-parse --verify refs/tags/${tag} failed (exit ${res.status}): ${res.error?.message ?? String(res.stderr || '').trim()}`,
-        );
+        throw new Error(`git rev-parse --verify refs/tags/${tag} failed: ${describeSpawnFailure(res)}`);
       },
       changesetContent: (sha, id) => runGit(['show', `${sha}:.changeset/${id}.md`]),
       checkoutDetached: (sha) => void runGit(['checkout', '--detach', sha]),
@@ -812,9 +822,7 @@ export function realIo() {
         if (draft) args.push('--draft');
         const res = spawnSync('gh', args, { encoding: 'utf8' });
         if (res.status !== 0) {
-          throw new Error(
-            `gh release create ${tag} failed: ${res.error?.message ?? String(res.stderr || '').trim()}`,
-          );
+          throw new Error(`gh release create ${tag} failed: ${describeSpawnFailure(res)}`);
         }
       },
       dispatch: ({ repo, eventType, clientPayload }) => {
@@ -823,9 +831,7 @@ export function realIo() {
           input: JSON.stringify({ event_type: eventType, client_payload: clientPayload }),
         });
         if (res.status !== 0) {
-          throw new Error(
-            `gh dispatch ${eventType} to ${repo} failed: ${res.error?.message ?? String(res.stderr || '').trim()}`,
-          );
+          throw new Error(`gh dispatch ${eventType} to ${repo} failed: ${describeSpawnFailure(res)}`);
         }
       },
     },

@@ -1,8 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { delimiter, dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
 import { configureTestGitRepository } from '../test-support/configure-git-fixture.test-helper.ts';
 import { loadChangesets, maxReleaseType } from './changeset-versions.mjs';
@@ -557,5 +557,32 @@ describe('the promote job computes the stable version with no node_modules at al
     expect(res.status).toBe(1);
     expect(res.stderr).toMatch(/BUMP_VERDICTS is empty: the read-bumps job wrote no bump_verdicts output/);
     expect(res.outputs).toEqual({});
+  });
+});
+
+describe('a git killed by a signal', () => {
+  test.each([
+    ['runGit', "runGit(['rev-parse', 'HEAD'])", 'git rev-parse HEAD killed by signal SIGKILL: fatal: out of memory'],
+    [
+      'gitAt().isAncestor',
+      "gitAt().isAncestor('a', 'b')",
+      'git merge-base --is-ancestor a b killed by signal SIGKILL: fatal: out of memory',
+    ],
+  ])('%s names the signal and keeps the stderr', (_label, call, expected) => {
+    const bin = realpathSync(mkdtempSync(join(tmpdir(), 'stable-version-killed-git-')));
+    repos.push(bin);
+    writeFileSync(join(bin, 'git'), '#!/bin/sh\necho "fatal: out of memory" >&2\nkill -KILL $$\n', { mode: 0o755 });
+    const module = pathToFileURL(fileURLToPath(new URL('./compute-stable-version.mjs', import.meta.url))).href;
+    const res = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `const { runGit, gitAt } = await import(${JSON.stringify(module)}); try { ${call}; console.log('no error'); } catch (error) { console.log(error.message); }`,
+      ],
+      { cwd: bin, encoding: 'utf8', env: { ...gitCleanEnv(), PATH: `${bin}${delimiter}${process.env.PATH}` } },
+    );
+    expect(res.status, res.stderr).toBe(0);
+    expect(res.stdout.trim()).toBe(expected);
   });
 });
