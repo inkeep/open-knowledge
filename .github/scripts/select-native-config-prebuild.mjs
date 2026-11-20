@@ -83,7 +83,7 @@ export function listPrebuildRuns({
       const parsed = JSON.parse(String(res.stdout || '[]').trim() || '[]');
       return Array.isArray(parsed) ? parsed : [];
     }
-    lastFailure = res.error?.message ?? String(res.stderr || '').trim();
+    lastFailure = failureOf(res);
     if (attempt < LIST_ATTEMPTS) sleep(attempt * 1000);
   }
   throw new Error(
@@ -92,10 +92,13 @@ export function listPrebuildRuns({
 }
 
 function failureOf(res) {
-  if (res.error) return `failed to spawn: ${res.error.message}`;
-  if (res.signal) return `killed by signal ${res.signal}`;
-  const stderr = String(res.stderr || '').trim();
-  return `failed (exit ${res.status})${stderr ? `: ${stderr}` : ''}`;
+  const outcome = res.signal
+    ? `killed by signal ${res.signal}`
+    : res.status === null
+      ? 'failed to spawn'
+      : `failed (exit ${res.status})`;
+  const detail = [res.error?.message, String(res.stderr || '').trim()].filter(Boolean).join('; ');
+  return detail ? `${outcome}: ${detail}` : outcome;
 }
 
 function makeGitAnswer(run) {

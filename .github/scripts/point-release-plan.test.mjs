@@ -2072,6 +2072,41 @@ describe('the production entry points the release workflows run', () => {
     ]);
   });
 
+  test.each([
+    ['git.tagExists', 'tagExists', 'git rev-parse --verify refs/tags/v9.9.9 failed: killed by SIGKILL ('],
+    ['gh.createRelease', 'createRelease', 'gh release create v9.9.9 failed: killed by SIGKILL ('],
+    [
+      'gh.dispatch, whose unread input also fails with EPIPE,',
+      'dispatch',
+      'gh dispatch ok-release to inkeep/open-knowledge failed: killed by SIGKILL (spawnSync gh EPIPE; ',
+    ],
+  ])('realIo %s names the signal that killed its child, with its stderr', (_label, call, prefix) => {
+    const bin = scratch('point-release-killed-child-');
+    const shim = '#!/bin/sh\necho "fatal: out of memory" >&2\nkill -KILL $$\n';
+    writeFileSync(join(bin, 'git'), shim, { mode: 0o755 });
+    writeFileSync(join(bin, 'gh'), shim, { mode: 0o755 });
+    const calls = {
+      tagExists: "io.git.tagExists('v9.9.9')",
+      createRelease:
+        "io.gh.createRelease({ tag: 'v9.9.9', targetSha: 'a'.repeat(40), title: 't', draft: true, notes: 'n' })",
+      dispatch:
+        "io.gh.dispatch({ repo: 'inkeep/open-knowledge', eventType: 'ok-release', clientPayload: { notes: 'x'.repeat(1 << 20) } })",
+    };
+    const res = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `const { realIo } = await import(${JSON.stringify(pathToFileURL(SCRIPT).href)}); const io = realIo(); try { ${calls[call]}; console.log('no error'); } catch (error) { console.log(error.message); }`,
+      ],
+      { cwd: bin, encoding: 'utf8', env: { ...cleanEnv, PATH: `${bin}${delimiter}${cleanEnv.PATH}` } },
+    );
+    expect(res.status, res.stderr).toBe(0);
+    const message = res.stdout.trim();
+    expect(message.startsWith(prefix), message).toBe(true);
+    expect(message.endsWith('fatal: out of memory)'), message).toBe(true);
+  });
+
   test('fixture Git operations do not launch automatic maintenance', () => {
     const { root } = fixRepo('minor');
     expect(() => expectNoAutomaticGitMaintenance(root)).not.toThrow();

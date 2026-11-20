@@ -338,6 +338,18 @@ export function unpublishedBaseReason({ latestStableTag, publishedTags }) {
   );
 }
 
+function describeSpawnFailure(result) {
+  const outcome = result.signal
+    ? `killed by ${result.signal}`
+    : result.status === null
+      ? 'no exit status'
+      : `exit ${result.status}`;
+  const detail = [result.error?.message, String(result.stderr || result.stdout || '').trim()]
+    .filter(Boolean)
+    .join('; ');
+  return detail ? `${outcome} (${detail})` : outcome;
+}
+
 export function fetchReleaseListing(repo) {
   const res = spawnSync(
     'gh',
@@ -353,9 +365,7 @@ export function fetchReleaseListing(repo) {
     { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, timeout: 300_000 },
   );
   if (res.error || res.status !== 0) {
-    throw new Error(
-      `listing the releases of ${repo} failed: ${res.error?.message ?? String(res.stderr || res.stdout || '').trim()}`,
-    );
+    throw new Error(`listing the releases of ${repo} failed: ${describeSpawnFailure(res)}`);
   }
   return parseReleaseListing(res.stdout);
 }

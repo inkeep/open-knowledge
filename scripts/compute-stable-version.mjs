@@ -104,10 +104,20 @@ export function computePointReleaseVersion({ syntheticSha, latestStableTag, late
   return { version, tag: `v${version}`, latestStableVersion, addedIds, removedIds, bump };
 }
 
+function failureOf(res) {
+  const outcome = res.signal
+    ? `killed by signal ${res.signal}`
+    : res.status === null
+      ? 'failed to spawn'
+      : `failed (exit ${res.status})`;
+  const detail = [res.error?.message, String(res.stderr || '').trim()].filter(Boolean).join('; ');
+  return detail ? `${outcome}: ${detail}` : outcome;
+}
+
 export function runGit(args, cwd) {
   const res = spawnSync('git', args, { cwd, encoding: 'utf8', env: gitCleanEnv() });
   if (res.status !== 0) {
-    throw new Error(`git ${args.join(' ')} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`);
+    throw new Error(`git ${args.join(' ')} ${failureOf(res)}`);
   }
   return String(res.stdout || '');
 }
@@ -148,9 +158,7 @@ export function gitAt(cwd) {
       const res = spawnSync('git', ['merge-base', '--is-ancestor', a, b], { cwd, encoding: 'utf8', env: gitCleanEnv() });
       if (res.status === 0) return true;
       if (res.status === 1) return false;
-      throw new Error(
-        `git merge-base --is-ancestor ${a} ${b} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`,
-      );
+      throw new Error(`git merge-base --is-ancestor ${a} ${b} ${failureOf(res)}`);
     },
     changesetText: (sha, id) => runGit(['show', `${sha}:./.changeset/${id}.md`], cwd),
     stableTags: () =>

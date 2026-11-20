@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
 import { configureTestGitRepository } from '../../test-support/configure-git-fixture.test-helper.ts';
@@ -462,6 +462,25 @@ describe('the Release listing', () => {
     expect(run.stdout).toContain('#22 (v1.0.1)');
     expect(run.stdout).toContain('#33 (v1.0.1)');
     expect(readFileSync(summary, 'utf8')).toContain('fix: keep the notice reachable (#22)');
+  });
+
+  test('a gh killed by a signal is named by its signal, with its stderr', () => {
+    const bin = realpathSync(mkdtempSync(join(tmpdir(), 'ok-shipped-fix-killed-gh-')));
+    scratch.push(bin);
+    writeFileSync(join(bin, 'gh'), '#!/bin/sh\necho "fatal: out of memory" >&2\nkill -KILL $$\n', { mode: 0o755 });
+    const res = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `const { fetchReleaseListing } = await import(${JSON.stringify(pathToFileURL(SCRIPT).href)}); try { fetchReleaseListing('inkeep/fixture'); console.log('no error'); } catch (error) { console.log(error.message); }`,
+      ],
+      { cwd: bin, encoding: 'utf8', env: { ...gitCleanEnv(), PATH: `${bin}${delimiter}${process.env.PATH}` } },
+    );
+    expect(res.status, res.stderr).toBe(0);
+    expect(res.stdout.trim()).toBe(
+      'listing the releases of inkeep/fixture failed: killed by SIGKILL (fatal: out of memory)',
+    );
   });
 });
 

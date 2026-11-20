@@ -334,6 +334,20 @@ describe('makeIsInStable', () => {
     const broken = () => ({ status: 128, stdout: '', stderr: 'not a git repository' });
     expect(() => makeIsInStable('v1.0.0', broken)(laterOnMain)).toThrow(/merge-base/);
   });
+
+  test('an ancestry probe killed by a signal names the signal and keeps its stderr', () => {
+    const bin = mkdtempSync(join(tmpdir(), 'ok-bug-lane-killed-git-'));
+    try {
+      const shim = join(bin, 'git');
+      writeFileSync(shim, '#!/bin/sh\necho "fatal: out of memory" >&2\nkill -KILL $$\n', { mode: 0o755 });
+      const killed = (args) => spawnSync(shim, args, { encoding: 'utf8' });
+      expect(() => makeIsInStable('v1.0.0', killed)(laterOnMain)).toThrow(
+        `git merge-base --is-ancestor ${laterOnMain} v1.0.0 failed: killed by SIGKILL (fatal: out of memory)`,
+      );
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('readPendingBumps, run by the job that holds no credential', () => {
