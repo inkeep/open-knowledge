@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import afterPack, { assertAdHocSealCoversBundle } from '../../scripts/afterPack.mjs';
 import { writeHeaderOnlyAsar } from '../support/synthetic-asar.test-helper.ts';
 import { removeTempDirBestEffort } from '../support/temp-dir-cleanup.test-helper.ts';
+import { SOUND_ASAR, SOUND_DISK } from './packaged-bundle.test-helper.ts';
 
 vi.mock('@electron/fuses', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -84,17 +85,11 @@ function packedApp() {
   adHocMachO(spawnHelper);
   chmodSync(spawnHelper, 0o644);
   const resources = join(app, 'Contents/Resources');
-  for (const file of [
-    'cli/dist/native/index.js',
-    'cli/dist/native/native-config.darwin-arm64.node',
-    'app.asar.unpacked/node_modules/@inkeep/open-knowledge/dist/native/index.js',
-    'app.asar.unpacked/node_modules/@inkeep/open-knowledge/dist/native/native-config.darwin-arm64.node',
-    'locales/en/messages.json',
-  ]) {
+  for (const file of SOUND_DISK) {
     mkdirSync(dirname(join(resources, file)), { recursive: true });
     writeFileSync(join(resources, file), 'x');
   }
-  writeHeaderOnlyAsar(join(resources, 'app.asar'), ['package.json']);
+  writeHeaderOnlyAsar(join(resources, 'app.asar'), SOUND_ASAR);
   return { appOutDir, app, serverContents };
 }
 
