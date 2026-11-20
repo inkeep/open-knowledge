@@ -11,18 +11,22 @@ async function rewritePhases() {
   return { beforeFiles: rewrites.beforeFiles ?? [], afterFiles: rewrites.afterFiles ?? [] };
 }
 
-async function rewriteOf(pathname: string): Promise<string | null> {
-  const rules = (await rewritePhases()).beforeFiles;
+async function rewriteOf(
+  pathname: string,
+  phase: 'beforeFiles' | 'afterFiles' = 'beforeFiles',
+): Promise<string | null> {
+  const rules = (await rewritePhases())[phase];
 
   for (const rule of rules) {
     const params = getPathMatch(rule.source, { removeUnnamedParams: true, strict: true })(pathname);
     if (!params) continue;
-    return prepareDestination({
+    const { newUrl, parsedDestination } = prepareDestination({
       appendParamsToQuery: false,
       destination: rule.destination,
       params,
       query: {},
-    }).newUrl;
+    });
+    return `${parsedDestination.origin ?? ''}${newUrl}`;
   }
   return null;
 }
@@ -56,9 +60,22 @@ describe('docs Markdown rewrites', () => {
     expect(afterFiles.filter((rule) => rule.destination.startsWith('/llms.mdx'))).toEqual([]);
   });
 
-  test('keeps the PostHog proxy rules in afterFiles, in their existing order', async () => {
-    const { afterFiles } = await rewritePhases();
-    const sources = afterFiles.map((rule) => rule.source);
-    expect(sources).toEqual(['/ingest/static/:path*', '/ingest/array/:path*', '/ingest/:path*']);
+  test.each([
+    ['/e/', 'us.i.posthog.com'],
+    ['/i/v0/e/', 'us.i.posthog.com'],
+    ['/s/', 'us.i.posthog.com'],
+    ['/flags/', 'us.i.posthog.com'],
+    ['/array/phc_test123/config', 'us-assets.i.posthog.com'],
+  ])('proxies PostHog data at %s to %s', async (path, host) => {
+    expect(await rewriteOf(`/ingest${path}`, 'afterFiles')).toBe(`https://${host}${path}`);
+  });
+
+  test.each([
+    '/static/posthog-recorder.js',
+    '/array/phc_test123/config.js',
+    '/array/test-project/config',
+    '/decide/',
+  ])('does not proxy requests outside the PostHog data routes at %s', async (path) => {
+    expect(await rewriteOf(`/ingest${path}`, 'afterFiles')).toBeNull();
   });
 });
