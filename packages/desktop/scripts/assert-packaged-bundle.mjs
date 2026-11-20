@@ -57,6 +57,14 @@ export const REQUIRED_BUNDLE_PATHS = [
     pattern: /^locales\/en\/messages\.json$/,
     reason: "the main process's compiled menu catalog",
   },
+  {
+    pattern: /^LICENSE$/,
+    reason: "the About panel's LICENSE, at the Resources root",
+  },
+  {
+    pattern: /^THIRD_PARTY_NOTICES\.md$/,
+    reason: "the About panel's THIRD_PARTY_NOTICES.md, at the Resources root",
+  },
 ];
 
 export function findForbiddenBundlePaths(paths) {
@@ -100,7 +108,7 @@ export function assertPackagedBundle(resourcesDir) {
   ];
   if (problems.length === 0) return;
   throw new Error(
-    `[afterPack] the packaged app's Resources/ is not laid out the way its processes load it:\n${problems.join('\n')}\n` +
+    `[afterPack] the packaged app's Resources/ does not have the layout its processes and About panel expect:\n${problems.join('\n')}\n` +
       'Fix the `files` / `extraResources` / `asarUnpack` rules in electron-builder.yml.',
   );
 }

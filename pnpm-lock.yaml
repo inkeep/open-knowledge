@@ -206,6 +206,9 @@ importers:
       smol-toml:
         specifier: ^1.6.1
         version: 1.7.0
+      tm-grammars:
+        specifier: 1.31.0
+        version: 1.31.0
       ts-morph:
         specifier: ^28.0.0
         version: 28.0.0
@@ -11695,6 +11698,9 @@ packages:
   tldts@7.4.8:
     resolution: {integrity: sha512-htwgN/8KRB3z3vnC0BOETVh2m499g5GmyTK9Wq5JBLX3FNz6tSBveAd+fQhzy9hkjif8vy2jwDMR1sGhLtZl2A==}
     hasBin: true
+
+  tm-grammars@1.31.0:
+    resolution: {integrity: sha512-KVMsyjjf7tgDAWG5IyQMYFlfZB3UQRTDDK2TY1WdQe0tmvOURLSif+jOiRUQ4g3Rn0Ef7Mw+e7Zmq+ZllUGl+g==}
 
   tmp-promise@3.0.3:
     resolution: {integrity: sha512-RwM7MoPojPxsOBYnyd2hy0bxtIlVrihNs9pj5SUvY8Zz1sQcQG2tG1hSr8PDxfgEB8RNKDhqbIlroIarSNDNsQ==}
@@ -23774,6 +23780,8 @@ snapshots:
   tldts@7.4.8:
     dependencies:
       tldts-core: 7.4.8
+
+  tm-grammars@1.31.0: {}
 
   tmp-promise@3.0.3:
     dependencies:

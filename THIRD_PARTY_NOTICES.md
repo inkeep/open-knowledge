@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-`@inkeep/open-knowledge` (npm CLI) and `@inkeep/open-knowledge-desktop` (Electron app) bundle source code from the third-party packages listed below. Each package is redistributed under its own license; the relevant copyright notice and license text are reproduced here as required.
+`@inkeep/open-knowledge` (npm CLI) and `@inkeep/open-knowledge-desktop` (Electron app) bundle source code from the third-party packages listed below, each redistributed under its own license. Some of these packages also carry material under separate terms, credited in its own section: fonts under "Fonts shipped inside other packages", libraries compiled into native addons under "Libraries compiled into bundled native addons", and syntax grammars under "TextMate grammars bundled by Shiki", which also lists the grammars that have no license upstream. Where a license requires its copyright notice and license text to accompany the software, they are reproduced here.
 
 This file is generated. **Do not edit by hand.** Regenerate with `pnpm run notices` from the repo root, then commit the result.
 
@@ -210,9 +210,11 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ---
 
-## LGPL-3.0 — transitive optional binary
+## LGPL-3.0 — transitive optional dependency
 
-`node-liblzma`@2.2.0 is an **optional** transitive dependency of `just-bash`, used by `@inkeep/open-knowledge` for sandboxed shell execution. The package is licensed under LGPL-3.0. For the npm CLI tarball, `node-liblzma` is not bundled — it is resolved from the public npm registry at install time on platforms where the native build succeeds. For the Electron desktop `.app`, whether the binary lands in `Resources/app.asar.unpacked/` depends on the build host's toolchain at packaging time; if present, the binary ships subject to LGPL-3.0 obligations. Upstream source: https://github.com/Manawyrm/node-liblzma. Corresponding source can be obtained from upstream per LGPL §6.
+`node-liblzma`@2.2.0 is an **optional** transitive dependency of `just-bash`, used by `@inkeep/open-knowledge` for sandboxed shell execution. The package is licensed under LGPL-3.0. Its JavaScript is bundled into the CLI's `dist/` (the `lzma-*.mjs` modules), so it ships in the npm CLI tarball and in every desktop package, which copies that `dist/`. The desktop packages also carry the `node-liblzma` package itself: the Windows and Linux packages inside `app.asar`, and the macOS app unpacked, with its separately loaded native addon, in `Contents/Resources/app.asar.unpacked/node_modules/node-liblzma/`. The addon contains no liblzma code of its own: it resolves liblzma at run time (the arm64 build links Homebrew's `xz`), so it loads only where that library is installed. The npm CLI tarball and the Windows and Linux desktop packages do not include the addon. Corresponding source for the bundled JavaScript and the addon: https://github.com/oorabona/node-liblzma/tree/v2.2.0.
+
+Copyright (C) 2014-2015 Olivier Orabona <olivier.orabona@gmail.com>
 
 The full text of the GNU Lesser General Public License v3.0 follows.
 
@@ -776,7 +778,7 @@ Copyright 2025 Pierre Computer Company
 
 NOTICE:
 
-```
+````
 This theme was built on top of
 [GitHub's Visual Studio Code Theme](https://github.com/primer/github-vscode-theme),
 reusing its technique and build tooling, which we have since iterated on for
@@ -809,7 +811,7 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
-```
+````
 
 ### `@pierre/theming@1.0.1`
 
@@ -821,7 +823,7 @@ Copyright 2025 Pierre Computer Company
 
 NOTICE:
 
-```
+````
 This project includes some code derived from
 [@headless-tree/core](https://github.com/lukasbach/headless-tree).
 
@@ -857,7 +859,7 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
-```
+````
 
 ### `baseline-browser-mapping@2.10.43`
 Homepage: https://github.com/web-platform-dx/baseline-browser-mapping
@@ -1026,7 +1028,7 @@ Copyright 2025 OpenAI
 
 ## Bundled Rust crates (native-config addon)
 
-The native harness-config addon's `.node` binaries statically link the Rust crates below. Each is redistributed under the license shown; every license here is MIT, Apache-2.0, or ISC, whose full texts are reproduced elsewhere in this document (for dual- or multi-licensed crates OpenKnowledge elects a reproduced license). Compile-time-only crates (proc-macros, build scripts) and test-only dev-dependencies are not listed — their code is not present in the distributed binary. Versions track `packages/native-config/Cargo.lock`.
+The native harness-config addon's `.node` binaries statically link the Rust crates below. Each is redistributed under the license shown; every license here is MIT, Apache-2.0, ISC or BSD-3-Clause, whose full texts are reproduced elsewhere in this document (for dual- or multi-licensed crates OpenKnowledge elects a reproduced license). A crate with no Apache-2.0 option shows the copyright line from its license file. Compile-time-only crates (proc-macros, build scripts) and test-only dev-dependencies are not listed — their code is not present in the distributed binary. Versions track `packages/native-config/Cargo.lock`.
 
 - `bitflags@2.13.0` — MIT OR Apache-2.0 — https://github.com/bitflags/bitflags
 - `cfg-if@1.0.4` — MIT OR Apache-2.0 — https://github.com/rust-lang/cfg-if
@@ -1043,25 +1045,4446 @@ The native harness-config addon's `.node` binaries statically link the Rust crat
 - `hashbrown@0.17.1` — MIT OR Apache-2.0 — https://github.com/rust-lang/hashbrown
 - `indexmap@2.14.0` — Apache-2.0 OR MIT — https://github.com/indexmap-rs/indexmap
 - `itoa@1.0.18` — MIT OR Apache-2.0 — https://github.com/dtolnay/itoa
-- `libloading@0.9.0` — ISC — https://github.com/nagisa/rust_libloading
-- `memchr@2.8.2` — Unlicense OR MIT — https://github.com/BurntSushi/memchr
-- `napi@3.9.4` — MIT — https://github.com/napi-rs/napi-rs
-- `napi-sys@3.2.2` — MIT — https://github.com/napi-rs/napi-rs
+- `libloading@0.9.0` — ISC — https://github.com/nagisa/rust_libloading — Copyright © 2015, Simonas Kazlauskas
+- `memchr@2.8.2` — Unlicense OR MIT — https://github.com/BurntSushi/memchr — Copyright (c) 2015 Andrew Gallant
+- `napi@3.9.4` — MIT — https://github.com/napi-rs/napi-rs — Copyright (c) 2020-present LongYinan
+- `napi-sys@3.2.2` — MIT — https://github.com/napi-rs/napi-rs — Copyright (c) 2020-present LongYinan
 - `nohash-hasher@0.2.0` — Apache-2.0 OR MIT — https://github.com/paritytech/nohash-hasher
 - `pin-project-lite@0.2.17` — Apache-2.0 OR MIT — https://github.com/taiki-e/pin-project-lite
 - `rustc-hash@2.1.2` — Apache-2.0 OR MIT — https://github.com/rust-lang/rustc-hash
 - `serde@1.0.228` — MIT OR Apache-2.0 — https://github.com/serde-rs/serde
 - `serde_core@1.0.228` — MIT OR Apache-2.0 — https://github.com/serde-rs/serde
 - `serde_json@1.0.150` — MIT OR Apache-2.0 — https://github.com/serde-rs/json
-- `slab@0.4.12` — MIT — https://github.com/tokio-rs/slab
+- `slab@0.4.12` — MIT — https://github.com/tokio-rs/slab — Copyright (c) 2019 Carl Lerche
 - `toml_datetime@0.7.5+spec-1.1.0` — MIT OR Apache-2.0 — https://github.com/toml-rs/toml
 - `toml_edit@0.24.1+spec-1.1.0` — MIT OR Apache-2.0 — https://github.com/toml-rs/toml
 - `toml_parser@1.1.2+spec-1.1.0` — MIT OR Apache-2.0 — https://github.com/toml-rs/toml
 - `toml_writer@1.1.1+spec-1.1.0` — MIT OR Apache-2.0 — https://github.com/toml-rs/toml
 - `windows-link@0.2.1` — MIT OR Apache-2.0 — https://github.com/microsoft/windows-rs
-- `winnow@0.7.15` — MIT — https://github.com/winnow-rs/winnow
-- `winnow@1.0.3` — MIT — https://github.com/winnow-rs/winnow
-- `zmij@1.0.21` — MIT — https://github.com/dtolnay/zmij
+- `winnow@0.7.15` — MIT — https://github.com/winnow-rs/winnow — (the license file names no copyright holder)
+- `winnow@1.0.3` — MIT — https://github.com/winnow-rs/winnow — (the license file names no copyright holder)
+- `zmij@1.0.21` — MIT — https://github.com/dtolnay/zmij — (the license file names no copyright holder)
+
+---
+
+## Libraries compiled into bundled native addons
+
+The native addons below are listed elsewhere in this document under their package license. Their binaries also contain the libraries listed here, compiled in from source.
+
+### `zstd@1.5.6`, compiled into `@mongodb-js/zstd` 7.0.0
+Homepage: https://github.com/facebook/zstd
+
+Licensed under BSD-3-Clause OR GPL-2.0-only; OpenKnowledge distributes it under the BSD 3-Clause License, reproduced below from zstd's LICENSE. The zstd library is statically linked into the addon binary, which the macOS desktop app ships in `Contents/Resources/app.asar.unpacked/` and `Contents/Resources/cli/dist/assets/`. The npm CLI tarball and the Windows and Linux desktop packages do not include it.
+
+```
+BSD License
+
+For Zstandard software
+
+Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+ * Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+ * Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+ * Neither the name Facebook, nor Meta, nor the names of its contributors may
+   be used to endorse or promote products derived from this software without
+   specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+### Rust crates and C libraries in `@napi-rs/keyring` 2.1.2
+Homepage: https://github.com/Brooooooklyn/keyring-node/tree/v2.1.2
+
+The keyring addon's `.node` binaries statically link the Rust crates below, resolved from the addon's `Cargo.lock` for the targets whose binaries the desktop packages bundle (aarch64-apple-darwin, x86_64-pc-windows-msvc, aarch64-pc-windows-msvc, x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu). Each is redistributed under MIT, Apache-2.0, ISC or BSD-3-Clause, whose full texts are reproduced elsewhere in this document; for a crate offered under several licenses OpenKnowledge elects one of those. A crate with no Apache-2.0 option shows the copyright line from its license file. Compile-time-only crates are not listed.
+
+- `aes@0.8.4` — MIT OR Apache-2.0 — https://github.com/RustCrypto/block-ciphers
+- `aes@0.9.3` — MIT OR Apache-2.0 — https://github.com/RustCrypto/block-ciphers
+- `aho-corasick@1.1.5` — Unlicense OR MIT — https://github.com/BurntSushi/aho-corasick — Copyright (c) 2015 Andrew Gallant
+- `anyhow@1.0.104` — MIT OR Apache-2.0 — https://github.com/dtolnay/anyhow
+- `apple-native-keyring-store@1.0.2` — MIT OR Apache-2.0 — https://github.com/open-source-cooperative/apple-native-keyring-store
+- `async-broadcast@0.7.2` — MIT OR Apache-2.0 — https://github.com/smol-rs/async-broadcast
+- `async-channel@2.5.0` — Apache-2.0 OR MIT — https://github.com/smol-rs/async-channel
+- `async-executor@1.14.0` — Apache-2.0 OR MIT — https://github.com/smol-rs/async-executor
+- `async-io@2.6.0` — Apache-2.0 OR MIT — https://github.com/smol-rs/async-io
+- `async-lock@3.4.2` — Apache-2.0 OR MIT — https://github.com/smol-rs/async-lock
+- `async-process@2.5.0` — Apache-2.0 OR MIT — https://github.com/smol-rs/async-process
+- `async-signal@0.2.14` — Apache-2.0 OR MIT — https://github.com/smol-rs/async-signal
+- `async-task@4.7.1` — Apache-2.0 OR MIT — https://github.com/smol-rs/async-task
+- `atomic-waker@1.1.2` — Apache-2.0 OR MIT — https://github.com/smol-rs/atomic-waker
+- `bitflags@2.13.2` — MIT OR Apache-2.0 — https://github.com/bitflags/bitflags
+- `block-buffer@0.10.4` — MIT OR Apache-2.0 — https://github.com/RustCrypto/utils
+- `block-buffer@0.12.1` — MIT OR Apache-2.0 — https://github.com/RustCrypto/utils
+- `block-padding@0.3.3` — MIT OR Apache-2.0 — https://github.com/RustCrypto/utils
+- `block-padding@0.4.2` — MIT OR Apache-2.0 — https://github.com/RustCrypto/utils
+- `blocking@1.7.0` — Apache-2.0 OR MIT — https://github.com/smol-rs/blocking
+- `byteorder@1.5.0` — Unlicense OR MIT — https://github.com/BurntSushi/byteorder — Copyright (c) 2015 Andrew Gallant
+- `cbc@0.1.2` — MIT OR Apache-2.0 — https://github.com/RustCrypto/block-modes
+- `cbc@0.2.1` — MIT OR Apache-2.0 — https://github.com/RustCrypto/block-modes
+- `cfg-if@1.0.5` — MIT OR Apache-2.0 — https://github.com/rust-lang/cfg-if
+- `cipher@0.4.4` — MIT OR Apache-2.0 — https://github.com/RustCrypto/traits
+- `cipher@0.5.2` — MIT OR Apache-2.0 — https://github.com/RustCrypto/traits
+- `cmov@0.5.4` — Apache-2.0 OR MIT — https://github.com/RustCrypto/utils
+- `concurrent-queue@2.5.0` — Apache-2.0 OR MIT — https://github.com/smol-rs/concurrent-queue
+- `const-oid@0.10.2` — Apache-2.0 OR MIT — https://github.com/RustCrypto/formats
+- `core-foundation@0.10.1` — MIT OR Apache-2.0 — https://github.com/servo/core-foundation-rs
+- `core-foundation-sys@0.8.7` — MIT OR Apache-2.0 — https://github.com/servo/core-foundation-rs
+- `cpubits@0.1.1` — MIT OR Apache-2.0 — https://github.com/RustCrypto/utils
+- `cpufeatures@0.2.17` — MIT OR Apache-2.0 — https://github.com/RustCrypto/utils
+- `cpufeatures@0.3.1` — MIT OR Apache-2.0 — https://github.com/RustCrypto/utils
+- `crossbeam-utils@0.8.23` — MIT OR Apache-2.0 — https://github.com/crossbeam-rs/crossbeam
+- `crypto-common@0.1.7` — MIT OR Apache-2.0 — https://github.com/RustCrypto/traits
+- `crypto-common@0.2.2` — MIT OR Apache-2.0 — https://github.com/RustCrypto/traits
+- `ctor@1.0.13` — Apache-2.0 OR MIT — https://github.com/mmastrac/linktime
+- `ctutils@0.4.3` — Apache-2.0 OR MIT — https://github.com/RustCrypto/utils
+- `dbus@0.9.12` — Apache-2.0/MIT — https://github.com/diwic/dbus-rs
+- `dbus-secret-service@4.1.0` — MIT OR Apache-2.0 — https://github.com/brotskydotcom/dbus-secret-service
+- `dbus-secret-service-keyring-store@1.0.1` — MIT OR Apache-2.0 — https://github.com/open-source-cooperative/dbus-secret-service-keyring-store
+- `digest@0.10.7` — MIT OR Apache-2.0 — https://github.com/RustCrypto/traits
+- `digest@0.11.3` — MIT OR Apache-2.0 — https://github.com/RustCrypto/traits
+- `endi@1.1.1` — MIT — https://github.com/zeenix/endi — (the license file names no copyright holder)
+- `enumflags2@0.7.12` — MIT OR Apache-2.0 — https://github.com/meithecatte/enumflags2
+- `errno@0.3.14` — MIT OR Apache-2.0 — https://github.com/lambda-fairy/rust-errno
+- `event-listener@5.4.2` — Apache-2.0 OR MIT — https://github.com/smol-rs/event-listener
+- `event-listener-strategy@0.5.4` — Apache-2.0 OR MIT — https://github.com/smol-rs/event-listener-strategy
+- `fastrand@2.5.0` — Apache-2.0 OR MIT — https://github.com/smol-rs/fastrand
+- `futures@0.3.34` — MIT OR Apache-2.0 — https://github.com/rust-lang/futures-rs
+- `futures-channel@0.3.34` — MIT OR Apache-2.0 — https://github.com/rust-lang/futures-rs
+- `futures-core@0.3.34` — MIT OR Apache-2.0 — https://github.com/rust-lang/futures-rs
+- `futures-executor@0.3.34` — MIT OR Apache-2.0 — https://github.com/rust-lang/futures-rs
+- `futures-io@0.3.34` — MIT OR Apache-2.0 — https://github.com/rust-lang/futures-rs
+- `futures-lite@2.6.1` — Apache-2.0 OR MIT — https://github.com/smol-rs/futures-lite
+- `futures-sink@0.3.34` — MIT OR Apache-2.0 — https://github.com/rust-lang/futures-rs
+- `futures-task@0.3.34` — MIT OR Apache-2.0 — https://github.com/rust-lang/futures-rs
+- `futures-util@0.3.34` — MIT OR Apache-2.0 — https://github.com/rust-lang/futures-rs
+- `generic-array@0.14.7` — MIT — https://github.com/fizyk20/generic-array — Copyright (c) 2015 Bartłomiej Kamiński
+- `getrandom@0.4.3` — MIT OR Apache-2.0 — https://github.com/rust-random/getrandom
+- `hex@0.4.3` — MIT OR Apache-2.0 — https://github.com/KokaKiwi/rust-hex
+- `hkdf@0.12.4` — MIT OR Apache-2.0 — https://github.com/RustCrypto/KDFs
+- `hkdf@0.13.0` — MIT OR Apache-2.0 — https://github.com/RustCrypto/KDFs
+- `hmac@0.12.1` — MIT OR Apache-2.0 — https://github.com/RustCrypto/MACs
+- `hmac@0.13.0` — MIT OR Apache-2.0 — https://github.com/RustCrypto/MACs
+- `hybrid-array@0.4.15` — MIT OR Apache-2.0 — https://github.com/RustCrypto/hybrid-array
+- `inout@0.1.4` — MIT OR Apache-2.0 — https://github.com/RustCrypto/utils
+- `inout@0.2.4` — MIT OR Apache-2.0 — https://github.com/RustCrypto/utils
+- `keyring-core@1.0.1` — MIT OR Apache-2.0 — https://github.com/open-source-cooperative/keyring-core
+- `libc@0.2.191` — MIT OR Apache-2.0 — https://github.com/rust-lang/libc
+- `libdbus-sys@0.2.7` — Apache-2.0/MIT — https://github.com/diwic/dbus-rs
+- `libloading@0.9.0` — ISC — https://github.com/nagisa/rust_libloading — Copyright © 2015, Simonas Kazlauskas
+- `linux-keyutils@0.2.5` — Apache-2.0 OR MIT — https://github.com/landhb/linux-keyutils
+- `linux-keyutils-keyring-store@1.0.0` — MIT OR Apache-2.0 — https://github.com/open-source-cooperative/linux-keyutils-keyring-store
+- `linux-raw-sys@0.12.1` — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT — https://github.com/sunfishcode/linux-raw-sys
+- `log@0.4.34` — MIT OR Apache-2.0 — https://github.com/rust-lang/log
+- `memchr@2.8.3` — Unlicense OR MIT — https://github.com/BurntSushi/memchr — Copyright (c) 2015 Andrew Gallant
+- `napi@3.14.2` — MIT — https://github.com/napi-rs/napi-rs — Copyright (c) 2020-present LongYinan
+- `napi-sys@3.4.0` — MIT — https://github.com/napi-rs/napi-rs — Copyright (c) 2020-present LongYinan
+- `nohash-hasher@0.2.0` — Apache-2.0 OR MIT — https://github.com/paritytech/nohash-hasher
+- `num@0.4.3` — MIT OR Apache-2.0 — https://github.com/rust-num/num
+- `num-bigint@0.4.8` — MIT OR Apache-2.0 — https://github.com/rust-num/num-bigint
+- `num-complex@0.4.6` — MIT OR Apache-2.0 — https://github.com/rust-num/num-complex
+- `num-integer@0.1.47` — MIT OR Apache-2.0 — https://github.com/rust-num/num-integer
+- `num-iter@0.1.46` — MIT OR Apache-2.0 — https://github.com/rust-num/num-iter
+- `num-rational@0.4.2` — MIT OR Apache-2.0 — https://github.com/rust-num/num-rational
+- `num-traits@0.2.19` — MIT OR Apache-2.0 — https://github.com/rust-num/num-traits
+- `once_cell@1.21.4` — MIT OR Apache-2.0 — https://github.com/matklad/once_cell
+- `ordered-stream@0.2.0` — MIT OR Apache-2.0 — https://github.com/danieldg/ordered-stream
+- `parking@2.2.1` — Apache-2.0 OR MIT — https://github.com/smol-rs/parking
+- `pin-project-lite@0.2.17` — Apache-2.0 OR MIT — https://github.com/taiki-e/pin-project-lite
+- `piper@0.2.5` — MIT OR Apache-2.0 — https://github.com/smol-rs/piper
+- `polling@3.11.0` — Apache-2.0 OR MIT — https://github.com/smol-rs/polling
+- `regex@1.13.1` — MIT OR Apache-2.0 — https://github.com/rust-lang/regex
+- `regex-automata@0.4.18` — MIT OR Apache-2.0 — https://github.com/rust-lang/regex
+- `regex-syntax@0.8.11` — MIT OR Apache-2.0 — https://github.com/rust-lang/regex
+- `rustc-hash@2.1.3` — Apache-2.0 OR MIT — https://github.com/rust-lang/rustc-hash
+- `rustix@1.1.5` — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT — https://github.com/bytecodealliance/rustix
+- `secret-service@5.2.0` — MIT OR Apache-2.0 — https://github.com/hwchen/secret-service-rs
+- `security-framework@3.7.0` — MIT OR Apache-2.0 — https://github.com/kornelski/rust-security-framework
+- `security-framework-sys@2.17.0` — MIT OR Apache-2.0 — https://github.com/kornelski/rust-security-framework
+- `serde@1.0.229` — MIT OR Apache-2.0 — https://github.com/serde-rs/serde
+- `serde_core@1.0.229` — MIT OR Apache-2.0 — https://github.com/serde-rs/serde
+- `sha2@0.10.9` — MIT OR Apache-2.0 — https://github.com/RustCrypto/hashes
+- `sha2@0.11.1` — MIT OR Apache-2.0 — https://github.com/RustCrypto/hashes
+- `signal-hook-registry@1.4.8` — MIT OR Apache-2.0 — https://github.com/vorner/signal-hook
+- `slab@0.4.12` — MIT — https://github.com/tokio-rs/slab — Copyright (c) 2019 Carl Lerche
+- `subtle@2.6.1` — BSD-3-Clause — https://github.com/dalek-cryptography/subtle — Copyright (c) 2016-2024 Isis Agora Lovecruft. All rights reserved. Copyright (c) 2016-2017 Isis Agora Lovecruft, Henry de Valence. All rights reserved.
+- `tracing@0.1.44` — MIT — https://github.com/tokio-rs/tracing — Copyright (c) 2019 Tokio Contributors
+- `tracing-core@0.1.36` — MIT — https://github.com/tokio-rs/tracing — Copyright (c) 2019 Tokio Contributors
+- `typenum@1.20.1` — MIT OR Apache-2.0 — https://github.com/paholg/typenum
+- `uuid@1.28.0` — Apache-2.0 OR MIT — https://github.com/uuid-rs/uuid
+- `windows@0.62.2` — MIT OR Apache-2.0 — https://github.com/microsoft/windows-rs
+- `windows-collections@0.3.2` — MIT OR Apache-2.0 — https://github.com/microsoft/windows-rs
+- `windows-core@0.62.2` — MIT OR Apache-2.0 — https://github.com/microsoft/windows-rs
+- `windows-future@0.3.2` — MIT OR Apache-2.0 — https://github.com/microsoft/windows-rs
+- `windows-link@0.2.1` — MIT OR Apache-2.0 — https://github.com/microsoft/windows-rs
+- `windows-native-keyring-store@1.1.0` — MIT OR Apache-2.0 — https://github.com/open-source-cooperative/windows-native-keyring-store
+- `windows-numerics@0.3.1` — MIT OR Apache-2.0 — https://github.com/microsoft/windows-rs
+- `windows-result@0.4.1` — MIT OR Apache-2.0 — https://github.com/microsoft/windows-rs
+- `windows-strings@0.5.1` — MIT OR Apache-2.0 — https://github.com/microsoft/windows-rs
+- `windows-sys@0.61.2` — MIT OR Apache-2.0 — https://github.com/microsoft/windows-rs
+- `windows-threading@0.2.1` — MIT OR Apache-2.0 — https://github.com/microsoft/windows-rs
+- `winnow@1.0.4` — MIT — https://github.com/winnow-rs/winnow — (the license file names no copyright holder)
+- `zbus@5.19.0` — MIT — https://github.com/z-galaxy/zbus — Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
+- `zbus_names@4.3.5` — MIT — https://github.com/z-galaxy/zbus — Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
+- `zcheapstr@1.1.0` — MIT — https://github.com/z-galaxy/zcheapstr — Copyright (c) 2026 Zeeshan Ali Khan & zcheapstr contributors
+- `zeroize@1.9.1` — Apache-2.0 OR MIT — https://github.com/RustCrypto/utils
+- `zvariant@5.15.1` — MIT — https://github.com/z-galaxy/zbus — Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
+- `zvariant_utils@4.2.0` — MIT — https://github.com/z-galaxy/zbus — (the license file names no copyright holder)
+
+`libdbus@1.14.4` is compiled from source into the x86_64-unknown-linux-gnu and aarch64-unknown-linux-gnu binaries by `libdbus-sys@0.2.7`. It is licensed under AFL-2.1 OR GPL-2.0-or-later; OpenKnowledge distributes it under GPL-2.0-or-later, whose text is reproduced in its own section. Corresponding source: https://crates.io/crates/libdbus-sys/0.2.7 (the crate's `vendor/dbus` directory). The source files compiled into the binaries carry these copyright notices:
+
+```
+Copyright (C) 1995 A. M. Kuchling
+Copyright (C) 2002  Red Hat, Inc.
+Copyright (C) 2002 CodeFactory AB
+Copyright (C) 2002, 2003  CodeFactory AB
+Copyright (C) 2002, 2003  Red Hat Inc.
+Copyright (C) 2002, 2003  Red Hat, Inc.
+Copyright (C) 2002, 2003 Red Hat Inc.
+Copyright (C) 2002, 2003, 2004  Red Hat Inc.
+Copyright (C) 2002, 2003, 2004 Red Hat Inc.
+Copyright (C) 2002, 2003, 2004, 2005  Red Hat Inc.
+Copyright (C) 2002, 2003, 2004, 2005 Red Hat Inc.
+Copyright (C) 2002, 2003, 2004, 2006  Red Hat Inc.
+Copyright (C) 2002, 2003, 2006  Red Hat, Inc.
+Copyright (C) 2002, 2003, 2006 Red Hat Inc.
+Copyright (C) 2002, 2004  Red Hat Inc.
+Copyright (C) 2002-2006  Red Hat Inc.
+Copyright (C) 2003  CodeFactory AB
+Copyright (C) 2003  Red Hat Inc.
+Copyright (C) 2003  Red Hat, Inc.
+Copyright (C) 2003 CodeFactory AB
+Copyright (C) 2003 Red Hat Inc.
+Copyright (C) 2003 Red Hat, Inc.
+Copyright (C) 2003, 2004  Red Hat Inc.
+Copyright (C) 2003, 2004  Red Hat, Inc.
+Copyright (C) 2003, 2004, 2005 Red Hat, Inc.
+Copyright (C) 2003, 2005  Red Hat Inc.
+Copyright (C) 2004, 2005 Red Hat, Inc.
+Copyright (C) 2004-2007  Red Hat, Inc.
+Copyright (C) 2005  Red Hat, Inc.
+Copyright (C) 2005 Red Hat, Inc.
+Copyright (C) 2006  Red Hat, Inc.
+Copyright (C) 2006 Red Hat, Inc.
+Copyright (C) 2007  Ralf Habacker
+Copyright (C) 2007 Red Hat Inc.
+Copyright (C) 2009 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.net
+Copyright (C) 2011-2012  Collabora Ltd.
+Copyright (C) 2013  Chengwei Yang / Intel
+Copyright 1991-1993 The Regents of the University of California.
+Copyright 1994 Sun Microsystems, Inc.
+Copyright 2002-2005 Red Hat, Inc.
+Copyright 2002-2007 Red Hat, Inc.
+Copyright 2003 CodeFactory AB
+Copyright 2003 Joe Shaw
+Copyright 2003 Mark McLoughlin
+Copyright 2004 Michael Meeks
+Copyright 2006 Sjoerd Simons
+Copyright 2006-2014 Ralf Habacker <ralf.habacker@freenet.de>
+Copyright 2006-2018 Collabora Ltd.
+Copyright 2007 Allison Lortie
+Copyright 2010 Fridrich Štrba
+Copyright 2011 Roberto Guido
+Copyright 2013 Chengwei Yang / Intel
+Copyright 2016 Ralf Habacker
+Copyright 2017 Endless Mobile, Inc.
+Copyright © 2011 Nokia Corporation
+```
+
+`vendor/dbus/dbus/dbus-hash.c` also carries this notice:
+
+```
+The following copyright applies to code from the Tcl distribution.
+
+Copyright (c) 1991-1993 The Regents of the University of California.
+Copyright (c) 1994 Sun Microsystems, Inc.
+
+This software is copyrighted by the Regents of the University of
+California, Sun Microsystems, Inc., Scriptics Corporation, and
+other parties.  The following terms apply to all files associated
+with the software unless explicitly disclaimed in individual files.
+
+The authors hereby grant permission to use, copy, modify,
+distribute, and license this software and its documentation for any
+purpose, provided that existing copyright notices are retained in
+all copies and that this notice is included verbatim in any
+distributions. No written agreement, license, or royalty fee is
+required for any of the authorized uses.  Modifications to this
+software may be copyrighted by their authors and need not follow
+the licensing terms described here, provided that the new terms are
+clearly indicated on the first page of each file where they apply.
+
+IN NO EVENT SHALL THE AUTHORS OR DISTRIBUTORS BE LIABLE TO ANY
+PARTY FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES ARISING OUT OF THE USE OF THIS SOFTWARE, ITS DOCUMENTATION,
+OR ANY DERIVATIVES THEREOF, EVEN IF THE AUTHORS HAVE BEEN ADVISED
+OF THE POSSIBILITY OF SUCH DAMAGE.
+
+THE AUTHORS AND DISTRIBUTORS SPECIFICALLY DISCLAIM ANY WARRANTIES,
+INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND
+NON-INFRINGEMENT.  THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS,
+AND THE AUTHORS AND DISTRIBUTORS HAVE NO OBLIGATION TO PROVIDE
+MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+
+GOVERNMENT USE: If you are acquiring this software on behalf of the
+U.S. government, the Government shall have only "Restricted Rights"
+in the software and related documentation as defined in the Federal
+Acquisition Regulations (FARs) in Clause 52.227.19 (c) (2).  If you
+are acquiring the software on behalf of the Department of Defense,
+the software shall be classified as "Commercial Computer Software"
+and the Government shall have only "Restricted Rights" as defined
+in Clause 252.227-7013 (c) (1) of DFARs.  Notwithstanding the
+foregoing, the authors grant the U.S. Government and others acting
+in its behalf permission to use and distribute the software in
+accordance with the terms specified in this license.
+```
+
+`vendor/dbus/dbus/dbus-nonce.c` also carries this notice:
+
+```
+major sections of this file are modified code from libassuan, (C) FSF
+```
+
+`vendor/dbus/dbus/dbus-sha.c` also carries this notice:
+
+```
+sha.h : Implementation of the Secure Hash Algorithm
+
+Part of the Python Cryptography Toolkit, version 1.0.0
+
+Copyright (C) 1995, A.M. Kuchling
+
+Distribute and use freely; there are no restrictions on further
+dissemination and usage except those imposed by the laws of your
+country of residence.
+```
+
+---
+
+## Fonts shipped inside other packages
+
+The packages below are listed elsewhere in this document under their package license, but the fonts they ship carry their own copyright notices and licenses, reproduced here. The React app frontend serves these fonts from `packages/cli/dist/public/`, and the desktop app also carries KaTeX's package in `app.asar`.
+
+### Fonts in `@excalidraw/excalidraw` 0.18.0-abeeaeb
+
+**Assistant** — SIL Open Font License, Version 1.1; the license text is reproduced at the end of this section.
+
+```
+Copyright 2020 The Assistant Project Authors (https://github.com/hafontia/Assistant).
+Copyright 2010 The Source Sans Pro Authors (https://github.com/adobe-fonts/source-sans-pro), with Reserved Font Name 'Source'. Source is a trademark of Adobe Systems Incorporated in the United States and/or other countries.
+```
+
+**Cascadia Code** — SIL Open Font License, Version 1.1; the license text is reproduced at the end of this section.
+
+```
+Copyright (c) 2019 - Present, Microsoft Corporation, with Reserved Font Name Cascadia Code.
+```
+
+**Comic Shanns** — MIT License; the permission notice is reproduced in the MIT License section of this document.
+
+```
+Copyright (c) 2018 Shannon Miwa
+Copyright (c) 2023 Jesus Gonzalez
+Copyright (c) 2023 Rodrigo Batista de Moraes
+Copyright (c) 2024 Fini Jastrow
+Copyright (c) 2024 Kyle Beechly
+```
+
+**Excalifont** — SIL Open Font License, Version 1.1; the license text is reproduced at the end of this section.
+
+```
+Copyright (c) 2024 by Excalidraw. All rights reserved.
+Excalifont is a trademark of Excalidraw.
+```
+
+**Liberation Sans 1.05** — Liberation font software license agreement: GNU GPL version 2 with the exceptions the agreement sets out. The agreement is reproduced at the end of this section and the GPL version 2 text in its own section. Upstream source: https://github.com/liberationfonts/liberation-1.7-fonts/blob/29a6b7d3e06db1539af34f5cee9a2d688c98e641/releases/liberation-fonts-1.05.tar.gz.
+
+```
+Digitized data copyright (c) 2007 Ascender Corporation. All rights reserved.
+Copyright (c) 2007 Red Hat, Inc. All rights reserved. LIBERATION is a trademark of Red Hat, Inc.
+```
+
+**Lilita One** — SIL Open Font License, Version 1.1; the license text is reproduced at the end of this section.
+
+```
+Copyright (c) 2011 Juan Montoreano (juan@remolacha.biz), with Reserved Font Names "Lilita One"
+```
+
+**Nunito** — SIL Open Font License, Version 1.1; the license text is reproduced at the end of this section.
+
+```
+Copyright 2014 The Nunito Project Authors (https://github.com/googlefonts/nunito)
+```
+
+**Virgil** — SIL Open Font License, Version 1.1; the license text is reproduced at the end of this section.
+
+```
+Copyright (c) 2011 by Your Own Font Foundry. All rights reserved.
+```
+
+**Xiaolai SC** — SIL Open Font License, Version 1.1; the license text is reproduced at the end of this section.
+
+```
+Copyright 2020-2024 LXGW (https://github.com/lxgw/kose-font)
+Copyright 2014 Nozomi Seto (https://ja.osdn.net/projects/setofont/)
+```
+
+### Fonts in `katex` 0.16.47
+
+**KaTeX fonts** — SIL Open Font License, Version 1.1; the license text is reproduced at the end of this section.
+
+```
+Copyright (c) 2009-2010, Design Science, Inc. (<www.mathjax.org>)
+Copyright (c) 2014-2018 Khan Academy (<www.khanacademy.org>),
+with Reserved Font Names KaTeX_AMS, KaTeX_Caligraphic, KaTeX_Fraktur, KaTeX_Main, KaTeX_Math, KaTeX_SansSerif, KaTeX_Script, KaTeX_Size1, KaTeX_Size2, KaTeX_Size3, KaTeX_Size4 and KaTeX_Typewriter.
+```
+
+### SIL Open Font License, Version 1.1
+
+```
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded,
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### Liberation font software license agreement
+
+```
+LICENSE AGREEMENT AND LIMITED PRODUCT WARRANTY
+LIBERATION FONT SOFTWARE
+
+This agreement governs the use of the Software and any updates to the Software, regardless of the delivery mechanism. Subject to the following terms, Red Hat, Inc. ("Red Hat") grants to the user ("Client") a license to this work pursuant to the GNU General Public License v.2 with the exceptions set forth below and such other terms as are set forth in this End User License Agreement.
+
+ 1. The Software and License Exception. LIBERATION font software  (the "Software") consists of TrueType-OpenType formatted font software for rendering LIBERATION typefaces in sans-serif, serif, and monospaced character styles. You are licensed to use, modify, copy, and distribute the Software pursuant to the GNU General Public License v.2 with the following exceptions:  
+
+  (a) As a special exception, if you create a document which uses this font, and embed this font or unaltered portions of this font into the document, this font does not by itself cause the resulting document to be covered by the GNU General Public License. This exception does not however invalidate any other reasons why the document might be covered by the GNU General Public License. If you modify this font, you may extend this exception to your version of the font, but you are not obligated to do so. If you do not wish to do so, delete this exception statement from your version.
+
+  (b) As a further exception, any distribution of the object code of the Software in a physical product must provide you the right to access and modify the source code for the Software and to reinstall that modified version of the Software in object code form on the same physical product on which you received it.
+
+ 2. Intellectual Property Rights. The Software and each of its components, including the source code, documentation, appearance, structure and organization are owned by Red Hat and others and are protected under copyright and other laws. Title to the Software and any component, or to any copy, modification, or merged portion shall remain with the aforementioned, subject to the applicable license. The "LIBERATION" trademark is a trademark of Red Hat, Inc. in the U.S. and other countries. This agreement does not permit Client to distribute modified versions of the Software using Red Hat's trademarks. If Client makes a redistribution of a modified version of the Software, then Client must modify the files names to remove any reference to the Red Hat trademarks and must not use the Red Hat trademarks in any way to reference or promote the modified Software. 
+
+ 3. Limited Warranty. To the maximum extent permitted under applicable law, the Software is provided and licensed "as is" without warranty of any kind, expressed or implied, including the implied warranties of merchantability, non-infringement or fitness for a particular purpose. Red Hat does not warrant that the functions contained in the Software will meet Client's requirements or that the operation of the Software will be entirely error free or appear precisely as described in the accompanying documentation. 
+
+ 4. Limitation of Remedies and Liability. To the maximum extent permitted by applicable law, Red Hat or any Red Hat authorized dealer will not be liable to Client for any incidental or consequential damages, including lost profits or lost savings arising out of the use or inability to use the Software, even if Red Hat or such dealer has been advised of the possibility of such damages. 
+
+ 5. General. If any provision of this agreement is held to be unenforceable, that shall not affect the enforceability of the remaining provisions. This agreement shall be governed by the laws of the State of North Carolina and of the United States, without regard to any conflict of laws provisions, except that the United Nations Convention on the International Sale of Goods shall not apply.
+Copyright © 2007 Red Hat, Inc. All rights reserved. LIBERATION is a trademark of Red Hat, Inc.
+```
+
+---
+
+## GNU General Public License, version 2
+
+The libraries and fonts above that are distributed under the GNU GPL version 2, or version 2 or later, are covered by the text below.
+
+```
+GNU GENERAL PUBLIC LICENSE
+                       Version 2, June 1991
+
+ Copyright (C) 1989, 1991 Free Software Foundation, Inc.,
+ 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+                            Preamble
+
+  The licenses for most software are designed to take away your
+freedom to share and change it.  By contrast, the GNU General Public
+License is intended to guarantee your freedom to share and change free
+software--to make sure the software is free for all its users.  This
+General Public License applies to most of the Free Software
+Foundation's software and to any other program whose authors commit to
+using it.  (Some other Free Software Foundation software is covered by
+the GNU Lesser General Public License instead.)  You can apply it to
+your programs, too.
+
+  When we speak of free software, we are referring to freedom, not
+price.  Our General Public Licenses are designed to make sure that you
+have the freedom to distribute copies of free software (and charge for
+this service if you wish), that you receive source code or can get it
+if you want it, that you can change the software or use pieces of it
+in new free programs; and that you know you can do these things.
+
+  To protect your rights, we need to make restrictions that forbid
+anyone to deny you these rights or to ask you to surrender the rights.
+These restrictions translate to certain responsibilities for you if you
+distribute copies of the software, or if you modify it.
+
+  For example, if you distribute copies of such a program, whether
+gratis or for a fee, you must give the recipients all the rights that
+you have.  You must make sure that they, too, receive or can get the
+source code.  And you must show them these terms so they know their
+rights.
+
+  We protect your rights with two steps: (1) copyright the software, and
+(2) offer you this license which gives you legal permission to copy,
+distribute and/or modify the software.
+
+  Also, for each author's protection and ours, we want to make certain
+that everyone understands that there is no warranty for this free
+software.  If the software is modified by someone else and passed on, we
+want its recipients to know that what they have is not the original, so
+that any problems introduced by others will not reflect on the original
+authors' reputations.
+
+  Finally, any free program is threatened constantly by software
+patents.  We wish to avoid the danger that redistributors of a free
+program will individually obtain patent licenses, in effect making the
+program proprietary.  To prevent this, we have made it clear that any
+patent must be licensed for everyone's free use or not licensed at all.
+
+  The precise terms and conditions for copying, distribution and
+modification follow.
+
+                    GNU GENERAL PUBLIC LICENSE
+   TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
+
+  0. This License applies to any program or other work which contains
+a notice placed by the copyright holder saying it may be distributed
+under the terms of this General Public License.  The "Program", below,
+refers to any such program or work, and a "work based on the Program"
+means either the Program or any derivative work under copyright law:
+that is to say, a work containing the Program or a portion of it,
+either verbatim or with modifications and/or translated into another
+language.  (Hereinafter, translation is included without limitation in
+the term "modification".)  Each licensee is addressed as "you".
+
+Activities other than copying, distribution and modification are not
+covered by this License; they are outside its scope.  The act of
+running the Program is not restricted, and the output from the Program
+is covered only if its contents constitute a work based on the
+Program (independent of having been made by running the Program).
+Whether that is true depends on what the Program does.
+
+  1. You may copy and distribute verbatim copies of the Program's
+source code as you receive it, in any medium, provided that you
+conspicuously and appropriately publish on each copy an appropriate
+copyright notice and disclaimer of warranty; keep intact all the
+notices that refer to this License and to the absence of any warranty;
+and give any other recipients of the Program a copy of this License
+along with the Program.
+
+You may charge a fee for the physical act of transferring a copy, and
+you may at your option offer warranty protection in exchange for a fee.
+
+  2. You may modify your copy or copies of the Program or any portion
+of it, thus forming a work based on the Program, and copy and
+distribute such modifications or work under the terms of Section 1
+above, provided that you also meet all of these conditions:
+
+    a) You must cause the modified files to carry prominent notices
+    stating that you changed the files and the date of any change.
+
+    b) You must cause any work that you distribute or publish, that in
+    whole or in part contains or is derived from the Program or any
+    part thereof, to be licensed as a whole at no charge to all third
+    parties under the terms of this License.
+
+    c) If the modified program normally reads commands interactively
+    when run, you must cause it, when started running for such
+    interactive use in the most ordinary way, to print or display an
+    announcement including an appropriate copyright notice and a
+    notice that there is no warranty (or else, saying that you provide
+    a warranty) and that users may redistribute the program under
+    these conditions, and telling the user how to view a copy of this
+    License.  (Exception: if the Program itself is interactive but
+    does not normally print such an announcement, your work based on
+    the Program is not required to print an announcement.)
+
+These requirements apply to the modified work as a whole.  If
+identifiable sections of that work are not derived from the Program,
+and can be reasonably considered independent and separate works in
+themselves, then this License, and its terms, do not apply to those
+sections when you distribute them as separate works.  But when you
+distribute the same sections as part of a whole which is a work based
+on the Program, the distribution of the whole must be on the terms of
+this License, whose permissions for other licensees extend to the
+entire whole, and thus to each and every part regardless of who wrote it.
+
+Thus, it is not the intent of this section to claim rights or contest
+your rights to work written entirely by you; rather, the intent is to
+exercise the right to control the distribution of derivative or
+collective works based on the Program.
+
+In addition, mere aggregation of another work not based on the Program
+with the Program (or with a work based on the Program) on a volume of
+a storage or distribution medium does not bring the other work under
+the scope of this License.
+
+  3. You may copy and distribute the Program (or a work based on it,
+under Section 2) in object code or executable form under the terms of
+Sections 1 and 2 above provided that you also do one of the following:
+
+    a) Accompany it with the complete corresponding machine-readable
+    source code, which must be distributed under the terms of Sections
+    1 and 2 above on a medium customarily used for software interchange; or,
+
+    b) Accompany it with a written offer, valid for at least three
+    years, to give any third party, for a charge no more than your
+    cost of physically performing source distribution, a complete
+    machine-readable copy of the corresponding source code, to be
+    distributed under the terms of Sections 1 and 2 above on a medium
+    customarily used for software interchange; or,
+
+    c) Accompany it with the information you received as to the offer
+    to distribute corresponding source code.  (This alternative is
+    allowed only for noncommercial distribution and only if you
+    received the program in object code or executable form with such
+    an offer, in accord with Subsection b above.)
+
+The source code for a work means the preferred form of the work for
+making modifications to it.  For an executable work, complete source
+code means all the source code for all modules it contains, plus any
+associated interface definition files, plus the scripts used to
+control compilation and installation of the executable.  However, as a
+special exception, the source code distributed need not include
+anything that is normally distributed (in either source or binary
+form) with the major components (compiler, kernel, and so on) of the
+operating system on which the executable runs, unless that component
+itself accompanies the executable.
+
+If distribution of executable or object code is made by offering
+access to copy from a designated place, then offering equivalent
+access to copy the source code from the same place counts as
+distribution of the source code, even though third parties are not
+compelled to copy the source along with the object code.
+
+  4. You may not copy, modify, sublicense, or distribute the Program
+except as expressly provided under this License.  Any attempt
+otherwise to copy, modify, sublicense or distribute the Program is
+void, and will automatically terminate your rights under this License.
+However, parties who have received copies, or rights, from you under
+this License will not have their licenses terminated so long as such
+parties remain in full compliance.
+
+  5. You are not required to accept this License, since you have not
+signed it.  However, nothing else grants you permission to modify or
+distribute the Program or its derivative works.  These actions are
+prohibited by law if you do not accept this License.  Therefore, by
+modifying or distributing the Program (or any work based on the
+Program), you indicate your acceptance of this License to do so, and
+all its terms and conditions for copying, distributing or modifying
+the Program or works based on it.
+
+  6. Each time you redistribute the Program (or any work based on the
+Program), the recipient automatically receives a license from the
+original licensor to copy, distribute or modify the Program subject to
+these terms and conditions.  You may not impose any further
+restrictions on the recipients' exercise of the rights granted herein.
+You are not responsible for enforcing compliance by third parties to
+this License.
+
+  7. If, as a consequence of a court judgment or allegation of patent
+infringement or for any other reason (not limited to patent issues),
+conditions are imposed on you (whether by court order, agreement or
+otherwise) that contradict the conditions of this License, they do not
+excuse you from the conditions of this License.  If you cannot
+distribute so as to satisfy simultaneously your obligations under this
+License and any other pertinent obligations, then as a consequence you
+may not distribute the Program at all.  For example, if a patent
+license would not permit royalty-free redistribution of the Program by
+all those who receive copies directly or indirectly through you, then
+the only way you could satisfy both it and this License would be to
+refrain entirely from distribution of the Program.
+
+If any portion of this section is held invalid or unenforceable under
+any particular circumstance, the balance of the section is intended to
+apply and the section as a whole is intended to apply in other
+circumstances.
+
+It is not the purpose of this section to induce you to infringe any
+patents or other property right claims or to contest validity of any
+such claims; this section has the sole purpose of protecting the
+integrity of the free software distribution system, which is
+implemented by public license practices.  Many people have made
+generous contributions to the wide range of software distributed
+through that system in reliance on consistent application of that
+system; it is up to the author/donor to decide if he or she is willing
+to distribute software through any other system and a licensee cannot
+impose that choice.
+
+This section is intended to make thoroughly clear what is believed to
+be a consequence of the rest of this License.
+
+  8. If the distribution and/or use of the Program is restricted in
+certain countries either by patents or by copyrighted interfaces, the
+original copyright holder who places the Program under this License
+may add an explicit geographical distribution limitation excluding
+those countries, so that distribution is permitted only in or among
+countries not thus excluded.  In such case, this License incorporates
+the limitation as if written in the body of this License.
+
+  9. The Free Software Foundation may publish revised and/or new versions
+of the General Public License from time to time.  Such new versions will
+be similar in spirit to the present version, but may differ in detail to
+address new problems or concerns.
+
+Each version is given a distinguishing version number.  If the Program
+specifies a version number of this License which applies to it and "any
+later version", you have the option of following the terms and conditions
+either of that version or of any later version published by the Free
+Software Foundation.  If the Program does not specify a version number of
+this License, you may choose any version ever published by the Free Software
+Foundation.
+
+  10. If you wish to incorporate parts of the Program into other free
+programs whose distribution conditions are different, write to the author
+to ask for permission.  For software which is copyrighted by the Free
+Software Foundation, write to the Free Software Foundation; we sometimes
+make exceptions for this.  Our decision will be guided by the two goals
+of preserving the free status of all derivatives of our free software and
+of promoting the sharing and reuse of software generally.
+
+                            NO WARRANTY
+
+  11. BECAUSE THE PROGRAM IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY
+FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW.  EXCEPT WHEN
+OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES
+PROVIDE THE PROGRAM "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED
+OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  THE ENTIRE RISK AS
+TO THE QUALITY AND PERFORMANCE OF THE PROGRAM IS WITH YOU.  SHOULD THE
+PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL NECESSARY SERVICING,
+REPAIR OR CORRECTION.
+
+  12. IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
+WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR
+REDISTRIBUTE THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES,
+INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING
+OUT OF THE USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED
+TO LOSS OF DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY
+YOU OR THIRD PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER
+PROGRAMS), EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.
+
+                     END OF TERMS AND CONDITIONS
+
+            How to Apply These Terms to Your New Programs
+
+  If you develop a new program, and you want it to be of the greatest
+possible use to the public, the best way to achieve this is to make it
+free software which everyone can redistribute and change under these terms.
+
+  To do so, attach the following notices to the program.  It is safest
+to attach them to the start of each source file to most effectively
+convey the exclusion of warranty; and each file should have at least
+the "copyright" line and a pointer to where the full notice is found.
+
+    <one line to give the program's name and a brief idea of what it does.>
+    Copyright (C) <year>  <name of author>
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License along
+    with this program; if not, write to the Free Software Foundation, Inc.,
+    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+Also add information on how to contact you by electronic and paper mail.
+
+If the program is interactive, make it output a short notice like this
+when it starts in an interactive mode:
+
+    Gnomovision version 69, Copyright (C) year name of author
+    Gnomovision comes with ABSOLUTELY NO WARRANTY; for details type `show w'.
+    This is free software, and you are welcome to redistribute it
+    under certain conditions; type `show c' for details.
+
+The hypothetical commands `show w' and `show c' should show the appropriate
+parts of the General Public License.  Of course, the commands you use may
+be called something other than `show w' and `show c'; they could even be
+mouse-clicks or menu items--whatever suits your program.
+
+You should also get your employer (if you work as a programmer) or your
+school, if any, to sign a "copyright disclaimer" for the program, if
+necessary.  Here is a sample; alter the names:
+
+  Yoyodyne, Inc., hereby disclaims all copyright interest in the program
+  `Gnomovision' (which makes passes at compilers) written by James Hacker.
+
+  <signature of Ty Coon>, 1 April 1989
+  Ty Coon, President of Vice
+
+This General Public License does not permit incorporating your program into
+proprietary programs.  If your program is a subroutine library, you may
+consider it more useful to permit linking proprietary applications with the
+library.  If this is what you want to do, use the GNU Lesser General
+Public License instead of this License.
+```
+
+---
+
+## TextMate grammars bundled by Shiki
+
+`@shikijs/langs` 3.23.0 ships the TextMate grammars below for syntax highlighting. Each grammar listed under a `License:` line comes from its own upstream project under that license. Copyright notices and license texts are taken from `tm-grammars` 1.31.0, which collects them, except for a grammar whose entry links where its license is stated. tm-grammars collects none for those, so each license statement is quoted from its upstream repository at the commit tm-grammars records: from the file linked, or from the files the quote names when the link is to the repository. A grammar its upstream repository calls a port of another project, and that states no license of its own, is credited under that project's license, with a link to the statement naming the port. An Apache-2.0 grammar whose upstream repository has a NOTICE file at the commit tm-grammars records also shows that file's text, quoted from the file linked. The MIT, ISC and Apache-2.0 texts are reproduced in their sections of this document, and the GPL-3.0 text, under which the GPL-3.0 grammars' upstream authors license them, is the shipped LICENSE file. Every other license text is reproduced with its grammars, as is any MIT license text or statement that names no copyright holder and any Apache-2.0 or GPL-3.0 text that differs from the standard one.
+
+### Grammars: `abap`, `applescript`, `erb`, `logo`, `mipsasm`, `po`, `ssh-config`, `toml`
+License: no SPDX identifier upstream; the license text follows
+
+- `abap` — https://github.com/pvl/abap.tmbundle/blob/92e17e62a9449d2a6f87bfb30b4f920986c24018/Syntaxes/ABAP.tmLanguage; license stated in https://github.com/pvl/abap.tmbundle/blob/92e17e62a9449d2a6f87bfb30b4f920986c24018/README.md
+- `applescript` — https://github.com/textmate/applescript.tmbundle/blob/4947cad7494eba084c21cfe04689b4efce96700f/Syntaxes/AppleScript.tmLanguage; license stated in https://github.com/textmate/applescript.tmbundle/blob/4947cad7494eba084c21cfe04689b4efce96700f/README.mdown
+- `erb` — https://github.com/textmate/ruby.tmbundle/blob/ecf0f1df23984bcff9b51552e35d9696cb0d9539/Syntaxes/HTML%20(Ruby%20-%20ERB).tmLanguage; license stated in https://github.com/textmate/ruby.tmbundle/blob/ecf0f1df23984bcff9b51552e35d9696cb0d9539/README.mdown
+- `logo` — https://github.com/textmate/logo.tmbundle/blob/3205e987ed2a2aa11accdd55a7d094832441f89c/Syntaxes/Logo.tmLanguage; license stated in https://github.com/textmate/logo.tmbundle/blob/3205e987ed2a2aa11accdd55a7d094832441f89c/README.mdown
+- `mipsasm` — https://github.com/textmate/mips.tmbundle/blob/eb7601016a109bf912a48a1c21988f3c4a59fb3a/Syntaxes/MIPS.tmLanguage; license stated in https://github.com/textmate/mips.tmbundle/blob/eb7601016a109bf912a48a1c21988f3c4a59fb3a/README.mdown
+- `po` — https://github.com/textmate/gettext.tmbundle/blob/08bb69558d82ada8d4f36b8869f871ce69014749/Syntaxes/Gettext.tmLanguage; license stated in https://github.com/textmate/gettext.tmbundle/blob/08bb69558d82ada8d4f36b8869f871ce69014749/README.mdown
+- `ssh-config` — https://github.com/textmate/ssh-config.tmbundle/blob/212a0000c50e0c877303b2c4fcead539d2af2670/Syntaxes/SSH-Config.tmLanguage; license stated in https://github.com/textmate/ssh-config.tmbundle/blob/212a0000c50e0c877303b2c4fcead539d2af2670/README.mdown
+- `toml` — https://github.com/textmate/toml.tmbundle/blob/e82b64c1e86396220786846201e9aa3f0a2d9ca2/Syntaxes/TOML.tmLanguage; license stated in https://github.com/textmate/toml.tmbundle/blob/e82b64c1e86396220786846201e9aa3f0a2d9ca2/README.mdown
+
+```
+If not otherwise specified (see below), files in this repository fall under the following license:
+
+	Permission to copy, use, modify, sell and distribute this
+	software is granted. This software is provided "as is" without
+	express or implied warranty, and with no claim as to its
+	suitability for any purpose.
+
+An exception is made for files in readable text which contain their own license information, or files where an accompanying file exists (in the same directory) with a “-license” suffix added to the base-name name of the original file, and an extension of txt, html, or similar. For example “tidy” is accompanied by “tidy-license.txt”.
+```
+
+### Grammars: `actionscript-3`
+License: Apache-2.0 — https://raw.githubusercontent.com/BowlerHatLLC/vscode-as3mxml/main/LICENSE
+
+- `actionscript-3` — https://github.com/BowlerHatLLC/vscode-as3mxml/blob/42f895fa03d4a71f590e2631b5e215cade7da1db/distribution/src/assembly/syntaxes/AS3.tmLanguage
+
+```
+Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+1.  Definitions.
+
+    "License" shall mean the terms and conditions for use, reproduction,
+    and distribution as defined by Sections 1 through 9 of this document.
+
+    "Licensor" shall mean the copyright owner or entity authorized by
+    the copyright owner that is granting the License.
+
+    "Legal Entity" shall mean the union of the acting entity and all
+    other entities that control, are controlled by, or are under common
+    control with that entity. For the purposes of this definition,
+    "control" means (i) the power, direct or indirect, to cause the
+    direction or management of such entity, whether by contract or
+    otherwise, or (ii) ownership of fifty percent (50%) or more of the
+    outstanding shares, or (iii) beneficial ownership of such entity.
+
+    "You" (or "Your") shall mean an individual or Legal Entity
+    exercising permissions granted by this License.
+
+    "Source" form shall mean the preferred form for making modifications,
+    including but not limited to software source code, documentation
+    source, and configuration files.
+
+    "Object" form shall mean any form resulting from mechanical
+    transformation or translation of a Source form, including but
+    not limited to compiled object code, generated documentation,
+    and conversions to other media types.
+
+    "Work" shall mean the work of authorship, whether in Source or
+    Object form, made available under the License, as indicated by a
+    copyright notice that is included in or attached to the work
+    (an example is provided in the Appendix below).
+
+    "Derivative Works" shall mean any work, whether in Source or Object
+    form, that is based on (or derived from) the Work and for which the
+    editorial revisions, annotations, elaborations, or other modifications
+    represent, as a whole, an original work of authorship. For the purposes
+    of this License, Derivative Works shall not include works that remain
+    separable from, or merely link (or bind by name) to the interfaces of,
+    the Work and Derivative Works thereof.
+
+    "Contribution" shall mean any work of authorship, including
+    the original version of the Work and any modifications or additions
+    to that Work or Derivative Works thereof, that is intentionally
+    submitted to Licensor for inclusion in the Work by the copyright owner
+    or by an individual or Legal Entity authorized to submit on behalf of
+    the copyright owner. For the purposes of this definition, "submitted"
+    means any form of electronic, verbal, or written communication sent
+    to the Licensor or its representatives, including but not limited to
+    communication on electronic mailing lists, source code control systems,
+    and issue tracking systems that are managed by, or on behalf of, the
+    Licensor for the purpose of discussing and improving the Work, but
+    excluding communication that is conspicuously marked or otherwise
+    designated in writing by the copyright owner as "Not a Contribution."
+
+    "Contributor" shall mean Licensor and any individual or Legal Entity
+    on behalf of whom a Contribution has been received by Licensor and
+    subsequently incorporated within the Work.
+
+2.  Grant of Copyright License. Subject to the terms and conditions of
+    this License, each Contributor hereby grants to You a perpetual,
+    worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+    copyright license to reproduce, prepare Derivative Works of,
+    publicly display, publicly perform, sublicense, and distribute the
+    Work and such Derivative Works in Source or Object form.
+
+3.  Grant of Patent License. Subject to the terms and conditions of
+    this License, each Contributor hereby grants to You a perpetual,
+    worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+    (except as stated in this section) patent license to make, have made,
+    use, offer to sell, sell, import, and otherwise transfer the Work,
+    where such license applies only to those patent claims licensable
+    by such Contributor that are necessarily infringed by their
+    Contribution(s) alone or by combination of their Contribution(s)
+    with the Work to which such Contribution(s) was submitted. If You
+    institute patent litigation against any entity (including a
+    cross-claim or counterclaim in a lawsuit) alleging that the Work
+    or a Contribution incorporated within the Work constitutes direct
+    or contributory patent infringement, then any patent licenses
+    granted to You under this License for that Work shall terminate
+    as of the date such litigation is filed.
+
+4.  Redistribution. You may reproduce and distribute copies of the
+    Work or Derivative Works thereof in any medium, with or without
+    modifications, and in Source or Object form, provided that You
+    meet the following conditions:
+
+    (a) You must give any other recipients of the Work or
+    Derivative Works a copy of this License; and
+
+    (b) You must cause any modified files to carry prominent notices
+    stating that You changed the files; and
+
+    (c) You must retain, in the Source form of any Derivative Works
+    that You distribute, all copyright, patent, trademark, and
+    attribution notices from the Source form of the Work,
+    excluding those notices that do not pertain to any part of
+    the Derivative Works; and
+
+    (d) If the Work includes a "NOTICE" text file as part of its
+    distribution, then any Derivative Works that You distribute must
+    include a readable copy of the attribution notices contained
+    within such NOTICE file, excluding those notices that do not
+    pertain to any part of the Derivative Works, in at least one
+    of the following places: within a NOTICE text file distributed
+    as part of the Derivative Works; within the Source form or
+    documentation, if provided along with the Derivative Works; or,
+    within a display generated by the Derivative Works, if and
+    wherever such third-party notices normally appear. The contents
+    of the NOTICE file are for informational purposes only and
+    do not modify the License. You may add Your own attribution
+    notices within Derivative Works that You distribute, alongside
+    or as an addendum to the NOTICE text from the Work, provided
+    that such additional attribution notices cannot be construed
+    as modifying the License.
+
+    You may add Your own copyright statement to Your modifications and
+    may provide additional or different license terms and conditions
+    for use, reproduction, or distribution of Your modifications, or
+    for any such Derivative Works as a whole, provided Your use,
+    reproduction, and distribution of the Work otherwise complies with
+    the conditions stated in this License.
+
+5.  Submission of Contributions. Unless You explicitly state otherwise,
+    any Contribution intentionally submitted for inclusion in the Work
+    by You to the Licensor shall be under the terms and conditions of
+    this License, without any additional terms or conditions.
+    Notwithstanding the above, nothing herein shall supersede or modify
+    the terms of any separate license agreement you may have executed
+    with Licensor regarding such Contributions.
+
+6.  Trademarks. This License does not grant permission to use the trade
+    names, trademarks, service marks, or product names of the Licensor,
+    except as required for reasonable and customary use in describing the
+    origin of the Work and reproducing the content of the NOTICE file.
+
+7.  Disclaimer of Warranty. Unless required by applicable law or
+    agreed to in writing, Licensor provides the Work (and each
+    Contributor provides its Contributions) on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+    implied, including, without limitation, any warranties or conditions
+    of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+    PARTICULAR PURPOSE. You are solely responsible for determining the
+    appropriateness of using or redistributing the Work and assume any
+    risks associated with Your exercise of permissions under this License.
+
+8.  Limitation of Liability. In no event and under no legal theory,
+    whether in tort (including negligence), contract, or otherwise,
+    unless required by applicable law (such as deliberate and grossly
+    negligent acts) or agreed to in writing, shall any Contributor be
+    liable to You for damages, including any direct, indirect, special,
+    incidental, or consequential damages of any character arising as a
+    result of this License or out of the use or inability to use the
+    Work (including but not limited to damages for loss of goodwill,
+    work stoppage, computer failure or malfunction, or any and all
+    other commercial damages or losses), even if such Contributor
+    has been advised of the possibility of such damages.
+
+9.  Accepting Warranty or Additional Liability. While redistributing
+    the Work or Derivative Works thereof, You may choose to offer,
+    and charge a fee for, acceptance of support, warranty, indemnity,
+    or other liability obligations and/or rights consistent with this
+    License. However, in accepting such obligations, You may act only
+    on Your own behalf and on Your sole responsibility, not on behalf
+    of any other Contributor, and only if You agree to indemnify,
+    defend, and hold each Contributor harmless for any liability
+    incurred by, or claims asserted against, such Contributor by reason
+    of your accepting any such warranty or additional liability.
+
+END OF TERMS AND CONDITIONS
+
+APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "{}"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+Copyright {yyyy} {name of copyright owner}
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+---
+
+This product bundles ActionScript and MXML syntax definitions from
+Sublime Text 2 Actionscript 3 Package, which is available under the following
+license:
+
+Copyright (C) 2012 Calvin Wylie <calvin.wylie@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+This product bundles AVM2 intrinsic definitions from Redtamarin, which is
+available under the Mozilla Public License, v. 2.0. A copy of the MPL may be
+obtained at http://mozilla.org/MPL/2.0/.
+```
+
+NOTICE of `actionscript-3` (https://github.com/BowlerHatLLC/vscode-as3mxml/blob/42f895fa03d4a71f590e2631b5e215cade7da1db/NOTICE):
+
+```
+ActionScript & MXML extension for Visual Studio Code
+Copyright 2016-2025 Bowler Hat LLC
+```
+
+### Grammars: `ada`
+License: GPL-3.0 — https://raw.githubusercontent.com/AdaCore/ada_language_server/master/LICENSE
+
+- `ada` — https://github.com/AdaCore/ada_language_server/blob/9329f709cf1aef897bfca679c54e0c3d17f2205f/integration/vscode/ada/advanced/ada.tmLanguage.json
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `angular-expression`, `angular-inline-style`, `angular-inline-template`, `angular-let-declaration`, `angular-template`, `angular-template-blocks`
+License: MIT — https://raw.githubusercontent.com/angular/vscode-ng-language-service/main/LICENSE
+
+- `angular-expression` — https://github.com/angular/vscode-ng-language-service/blob/39057fc2dbb37125778fb2c5c517c661f9399996/syntaxes/expression.json
+- `angular-inline-style` — https://github.com/angular/vscode-ng-language-service/blob/f0422f5f571f79a904510944452f06fb36beff22/syntaxes/inline-styles.json
+- `angular-inline-template` — https://github.com/angular/vscode-ng-language-service/blob/a18c61752e65ddcbeb31217f47f29fa38fe26c42/syntaxes/inline-template.json
+- `angular-let-declaration` — https://github.com/angular/vscode-ng-language-service/blob/0aa2aa572dedcad4c5fc3c6825227396f4e99f21/syntaxes/let-declaration.json
+- `angular-template` — https://github.com/angular/vscode-ng-language-service/blob/28739e438742bee69faceda5fd15445682451397/syntaxes/template.json
+- `angular-template-blocks` — https://github.com/angular/vscode-ng-language-service/blob/8c84410f61ed87e261a83458af10af18cbf669a9/syntaxes/template-blocks.json
+
+Copyright (c) 2014-2016 Google, Inc. http://angular.io
+
+### Grammars: `angular-html`
+License: MIT — https://raw.githubusercontent.com/onivim/vscode-exthost/master/LICENSE.txt
+
+- `angular-html` — https://github.com/onivim/vscode-exthost/blob/cfc2a2212de9ea10943af58ebd1817a5ad196463/extensions/html/syntaxes/html-derivative.tmLanguage.json
+
+Copyright (c) 2015 - present Microsoft Corporation
+
+### Grammars: `angular-ts`, `bat`, `bibtex`, `c`, `clojure`, `coffee`, `cpp`, `cpp-macro`, `csharp`, `css`, `dart`, `diff`, `docker`, `fsharp`, `git-commit`, `git-rebase`, `go`, `groovy`, `handlebars`, `hlsl`, `html`, `html-derivative`, `ini`, `java`, `javascript`, `json`, `jsonc`, `jsonl`, `jsx`, `julia`, `latex`, `less`, `lua`, `make`, `markdown`, `objective-c`, `objective-cpp`, `perl`, `php`, `powershell`, `pug`, `python`, `raku`, `rst`, `ruby`, `rust`, `scss`, `shaderlab`, `shellscript`, `sql`, `tex`, `tsx`, `typescript`, `vb`, `xml`, `xsl`
+License: MIT — https://raw.githubusercontent.com/microsoft/vscode/main/LICENSE.txt
+
+- `angular-ts` — https://github.com/microsoft/vscode/blob/210541906e5a96ab39f9c753f921b1bd35f4138b/extensions/typescript-basics/syntaxes/TypeScript.tmLanguage.json
+- `bat` — https://github.com/microsoft/vscode/blob/df15c8e832a341633acd2e9bb26e1b275d09cfe0/extensions/bat/syntaxes/batchfile.tmLanguage.json
+- `bibtex` — https://github.com/microsoft/vscode/blob/9a2c94d213696a4453b6d9988b003d98e7646e75/extensions/latex/syntaxes/Bibtex.tmLanguage.json
+- `c` — https://github.com/microsoft/vscode/blob/bd1abe08c38bb5deccf65610f8f3c03d2338d20d/extensions/cpp/syntaxes/c.tmLanguage.json
+- `clojure` — https://github.com/microsoft/vscode/blob/a1a4c0a63b1ad59e84f54b874744fe35dea9abe1/extensions/clojure/syntaxes/clojure.tmLanguage.json
+- `coffee` — https://github.com/microsoft/vscode/blob/ff58f5083f57b50e6a100ab60454dfb72fe21e80/extensions/coffeescript/syntaxes/coffeescript.tmLanguage.json
+- `cpp` — https://github.com/microsoft/vscode/blob/6ac83c7c7dda9f27ca1fe9d98675253e010b75d1/extensions/cpp/syntaxes/cpp.tmLanguage.json
+- `cpp-macro` — https://github.com/microsoft/vscode/blob/6ac83c7c7dda9f27ca1fe9d98675253e010b75d1/extensions/cpp/syntaxes/cpp.embedded.macro.tmLanguage.json
+- `csharp` — https://github.com/microsoft/vscode/blob/c8fdd1650c06321d687ddfd1eff06aae4b616256/extensions/csharp/syntaxes/csharp.tmLanguage.json
+- `css` — https://github.com/microsoft/vscode/blob/210541906e5a96ab39f9c753f921b1bd35f4138b/extensions/css/syntaxes/css.tmLanguage.json
+- `dart` — https://github.com/microsoft/vscode/blob/8270a86019db7551da42b71d15c6080a414d8c81/extensions/dart/syntaxes/dart.tmLanguage.json
+- `diff` — https://github.com/microsoft/vscode/blob/4549bd26c7b799284e0ebd8dc1e0310e6a8707a1/extensions/diff/syntaxes/diff.tmLanguage.json
+- `docker` — https://github.com/microsoft/vscode/blob/8270a86019db7551da42b71d15c6080a414d8c81/extensions/docker/syntaxes/docker.tmLanguage.json
+- `fsharp` — https://github.com/microsoft/vscode/blob/e6cffb21362b6d7addb977ff7db14f0681228780/extensions/fsharp/syntaxes/fsharp.tmLanguage.json
+- `git-commit` — https://github.com/microsoft/vscode/blob/f8c3f89468fea14103d8790d59ea8594d6e644eb/extensions/git-base/syntaxes/git-commit.tmLanguage.json
+- `git-rebase` — https://github.com/microsoft/vscode/blob/e95c74c4c7af876e79ec58df262464467c06df28/extensions/git-base/syntaxes/git-rebase.tmLanguage.json
+- `go` — https://github.com/microsoft/vscode/blob/c8fdd1650c06321d687ddfd1eff06aae4b616256/extensions/go/syntaxes/go.tmLanguage.json
+- `groovy` — https://github.com/microsoft/vscode/blob/8fdf170a0850c1cc027382f31650aaf300d3ae2a/extensions/groovy/syntaxes/groovy.tmLanguage.json
+- `handlebars` — https://github.com/microsoft/vscode/blob/45db52ba6bd211cecd03897caee0531350071721/extensions/handlebars/syntaxes/Handlebars.tmLanguage.json
+- `hlsl` — https://github.com/microsoft/vscode/blob/efa12b2f49ec6ee84ed1e7bbd948808efec452f6/extensions/hlsl/syntaxes/hlsl.tmLanguage.json
+- `html` — https://github.com/microsoft/vscode/blob/45324363153075dab0482312ae24d8c068d81e4f/extensions/html/syntaxes/html.tmLanguage.json
+- `html-derivative` — https://github.com/microsoft/vscode/blob/4064f172528461afc6944383d07521f6a30da89c/extensions/html/syntaxes/html-derivative.tmLanguage.json
+- `ini` — https://github.com/microsoft/vscode/blob/8fdf170a0850c1cc027382f31650aaf300d3ae2a/extensions/ini/syntaxes/ini.tmLanguage.json
+- `java` — https://github.com/microsoft/vscode/blob/3c86ede5f554f6e196c832394e126b291a1de606/extensions/java/syntaxes/java.tmLanguage.json
+- `javascript` — https://github.com/microsoft/vscode/blob/210541906e5a96ab39f9c753f921b1bd35f4138b/extensions/javascript/syntaxes/JavaScript.tmLanguage.json
+- `json` — https://github.com/microsoft/vscode/blob/d6af4893ed9a3545163a4cb748fa5548bd1e51a5/extensions/json/syntaxes/JSON.tmLanguage.json
+- `jsonc` — https://github.com/microsoft/vscode/blob/0adddd82816db666c52038e8277312dc55da2756/extensions/json/syntaxes/JSONC.tmLanguage.json
+- `jsonl` — https://github.com/microsoft/vscode/blob/0adddd82816db666c52038e8277312dc55da2756/extensions/json/syntaxes/JSONL.tmLanguage.json
+- `jsx` — https://github.com/microsoft/vscode/blob/210541906e5a96ab39f9c753f921b1bd35f4138b/extensions/javascript/syntaxes/JavaScriptReact.tmLanguage.json
+- `julia` — https://github.com/microsoft/vscode/blob/609f17a76734f092792a33c891af40bbcaea0c64/extensions/julia/syntaxes/julia.tmLanguage.json
+- `latex` — https://github.com/microsoft/vscode/blob/609f17a76734f092792a33c891af40bbcaea0c64/extensions/latex/syntaxes/LaTeX.tmLanguage.json
+- `less` — https://github.com/microsoft/vscode/blob/03dc55030b3b2b5c4779d4ac1e2e46cd1f5a6b7c/extensions/less/syntaxes/less.tmLanguage.json
+- `lua` — https://github.com/microsoft/vscode/blob/c8fdd1650c06321d687ddfd1eff06aae4b616256/extensions/lua/syntaxes/lua.tmLanguage.json
+- `make` — https://github.com/microsoft/vscode/blob/91db8ea85fee30ebb3c7a5e7939aa2a8d79811c5/extensions/make/syntaxes/make.tmLanguage.json
+- `markdown` — https://github.com/microsoft/vscode/blob/6d8ab9737d58fc5eaf07e2ae6553b38183a5de47/extensions/markdown-basics/syntaxes/markdown.tmLanguage.json
+- `objective-c` — https://github.com/microsoft/vscode/blob/bd1abe08c38bb5deccf65610f8f3c03d2338d20d/extensions/objective-c/syntaxes/objective-c.tmLanguage.json
+- `objective-cpp` — https://github.com/microsoft/vscode/blob/bd1abe08c38bb5deccf65610f8f3c03d2338d20d/extensions/objective-c/syntaxes/objective-c++.tmLanguage.json
+- `perl` — https://github.com/microsoft/vscode/blob/e637ff1bf7f481134849625e982ec80df9b35bc8/extensions/perl/syntaxes/perl.tmLanguage.json
+- `php` — https://github.com/microsoft/vscode/blob/c8fdd1650c06321d687ddfd1eff06aae4b616256/extensions/php/syntaxes/php.tmLanguage.json
+- `powershell` — https://github.com/microsoft/vscode/blob/9efc116de0ea4998616ebe3b17ee5b92f7dc1161/extensions/powershell/syntaxes/powershell.tmLanguage.json
+- `pug` — https://github.com/microsoft/vscode/blob/6ac83c7c7dda9f27ca1fe9d98675253e010b75d1/extensions/pug/syntaxes/pug.tmLanguage.json
+- `python` — https://github.com/microsoft/vscode/blob/cf4c9e469d521fa5f33353737e8157eb0789ad02/extensions/python/syntaxes/MagicPython.tmLanguage.json
+- `raku` — https://github.com/microsoft/vscode/blob/8fdf170a0850c1cc027382f31650aaf300d3ae2a/extensions/perl/syntaxes/perl6.tmLanguage.json
+- `rst` — https://github.com/microsoft/vscode/blob/48e93f756b764991ede33ad09781a863aca6907a/extensions/restructuredtext/syntaxes/rst.tmLanguage.json
+- `ruby` — https://github.com/microsoft/vscode/blob/609f17a76734f092792a33c891af40bbcaea0c64/extensions/ruby/syntaxes/ruby.tmLanguage.json
+- `rust` — https://github.com/microsoft/vscode/blob/9a2c94d213696a4453b6d9988b003d98e7646e75/extensions/rust/syntaxes/rust.tmLanguage.json
+- `scss` — https://github.com/microsoft/vscode/blob/cf8d61ebd2f022f4ce8280171f0360d1fe0a206d/extensions/scss/syntaxes/scss.tmLanguage.json
+- `shaderlab` — https://github.com/microsoft/vscode/blob/8fdf170a0850c1cc027382f31650aaf300d3ae2a/extensions/shaderlab/syntaxes/shaderlab.tmLanguage.json
+- `shellscript` — https://github.com/microsoft/vscode/blob/9473445f7d3dcb5c579f42ece8b6c18c43c63ed3/extensions/shellscript/syntaxes/shell-unix-bash.tmLanguage.json
+- `sql` — https://github.com/microsoft/vscode/blob/c8fdd1650c06321d687ddfd1eff06aae4b616256/extensions/sql/syntaxes/sql.tmLanguage.json
+- `tex` — https://github.com/microsoft/vscode/blob/609f17a76734f092792a33c891af40bbcaea0c64/extensions/latex/syntaxes/TeX.tmLanguage.json
+- `tsx` — https://github.com/microsoft/vscode/blob/210541906e5a96ab39f9c753f921b1bd35f4138b/extensions/typescript-basics/syntaxes/TypeScriptReact.tmLanguage.json
+- `typescript` — https://github.com/microsoft/vscode/blob/210541906e5a96ab39f9c753f921b1bd35f4138b/extensions/typescript-basics/syntaxes/TypeScript.tmLanguage.json
+- `vb` — https://github.com/microsoft/vscode/blob/35d97bc7e439fce0f50f42074041ab2d8571b20a/extensions/vb/syntaxes/asp-vb-net.tmLanguage.json
+- `xml` — https://github.com/microsoft/vscode/blob/10a1d2a50a2882f5ae85bdb51eb04d3064fb9de9/extensions/xml/syntaxes/xml.tmLanguage.json
+- `xsl` — https://github.com/microsoft/vscode/blob/8fdf170a0850c1cc027382f31650aaf300d3ae2a/extensions/xml/syntaxes/xsl.tmLanguage.json
+
+Copyright (c) 2015 - present Microsoft Corporation
+
+### Grammars: `apache`
+License: no SPDX identifier upstream; the license text follows — https://raw.githubusercontent.com/colinta/ApacheConf.tmLanguage/main/LICENSE
+
+- `apache` — https://github.com/colinta/ApacheConf.tmLanguage/blob/1fdb47b6fe2cea20cfedbc522bff3ff1ed656c07/ApacheConf.tmLanguage
+
+```
+Copyright (c) 2012, Colin T.A. Gray
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+The views and conclusions contained in the software and documentation are those
+of the authors and should not be interpreted as representing official policies,
+either expressed or implied, of this project.
+```
+
+### Grammars: `apex`
+License: no SPDX identifier upstream; the license text follows — https://raw.githubusercontent.com/forcedotcom/apex-tmLanguage/main/LICENSE
+
+- `apex` — https://github.com/forcedotcom/apex-tmLanguage/blob/e24575c4ebefcee2e535c781050508fb567eb19f/grammars/apex.tmLanguage
+
+```
+License for modifications and not otherwise marked:
+
+Copyright (c) 2018, Salesforce.com, Inc.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice, this
+list of conditions and the following disclaimer in the documentation and/or
+other materials provided with the distribution.
+
+* Neither the name of Salesforce.com nor the names of its contributors may be
+used to endorse or promote products derived from this software without specific
+prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+### Grammars: `apl`
+License: ISC OR MIT
+
+- `apl` — https://github.com/kimmolinna/vscode-apl-language/blob/13541242d9ffae225e89ebba23f9abaa4c60697e/syntaxes/apl.tmLanguage.json; license stated in https://github.com/kimmolinna/vscode-apl-language/tree/13541242d9ffae225e89ebba23f9abaa4c60697e
+
+```
+package.json:
+    "licenses": [
+        {
+            "type": "ISC"
+        },
+        {
+            "type": "MIT"
+        }
+    ],
+
+README.md:
+The syntax grammar is converted from [language-apl](https://github.com/Alhadis/language-apl) Copyright © 2016-2018, John Gardner
+```
+
+### Grammars: `ara`
+License: Apache-2.0 — https://raw.githubusercontent.com/ara-lang/highlighting/main/LICENSE-APACHE
+
+- `ara` — https://github.com/ara-lang/highlighting/blob/ed1dbedcf03d0b67207e41fe2e11218cc925dc0d/syntaxes/ara.json
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `asciidoc`
+License: no SPDX identifier upstream; the license text follows — https://raw.githubusercontent.com/asciidoctor/asciidoctor-vscode/master/LICENSE
+
+- `asciidoc` — https://github.com/asciidoctor/asciidoctor-vscode/blob/a946c878b12f6e5915d5d04e9b75953b417aa4c2/syntaxes/asciidoc.tmLanguage.json
+
+```
+The MIT License (MIT)
+
+Copyright (c) 2016 - present, João Pinto and the Asciidoctor Project
+
+Based on the vscode-1.28.2/extensions/markdown* from Microsoft
+
+Copyright (c) 2015 - present Microsoft Corporation
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Grammars: `asm`
+License: MIT — https://raw.githubusercontent.com/13xforever/x86_64-assembly-vscode/master/LICENSE.txt
+
+- `asm` — https://github.com/13xforever/x86_64-assembly-vscode/blob/5c1958f4283d260f5dc88fa4f5f31c620e061a5a/syntaxes/language-x86_64-assembly.tmLanguage
+
+Copyright (c) 2012-2015 Ilya Veselov (13xforever)
+
+### Grammars: `astro`
+License: MIT — https://raw.githubusercontent.com/withastro/language-tools/main/LICENSE
+
+- `astro` — https://github.com/withastro/language-tools/blob/8e55c37cbcf134dedf0068781245da5a9d46d081/packages/vscode/syntaxes/astro.tmLanguage.src.yaml
+
+Copyright (c) 2022 The Astro Technology Company
+
+### Grammars: `awk`
+License: MIT — https://raw.githubusercontent.com/luggage66/vscode-awk/master/LICENSE.txt
+
+- `awk` — https://github.com/luggage66/vscode-awk/blob/eff8c0f160ae16592c8d9963fd77046137fd2612/syntaxes/awk.tmLanguage
+
+Copyright (c) 2012-2014 John Nilsson
+
+### Grammars: `ballerina`
+License: Apache-2.0 — https://raw.githubusercontent.com/ballerina-platform/ballerina-grammar/master/LICENSE
+
+- `ballerina` — https://github.com/ballerina-platform/ballerina-grammar/blob/4bf70d328ae9e5a93219e44c031ab3776c76727a/syntaxes/ballerina.tmLanguage
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `beancount`
+License: MIT — https://raw.githubusercontent.com/Lencerf/vscode-beancount/master/LICENSE
+
+- `beancount` — https://github.com/Lencerf/vscode-beancount/blob/75fc29960fcf6666e4b06310fac4d49a16c57ca0/syntaxes/beancount.tmLanguage
+
+Copyright (c) 2023 Lencerf
+
+### Grammars: `berry`
+License: MIT — https://raw.githubusercontent.com/berry-lang/berry/master/LICENSE
+
+- `berry` — https://github.com/berry-lang/berry/blob/74611286b8d2d2c2ee16ea187029f2a9c4257f5f/tools/plugins/vscode/skiars.berry-1.2.0/syntaxes/berry.json
+
+Copyright (c) 2018-2020 Guan Wenliang
+
+### Grammars: `bicep`
+License: MIT — https://raw.githubusercontent.com/Azure/bicep/main/LICENSE
+
+- `bicep` — https://github.com/Azure/bicep/blob/6252abb94141fc6e774a53652404be30f1cb9000/src/textmate/bicep.tmlanguage
+
+Copyright (c) Microsoft Corporation.
+
+### Grammars: `bird2`
+License: MPL-2.0 — https://raw.githubusercontent.com/bird-chinese-community/BIRD-tm-language-grammar/main/LICENSE
+
+- `bird2` — https://github.com/bird-chinese-community/BIRD-tm-language-grammar/blob/2e82aed3f306941105072adf685a91d75bca0bf6/grammars/bird2.tmLanguage.json
+
+```
+# Mozilla Public License Version 2.0
+
+1. Definitions
+
+---
+
+1.1. "Contributor"
+means each individual or legal entity that creates, contributes to
+the creation of, or owns Covered Software.
+
+1.2. "Contributor Version"
+means the combination of the Contributions of others (if any) used
+by a Contributor and that particular Contributor's Contribution.
+
+1.3. "Contribution"
+means Covered Software of a particular Contributor.
+
+1.4. "Covered Software"
+means Source Code Form to which the initial Contributor has attached
+the notice in Exhibit A, the Executable Form of such Source Code
+Form, and Modifications of such Source Code Form, in each case
+including portions thereof.
+
+1.5. "Incompatible With Secondary Licenses"
+means
+
+    (a) that the initial Contributor has attached the notice described
+        in Exhibit B to the Covered Software; or
+
+    (b) that the Covered Software was made available under the terms of
+        version 1.1 or earlier of the License, but not also under the
+        terms of a Secondary License.
+
+1.6. "Executable Form"
+means any form of the work other than Source Code Form.
+
+1.7. "Larger Work"
+means a work that combines Covered Software with other material, in
+a separate file or files, that is not Covered Software.
+
+1.8. "License"
+means this document.
+
+1.9. "Licensable"
+means having the right to grant, to the maximum extent possible,
+whether at the time of the initial grant or subsequently, any and
+all of the rights conveyed by this License.
+
+1.10. "Modifications"
+means any of the following:
+
+    (a) any file in Source Code Form that results from an addition to,
+        deletion from, or modification of the contents of Covered
+        Software; or
+
+    (b) any new file in Source Code Form that contains any Covered
+        Software.
+
+1.11. "Patent Claims" of a Contributor
+means any patent claim(s), including without limitation, method,
+process, and apparatus claims, in any patent Licensable by such
+Contributor that would be infringed, but for the grant of the
+License, by the making, using, selling, offering for sale, having
+made, import, or transfer of either its Contributions or its
+Contributor Version.
+
+1.12. "Secondary License"
+means either the GNU General Public License, Version 2.0, the GNU
+Lesser General Public License, Version 2.1, the GNU Affero General
+Public License, Version 3.0, or any later versions of those
+licenses.
+
+1.13. "Source Code Form"
+means the form of the work preferred for making modifications.
+
+1.14. "You" (or "Your")
+means an individual or a legal entity exercising rights under this
+License. For legal entities, "You" includes any entity that
+controls, is controlled by, or is under common control with You. For
+purposes of this definition, "control" means (a) the power, direct
+or indirect, to cause the direction or management of such entity,
+whether by contract or otherwise, or (b) ownership of more than
+fifty percent (50%) of the outstanding shares or beneficial
+ownership of such entity.
+
+2. License Grants and Conditions
+
+---
+
+2.1. Grants
+
+Each Contributor hereby grants You a world-wide, royalty-free,
+non-exclusive license:
+
+(a) under intellectual property rights (other than patent or trademark)
+Licensable by such Contributor to use, reproduce, make available,
+modify, display, perform, distribute, and otherwise exploit its
+Contributions, either on an unmodified basis, with Modifications, or
+as part of a Larger Work; and
+
+(b) under Patent Claims of such Contributor to make, use, sell, offer
+for sale, have made, import, and otherwise transfer either its
+Contributions or its Contributor Version.
+
+2.2. Effective Date
+
+The licenses granted in Section 2.1 with respect to any Contribution
+become effective for each Contribution on the date the Contributor first
+distributes such Contribution.
+
+2.3. Limitations on Grant Scope
+
+The licenses granted in this Section 2 are the only rights granted under
+this License. No additional rights or licenses will be implied from the
+distribution or licensing of Covered Software under this License.
+Notwithstanding Section 2.1(b) above, no patent license is granted by a
+Contributor:
+
+(a) for any code that a Contributor has removed from Covered Software;
+or
+
+(b) for infringements caused by: (i) Your and any other third party's
+modifications of Covered Software, or (ii) the combination of its
+Contributions with other software (except as part of its Contributor
+Version); or
+
+(c) under Patent Claims infringed by Covered Software in the absence of
+its Contributions.
+
+This License does not grant any rights in the trademarks, service marks,
+or logos of any Contributor (except as may be necessary to comply with
+the notice requirements in Section 3.4).
+
+2.4. Subsequent Licenses
+
+No Contributor makes additional grants as a result of Your choice to
+distribute the Covered Software under a subsequent version of this
+License (see Section 10.2) or under the terms of a Secondary License (if
+permitted under the terms of Section 3.3).
+
+2.5. Representation
+
+Each Contributor represents that the Contributor believes its
+Contributions are its original creation(s) or it has sufficient rights
+to grant the rights to its Contributions conveyed by this License.
+
+2.6. Fair Use
+
+This License is not intended to limit any rights You have under
+applicable copyright doctrines of fair use, fair dealing, or other
+equivalents.
+
+2.7. Conditions
+
+Sections 3.1, 3.2, 3.3, and 3.4 are conditions of the licenses granted
+in Section 2.1.
+
+3. Responsibilities
+
+---
+
+3.1. Distribution of Source Form
+
+All distribution of Covered Software in Source Code Form, including any
+Modifications that You create or to which You contribute, must be under
+the terms of this License. You must inform recipients that the Source
+Code Form of the Covered Software is governed by the terms of this
+License, and how they can obtain a copy of this License. You may not
+attempt to alter or restrict the recipients' rights in the Source Code
+Form.
+
+3.2. Distribution of Executable Form
+
+If You distribute Covered Software in Executable Form then:
+
+(a) such Covered Software must also be made available in Source Code
+Form, as described in Section 3.1, and You must inform recipients of
+the Executable Form how they can obtain a copy of such Source Code
+Form by reasonable means in a timely manner, at a charge no more
+than the cost of distribution to the recipient; and
+
+(b) You may distribute such Executable Form under the terms of this
+License, or sublicense it under different terms, provided that the
+license for the Executable Form does not attempt to limit or alter
+the recipients' rights in the Source Code Form under this License.
+
+3.3. Distribution of a Larger Work
+
+You may create and distribute a Larger Work under terms of Your choice,
+provided that You also comply with the requirements of this License for
+the Covered Software. If the Larger Work is a combination of Covered
+Software with a work governed by one or more Secondary Licenses, and the
+Covered Software is not Incompatible With Secondary Licenses, this
+License permits You to additionally distribute such Covered Software
+under the terms of such Secondary License(s), so that the recipient of
+the Larger Work may, at their option, further distribute the Covered
+Software under the terms of either this License or such Secondary
+License(s).
+
+3.4. Notices
+
+You may not remove or alter the substance of any license notices
+(including copyright notices, patent notices, disclaimers of warranty,
+or limitations of liability) contained within the Source Code Form of
+the Covered Software, except that You may alter any license notices to
+the extent required to remedy known factual inaccuracies.
+
+3.5. Application of Additional Terms
+
+You may choose to offer, and to charge a fee for, warranty, support,
+indemnity or liability obligations to one or more recipients of Covered
+Software. However, You may do so only on Your own behalf, and not on
+behalf of any Contributor. You must make it absolutely clear that any
+such warranty, support, indemnity, or liability obligation is offered by
+You alone, and You hereby agree to indemnify every Contributor for any
+liability incurred by such Contributor as a result of warranty, support,
+indemnity or liability terms You offer. You may include additional
+disclaimers of warranty and limitations of liability specific to any
+jurisdiction.
+
+4. Inability to Comply Due to Statute or Regulation
+
+---
+
+If it is impossible for You to comply with any of the terms of this
+License with respect to some or all of the Covered Software due to
+statute, judicial order, or regulation then You must: (a) comply with
+the terms of this License to the maximum extent possible; and (b)
+describe the limitations and the code they affect. Such description must
+be placed in a text file included with all distributions of the Covered
+Software under this License. Except to the extent prohibited by statute
+or regulation, such description must be sufficiently detailed for a
+recipient of ordinary skill to be able to understand it.
+
+5. Termination
+
+---
+
+5.1. The rights granted under this License will terminate automatically
+if You fail to comply with any of its terms. However, if You become
+compliant, then the rights granted under this License from a particular
+Contributor are reinstated (a) provisionally, unless and until such
+Contributor explicitly and finally terminates Your grants, and (b) on an
+ongoing basis, if such Contributor fails to notify You of the
+non-compliance by some reasonable means prior to 60 days after You have
+come back into compliance. Moreover, Your grants from a particular
+Contributor are reinstated on an ongoing basis if such Contributor
+notifies You of the non-compliance by some reasonable means, this is the
+first time You have received notice of non-compliance with this License
+from such Contributor, and You become compliant prior to 30 days after
+Your receipt of the notice.
+
+5.2. If You initiate litigation against any entity by asserting a patent
+infringement claim (excluding declaratory judgment actions,
+counter-claims, and cross-claims) alleging that a Contributor Version
+directly or indirectly infringes any patent, then the rights granted to
+You by any and all Contributors for the Covered Software under Section
+2.1 of this License shall terminate.
+
+5.3. In the event of termination under Sections 5.1 or 5.2 above, all
+end user license agreements (excluding distributors and resellers) which
+have been validly granted by You or Your distributors under this License
+prior to termination shall survive termination.
+
+---
+
+-                                                                      *
+- 6.  Disclaimer of Warranty \*
+- ------------------------- \*
+-                                                                      *
+- Covered Software is provided under this License on an "as is" \*
+- basis, without warranty of any kind, either expressed, implied, or \*
+- statutory, including, without limitation, warranties that the \*
+- Covered Software is free of defects, merchantable, fit for a \*
+- particular purpose or non-infringing. The entire risk as to the \*
+- quality and performance of the Covered Software is with You. \*
+- Should any Covered Software prove defective in any respect, You \*
+- (not any Contributor) assume the cost of any necessary servicing, \*
+- repair, or correction. This disclaimer of warranty constitutes an \*
+- essential part of this License. No use of any Covered Software is \*
+- authorized under this License except under this disclaimer. \*
+-                                                                      *
+
+---
+
+---
+
+-                                                                      *
+- 7.  Limitation of Liability \*
+- -------------------------- \*
+-                                                                      *
+- Under no circumstances and under no legal theory, whether tort \*
+- (including negligence), contract, or otherwise, shall any \*
+- Contributor, or anyone who distributes Covered Software as \*
+- permitted above, be liable to You for any direct, indirect, \*
+- special, incidental, or consequential damages of any character \*
+- including, without limitation, damages for lost profits, loss of \*
+- goodwill, work stoppage, computer failure or malfunction, or any \*
+- and all other commercial damages or losses, even if such party \*
+- shall have been informed of the possibility of such damages. This \*
+- limitation of liability shall not apply to liability for death or \*
+- personal injury resulting from such party's negligence to the \*
+- extent applicable law prohibits such limitation. Some \*
+- jurisdictions do not allow the exclusion or limitation of \*
+- incidental or consequential damages, so this exclusion and \*
+- limitation may not apply to You. \*
+-                                                                      *
+
+---
+
+8. Litigation
+
+---
+
+Any litigation relating to this License may be brought only in the
+courts of a jurisdiction where the defendant maintains its principal
+place of business and such litigation shall be governed by laws of that
+jurisdiction, without reference to its conflict-of-law provisions.
+Nothing in this Section shall prevent a party's ability to bring
+cross-claims or counter-claims.
+
+9. Miscellaneous
+
+---
+
+This License represents the complete agreement concerning the subject
+matter hereof. If any provision of this License is held to be
+unenforceable, such provision shall be reformed only to the extent
+necessary to make it enforceable. Any law or regulation which provides
+that the language of a contract shall be construed against the drafter
+shall not be used to construe this License against a Contributor.
+
+10. Versions of the License
+
+---
+
+10.1. New Versions
+
+Mozilla Foundation is the license steward. Except as provided in Section
+10.3, no one other than the license steward has the right to modify or
+publish new versions of this License. Each version will be given a
+distinguishing version number.
+
+10.2. Effect of New Versions
+
+You may distribute the Covered Software under the terms of the version
+of the License under which You originally received the Covered Software,
+or under the terms of any subsequent version published by the license
+steward.
+
+10.3. Modified Versions
+
+If you create software not governed by this License, and you want to
+create a new license for such software, you may create and use a
+modified version of this License if you rename the license and remove
+any references to the name of the license steward (except to note that
+such modified license differs from this License).
+
+10.4. Distributing Source Code Form that is Incompatible With Secondary
+Licenses
+
+If You choose to distribute Source Code Form that is Incompatible With
+Secondary Licenses under the terms of this version of the License, the
+notice described in Exhibit B of this License must be attached.
+
+## Exhibit A - Source Code Form License Notice
+
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+If it is not possible or desirable to put the notice in a particular
+file, then You may include the notice in a location (such as a LICENSE
+file in a relevant directory) where a recipient would be likely to look
+for such a notice.
+
+You may add additional accurate notices of copyright ownership.
+
+## Exhibit B - "Incompatible With Secondary Licenses" Notice
+
+This Source Code Form is "Incompatible With Secondary Licenses", as
+defined by the Mozilla Public License, v. 2.0.
+```
+
+### Grammars: `blade`
+License: MIT — https://raw.githubusercontent.com/laravel/vs-code-extension/main/LICENSE.md
+
+- `blade` — https://github.com/laravel/vs-code-extension/blob/80726f64975dc935d6b925d8230cdc1ea075802a/syntaxes/blade.tmLanguage.json
+
+Copyright (c) Taylor Otwell
+
+### Grammars: `bsl`, `sdbl`
+License: MIT — https://raw.githubusercontent.com/1c-syntax/vsc-language-1c-bsl/refs/heads/master/LICENSE.md
+
+- `bsl` — https://github.com/1c-syntax/vsc-language-1c-bsl/blob/2cde5a65a17b82b5363affadf5a620ebb0a026dc/syntaxes/1c.tmLanguage.json
+- `sdbl` — https://github.com/1c-syntax/vsc-language-1c-bsl/blob/c60d42089e5139942ff5b1db3a0a3ca8dd094ce6/syntaxes/1c-query.tmLanguage.json
+
+Copyright © 2015 xDrivenDevelopment
+
+### Grammars: `c3`
+License: MIT — https://raw.githubusercontent.com/c3lang/vscode-c3/main/LICENSE
+
+- `c3` — https://github.com/c3lang/vscode-c3/blob/8ae9a31008b499ef1b9a4cdcc1df8ba75eb2d10f/syntaxes/c3.tmLanguage.json
+
+Copyright (c) 2024 C3 Language
+
+### Grammars: `cadence`
+License: Apache-2.0 — https://raw.githubusercontent.com/onflow/vscode-cadence/master/LICENSE
+
+- `cadence` — https://github.com/onflow/vscode-cadence/blob/bc7e5d3bb613e01789584283d7911cfd6b616dc4/extension/language/syntaxes/cadence.tmGrammar.json
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `cairo`
+License: Apache-2.0 — https://raw.githubusercontent.com/starkware-libs/cairo-lang/master/LICENSE.txt
+
+- `cairo` — https://github.com/starkware-libs/cairo-lang/blob/4ea4fe8e167845a3402ae2ea0a8b6004aad18dd5/src/starkware/cairo/lang/ide/vscode-cairo/syntaxes/cairo.tmLanguage.json
+
+Copyright 2024 StarkWare Industries Ltd.
+
+### Grammars: `clarity`
+License: MIT — https://raw.githubusercontent.com/stx-labs/clarity.tmbundle/main/LICENSE
+
+- `clarity` — https://github.com/hirosystems/clarity.tmbundle/blob/a187c9ccbbfeb91550f138c8d606888a902b7c98/Syntaxes/clarity.JSON-tmLanguage
+
+```
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Grammars: `cmake`
+License: MIT — https://raw.githubusercontent.com/twxs/vs.language.cmake/master/LICENSE
+
+- `cmake` — https://github.com/twxs/vs.language.cmake/blob/19b1b8fe2d68d72cf294d0c3c22f0a3fc54f8f6f/syntaxes/CMake.tmLanguage
+
+Copyright (c) 2015 Nicolas MARTIN
+
+### Grammars: `cobol`
+License: MIT — https://raw.githubusercontent.com/spgennard/vscode_cobol/main/LICENSE
+
+- `cobol` — https://github.com/spgennard/vscode_cobol/blob/28a53ee742017ec60055f2aaaf174aaf62e83c45/syntaxes/COBOL.tmLanguage.json
+
+Copyright (c) 2015-2020 Stephen Gennard Copyright (c) 2021-2025 Stephen Paul Gennard
+
+### Grammars: `codeowners`
+License: MIT — https://raw.githubusercontent.com/jasonnutter/vscode-codeowners/master/LICENSE.txt
+
+- `codeowners` — https://github.com/jasonnutter/vscode-codeowners/blob/219dee0ab25c1bfad0b9de84180117e71221a653/syntaxes/codeowners.tmLanguage.json
+
+Copyright (c) 2016 Jason Nutter
+
+### Grammars: `codeql`
+License: MIT — https://raw.githubusercontent.com/github/vscode-codeql/main/LICENSE.md
+
+- `codeql` — https://github.com/github/vscode-codeql/blob/a6266bbcc88702619ceb580253a65e8f83333c1b/syntaxes/ql.tmLanguage.json
+
+Copyright (c) 2019 GitHub, Inc.
+
+### Grammars: `common-lisp`
+License: MIT — https://raw.githubusercontent.com/qingpeng9802/vscode-common-lisp/master/LICENSE
+
+- `common-lisp` — https://github.com/qingpeng9802/vscode-common-lisp/blob/79d04dc9ca80d98e65c4f28b3d67a24a7829b18f/syntaxes/commonlisp.tmLanguage.json
+
+Copyright (c) 2020 Qingpeng Li
+
+### Grammars: `coq`
+License: MIT — https://raw.githubusercontent.com/rocq-prover/vsrocq/main/LICENSE
+
+- `coq` — https://github.com/coq-community/vscoq/blob/201351854c2f8397701d8cf51d923f5a7946a8a2/client/syntax/coq.tmLanguage.json
+
+Copyright (c) INRIA and contributors
+
+### Grammars: `crystal`
+License: MIT — https://raw.githubusercontent.com/crystal-lang-tools/vscode-crystal-lang/master/LICENSE
+
+- `crystal` — https://github.com/crystal-lang-tools/vscode-crystal-lang/blob/c920b0931ec5f05b78447dbff31b172c64f1d734/syntaxes/crystal.json
+
+Copyright (c) 2018 Faustino Aguilar
+
+### Grammars: `csv`, `tsv`
+License: MIT — https://raw.githubusercontent.com/mechatroner/vscode_rainbow_csv/master/LICENSE
+
+- `csv` — https://github.com/mechatroner/vscode_rainbow_csv/blob/3bdafafa12940a75166089b64bdd80b1d3b071db/syntaxes/csv.tmLanguage.json
+- `tsv` — https://github.com/mechatroner/vscode_rainbow_csv/blob/00d4c947f1bbe6a4a73599bd97fb31bdfbe262f3/syntaxes/tsv.tmLanguage.json
+
+Copyright (c) 2017 Dmitry Ignatovich
+
+### Grammars: `cue`
+License: no SPDX identifier upstream; the license text follows — https://raw.githubusercontent.com/cue-lang/vscode-cue/master/LICENSE
+
+- `cue` — https://github.com/cue-lang/vscode-cue/blob/a9ee96a7e61fb8acd39f7403144d0b6f45652987/extension/syntaxes/cue.tmLanguage.json
+
+```
+MIT License
+
+Original Work Copyright (c) 2019-2020 Andrew Hodges
+Current Work and Modifications Copyright (c) 2020-present The CUE Authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Grammars: `cypher`
+License: MIT — https://raw.githubusercontent.com/adam-cowley/neo4j-vscode/main/LICENSE
+
+- `cypher` — https://github.com/adam-cowley/neo4j-vscode/blob/ad90d275ac76c740018e78f78722343f730270e0/cypher/cypher.tmLanguage
+
+Copyright (c) 222 Adam Cowley
+
+### Grammars: `d`
+License: MIT — https://raw.githubusercontent.com/Pure-D/code-d/master/LICENSE.md
+
+- `d` — https://github.com/Pure-D/code-d/blob/71992a1a52a3025f3333e4025eee0f255a8cda03/syntaxes/d.json
+
+Copyright (c) 2015 Jan Jurzitza
+
+### Grammars: `desktop`
+License: MIT — https://raw.githubusercontent.com/nico-castell/desktop-file-support/main/LICENSE
+
+- `desktop` — https://github.com/nico-castell/desktop-file-support/blob/63720f5f05313de22b68ecbd0ca3d3ed8ba57e7e/syntaxes/desktop.tmLanguage.json
+
+Copyright (c) 2021 Nicolás Castellán
+
+### Grammars: `dotenv`
+License: MIT — https://raw.githubusercontent.com/dotenv-org/dotenv-vscode/master/LICENSE
+
+- `dotenv` — https://github.com/dotenv-org/dotenv-vscode/blob/e7e41baa5b23e01c1ff0567a4e596c24860e7def/syntaxes/dotenv.tmLanguage.json
+
+Copyright (c) 2022 Scott Motte
+
+### Grammars: `dream-maker`
+License: MIT
+
+- `dream-maker` — https://github.com/gbasood/vscode-atomic-dreams/blob/22d2bf0325f65697ea542856280f66e9e098f4a2/syntaxes/dm.tmLanguage.json; a port of the project whose license is stated in https://github.com/PJB3005/atomic-dreams/blob/14891385ac0110cdcdb22f2dc1a8930cdf501c91/LICENSE (https://github.com/gbasood/vscode-atomic-dreams/blob/22d2bf0325f65697ea542856280f66e9e098f4a2/README.md)
+
+Copyright (c) 2016 Pieter-Jan Briers, Kyle J. Kemp
+
+### Grammars: `edge`
+License: MIT — https://raw.githubusercontent.com/edge-js/edge-vscode/main/LICENSE.md
+
+- `edge` — https://github.com/edge-js/edge-vscode/blob/04352c41981ca664598674556afa63bd393a10f3/syntaxes/edge.tmLanguage.json
+
+Copyright 2022 Harminder Virk, contributors
+
+### Grammars: `elixir`
+License: no SPDX identifier upstream; the license text follows — https://raw.githubusercontent.com/elixir-editors/elixir-tmbundle/master/LICENSE
+
+- `elixir` — https://github.com/elixir-editors/elixir-tmbundle/blob/43c8cd957d5ac6e1abbd8730fc7a08c81a6e76c9/Syntaxes/Elixir.tmLanguage
+
+```
+Copyright 2012 Plataformatec.
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+```
+
+### Grammars: `elm`
+License: MIT — https://raw.githubusercontent.com/elm-tooling/elm-language-client-vscode/main/LICENSE
+
+- `elm` — https://github.com/elm-tooling/elm-language-client-vscode/blob/c70351314682c2e0fae8a402ebb301da79821c37/syntaxes/elm-syntax.json
+
+Copyright (c) 2019 Kolja Lampe
+
+### Grammars: `emacs-lisp`
+License: ISC — https://raw.githubusercontent.com/Alhadis/language-emacs-lisp/master/LICENSE.md
+
+- `emacs-lisp` — https://github.com/Alhadis/language-emacs-lisp/blob/07ef9e419b80478a0976acbc6ef9d190b07e508e/grammars/emacs-lisp.cson
+
+```
+Copyright (c) 2016-2023, John Gardner
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+```
+
+### Grammars: `erlang`
+License: Apache-2.0 — https://raw.githubusercontent.com/erlang-ls/grammar/main/LICENSE
+
+- `erlang` — https://github.com/erlang-ls/grammar/blob/fe898becd3004bcb4947ab50d6b6b830fbfb9228/Erlang.plist
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `es-tag-css`, `es-tag-glsl`, `es-tag-html`, `es-tag-sql`, `es-tag-xml`
+License: MIT — https://raw.githubusercontent.com/0x00000001A/es6-string-html/master/LICENSE
+
+- `es-tag-css` — https://github.com/0x00000001A/es6-string-html/blob/b8f51210b53ce64e789949d4be33b7ecb42cf177/syntaxes/es6-inline-css.json
+- `es-tag-glsl` — https://github.com/0x00000001A/es6-string-html/blob/b8f51210b53ce64e789949d4be33b7ecb42cf177/syntaxes/es6-inline-glsl.json
+- `es-tag-html` — https://github.com/0x00000001A/es6-string-html/blob/b8f51210b53ce64e789949d4be33b7ecb42cf177/syntaxes/es6-inline-html.json
+- `es-tag-sql` — https://github.com/0x00000001A/es6-string-html/blob/b8f51210b53ce64e789949d4be33b7ecb42cf177/syntaxes/es6-inline-sql.json
+- `es-tag-xml` — https://github.com/0x00000001A/es6-string-html/blob/b8f51210b53ce64e789949d4be33b7ecb42cf177/syntaxes/es6-inline-xml.json
+
+Copyright (c) 2018 Tobimori (Victor Novikov)
+
+### Grammars: `fennel`
+License: MIT — https://raw.githubusercontent.com/kongeor/vsc-fennel/master/LICENSE
+
+- `fennel` — https://github.com/kongeor/vsc-fennel/blob/664148923d7bd72531120d0cba712c6dba6f698d/syntaxes/fennel.tmLanguage.json
+
+Copyright © 2021 Kostas Georgiadis and contributors
+
+### Grammars: `fish`
+License: MIT — https://raw.githubusercontent.com/bmalehorn/vscode-fish/main/LICENSE
+
+- `fish` — https://github.com/bmalehorn/vscode-fish/blob/8288b88c46ebe1ef2876fd4275450fc80c5a176a/syntaxes/fish.tmLanguage.json
+
+Copyright (c) 2019 Brian Malehorn Copyright (c) 2018 Aaron Sky Copyright (c) 2017 Sebastian Wiesner
+
+### Grammars: `fluent`
+License: MIT — https://raw.githubusercontent.com/macabeus/vscode-fluent/master/LICENSE
+
+- `fluent` — https://github.com/macabeus/vscode-fluent/blob/8544ea296a7769a359f43ddff4dc4b6c61f5cf59/syntaxes/fluent.tmLanguage.json
+
+Copyright (c) 2021 macabeus
+
+### Grammars: `fortran-fixed-form`, `fortran-free-form`
+License: MIT — https://raw.githubusercontent.com/fortran-lang/vscode-fortran-support/main/LICENSE
+
+- `fortran-fixed-form` — https://github.com/fortran-lang/vscode-fortran-support/blob/002eaa90668fd7d63cd073e8ca21b1388357ed62/syntaxes/fortran_fixed-form.tmLanguage.json
+- `fortran-free-form` — https://github.com/fortran-lang/vscode-fortran-support/blob/f5fbf935d709e165922b307885a6106e32624018/syntaxes/fortran_free-form.tmLanguage.json
+
+Copyright (c) 2017-2022 The Fortran Programming Language
+
+### Grammars: `gdresource`, `gdscript`, `gdshader`
+License: MIT — https://raw.githubusercontent.com/godotengine/godot-vscode-plugin/master/LICENSE
+
+- `gdresource` — https://github.com/godotengine/godot-vscode-plugin/blob/e7e2d0439dea0fb3a568378554c81e0a17348a84/syntaxes/GDResource.tmLanguage.json
+- `gdscript` — https://github.com/godotengine/godot-vscode-plugin/blob/9d7187970a22c14f10332768af397b78f1c36f7b/syntaxes/GDScript.tmLanguage.json
+- `gdshader` — https://github.com/godotengine/godot-vscode-plugin/blob/e7e2d0439dea0fb3a568378554c81e0a17348a84/syntaxes/GDShader.tmLanguage.json
+
+Copyright (c) 2016-2022 The Godot Engine community
+
+### Grammars: `genie`, `vala`
+License: MIT — https://raw.githubusercontent.com/vala-lang/vala-vscode/master/LICENSE
+
+- `genie` — https://github.com/vala-lang/vala-vscode/blob/8f825e95648326df2572d0522632251cdff4a43b/syntaxes/genie.YAML-tmLanguage
+- `vala` — https://github.com/vala-lang/vala-vscode/blob/8f825e95648326df2572d0522632251cdff4a43b/syntaxes/vala.YAML-tmLanguage
+
+Copyright (c) 2019 Jeremy Philippe
+
+### Grammars: `gherkin`
+License: MIT — https://raw.githubusercontent.com/alexkrechik/VSCucumberAutoComplete/master/LICENSE
+
+- `gherkin` — https://github.com/alexkrechik/VSCucumberAutoComplete/blob/fbb554addf81e8961b58b1577924af10fecf9694/syntaxes/feature.tmLanguage.json
+
+Copyright (c) 2018 Alexander Krechik
+
+### Grammars: `gleam`
+License: Apache-2.0 — https://raw.githubusercontent.com/gleam-lang/vscode-gleam/main/LICENSE.txt
+
+- `gleam` — https://github.com/gleam-lang/vscode-gleam/blob/aa487ed82aeaec8dbac62e796689daf55abf1aa9/syntaxes/gleam.tmLanguage.json
+
+```
+Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+    TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+    1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+    2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+    3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+    4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+    5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+    6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+    7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+    8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+    9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+    END OF TERMS AND CONDITIONS
+
+    APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "[]"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+    Copyright 2016 - present Louis Pilfold
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+
+
+## Runtime Library Exception to the Apache 2.0 License: ##
+
+
+    As an exception, if you use this Software to compile your source code and
+    portions of this Software are embedded into the binary product as a result,
+    you may redistribute such product without providing attribution as would
+    otherwise be required by Sections 4(a), 4(b) and 4(d) of the License.
+```
+
+### Grammars: `glimmer-js`, `glimmer-ts`
+License: MIT — https://raw.githubusercontent.com/lifeart/vsc-ember-syntax/master/LICENSE
+
+- `glimmer-js` — https://github.com/lifeart/vsc-ember-syntax/blob/76fce7b360ce09a78789e7d5217b8955d1a5d95f/syntaxes/source.gjs.json
+- `glimmer-ts` — https://github.com/lifeart/vsc-ember-syntax/blob/76fce7b360ce09a78789e7d5217b8955d1a5d95f/syntaxes/source.gts.json
+
+Copyright (c) 2025 Alex Kanunnikov
+
+### Grammars: `gn`
+License: Apache-2.0 — https://raw.githubusercontent.com/google/gn-language-server/main/LICENSE
+
+- `gn` — https://github.com/google/gn-language-server/blob/ee64196343a29893f4707e21a8ea7bca0bc135b1/vscode-gn/syntaxes/gn.tmLanguage.json
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `gnuplot`
+License: GPL-3.0 — https://raw.githubusercontent.com/MarioSchwalbe/vscode-gnuplot/master/LICENSE
+
+- `gnuplot` — https://github.com/MarioSchwalbe/vscode-gnuplot/blob/c62c1a61c9b6b4658b43d76c397dc2ad43523b6a/syntaxes/gnuplot.tmLanguage
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `graphql`
+License: MIT — https://raw.githubusercontent.com/graphql/vscode-graphql/master/LICENSE
+
+- `graphql` — https://github.com/prisma-labs/vscode-graphql/blob/4569aef2364b42b6acd8188e4a6ca9b0ba3c6a1d/grammars/graphql.json
+
+Copyright (c) 2018 Prisma Data Services <support@prisma.io>
+
+### Grammars: `hack`
+License: MIT — https://raw.githubusercontent.com/slackhq/vscode-hack/master/LICENSE.md
+
+- `hack` — https://github.com/slackhq/vscode-hack/blob/b518393296112ec3189d97a6051e06c4dd5b46d6/syntaxes/hack.json
+
+Copyright (c) 2016-present Pranay Agarwal Copyright (c) 2016-present Slack Technologies, Inc.
+
+### Grammars: `haml`
+License: MIT — https://raw.githubusercontent.com/karuna/haml-vscode/master/LICENSE.md
+
+- `haml` — https://github.com/karuna/haml-vscode/blob/aa45415aefd691af0a501ea4f98e434490623e0d/syntaxes/haml.json
+
+Copyright © `2016` `Karuna Murti <karuna.murti at gmail dot com>`
+
+### Grammars: `haskell`
+License: BSD-3-Clause — https://raw.githubusercontent.com/octref/language-haskell/master/LICENSE
+
+- `haskell` — https://github.com/octref/language-haskell/blob/ae87982aac2bf5cf6334c067e49c5ec8fc08b871/syntaxes/haskell.json
+
+```
+Copyright (c) 2017 Justus Adam
+
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+
+    * Redistributions in binary form must reproduce the above
+      copyright notice, this list of conditions and the following
+      disclaimer in the documentation and/or other materials provided
+      with the distribution.
+
+    * Neither the name of Justus Adam nor the names of other
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+### Grammars: `haxe`, `hxml`
+License: MIT — https://raw.githubusercontent.com/vshaxe/haxe-TmLanguage/master/LICENSE.md
+
+- `haxe` — https://github.com/vshaxe/haxe-TmLanguage/blob/67b4ee73be516277095b03056f183ffe8a6dd1ac/haxe.YAML-tmLanguage
+- `hxml` — https://github.com/vshaxe/haxe-TmLanguage/blob/cf8117cb69876af5fbac537860ffc73928fe2571/hxml.YAML-tmLanguage
+
+Copyright (c) 2017 vshaxe contributors
+
+### Grammars: `hcl`, `terraform`
+License: MPL-2.0 — https://raw.githubusercontent.com/hashicorp/syntax/main/LICENSE
+
+- `hcl` — https://github.com/hashicorp/syntax/blob/2ec7cd10c9d6134e836bf85eb0f5aa010512bff4/syntaxes/hcl.tmGrammar.json
+- `terraform` — https://github.com/hashicorp/syntax/blob/cc2b4d4fe389f14b8a13937f4e0d7b2811b57588/syntaxes/terraform.tmGrammar.json
+
+```
+Copyright IBM Corp. 2020, 2025
+
+Mozilla Public License Version 2.0
+==================================
+
+1. Definitions
+--------------
+
+1.1. "Contributor"
+    means each individual or legal entity that creates, contributes to
+    the creation of, or owns Covered Software.
+
+1.2. "Contributor Version"
+    means the combination of the Contributions of others (if any) used
+    by a Contributor and that particular Contributor's Contribution.
+
+1.3. "Contribution"
+    means Covered Software of a particular Contributor.
+
+1.4. "Covered Software"
+    means Source Code Form to which the initial Contributor has attached
+    the notice in Exhibit A, the Executable Form of such Source Code
+    Form, and Modifications of such Source Code Form, in each case
+    including portions thereof.
+
+1.5. "Incompatible With Secondary Licenses"
+    means
+
+    (a) that the initial Contributor has attached the notice described
+        in Exhibit B to the Covered Software; or
+
+    (b) that the Covered Software was made available under the terms of
+        version 1.1 or earlier of the License, but not also under the
+        terms of a Secondary License.
+
+1.6. "Executable Form"
+    means any form of the work other than Source Code Form.
+
+1.7. "Larger Work"
+    means a work that combines Covered Software with other material, in
+    a separate file or files, that is not Covered Software.
+
+1.8. "License"
+    means this document.
+
+1.9. "Licensable"
+    means having the right to grant, to the maximum extent possible,
+    whether at the time of the initial grant or subsequently, any and
+    all of the rights conveyed by this License.
+
+1.10. "Modifications"
+    means any of the following:
+
+    (a) any file in Source Code Form that results from an addition to,
+        deletion from, or modification of the contents of Covered
+        Software; or
+
+    (b) any new file in Source Code Form that contains any Covered
+        Software.
+
+1.11. "Patent Claims" of a Contributor
+    means any patent claim(s), including without limitation, method,
+    process, and apparatus claims, in any patent Licensable by such
+    Contributor that would be infringed, but for the grant of the
+    License, by the making, using, selling, offering for sale, having
+    made, import, or transfer of either its Contributions or its
+    Contributor Version.
+
+1.12. "Secondary License"
+    means either the GNU General Public License, Version 2.0, the GNU
+    Lesser General Public License, Version 2.1, the GNU Affero General
+    Public License, Version 3.0, or any later versions of those
+    licenses.
+
+1.13. "Source Code Form"
+    means the form of the work preferred for making modifications.
+
+1.14. "You" (or "Your")
+    means an individual or a legal entity exercising rights under this
+    License. For legal entities, "You" includes any entity that
+    controls, is controlled by, or is under common control with You. For
+    purposes of this definition, "control" means (a) the power, direct
+    or indirect, to cause the direction or management of such entity,
+    whether by contract or otherwise, or (b) ownership of more than
+    fifty percent (50%) of the outstanding shares or beneficial
+    ownership of such entity.
+
+2. License Grants and Conditions
+--------------------------------
+
+2.1. Grants
+
+Each Contributor hereby grants You a world-wide, royalty-free,
+non-exclusive license:
+
+(a) under intellectual property rights (other than patent or trademark)
+    Licensable by such Contributor to use, reproduce, make available,
+    modify, display, perform, distribute, and otherwise exploit its
+    Contributions, either on an unmodified basis, with Modifications, or
+    as part of a Larger Work; and
+
+(b) under Patent Claims of such Contributor to make, use, sell, offer
+    for sale, have made, import, and otherwise transfer either its
+    Contributions or its Contributor Version.
+
+2.2. Effective Date
+
+The licenses granted in Section 2.1 with respect to any Contribution
+become effective for each Contribution on the date the Contributor first
+distributes such Contribution.
+
+2.3. Limitations on Grant Scope
+
+The licenses granted in this Section 2 are the only rights granted under
+this License. No additional rights or licenses will be implied from the
+distribution or licensing of Covered Software under this License.
+Notwithstanding Section 2.1(b) above, no patent license is granted by a
+Contributor:
+
+(a) for any code that a Contributor has removed from Covered Software;
+    or
+
+(b) for infringements caused by: (i) Your and any other third party's
+    modifications of Covered Software, or (ii) the combination of its
+    Contributions with other software (except as part of its Contributor
+    Version); or
+
+(c) under Patent Claims infringed by Covered Software in the absence of
+    its Contributions.
+
+This License does not grant any rights in the trademarks, service marks,
+or logos of any Contributor (except as may be necessary to comply with
+the notice requirements in Section 3.4).
+
+2.4. Subsequent Licenses
+
+No Contributor makes additional grants as a result of Your choice to
+distribute the Covered Software under a subsequent version of this
+License (see Section 10.2) or under the terms of a Secondary License (if
+permitted under the terms of Section 3.3).
+
+2.5. Representation
+
+Each Contributor represents that the Contributor believes its
+Contributions are its original creation(s) or it has sufficient rights
+to grant the rights to its Contributions conveyed by this License.
+
+2.6. Fair Use
+
+This License is not intended to limit any rights You have under
+applicable copyright doctrines of fair use, fair dealing, or other
+equivalents.
+
+2.7. Conditions
+
+Sections 3.1, 3.2, 3.3, and 3.4 are conditions of the licenses granted
+in Section 2.1.
+
+3. Responsibilities
+-------------------
+
+3.1. Distribution of Source Form
+
+All distribution of Covered Software in Source Code Form, including any
+Modifications that You create or to which You contribute, must be under
+the terms of this License. You must inform recipients that the Source
+Code Form of the Covered Software is governed by the terms of this
+License, and how they can obtain a copy of this License. You may not
+attempt to alter or restrict the recipients' rights in the Source Code
+Form.
+
+3.2. Distribution of Executable Form
+
+If You distribute Covered Software in Executable Form then:
+
+(a) such Covered Software must also be made available in Source Code
+    Form, as described in Section 3.1, and You must inform recipients of
+    the Executable Form how they can obtain a copy of such Source Code
+    Form by reasonable means in a timely manner, at a charge no more
+    than the cost of distribution to the recipient; and
+
+(b) You may distribute such Executable Form under the terms of this
+    License, or sublicense it under different terms, provided that the
+    license for the Executable Form does not attempt to limit or alter
+    the recipients' rights in the Source Code Form under this License.
+
+3.3. Distribution of a Larger Work
+
+You may create and distribute a Larger Work under terms of Your choice,
+provided that You also comply with the requirements of this License for
+the Covered Software. If the Larger Work is a combination of Covered
+Software with a work governed by one or more Secondary Licenses, and the
+Covered Software is not Incompatible With Secondary Licenses, this
+License permits You to additionally distribute such Covered Software
+under the terms of such Secondary License(s), so that the recipient of
+the Larger Work may, at their option, further distribute the Covered
+Software under the terms of either this License or such Secondary
+License(s).
+
+3.4. Notices
+
+You may not remove or alter the substance of any license notices
+(including copyright notices, patent notices, disclaimers of warranty,
+or limitations of liability) contained within the Source Code Form of
+the Covered Software, except that You may alter any license notices to
+the extent required to remedy known factual inaccuracies.
+
+3.5. Application of Additional Terms
+
+You may choose to offer, and to charge a fee for, warranty, support,
+indemnity or liability obligations to one or more recipients of Covered
+Software. However, You may do so only on Your own behalf, and not on
+behalf of any Contributor. You must make it absolutely clear that any
+such warranty, support, indemnity, or liability obligation is offered by
+You alone, and You hereby agree to indemnify every Contributor for any
+liability incurred by such Contributor as a result of warranty, support,
+indemnity or liability terms You offer. You may include additional
+disclaimers of warranty and limitations of liability specific to any
+jurisdiction.
+
+4. Inability to Comply Due to Statute or Regulation
+---------------------------------------------------
+
+If it is impossible for You to comply with any of the terms of this
+License with respect to some or all of the Covered Software due to
+statute, judicial order, or regulation then You must: (a) comply with
+the terms of this License to the maximum extent possible; and (b)
+describe the limitations and the code they affect. Such description must
+be placed in a text file included with all distributions of the Covered
+Software under this License. Except to the extent prohibited by statute
+or regulation, such description must be sufficiently detailed for a
+recipient of ordinary skill to be able to understand it.
+
+5. Termination
+--------------
+
+5.1. The rights granted under this License will terminate automatically
+if You fail to comply with any of its terms. However, if You become
+compliant, then the rights granted under this License from a particular
+Contributor are reinstated (a) provisionally, unless and until such
+Contributor explicitly and finally terminates Your grants, and (b) on an
+ongoing basis, if such Contributor fails to notify You of the
+non-compliance by some reasonable means prior to 60 days after You have
+come back into compliance. Moreover, Your grants from a particular
+Contributor are reinstated on an ongoing basis if such Contributor
+notifies You of the non-compliance by some reasonable means, this is the
+first time You have received notice of non-compliance with this License
+from such Contributor, and You become compliant prior to 30 days after
+Your receipt of the notice.
+
+5.2. If You initiate litigation against any entity by asserting a patent
+infringement claim (excluding declaratory judgment actions,
+counter-claims, and cross-claims) alleging that a Contributor Version
+directly or indirectly infringes any patent, then the rights granted to
+You by any and all Contributors for the Covered Software under Section
+2.1 of this License shall terminate.
+
+5.3. In the event of termination under Sections 5.1 or 5.2 above, all
+end user license agreements (excluding distributors and resellers) which
+have been validly granted by You or Your distributors under this License
+prior to termination shall survive termination.
+
+************************************************************************
+*                                                                      *
+*  6. Disclaimer of Warranty                                           *
+*  -------------------------                                           *
+*                                                                      *
+*  Covered Software is provided under this License on an "as is"       *
+*  basis, without warranty of any kind, either expressed, implied, or  *
+*  statutory, including, without limitation, warranties that the       *
+*  Covered Software is free of defects, merchantable, fit for a        *
+*  particular purpose or non-infringing. The entire risk as to the     *
+*  quality and performance of the Covered Software is with You.        *
+*  Should any Covered Software prove defective in any respect, You     *
+*  (not any Contributor) assume the cost of any necessary servicing,   *
+*  repair, or correction. This disclaimer of warranty constitutes an   *
+*  essential part of this License. No use of any Covered Software is   *
+*  authorized under this License except under this disclaimer.         *
+*                                                                      *
+************************************************************************
+
+************************************************************************
+*                                                                      *
+*  7. Limitation of Liability                                          *
+*  --------------------------                                          *
+*                                                                      *
+*  Under no circumstances and under no legal theory, whether tort      *
+*  (including negligence), contract, or otherwise, shall any           *
+*  Contributor, or anyone who distributes Covered Software as          *
+*  permitted above, be liable to You for any direct, indirect,         *
+*  special, incidental, or consequential damages of any character      *
+*  including, without limitation, damages for lost profits, loss of    *
+*  goodwill, work stoppage, computer failure or malfunction, or any    *
+*  and all other commercial damages or losses, even if such party      *
+*  shall have been informed of the possibility of such damages. This   *
+*  limitation of liability shall not apply to liability for death or   *
+*  personal injury resulting from such party's negligence to the       *
+*  extent applicable law prohibits such limitation. Some               *
+*  jurisdictions do not allow the exclusion or limitation of           *
+*  incidental or consequential damages, so this exclusion and          *
+*  limitation may not apply to You.                                    *
+*                                                                      *
+************************************************************************
+
+8. Litigation
+-------------
+
+Any litigation relating to this License may be brought only in the
+courts of a jurisdiction where the defendant maintains its principal
+place of business and such litigation shall be governed by laws of that
+jurisdiction, without reference to its conflict-of-law provisions.
+Nothing in this Section shall prevent a party's ability to bring
+cross-claims or counter-claims.
+
+9. Miscellaneous
+----------------
+
+This License represents the complete agreement concerning the subject
+matter hereof. If any provision of this License is held to be
+unenforceable, such provision shall be reformed only to the extent
+necessary to make it enforceable. Any law or regulation which provides
+that the language of a contract shall be construed against the drafter
+shall not be used to construe this License against a Contributor.
+
+10. Versions of the License
+---------------------------
+
+10.1. New Versions
+
+Mozilla Foundation is the license steward. Except as provided in Section
+10.3, no one other than the license steward has the right to modify or
+publish new versions of this License. Each version will be given a
+distinguishing version number.
+
+10.2. Effect of New Versions
+
+You may distribute the Covered Software under the terms of the version
+of the License under which You originally received the Covered Software,
+or under the terms of any subsequent version published by the license
+steward.
+
+10.3. Modified Versions
+
+If you create software not governed by this License, and you want to
+create a new license for such software, you may create and use a
+modified version of this License if you rename the license and remove
+any references to the name of the license steward (except to note that
+such modified license differs from this License).
+
+10.4. Distributing Source Code Form that is Incompatible With Secondary
+Licenses
+
+If You choose to distribute Source Code Form that is Incompatible With
+Secondary Licenses under the terms of this version of the License, the
+notice described in Exhibit B of this License must be attached.
+
+Exhibit A - Source Code Form License Notice
+-------------------------------------------
+
+  This Source Code Form is subject to the terms of the Mozilla Public
+  License, v. 2.0. If a copy of the MPL was not distributed with this
+  file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+If it is not possible or desirable to put the notice in a particular
+file, then You may include the notice in a location (such as a LICENSE
+file in a relevant directory) where a recipient would be likely to look
+for such a notice.
+
+You may add additional accurate notices of copyright ownership.
+
+Exhibit B - "Incompatible With Secondary Licenses" Notice
+---------------------------------------------------------
+
+  This Source Code Form is "Incompatible With Secondary Licenses", as
+  defined by the Mozilla Public License, v. 2.0.
+```
+
+### Grammars: `hjson`
+License: MIT — https://raw.githubusercontent.com/hjson/textmate-hjson/master/LICENSE
+
+- `hjson` — https://github.com/hjson/textmate-hjson/blob/196075169c9a9f9ab04c8e7423b67ea72c976237/Syntaxes/Hjson.tmLanguage
+
+Copyright (c) 2014 Christian Zangl
+
+### Grammars: `http`
+License: MIT — https://raw.githubusercontent.com/Huachao/vscode-restclient/master/LICENSE
+
+- `http` — https://github.com/Huachao/vscode-restclient/blob/6649589e4d3f97d9c0d68a4f7ffe03fa2919c4df/syntaxes/http.tmLanguage.json
+
+Copyright (c) 2016 - present Huachao Mao
+
+### Grammars: `hurl`
+License: MIT
+
+- `hurl` — https://github.com/nikeee/language-hurl/blob/dec5d90bea8a13d21fd8365d5a0d2d35453653c1/grammars/hurl.tmlanguage.json; license stated in https://github.com/nikeee/language-hurl/blob/dec5d90bea8a13d21fd8365d5a0d2d35453653c1/package.json
+
+```
+"license": "MIT"
+```
+
+### Grammars: `hy`
+License: MIT — https://raw.githubusercontent.com/hylang/vscode-hy/master/LICENSE.md
+
+- `hy` — https://github.com/hylang/vscode-hy/blob/8f99630793b7483cf4cac10a655da6fed08a4f9f/syntaxes/hy.tmLanguage.json
+
+Copyright (c) 2022 Caleb Figgers
+
+### Grammars: `imba`
+License: MIT — https://raw.githubusercontent.com/imba/imba/master/LICENSE
+
+- `imba` — https://github.com/imba/imba/blob/183643518e567f0e125046b47b6d81f1aa7bdbb1/packages/vscode-imba/syntaxes/imba.tmLanguage.json
+
+Copyright (c) 2015-present Sindre Aarsaether
+
+### Grammars: `jinja`, `jinja-html`
+License: MIT — https://raw.githubusercontent.com/samuelcolvin/jinjahtml-vscode/main/LICENSE
+
+- `jinja` — https://github.com/samuelcolvin/jinjahtml-vscode/blob/be729c88f723602e7b5df2e9dc5e8c016c31c38f/syntaxes/jinja.tmLanguage.json
+- `jinja-html` — https://github.com/samuelcolvin/jinjahtml-vscode/blob/64ad369cd167bba2e614944db6d925b7dc6483b4/syntaxes/jinja-html.tmLanguage.json
+
+Copyright (c) 2018 - 2022 Samuel Colvin and other Contributors
+
+### Grammars: `jison`
+License: MIT — https://raw.githubusercontent.com/cdibbs/language-jison/master/LICENSE.md
+
+- `jison` — https://github.com/cdibbs/language-jison/blob/9d4cb4b044832320a51fabb6e533fc299425f552/grammars/jison.cson
+
+Copyright © 2014–2017 Chris Dibbern
+
+### Grammars: `json5`
+License: MIT — https://raw.githubusercontent.com/mrmlnc/vscode-json5/master/LICENSE
+
+- `json5` — https://github.com/mrmlnc/vscode-json5/blob/e884b89929103ff009322c393080ff45a4544e88/syntaxes/json5.json
+
+Copyright (c) Denis Malinochkin
+
+### Grammars: `jsonnet`
+License: Apache-2.0 — https://raw.githubusercontent.com/heptio/vscode-jsonnet/master/LICENSE
+
+- `jsonnet` — https://github.com/heptio/vscode-jsonnet/blob/39088f9cde9f483c8e0efeb67a3fd561cd873aad/syntaxes/jsonnet.tmLanguage.json
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `jssm`
+License: MIT — https://raw.githubusercontent.com/StoneCypher/sublime-jssm/master/LICENSE
+
+- `jssm` — https://github.com/StoneCypher/sublime-jssm/blob/2be02a59d284229bbbfb3dc6c2bdcec9b2c263ef/jssm.tmLanguage
+
+Copyright (c) 2017 John Haugeland
+
+### Grammars: `just`
+License: MIT — https://raw.githubusercontent.com/nefrob/vscode-just/main/LICENSE
+
+- `just` — https://github.com/nefrob/vscode-just/blob/c0a00dba51884e5887783c48dddf585dead998c6/syntaxes/just.tmLanguage.json
+
+Copyright (c) 2024 Robert Neff
+
+### Grammars: `kdl`
+License: Apache-2.0 — https://raw.githubusercontent.com/kdl-org/vscode-kdl/main/LICENSE
+
+- `kdl` — https://github.com/kdl-org/vscode-kdl/blob/b986286d526d3dba7f5121956a52ce300c3418f0/syntaxes/kdl.tmLanguage.json
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+NOTICE of `kdl` (https://github.com/kdl-org/vscode-kdl/blob/b986286d526d3dba7f5121956a52ce300c3418f0/NOTICE):
+
+```
+vscode-kdl
+Copyright 2020 Kat Marchán
+```
+
+### Grammars: `kotlin`
+License: MIT — https://raw.githubusercontent.com/fwcd/vscode-kotlin/main/LICENSE
+
+- `kotlin` — https://github.com/fwcd/vscode-kotlin/blob/626e20d5c51a4379c4c0ee293aa89e58b5232aec/syntaxes/kotlin.tmLanguage.json
+
+Copyright (c) 2016 George Fraser Copyright (c) 2018 fwcd
+
+### Grammars: `kusto`
+License: Apache-2.0
+
+- `kusto` — https://github.com/rosshamish/kuskus/blob/ff48034975f387ba79258776e5d452bee43a6233/kusto-syntax-highlighting/syntaxes/kusto.tmLanguage.json; license stated in https://github.com/rosshamish/kuskus/blob/ff48034975f387ba79258776e5d452bee43a6233/kusto-syntax-highlighting/LICENSE
+
+Copyright 2016 Josef Sin
+
+### Grammars: `lean`
+License: Apache-2.0 — https://raw.githubusercontent.com/leanprover/vscode-lean4/master/LICENSE
+
+- `lean` — https://github.com/leanprover/vscode-lean4/blob/2ca585c47d447682452bd72f528feffd03ef4971/vscode-lean4/syntaxes/lean4.json
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `liquid`
+License: MIT — https://raw.githubusercontent.com/Shopify/liquid-tm-grammar/main/LICENSE.md
+
+- `liquid` — https://github.com/Shopify/liquid-tm-grammar/blob/099adcf0d4beacd078a22432eaeab08d6f1e6da5/grammars/liquid.tmLanguage.json
+
+Copyright 2022-present, Shopify Inc.
+
+### Grammars: `llvm`
+License: no SPDX identifier upstream; the license text follows — https://raw.githubusercontent.com/llvm/llvm-project/main/LICENSE.TXT
+
+- `llvm` — https://github.com/llvm/llvm-project/blob/0d08cb0e70378d1f10578f4e009eb29eb17ad2dd/llvm/utils/vscode/llvm/syntaxes/ll.tmLanguage.yaml
+
+```
+==============================================================================
+The LLVM Project is under the Apache License v2.0 with LLVM Exceptions:
+==============================================================================
+
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+    TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+    1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+    2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+    3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+    4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+    5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+    6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+    7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+    8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+    9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+    END OF TERMS AND CONDITIONS
+
+    APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "[]"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+    Copyright [yyyy] [name of copyright owner]
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+
+---- LLVM Exceptions to the Apache 2.0 License ----
+
+As an exception, if, as a result of your compiling your source code, portions
+of this Software are embedded into an Object form of such source code, you
+may redistribute such embedded portions in such Object form without complying
+with the conditions of Sections 4(a), 4(b) and 4(d) of the License.
+
+In addition, if you combine or link compiled forms of this Software with
+software that is licensed under the GPLv2 ("Combined Software") and if a
+court of competent jurisdiction determines that the patent provision (Section
+3), the indemnity provision (Section 9) or other Section of the License
+conflicts with the conditions of the GPLv2, you may retroactively and
+prospectively choose to deem waived or otherwise exclude such Section(s) of
+the License, but only in their entirety and only with respect to the Combined
+Software.
+
+==============================================================================
+Software from third parties included in the LLVM Project:
+==============================================================================
+The LLVM Project contains third party software which is under different license
+terms. All such code will be identified clearly using at least one of two
+mechanisms:
+1) It will be in a separate directory tree with its own `LICENSE.txt` or
+   `LICENSE` file at the top containing the specific license and restrictions
+   which apply to that software, or
+2) It will contain specific license and restriction terms at the top of every
+   file.
+
+==============================================================================
+Legacy LLVM License (https://llvm.org/docs/DeveloperPolicy.html#legacy):
+==============================================================================
+University of Illinois/NCSA
+Open Source License
+
+Copyright (c) 2003-2019 University of Illinois at Urbana-Champaign.
+All rights reserved.
+
+Developed by:
+
+    LLVM Team
+
+    University of Illinois at Urbana-Champaign
+
+    http://llvm.org
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal with
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+    * Redistributions of source code must retain the above copyright notice,
+      this list of conditions and the following disclaimers.
+
+    * Redistributions in binary form must reproduce the above copyright notice,
+      this list of conditions and the following disclaimers in the
+      documentation and/or other materials provided with the distribution.
+
+    * Neither the names of the LLVM Team, University of Illinois at
+      Urbana-Champaign, nor the names of its contributors may be used to
+      endorse or promote products derived from this Software without specific
+      prior written permission.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS WITH THE
+SOFTWARE.
+```
+
+### Grammars: `log`
+License: MIT — https://raw.githubusercontent.com/emilast/vscode-logfile-highlighter/master/LICENSE
+
+- `log` — https://github.com/emilast/vscode-logfile-highlighter/blob/396c8552ff99d0e07142fdd940d75dae212dd28c/syntaxes/log.tmLanguage
+
+Copyright (c) 2015 emilast
+
+### Grammars: `luau`
+License: no SPDX identifier upstream; the license text follows — https://raw.githubusercontent.com/JohnnyMorganz/Luau.tmLanguage/main/LICENSE.md
+
+- `luau` — https://github.com/JohnnyMorganz/Luau.tmLanguage/blob/1887144227f4e4444f1bf74fb978449e28e46cd4/Luau.tmLanguage
+
+```
+Copyright (c) JohnnyMorganz
+All rights reserved.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+===
+
+Copyright (c) Microsoft Corporation
+All rights reserved.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
+### Grammars: `markdown-nix`, `nix`
+License: MIT — https://raw.githubusercontent.com/nix-community/vscode-nix-ide/main/LICENSE
+
+- `markdown-nix` — https://github.com/nix-community/vscode-nix-ide/blob/e2aff510787a01beb97c6227adbb96e38a60fac4/dist/injection.json
+- `nix` — https://github.com/nix-community/vscode-nix-ide/blob/effbf3494a43250a537834805b305793994b9ca8/dist/nix.tmLanguage.json
+
+Copyright (c) 2020 noor
+
+### Grammars: `markdown-vue`, `vue`, `vue-directives`, `vue-interpolations`, `vue-sfc-style-variable-injection`
+License: MIT — https://raw.githubusercontent.com/vuejs/language-tools/master/LICENSE
+
+- `markdown-vue` — https://github.com/vuejs/language-tools/blob/784dd56026e07f1dadb9ef2498418eccbb3dee29/extensions/vscode/syntaxes/markdown-vue.json
+- `vue` — https://github.com/vuejs/language-tools/blob/784dd56026e07f1dadb9ef2498418eccbb3dee29/extensions/vscode/syntaxes/vue.tmLanguage.json
+- `vue-directives` — https://github.com/vuejs/language-tools/blob/784dd56026e07f1dadb9ef2498418eccbb3dee29/extensions/vscode/syntaxes/vue-directives.json
+- `vue-interpolations` — https://github.com/vuejs/language-tools/blob/784dd56026e07f1dadb9ef2498418eccbb3dee29/extensions/vscode/syntaxes/vue-interpolations.json
+- `vue-sfc-style-variable-injection` — https://github.com/vuejs/language-tools/blob/e85556a2e4bf0d6c981bdbd95c8a0b1e85e7ae8a/extensions/vscode/syntaxes/vue-sfc-style-variable-injection.json
+
+Copyright (c) 2021-present Johnson Chu
+
+### Grammars: `marko`
+License: MIT — https://raw.githubusercontent.com/marko-js/language-server/main/LICENSE
+
+- `marko` — https://github.com/marko-js/language-server/blob/1a79f9b6b7d28bc1942ac6e4b5dd674615380f06/packages/vscode/syntaxes/marko.tmLanguage.json
+
+Copyright 2022 eBay Inc.
+
+### Grammars: `matlab`
+License: BSD-2-Clause
+
+- `matlab` — https://github.com/mathworks/MATLAB-Language-grammar/blob/69dbf20c1eb19efd629c0438a2a493e60617e8de/Matlab.tmbundle/Syntaxes/MATLAB.tmLanguage; license stated in https://github.com/mathworks/MATLAB-Language-grammar/blob/69dbf20c1eb19efd629c0438a2a493e60617e8de/license.txt
+
+```
+Copyright 2018 The MathWorks, Inc.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+### Grammars: `mdc`
+License: MIT — https://raw.githubusercontent.com/nuxt-content/vscode-mdc/main/LICENSE
+
+- `mdc` — https://github.com/nuxt-content/vscode-mdc/blob/842f78ae4e8b1bbb1974b203ad0c7548fae02b8b/syntaxes/mdc.standalone.tmLanguage.json
+
+Copyright (c) 2016-2022 NuxtLabs
+
+### Grammars: `mdx`
+License: MIT — https://raw.githubusercontent.com/wooorm/markdown-tm-language/main/license
+
+- `mdx` — https://github.com/wooorm/markdown-tm-language/blob/c78b1e5df644d24fa76716bbe26f4b48a6fc1610/source.mdx.tmLanguage
+
+Copyright (c) Titus Wormer <tituswormer@gmail.com>
+
+### Grammars: `mermaid`
+License: MIT — https://raw.githubusercontent.com/bpruitt-goddard/vscode-mermaid-syntax-highlight/master/LICENSE
+
+- `mermaid` — https://github.com/bpruitt-goddard/vscode-mermaid-syntax-highlight/blob/8b62f487cb7a89afcd152febfbf47f5d4787657f/syntaxes/mermaid.tmLanguage.yaml
+
+Copyright (c) 2018 Brian Pruitt-Goddard
+
+### Grammars: `mojo`
+License: MIT — https://raw.githubusercontent.com/modular/mojo-syntax/main/LICENSE
+
+- `mojo` — https://github.com/modularml/mojo-syntax/blob/48cdeac4f6b542e0b50666a5725fdfadf6188836/syntaxes/mojo.syntax.json
+
+Copyright (c) 2022-present Modular Inc.  https://www.modular.com Copyright (c) 2015-present MagicStack Inc.  http://magic.io Copyright (c) 2015-present Microsoft Corporation
+
+### Grammars: `moonbit`
+License: Apache-2.0 — https://raw.githubusercontent.com/moonbitlang/moonbit-tmLanguage/main/LICENSE
+
+- `moonbit` — https://github.com/moonbitlang/moonbit-tmLanguage/blob/75c3fca1a0136c6ee4b6a01021b6a5aa25810117/grammars/moonbit.tmLanguage.json
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `move`
+License: MIT — https://raw.githubusercontent.com/damirka/move-syntax/main/LICENSE
+
+- `move` — https://github.com/damirka/move-syntax/blob/03e44307aefd99bac3c10bda4430a22c92d6d476/syntaxes/move.tmLanguage.json
+
+Copyright 2021 Damir Shamanaev
+
+### Grammars: `narrat`
+License: MIT — https://raw.githubusercontent.com/liana-p/narrat-syntax-highlighting-vscode/main/LICENSE
+
+- `narrat` — https://github.com/liana-p/narrat-syntax-highlighting-vscode/blob/00d4b410338fc50ca0ce77a1f7e873c1fb66d376/syntaxes/narrat.tmLanguage.yaml
+
+Copyright (c) 2020 Liana Pigeot
+
+### Grammars: `nextflow`, `nextflow-groovy`
+License: MIT — https://raw.githubusercontent.com/nextflow-io/vscode-language-nextflow/main/LICENSE.md
+
+- `nextflow` — https://github.com/nextflow-io/vscode-language-nextflow/blob/720a2bd501837ca815acf4a225d9f3ba71a2adb0/syntaxes/nextflow.tmLanguage.json
+- `nextflow-groovy` — https://github.com/nextflow-io/vscode-language-nextflow/blob/406586f401aa7c808814d1148ade0fe05446605c/syntaxes/groovy.tmLanguage.json
+
+Copyright (c) 2018 Paolo Di Tommaso
+
+### Grammars: `nginx`
+License: GPL-3.0 — https://raw.githubusercontent.com/hangxingliu/vscode-nginx-conf-hint/main/LICENSE
+
+- `nginx` — https://github.com/hangxingliu/vscode-nginx-conf-hint/blob/49159c02fd09dce264ded7802c9499a0f09646f5/src/syntax/nginx.tmLanguage
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `nim`
+License: no SPDX identifier upstream; the license text follows — https://raw.githubusercontent.com/pragmagic/vscode-nim/master/LICENSE
+
+- `nim` — https://github.com/pragmagic/vscode-nim/blob/0272a0544ddf147fde98f8a8f2b624b7dcb19eb3/syntaxes/nim.json
+
+```
+vscode-nim
+
+The MIT License (MIT)
+
+Copyright (c) Xored Software Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and 
+associated documentation files (the "Software"), to deal in the Software without restriction, 
+including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, 
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial 
+portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT 
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. 
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH 
+THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### Grammars: `nushell`
+License: MIT — https://raw.githubusercontent.com/nushell/vscode-nushell-lang/main/LICENSE
+
+- `nushell` — https://github.com/nushell/vscode-nushell-lang/blob/301f93bb350bc0a8db47d4e0cf23b412cbc8f4b7/syntaxes/nushell.tmLanguage.json
+
+Copyright (c) 2019 - 2023 The Nushell Project Developers
+
+### Grammars: `ocaml`
+License: Apache-2.0 — https://raw.githubusercontent.com/reasonml-editor/vscode-reasonml/master/LICENSE
+
+- `ocaml` — https://github.com/reasonml-editor/vscode-reasonml/blob/14af625ec50ed9968b957b4d6336c5338d81af45/syntaxes/ocaml.json
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `odin`
+License: MIT — https://raw.githubusercontent.com/DanielGavin/ols/master/LICENSE
+
+- `odin` — https://github.com/DanielGavin/ols/blob/d26a19b38c581e28f67609cbb2d5ac933a9373d1/editors/vscode/syntaxes/odin.tmLanguage.json
+
+Copyright (c) 2021 Daniel Gavin
+
+### Grammars: `openscad`
+License: MIT — https://raw.githubusercontent.com/tbuser/openscad.tmbundle/master/LICENSE
+
+- `openscad` — https://github.com/tbuser/openscad.tmbundle/blob/5962175ed355c2d58dc1991801c229809363e999/Syntaxes/OpenSCAD.tmLanguage
+
+Copyright (c) 2017 Tony Buser
+
+### Grammars: `pascal`
+License: MIT — https://raw.githubusercontent.com/alefragnani/vscode-language-pascal/master/LICENSE.md
+
+- `pascal` — https://github.com/alefragnani/vscode-language-pascal/blob/f2d6345bd9fe83932f4d04fcacf98ce7d74b8034/syntaxes/pascal.tmLanguage
+
+Copyright (c) 2015 Alessandro Fragnani
+
+### Grammars: `pkl`
+License: Apache-2.0 — https://raw.githubusercontent.com/apple/pkl.tmbundle/main/LICENSE.txt
+
+- `pkl` — https://github.com/apple/pkl.tmbundle/blob/4ed6ca67ec7579b7a3a86b96ee89874ae825f15f/Syntaxes/pkl.tmLanguage
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `plsql`
+License: MIT — https://raw.githubusercontent.com/zabel-xyz/plsql-language/master/LICENSE
+
+- `plsql` — https://github.com/zabel-xyz/plsql-language/blob/256a6b8f04f2bdc5e60ce921646a5068957078d7/syntaxes/plsql.tmLanguage
+
+Copyright (c) 2018 zabel-xyz
+
+### Grammars: `polar`
+License: Apache-2.0 — https://raw.githubusercontent.com/osohq/polar-grammar/main/LICENSE
+
+- `polar` — https://github.com/osohq/polar-grammar/blob/1a87b3a7f2b47aea681a0f627b2297f77171d1c3/syntaxes/polar.tmLanguage.json
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `postcss`, `vue-html`
+License: MIT — https://raw.githubusercontent.com/vuejs/vetur/master/LICENSE
+
+- `postcss` — https://github.com/vuejs/vetur/blob/8ccae3ba50b65837d4cd4acc71a3b84cd3bee27c/syntaxes/vue-postcss.json
+- `vue-html` — https://github.com/vuejs/vetur/blob/53ee52746b1f26f44391c3764bc7bd06d4ddaa46/syntaxes/vue-html.tmLanguage.json
+
+Copyright (c) 2017 Pine Wu
+
+### Grammars: `powerquery`
+License: MIT — https://raw.githubusercontent.com/microsoft/powerquery-language/master/LICENSE
+
+- `powerquery` — https://github.com/microsoft/powerquery-language/blob/eed9810b5f78dfb63319bdbce80bca50419dfa50/PowerQuery.tmLanguage.json
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+### Grammars: `prisma`
+License: Apache-2.0 — https://raw.githubusercontent.com/prisma/language-tools/main/LICENSE
+
+- `prisma` — https://github.com/prisma/language-tools/blob/1e0059be6522d1dac98ff45cd78ab962599a815e/packages/vscode/syntaxes/prisma.tmLanguage.json
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `prolog`
+License: MIT — https://raw.githubusercontent.com/arthwang/vsc-prolog/master/LICENSE.txt
+
+- `prolog` — https://github.com/arthwang/vsc-prolog/blob/5e15f731d5ef8e0f3974589b84ddefe6a2bf78c7/syntaxes/prolog.swi.tmLanguage.json
+
+Copyright (c) 2017 Arthur Wang
+
+### Grammars: `proto`
+License: MIT — https://raw.githubusercontent.com/zxh0/vscode-proto3/master/LICENSE.txt
+
+- `proto` — https://github.com/zxh0/vscode-proto3/blob/274be763ecae7055505354b44f4892a2669e1da8/syntaxes/proto3.tmLanguage.json
+
+```
+The MIT License (MIT)
+
+Copyright (c) 2016
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Grammars: `puppet`
+License: Apache-2.0 — https://raw.githubusercontent.com/octref/puppet-vscode/main/LICENSE
+
+- `puppet` — https://github.com/octref/puppet-vscode/blob/42e02ef6c02aefb0dcf03f8367fdc106d7213a6c/syntaxes/puppet.tmLanguage
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `purescript`
+License: no SPDX identifier upstream; the license text follows — https://raw.githubusercontent.com/nwolverson/vscode-language-purescript/master/LICENSE.md
+
+- `purescript` — https://github.com/nwolverson/vscode-language-purescript/blob/b7641936190d6d8eb346660284dab3a5d1cc636f/syntaxes/purescript.json
+
+```
+Copyright (c) 2015 Nicholas Wolverson
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+The VisualStudio code PureScript language grammar is derived from the PureScript
+atom language grammar, from https://github.com/purescript-contrib/atom-language-purescript.
+Its LICENSE is reproduced below:  
+
+Copyright (c) 2014 Darin Morrison
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+The PureScript language grammar is derived from the Haskell atom language
+grammar, from https://github.com/atom-haskell/language-haskell. Its LICENSE is
+reproduced below:
+
+Copyright (c) 2015 Atom-Haskell
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Grammars: `qml`, `qmldir`, `qss`
+License: MIT — https://raw.githubusercontent.com/seanwu1105/vscode-qt-for-python/master/LICENSE
+
+- `qml` — https://github.com/seanwu1105/vscode-qt-for-python/blob/51408001e908800c00ce9f68f66e511545ea29fe/syntaxes/qml.tmLanguage.json
+- `qmldir` — https://github.com/seanwu1105/vscode-qt-for-python/blob/b301e7b18493ba59c4f52e49c3f73b6cd23d4c4b/syntaxes/qmldir.tmLanguage.json
+- `qss` — https://github.com/seanwu1105/vscode-qt-for-python/blob/f0a56a97d10f58ab7b4b6e2ab6ce34ca4c9d521d/syntaxes/qss.tmLanguage.json
+
+Copyright (c) 2022 Shuang Wu
+
+### Grammars: `r`
+License: MIT — https://raw.githubusercontent.com/posit-dev/positron/refs/heads/main/extensions/positron-r/syntaxes/LICENSE.md
+
+- `r` — https://github.com/posit-dev/positron/blob/51b18f000819ada804c7469a1463a5d96dad0f73/extensions/positron-r/syntaxes/r.tmGrammar.gen.json
+
+Copyright (c) 2025 Posit Software, PBC
+
+### Grammars: `racket`
+License: GPL-3.0 — https://raw.githubusercontent.com/Eugleo/magic-racket/master/LICENSE
+
+- `racket` — https://github.com/Eugleo/magic-racket/blob/1b850db7f6e7c3ba8a1b47fe2781800a21f669a8/syntaxes/racket.tmLanguage.json
+
+_(The upstream license text is the standard text and names no copyright holder.)_
+
+### Grammars: `razor`
+License: MIT — https://raw.githubusercontent.com/dotnet/razor/main/LICENSE.txt
+
+- `razor` — https://github.com/dotnet/razor/blob/743f32a68c61809b22fd84e8748c3686ef1bb8b8/src/Razor/src/Microsoft.VisualStudio.RazorExtension/EmbeddedGrammars/aspnetcorerazor.tmLanguage.json
+
+Copyright (c) .NET Foundation and Contributors
+
+### Grammars: `reg`
+License: MIT — https://raw.githubusercontent.com/mihai-vlc/reg-vscode/master/LICENSE
+
+- `reg` — https://github.com/mihai-vlc/reg-vscode/blob/896096fc6756329d82c71a913663a1c0ac678f74/syntaxes/reg.tmLanguage
+
+Copyright (c) 2020 Mihai Ionut Vilcu
+
+### Grammars: `regexp`
+License: MIT — https://raw.githubusercontent.com/MagicStack/MagicPython/master/LICENSE
+
+- `regexp` — https://github.com/MagicStack/MagicPython/blob/c9b3409deb69acec31bbf7913830e93a046b30cc/grammars/MagicRegExp.tmLanguage
+
+Copyright (c) 2015-present MagicStack Inc.  http://magic.io
+
+### Grammars: `rel`
+License: MIT
+
+- `rel` — https://github.com/relationalai-oss/rel_vscode/blob/63dda4dee48c67b037357f47b562185484555ea9/syntaxes/rel.tmLanguage.json; license stated in https://github.com/relationalai-oss/rel_vscode/blob/63dda4dee48c67b037357f47b562185484555ea9/README.md
+
+```
+## License
+[MIT](https://choosealicense.com/licenses/mit/)
+```
+
+### Grammars: `riscv`
+License: MIT — https://raw.githubusercontent.com/zhuanhao-wu/vscode-riscv-support/master/LICENSE
+
+- `riscv` — https://github.com/zhuanhao-wu/vscode-riscv-support/blob/2736b60e45ff2ef738d784055e136cf38d6290cd/syntaxes/riscv.tmLanguage
+
+Copyright (c) 2021 Zhuanhao Wu Copyright (c) 2020 Darkhan Kubigenov
+
+### Grammars: `ron`
+License: MIT — https://raw.githubusercontent.com/a5huynh/vscode-ron/master/LICENSE.md
+
+- `ron` — https://github.com/a5huynh/vscode-ron/blob/3acb0d97348c972b3b6f04b4e92901a541b22022/syntaxes/ron.tmGrammar.json
+
+Copyright 2019 Andrew Huynh
+
+### Grammars: `rosmsg`
+License: MIT — https://raw.githubusercontent.com/jtbandes/ros-tmlanguage/main/LICENSE.md
+
+- `rosmsg` — https://github.com/jtbandes/ros-tmlanguage/blob/d8ae27bc0d04498c01cb8dc77bfe2884474d9aba/ROS%20Interface.tmLanguage.yaml
+
+Copyright © Jacob Bandes-Storch
+
+### Grammars: `sas`
+License: MIT — https://raw.githubusercontent.com/rpardee/sas/master/LICENSE
+
+- `sas` — https://github.com/rpardee/sas/blob/49f6e733c6c0b918a2a825ca2f63dba704f3e8c0/syntaxes/sas.tmLanguage
+
+Copyright (c) 2014 Roy Pardee
+
+### Grammars: `sass`
+License: no SPDX identifier upstream; the license text follows — https://raw.githubusercontent.com/TheRealSyler/vscode-sass-indented/master/LICENSE
+
+- `sass` — https://github.com/TheRealSyler/vscode-sass-indented/blob/f0e50cfaca4b64a1d49f8d938f188d6fd0bcfb6f/syntaxes/sass.tmLanguage.json
+
+```
+The MIT License (MIT)
+Copyright (c) 2016-2019 Robin Bentley, 2019-present Leonard Grosoli
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+Sass grammar definitions (Sass.json only) https://github.com/atom/language-sass
+The MIT License (MIT)
+Copyright (c) 2011-2019 GitHub Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### Grammars: `scala`
+License: MIT — https://raw.githubusercontent.com/scala/vscode-scala-syntax/main/LICENSE.md
+
+- `scala` — https://github.com/scala/vscode-scala-syntax/blob/1d4029f21c9c57ce3e05486968b5de2847c25c62/syntaxes/Scala.tmLanguage.json
+
+Copyright (c) 2018 Nicolas Stucki
+
+### Grammars: `scheme`
+License: MIT — https://raw.githubusercontent.com/tinyjiahao/vscode-scheme/master/LICENSE.md
+
+- `scheme` — https://github.com/sjhuangx/vscode-scheme/blob/4e21683666e1e2edfa21d040ecd427f628e7b5ff/syntaxes/scheme.tmLanguage
+
+Copyright (c) 2016 Allen Huang
+
+### Grammars: `shellsession`
+License: MIT — https://raw.githubusercontent.com/hronro/sublime-linguist-syntax/master/LICENSE
+
+- `shellsession` — https://github.com/hronro/sublime-linguist-syntax/blob/9c84f1d69dbe89bc23292f129cf2d408a9c7afe1/syntaxes/ShellSession.tmLanguage
+
+Copyright (c) 2022 Fengying Zhao(hronro)
+
+### Grammars: `smalltalk`
+License: MIT — https://raw.githubusercontent.com/leocamello/vscode-smalltalk/master/LICENSE
+
+- `smalltalk` — https://github.com/leocamello/vscode-smalltalk/blob/15ff58e2236127f682a33da12e931d74e0d17979/syntaxes/smalltalk.tmLanguage.json
+
+Copyright (c) 2019 Leonardo Nascimento
+
+### Grammars: `solidity`
+License: MIT — https://raw.githubusercontent.com/juanfranblanco/vscode-solidity/master/License.txt
+
+- `solidity` — https://github.com/juanfranblanco/vscode-solidity/blob/4c71312a6cfa3ddd7124e8dcad129705fa9d35d0/syntaxes/solidity.json
+
+Copyright (c) 2015-2025 Juan Blanco
+
+### Grammars: `soy`
+License: MIT — https://raw.githubusercontent.com/mthadley/language-closure-templates/master/LICENSE
+
+- `soy` — https://github.com/mthadley/language-closure-templates/blob/7caf3a1fad0245c4196d3766ba0f481762fbc92e/grammars/closure-templates.json
+
+Copyright (c) 2017 Michael T. Hadley
+
+### Grammars: `sparql`, `turtle`
+License: Apache-2.0
+
+- `sparql` — https://github.com/stardog-union/stardog-vsc/blob/a1963c610cde0eab23c44fc01ab36652565524de/stardog-rdf-grammars/syntaxes/sparql.tmLanguage.json; license stated in https://github.com/stardog-union/stardog-vsc/blob/a1963c610cde0eab23c44fc01ab36652565524de/stardog-rdf-grammars/LICENSE
+- `turtle` — https://github.com/stardog-union/stardog-vsc/blob/3f1364b08bdbf4b4d77f123682db7d2b708b2f6e/stardog-rdf-grammars/syntaxes/turtle.tmLanguage.json; license stated in https://github.com/stardog-union/stardog-vsc/blob/3f1364b08bdbf4b4d77f123682db7d2b708b2f6e/stardog-rdf-grammars/LICENSE
+
+```
+Apache License
+                           Version 2.0, January 2004
+                        https://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   Copyright 2017 Stardog Union.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       https://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+```
+
+### Grammars: `splunk`
+License: MIT — https://raw.githubusercontent.com/arcsector/vscode-splunk-search-syntax/master/LICENSE.txt
+
+- `splunk` — https://github.com/arcsector/vscode-splunk-search-syntax/blob/b1f68ff035950e6a98e0db4af1a338cb1c3c1858/syntaxes/splunk_search.tmLanguage
+
+```
+MIT License
+
+Copyright (c) [year] [fullname]
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Grammars: `stata`
+License: MIT — https://raw.githubusercontent.com/kylebarron/language-stata/master/LICENSE
+
+- `stata` — https://github.com/kylebarron/language-stata/blob/dd98de502bc1bf2a205f3f023afb98c7aa5b42ee/grammars/stata.json
+
+Copyright (c) 2017 Kyle Barron
+
+### Grammars: `stylus`
+License: MIT — https://raw.githubusercontent.com/d4rkr00t/language-stylus/master/LICENSE
+
+- `stylus` — https://github.com/d4rkr00t/language-stylus/blob/198a851f385aee857332f3ce5dd981ff67720ead/syntaxes/stylus.json
+
+Copyright (c) 2016-present Stanislav Sysoev and Lei Chen
+
+### Grammars: `surrealql`
+License: Apache-2.0 — https://raw.githubusercontent.com/surrealdb/surrealql-grammar/main/LICENSE
+
+- `surrealql` — https://github.com/surrealdb/surrealql-grammar/blob/afb9c5362be1b291da3a6b7eb71902cc460759ed/syntaxes/surrealql.tmLanguage.json
+
+Copyright © 2023 SurrealDB Ltd.
+
+### Grammars: `svelte`
+License: MIT — https://raw.githubusercontent.com/sveltejs/language-tools/master/LICENSE
+
+- `svelte` — https://github.com/sveltejs/language-tools/blob/32bd44e5af1eea464198cc6e841281b045e0f04d/packages/svelte-vscode/syntaxes/svelte.tmLanguage.src.yaml
+
+Copyright (c) 2020-Present [these people](https://github.com/sveltejs/language-tools/graphs/contributors)
+
+### Grammars: `swift`
+License: MIT — https://raw.githubusercontent.com/jtbandes/swift-tmlanguage/main/LICENSE.md
+
+- `swift` — https://github.com/jtbandes/swift-tmlanguage/blob/3fca2fa10f7dc962d19ee617b17844d6eecfa2cb/Swift.tmLanguage.yaml
+
+Copyright 2023 Jacob Bandes-Storch
+
+### Grammars: `system-verilog`, `verilog`
+License: MIT — https://raw.githubusercontent.com/mshr-h/vscode-verilog-hdl-support/main/LICENSE
+
+- `system-verilog` — https://github.com/mshr-h/vscode-verilog-hdl-support/blob/a63b28cd8f15d9ec4861b2f802e8bf6ce4f6d2f2/syntaxes/systemverilog.tmLanguage.json
+- `verilog` — https://github.com/mshr-h/vscode-verilog-hdl-support/blob/26cc4a3ec01b12aea5b8ffb7edeee3373eb71d77/syntaxes/verilog.tmLanguage.json
+
+Copyright (c) 2016-2022 Masahiro H
+
+### Grammars: `systemd`
+License: MIT — https://raw.githubusercontent.com/hangxingliu/vscode-systemd/main/LICENSE
+
+- `systemd` — https://github.com/hangxingliu/vscode-systemd/blob/62ace1156b5afa0ec9932e3a55cfc00c0123c457/src/syntax/systemd.tmLanguage
+
+Copyright (c) 2021 Liu Yue
+
+### Grammars: `talonscript`
+License: MIT — https://raw.githubusercontent.com/mirober/vscode-TalonScript/master/LICENSE
+
+- `talonscript` — https://github.com/mrob95/vscode-TalonScript/blob/91f3a6faaf926c02582f36ee155f2c4a02b9cc48/syntaxes/talon.tmLanguage.json
+
+Copyright © 2020 Mike Roberts
+
+### Grammars: `tasl`
+License: MIT — https://raw.githubusercontent.com/underlay/vscode-tasl/main/LICENSE
+
+- `tasl` — https://github.com/underlay/vscode-tasl/blob/dde4b7c0b762c2e667584095362dd49ebfacece7/syntaxes/tasl.tmLanguage.json
+
+Copyright (c) 2021 underlay
+
+### Grammars: `templ`
+License: MIT — https://raw.githubusercontent.com/templ-go/templ-vscode/main/LICENSE
+
+- `templ` — https://github.com/templ-go/templ-vscode/blob/d0af70c97ed384e93892c46b93d622ffaba5d93c/syntaxes/templ.tmLanguage.json
+
+Copyright (c) 2023 Adrian Hesketh
+
+### Grammars: `twig`
+License: MIT — https://raw.githubusercontent.com/mblode/vscode-twig-language-2/master/LICENSE.md
+
+- `twig` — https://github.com/mblode/vscode-twig-language-2/blob/82ae07ffe96656181ad8265c1fff008c8d1cdbba/src/syntaxes/twig.tmLanguage
+
+Copyright (c) 2019 mblode
+
+### Grammars: `typespec`
+License: MIT — https://raw.githubusercontent.com/microsoft/typespec/main/LICENSE
+
+- `typespec` — https://github.com/microsoft/typespec/blob/2894420921882652a568ed22d5e245b26781b398/grammars/typespec.json
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+### Grammars: `typst`
+License: MIT — https://raw.githubusercontent.com/nvarner/typst-lsp/master/LICENSE-MIT.txt
+
+- `typst` — https://github.com/nvarner/typst-lsp/blob/6972d4b9c2cbcb0551e203067f09ec84ca8f9df3/editors/vscode/typst.tmLanguage.json
+
+Copyright (c) 2023 Nathan Varner
+
+### Grammars: `v`
+License: MIT — https://raw.githubusercontent.com/vlang/vscode-vlang/master/LICENSE
+
+- `v` — https://github.com/vlang/vscode-vlang/blob/dd675d51adac26ca3154938de18eaaecbbcbffd9/syntaxes/v.tmLanguage.json
+
+Copyright (c) 2019 0x9ef
+
+### Grammars: `vhdl`
+License: MIT — https://raw.githubusercontent.com/jonasjj/awesome-vhdl/master/LICENSE.txt
+
+- `vhdl` — https://github.com/jonasjj/awesome-vhdl/blob/b787559a47d64c7baf2a9ac0f4cac8e2e721cddc/syntaxes/vhdl.tmLanguage
+
+```
+The MIT License (MIT)
+
+Copyright (c) 2016
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Grammars: `viml`
+License: MIT — https://raw.githubusercontent.com/dunstontc/viml/master/LICENSE
+
+- `viml` — https://github.com/dunstontc/viml/blob/8762570fc7d6f1009a3c93efd2a337330d88b88e/syntaxes/viml.tmLanguage.json
+
+Copyright (c) 2018 Clay Dunston <dunstontc@gmail.com>
+
+### Grammars: `vue-vine`
+License: MIT — https://raw.githubusercontent.com/vue-vine/assets/main/LICENSE
+
+- `vue-vine` — https://github.com/vue-vine/assets/blob/2921493f703bfcf64aed5644f275e7e65f2e0a48/grammars/vue-vine.tmLanguage.json
+
+Copyright (c) 2020-PRESENT ShenQingchuan
+
+### Grammars: `vyper`
+License: MIT — https://raw.githubusercontent.com/tintinweb/vscode-vyper/master/LICENSE
+
+- `vyper` — https://github.com/tintinweb/vscode-vyper/blob/3df08ea46fc7df1a5e7f35365e615624849d1c1b/syntaxes/vyper.tmLanguage.json
+
+Copyright (c) 2022 tintinweb
+
+### Grammars: `wasm`, `wit`
+License: MIT — https://raw.githubusercontent.com/wasmerio/vscode-wasm/master/LICENSE
+
+- `wasm` — https://github.com/wasmerio/vscode-wasm/blob/9d0ace1ff113f4a3e95797675039cd94ec257078/syntaxes/wat.json
+- `wit` — https://github.com/wasmerio/vscode-wasm/blob/5a67ac3f5ade246b44308768b034204612f3a0c9/syntaxes/wit.json
+
+Copyright (c) 2017-2019 (c) Dmitriy Tsvettsikh Copyright (c) 2019-Present WebAssembly Foundation
+
+### Grammars: `wenyan`
+License: MIT — https://raw.githubusercontent.com/wenyan-lang/highlight/master/LICENSE
+
+- `wenyan` — https://github.com/wenyan-lang/highlight/blob/5100e8a803978b4f5b009adac035d1f27f591760/wenyan.tmLanguage.json
+
+Copyright (c) 2020 Anthony Fu
+
+### Grammars: `wgsl`
+License: MIT — https://raw.githubusercontent.com/PolyMeilex/vscode-wgsl/master/LICENSE
+
+- `wgsl` — https://github.com/PolyMeilex/vscode-wgsl/blob/04222c48533ca541d6dc97043ea096471517e079/syntaxes/wgsl.tmLanguage.json
+
+Copyright (c) 2021 Bartłomiej Maryńczak
+
+### Grammars: `wikitext`
+License: MIT — https://raw.githubusercontent.com/Frederisk/Wikitext-VSCode-Extension/master/LICENSE.txt
+
+- `wikitext` — https://github.com/Frederisk/Wikitext-VSCode-Extension/blob/40e726bfe904a1e3b9a3141b4920f5061ce60e52/syntaxes/wikitext.tmLanguage.yaml
+
+Copyright (c) 2020-2022 Rowe Wilson Frederisk Holme
+
+### Grammars: `wolfram`
+License: no SPDX identifier upstream; the license text follows — https://raw.githubusercontent.com/WolframResearch/vscode-wolfram/master/LICENSE
+
+- `wolfram` — https://github.com/WolframResearch/vscode-wolfram/blob/8b55fb1724d971a303120b3f5b981d654c308c59/syntaxes/wolfram.tmLanguage.json
+
+```
+Copyright 2021 Wolfram Research Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+This project includes work covered by the following copyright and permission notices:
+
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "[]"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright [yyyy] [name of copyright owner]
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+```
+
+### Grammars: `yaml`
+License: MIT
+
+- `yaml` — https://github.com/textmate/yaml.tmbundle/blob/e54ceae3b719506dba7e481a77cea4a8b576ae46/Syntaxes/YAML.tmLanguage; license stated in https://github.com/textmate/yaml.tmbundle/blob/e54ceae3b719506dba7e481a77cea4a8b576ae46/Syntaxes/YAML-license.txt
+
+Copyright (c) 2015 FichteFoll <fichtefoll2@googlemail.com>
+
+### Grammars: `zenscript`
+License: MIT — https://raw.githubusercontent.com/CraftTweaker/ZenScript-tmLanguage/master/LICENSE
+
+- `zenscript` — https://github.com/CraftTweaker/ZenScript-tmLanguage/blob/5a7bcb775a6fb37470e56f904e70d8b8b9e6b047/zenscript.tmLanguage.json
+
+Copyright (c) 2019 CraftTweaker
+
+### Grammars: `zig`
+License: MIT — https://raw.githubusercontent.com/ziglang/vscode-zig/master/LICENSE
+
+- `zig` — https://github.com/ziglang/vscode-zig/blob/9c7bb7631f3af99331475b633aaf5b70345c6713/syntaxes/zig.tmLanguage.json
+
+Copyright (c) 2017 Marc Tiehuis
+
+### Grammars with no license upstream
+
+At the commits linked, the upstream repositories of these grammars have no license file, no license field in package.json, and no license or copyright statement in a README or the grammar file. They are listed with their sources for attribution.
+
+- `dax` — https://github.com/huyza/dax-language/blob/7fd39aa84552617daa258189b2550dcdbd14149a/syntaxes/dax.grammer.json
+- `glsl` — https://github.com/polym0rph/GLSL.tmbundle/blob/6998d3bbd204e26746a5ca580cda4c650b9057b1/Syntaxes/GLSL.tmLanguage
+- `tcl` — https://github.com/sleutho/tcl/blob/f18820ad14678bc033f0a35524820c90fe50f18b/syntaxes/tcl.tmLanguage
+
+### Grammars with no upstream source
+
+tm-grammars 1.31.0 records no upstream project for these grammars.
+
+- `ts-tags`
 
 ---
 
@@ -1254,7 +5677,7 @@ Copyright (c) 2019 Material-UI SAS
 ### `@borewit/text-codec@0.2.2`
 Homepage: https://github.com/Borewit/text-codec
 
-_(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
+Copyright © 2025 Borewit
 
 ### `@braintree/sanitize-url@7.1.2`
 Homepage: https://github.com/braintree/sanitize-url#readme
@@ -1349,7 +5772,7 @@ Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 ### `@date-fns/tz@1.5.0`
 Homepage: https://github.com/date-fns/date-fns#readme
 
-_(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
+Copyright © 2024 Sasha Koss
 
 ### `@dnd-kit/accessibility@3.1.1`
 Homepage: https://github.com/clauderic/dnd-kit
@@ -2333,6 +6756,11 @@ Homepage: https://tiptap.dev
 
 Copyright (c) 2025, Tiptap GmbH
 
+### `@tiptap/extension-node-range@3.22.3`
+Homepage: https://tiptap.dev
+
+Copyright (c) 2025, Tiptap GmbH
+
 ### `@tiptap/extension-ordered-list@3.22.3`
 Homepage: https://tiptap.dev
 
@@ -2359,6 +6787,11 @@ Homepage: https://tiptap.dev
 Copyright (c) 2025, Tiptap GmbH
 
 ### `@tiptap/extension-text@3.22.3`
+Homepage: https://tiptap.dev
+
+Copyright (c) 2025, Tiptap GmbH
+
+### `@tiptap/extension-text-style@3.22.3`
 Homepage: https://tiptap.dev
 
 Copyright (c) 2025, Tiptap GmbH
@@ -2901,7 +7334,7 @@ Copyright (c) 2013-2024 Brian J. Brennan
 ### `buffer-image-size@0.6.4`
 Homepage: https://github.com/evidentpoint/buffer-image-size
 
-_(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
+Copyright © 2017 Aditya Yadav, http://netroy.in
 
 ### `builder-util-runtime@9.7.0`
 Homepage: https://github.com/electron-userland/electron-builder
@@ -3066,7 +7499,7 @@ Copyright (c) 2015 Dmitry Ivanov
 ### `colorette@2.0.20`
 Homepage: https://github.com/jorgebucaran/colorette
 
-_(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
+Copyright © Jorge Bucaran <<https://jorgebucaran.com>>
 
 ### `comma-separated-tokens@2.0.3`
 Homepage: https://github.com/wooorm/comma-separated-tokens
@@ -4045,7 +8478,7 @@ Copyright (c) 2023 Daishi Kato
 ### `joycon@3.1.1`
 Homepage: https://github.com/egoist/joycon
 
-_(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
+Copyright (c) egoist <0x142857@gmail.com> (https://github.com/egoist)
 
 ### `js-sha256@0.10.1`
 Homepage: https://github.com/emn178/js-sha256
@@ -4236,11 +8669,13 @@ Copyright (c) David Anson
 Homepage: https://marked.js.org
 
 Copyright (c) 2018+, MarkedJS (https://github.com/markedjs/) Copyright (c) 2011-2018, Christopher Jeffrey (https://github.com/chjj/)
+Copyright © 2004, John Gruber
 
 ### `marked@17.0.6`
 Homepage: https://marked.js.org
 
 Copyright (c) 2018+, MarkedJS (https://github.com/markedjs/) Copyright (c) 2011-2018, Christopher Jeffrey (https://github.com/chjj/)
+Copyright © 2004, John Gruber
 
 ### `math-intrinsics@1.1.0`
 Homepage: https://github.com/es-shims/math-intrinsics#readme
@@ -5623,7 +10058,7 @@ Copyright (c) 2021 Natural Intelligence
 ### `strtok3@10.3.5`
 Homepage: https://github.com/Borewit/strtok3
 
-_(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
+Copyright © 2026 Borewit
 
 ### `style-mod@4.1.3`
 Homepage: https://github.com/marijnh/style-mod
@@ -5698,7 +10133,7 @@ Copyright (c) 2020 Zurab Benashvili (binier) <zura.bena@gmail.com>
 ### `tinycolor2@1.6.0`
 Homepage: https://github.com/bgrins/TinyColor
 
-_(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
+Copyright (c), Brian Grinstead, http://briangrinstead.com
 
 ### `tinyexec@1.2.4`
 Homepage: https://github.com/tinylibs/tinyexec#readme
@@ -5718,7 +10153,7 @@ Copyright (c) 2016 Douglas Christopher Wilson <doug@somethingdoug.com>
 ### `token-types@6.1.2`
 Homepage: https://github.com/Borewit/token-types
 
-_(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
+Copyright © 2026 Borewit
 
 ### `totalist@3.0.1`
 Homepage: https://github.com/lukeed/totalist
@@ -5963,7 +10398,7 @@ _(LICENSE file present but no auto-extractable copyright line; refer to the pack
 ### `whatwg-mimetype@3.0.0`
 Homepage: https://github.com/jsdom/whatwg-mimetype
 
-_(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
+Copyright © Domenic Denicola <d@domenic.me>
 
 ### `ws@8.22.0`
 Homepage: https://github.com/websockets/ws
@@ -5989,6 +10424,11 @@ Copyright (c) 2024 - Kevin Jahns <kevin.jahns@protonmail.com>.
 Homepage: https://yjs.dev
 
 Copyright (c) 2014 - Kevin Jahns <kevin.jahns@rwth-aachen.de>. - Chair of Computer Science 5 (Databases & Information Systems), RWTH Aachen University, Germany
+
+### `y-prosemirror@1.3.7`
+Homepage: https://github.com/yjs/y-prosemirror#readme
+
+Copyright (c) 2019 Kevin Jahns <kevin.jahns@protonmail.com>.
 
 ### `y-protocols@1.0.7`
 Homepage: https://github.com/yjs/y-protocols#readme
@@ -6029,6 +10469,11 @@ Copyright (c) 2025 Colin McDonnell
 Homepage: https://zod.dev
 
 Copyright (c) 2025 Colin McDonnell
+
+### `zone.js@0.15.1`
+Homepage: https://github.com/angular/angular
+
+Copyright (c) 2010-2025 Google LLC. https://angular.dev/license
 
 ### `zustand@4.5.7`
 Homepage: https://github.com/pmndrs/zustand
