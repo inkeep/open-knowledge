@@ -8,6 +8,8 @@ import { builtInComponents, propDescription } from '@inkeep/open-knowledge-core'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.resolve(HERE, '../content/reference/components');
+const EMBED_EXAMPLE_SRC = 'https://openknowledge.ai/marketing-assets/ok-logo.png';
+const EMBED_EXAMPLE_TITLE = 'OpenKnowledge logo from the marketing site';
 
 const PAGE_ORDER = [
   'Callout',
@@ -137,6 +139,8 @@ function renderTypeTable(props: PropDef[]): string {
 
 function renderExample(meta: (typeof builtInComponents)[number]): string {
   const name = meta.name;
+  if (name === 'Embed')
+    return `<Embed src="${EMBED_EXAMPLE_SRC}" title="${EMBED_EXAMPLE_TITLE}" />`;
   const publicProps = meta.props.filter((p) => !p.hidden);
   const featured = [
     ...publicProps.filter((p) => p.required).slice(0, 3),
@@ -286,8 +290,8 @@ const PREVIEWS: Partial<Record<string, string>> = {
 </ComponentPreview>`,
   Embed: `<ComponentPreview>
   <EmbedPreview
-    src="https://openknowledge.ai/"
-    title="OpenKnowledge marketing site"
+    src="${EMBED_EXAMPLE_SRC}"
+    title="${EMBED_EXAMPLE_TITLE}"
   />
 </ComponentPreview>`,
   Mirror: `<ComponentPreview>

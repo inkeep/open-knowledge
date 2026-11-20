@@ -77,6 +77,46 @@ const MARKDOWN = 'text/markdown';
 const BROWSER_ACCEPT =
   'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8';
 
+describe('public HTML policy', () => {
+  function policy(path: string, headers?: HeadersInit) {
+    return proxy(new NextRequest(`https://${APEX}${path}`, { headers })).headers.get(
+      'content-security-policy',
+    );
+  }
+
+  test.each([
+    '/docs/get-started/quickstart',
+    '/docs/changelog/v0.4.0',
+    '/continue',
+    '/continue/done',
+    '/unknown-path',
+  ])('protects %s', (path) => {
+    expect(policy(path, { accept: BROWSER_ACCEPT })).toBe(
+      "base-uri 'none'; object-src 'none'; script-src-attr 'none'; frame-ancestors 'none'",
+    );
+  });
+
+  test('does not change the negotiated Markdown or Next data', () => {
+    expect(policy('/docs/overview', { accept: MARKDOWN })).toBeNull();
+    expect(policy('/docs/overview?_rsc=next', { rsc: '1' })).toBeNull();
+  });
+
+  test.each([
+    '/docs/changelog/rss.xml',
+    '/docs/overview.md',
+    '/api/search',
+    '/d/abc123',
+    '/d/abc123/download',
+    '/download/stable',
+    '/html-preview/example',
+    '/ingest/decide',
+    '/llms.mdx/overview',
+    '/og/docs/overview',
+    '/updates/stable/example.yml',
+    '/images/overview.png',
+  ])('does not change %s', (path) => expect(policy(path)).toBeNull());
+});
+
 describe('proxy: Accept negotiation', () => {
   test('a docs page requested as Markdown serves its Markdown rendition', () => {
     expect(negotiate('/docs/get-started/quickstart', MARKDOWN).rewrittenTo).toBe(

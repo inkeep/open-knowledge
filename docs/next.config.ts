@@ -14,6 +14,8 @@ const nextConfig: NextConfig = {
     root: fileURLToPath(new URL('..', import.meta.url)),
   },
   skipTrailingSlashRedirect: true,
+  // WARN: Next strips rsc from normalized proxy requests; the CSP filter needs the raw Flight header.
+  skipProxyUrlNormalize: true,
   async rewrites() {
     return {
       beforeFiles: markdownRewrites(),
