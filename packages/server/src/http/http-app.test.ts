@@ -47,6 +47,55 @@ async function serveWith(
 }
 
 describe('createHttpApp adapter boundary', () => {
+  test('inspection responds during pending readiness and refuses nonlocal peers', async () => {
+    let peerOverride: string | null = null;
+    const { requestListener } = createHttpApp({
+      health: { readiness: () => 'pending', degraded: () => [] },
+      inspection: () => ({
+        pid: 42,
+        projectRoot: '/project',
+        serverInstanceId: 'instance-1',
+        runtime: null,
+      }),
+      legacyDispatch: (_req, res) => {
+        res.writeHead(404);
+        res.end();
+      },
+      contentDispatch: (_req, res) => {
+        res.writeHead(404);
+        res.end();
+      },
+      log: fakeLog,
+    });
+    const server = createServer((req, res) => {
+      if (peerOverride !== null) {
+        Object.defineProperty(req.socket, 'remoteAddress', { value: peerOverride });
+      }
+      requestListener(req, res);
+    });
+    const { baseUrl } = await listenOnLoopback(server);
+    try {
+      const inspection = await fetch(`${baseUrl}/api/server-inspection`, {
+        signal: AbortSignal.timeout(1000),
+      });
+      expect(inspection.status).toBe(200);
+      expect(await inspection.json()).toEqual({
+        pid: 42,
+        projectRoot: '/project',
+        serverInstanceId: 'instance-1',
+        runtime: null,
+      });
+      const ready = await fetch(`${baseUrl}/readyz`);
+      expect(ready.status).toBe(503);
+      expect(await ready.json()).toEqual({ ready: false, status: 'pending', degraded: [] });
+      peerOverride = '203.0.113.7';
+      const refused = await fetch(`${baseUrl}/api/server-inspection`);
+      expect(refused.status).toBe(403);
+    } finally {
+      await new Promise<void>((done) => server.close(() => done()));
+    }
+  });
+
   test('mounting and serving leaves globalThis.Request/Response untouched', async () => {
     const RequestBefore = globalThis.Request;
     const ResponseBefore = globalThis.Response;
