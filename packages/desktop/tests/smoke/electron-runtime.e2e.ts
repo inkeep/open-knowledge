@@ -45,7 +45,7 @@ test.describe('desktop Electron runtime', () => {
       };
     });
     console.log('Desktop runtime:', runtime);
-    expect(satisfies(runtime.electron, '^45.3.3'), `running Electron ${runtime.electron}`).toBe(
+    expect(satisfies(runtime.electron, '^45.4.1'), `running Electron ${runtime.electron}`).toBe(
       true,
     );
   });

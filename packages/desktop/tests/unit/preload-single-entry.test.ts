@@ -8,7 +8,7 @@ import { describe, expect, test } from 'vitest';
 
 const desktopRoot = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 
-/* UPSTREAM(electron@45.3.3): a sandboxed preload's require resolves only the module names that
+/* UPSTREAM(electron@45.4.1): a sandboxed preload's require resolves only the module names that
    Require in shell/renderer/preload_environment.cc admits, and throws "module not found" for
    any other name, Node builtins such as events and fs included. */
 const SANDBOXED_PRELOAD_MODULES = new Set(['electron', 'electron/common', 'electron/renderer']);
