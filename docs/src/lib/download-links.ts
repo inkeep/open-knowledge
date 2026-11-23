@@ -7,6 +7,81 @@ export const MAX_RELEASE_PAGES = 5;
 export const DMG_ASSET_NAME = 'OpenKnowledge-arm64.dmg';
 export const BETA_DMG_ASSET_NAME = 'OpenKnowledge-Beta-arm64.dmg';
 export const CLOUD_DMG_ASSET_NAME = 'OpenKnowledge-Cloud-arm64.dmg';
+export const CLOUD_LINUX_DEB_X64_ASSET_NAME = 'OpenKnowledge-Cloud-amd64.deb';
+export const CLOUD_LINUX_DEB_ARM64_ASSET_NAME = 'OpenKnowledge-Cloud-arm64.deb';
+export const CLOUD_LINUX_RPM_X64_ASSET_NAME = 'OpenKnowledge-Cloud-x86_64.rpm';
+export const CLOUD_LINUX_RPM_ARM64_ASSET_NAME = 'OpenKnowledge-Cloud-aarch64.rpm';
+
+export type CloudDownloadTargetId =
+  | 'macos-arm64'
+  | 'linux-deb-x64'
+  | 'linux-deb-arm64'
+  | 'linux-rpm-x64'
+  | 'linux-rpm-arm64';
+
+export interface CloudDownloadTarget {
+  readonly id: CloudDownloadTargetId;
+  readonly os: 'macos' | 'linux';
+  readonly arch: 'arm64' | 'x64';
+  readonly format: 'dmg' | 'deb' | 'rpm';
+  readonly assetName: string;
+}
+
+export const CLOUD_DOWNLOAD_TARGETS: readonly CloudDownloadTarget[] = [
+  {
+    id: 'macos-arm64',
+    os: 'macos',
+    arch: 'arm64',
+    format: 'dmg',
+    assetName: CLOUD_DMG_ASSET_NAME,
+  },
+  {
+    id: 'linux-deb-x64',
+    os: 'linux',
+    arch: 'x64',
+    format: 'deb',
+    assetName: CLOUD_LINUX_DEB_X64_ASSET_NAME,
+  },
+  {
+    id: 'linux-deb-arm64',
+    os: 'linux',
+    arch: 'arm64',
+    format: 'deb',
+    assetName: CLOUD_LINUX_DEB_ARM64_ASSET_NAME,
+  },
+  {
+    id: 'linux-rpm-x64',
+    os: 'linux',
+    arch: 'x64',
+    format: 'rpm',
+    assetName: CLOUD_LINUX_RPM_X64_ASSET_NAME,
+  },
+  {
+    id: 'linux-rpm-arm64',
+    os: 'linux',
+    arch: 'arm64',
+    format: 'rpm',
+    assetName: CLOUD_LINUX_RPM_ARM64_ASSET_NAME,
+  },
+] as const;
+
+export function cloudTargetById(id: CloudDownloadTargetId): CloudDownloadTarget {
+  const target = CLOUD_DOWNLOAD_TARGETS.find((candidate) => candidate.id === id);
+  if (!target) throw new Error(`Unknown Cloud download target: ${id}`);
+  return target;
+}
+
+export function resolveCloudTargetFromParams(params: URLSearchParams): CloudDownloadTarget | null {
+  const os = params.get('os');
+  const arch = params.get('arch');
+  const format = params.get('format');
+  if (!os) return null;
+  return (
+    CLOUD_DOWNLOAD_TARGETS.find(
+      (target) => target.os === os && target.arch === arch && target.format === format,
+    ) ?? null
+  );
+}
 
 export const STABLE_DMG_URL = `https://github.com/inkeep/open-knowledge/releases/latest/download/${DMG_ASSET_NAME}`;
 
@@ -19,6 +94,8 @@ export const LINUX_RPM_X64_URL = `${RELEASE_ASSET_BASE}/OpenKnowledge-x86_64.rpm
 export const LINUX_RPM_ARM64_URL = `${RELEASE_ASSET_BASE}/OpenKnowledge-aarch64.rpm`;
 
 export const RELEASES_PAGE_URL = 'https://github.com/inkeep/open-knowledge/releases';
+export const CLOUD_RELEASES_PAGE_URL = `${RELEASES_PAGE_URL}?q=cloud&expanded=true`;
+export const CLOUD_DOWNLOAD_PAGE_PATH = '/cloud-beta/download';
 
 const ASSET_URL_PREFIX = 'https://github.com/inkeep/open-knowledge/releases/download/';
 
@@ -192,10 +269,182 @@ export function createBetaResolver(
   return createPrereleaseResolver(betaChannel(deps.assetName), deps);
 }
 
-export function createCloudResolver(
+type CloudAssetMap = Partial<Record<CloudDownloadTargetId, string>>;
+
+type CloudAssetsPartial = {
+  readonly error: string;
+  readonly freshTargets: ReadonlySet<CloudDownloadTargetId>;
+};
+
+type CloudAssetsState =
+  | { kind: 'fresh'; assets: CloudAssetMap; partial?: CloudAssetsPartial }
+  | { kind: 'cached'; assets: CloudAssetMap; partial?: CloudAssetsPartial }
+  | { kind: 'stale-lkg'; assets: CloudAssetMap; error: string }
+  | { kind: 'fallback'; error: string };
+
+function mergeLatestCloudAssets(
+  payload: unknown,
+  found: Map<CloudDownloadTargetId, { rank: PrereleaseRank; url: string }>,
+): boolean {
+  const parsed = releasesSchema.safeParse(payload);
+  if (!parsed.success) {
+    console.warn(
+      `[download-links] releases payload failed schema validation: ${parsed.error.message}`,
+    );
+    return false;
+  }
+  for (const release of parsed.data) {
+    if (release.draft || !release.prerelease) continue;
+    const parts = CLOUD_CHANNEL.tagPattern.exec(release.tag_name);
+    if (!parts) continue;
+    const rank: PrereleaseRank = [
+      Number(parts[1]),
+      Number(parts[2]),
+      Number(parts[3]),
+      Number(parts[4]),
+    ];
+    for (const target of CLOUD_DOWNLOAD_TARGETS) {
+      const asset = release.assets.find(
+        (candidate) =>
+          candidate.name === target.assetName &&
+          candidate.browser_download_url.startsWith(ASSET_URL_PREFIX),
+      );
+      if (!asset) continue;
+      const existing = found.get(target.id);
+      if (!existing || comparePrereleaseRank(rank, existing.rank) > 0) {
+        found.set(target.id, { rank, url: asset.browser_download_url });
+      }
+    }
+  }
+  return found.size === CLOUD_DOWNLOAD_TARGETS.length;
+}
+
+async function findLatestCloudAssets(
+  fetchImpl: typeof fetch,
+): Promise<{ assets: CloudAssetMap; partial?: CloudAssetsPartial }> {
+  const found = new Map<CloudDownloadTargetId, { rank: PrereleaseRank; url: string }>();
+  let partialError: string | undefined;
+  for (let page = 1; page <= MAX_RELEASE_PAGES; page++) {
+    let payload: unknown;
+    try {
+      payload = await fetchReleasesPage(fetchImpl, page);
+    } catch (err) {
+      if (found.size > 0) {
+        partialError = describeError(err);
+        console.warn(
+          `[download-links] stopping Cloud releases page walk at page ${page} with ${found.size} resolved target(s): ${partialError}`,
+        );
+        break;
+      }
+      throw err;
+    }
+    if (mergeLatestCloudAssets(payload, found)) break;
+    if (!Array.isArray(payload) || payload.length < RELEASES_PER_PAGE) break;
+  }
+  if (found.size === 0) {
+    throw new Error(
+      `no published cloud release carries any desktop installer in the newest ${MAX_RELEASE_PAGES * RELEASES_PER_PAGE} releases`,
+    );
+  }
+  const assets: CloudAssetMap = {};
+  for (const [id, entry] of found) {
+    assets[id] = entry.url;
+  }
+  if (partialError !== undefined) {
+    return {
+      assets,
+      partial: { error: partialError, freshTargets: new Set(found.keys()) },
+    };
+  }
+  return { assets };
+}
+
+export function createCloudAssetsResolver(
   deps: { fetchImpl?: typeof fetch; now?: () => number } = {},
-): () => Promise<PrereleaseRedirect> {
-  return createPrereleaseResolver(CLOUD_CHANNEL, deps);
+): (targetId: CloudDownloadTargetId) => Promise<PrereleaseRedirect> {
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const now = deps.now ?? Date.now;
+  let lkg: {
+    assets: CloudAssetMap;
+    fetchedAt: number;
+    partial?: CloudAssetsPartial;
+  } | null = null;
+  let miss: { refreshError: string; checkedAt: number } | null = null;
+  let refreshing: Promise<Exclude<CloudAssetsState, { kind: 'cached' }>> | null = null;
+
+  function resolveFromState(
+    targetId: CloudDownloadTargetId,
+    state: CloudAssetsState,
+  ): PrereleaseRedirect {
+    if (state.kind === 'fallback') {
+      return {
+        kind: 'fallback',
+        url: CLOUD_RELEASES_PAGE_URL,
+        cause: state.error,
+      };
+    }
+    const url = state.assets[targetId];
+    if (!url) {
+      const cause =
+        state.kind === 'stale-lkg'
+          ? state.error
+          : (state.partial?.error ?? `no published cloud release carries ${targetId}`);
+      return {
+        kind: 'fallback',
+        url: CLOUD_RELEASES_PAGE_URL,
+        cause,
+      };
+    }
+    if (state.kind === 'stale-lkg') {
+      return { kind: 'stale-lkg', url, refreshError: state.error };
+    }
+    if (state.partial && !state.partial.freshTargets.has(targetId)) {
+      return { kind: 'stale-lkg', url, refreshError: state.partial.error };
+    }
+    return { kind: state.kind, url };
+  }
+
+  async function refresh(): Promise<Exclude<CloudAssetsState, { kind: 'cached' }>> {
+    try {
+      const { assets, partial } = await findLatestCloudAssets(fetchImpl);
+      const mergedAssets = partial && lkg ? { ...lkg.assets, ...assets } : assets;
+      lkg = { assets: mergedAssets, fetchedAt: now(), partial };
+      miss = null;
+      return { kind: 'fresh', assets: mergedAssets, partial };
+    } catch (err) {
+      const refreshError = describeError(err);
+      miss = { refreshError, checkedAt: now() };
+      if (lkg) return { kind: 'stale-lkg', assets: lkg.assets, error: refreshError };
+      return { kind: 'fallback', error: refreshError };
+    }
+  }
+
+  return async function resolveCloudAsset(
+    targetId: CloudDownloadTargetId,
+  ): Promise<PrereleaseRedirect> {
+    if (lkg && now() - lkg.fetchedAt < LKG_TTL_MS) {
+      return resolveFromState(targetId, {
+        kind: 'cached',
+        assets: lkg.assets,
+        partial: lkg.partial,
+      });
+    }
+    if (miss && now() - miss.checkedAt < LKG_TTL_MS) {
+      if (lkg) {
+        return resolveFromState(targetId, {
+          kind: 'stale-lkg',
+          assets: lkg.assets,
+          error: miss.refreshError,
+        });
+      }
+      return resolveFromState(targetId, { kind: 'fallback', error: miss.refreshError });
+    }
+    refreshing ??= refresh().finally(() => {
+      refreshing = null;
+    });
+    const state = await refreshing;
+    return resolveFromState(targetId, state);
+  };
 }
 
 export const SUCCESS_CACHE_CONTROL = 'public, max-age=0, s-maxage=300, stale-while-revalidate=3600';
@@ -203,12 +452,6 @@ export const SUCCESS_CACHE_CONTROL = 'public, max-age=0, s-maxage=300, stale-whi
 export const FALLBACK_CACHE_CONTROL = 'no-store';
 
 export const PER_VISITOR_CACHE_CONTROL = 'private, no-store';
-
-export function releasePageForAsset(assetUrl: string): string | null {
-  if (!assetUrl.startsWith(ASSET_URL_PREFIX)) return null;
-  const tag = assetUrl.slice(ASSET_URL_PREFIX.length).split('/')[0];
-  return tag ? `${RELEASES_PAGE_URL}/tag/${tag}` : null;
-}
 
 export function toRedirectResponse(redirect: PrereleaseRedirect): Response {
   return new Response(null, {
