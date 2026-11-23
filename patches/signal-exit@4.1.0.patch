@@ -1,0 +1,26 @@
+diff --git a/dist/cjs/signals.js b/dist/cjs/signals.js
+index 28afc5027d51d89d0966985bd6dd0af0723c3576..859d233c2c0400c4eaada7cdf3b44467716c4325 100644
+--- a/dist/cjs/signals.js
++++ b/dist/cjs/signals.js
+@@ -30,7 +30,7 @@ exports.signals = void 0;
+ exports.signals = [];
+ exports.signals.push('SIGHUP', 'SIGINT', 'SIGTERM');
+ if (process.platform !== 'win32') {
+-    exports.signals.push('SIGALRM', 'SIGABRT', 'SIGVTALRM', 'SIGXCPU', 'SIGXFSZ', 'SIGUSR2', 'SIGTRAP', 'SIGSYS', 'SIGQUIT', 'SIGIOT'
++    exports.signals.push('SIGALRM', 'SIGABRT', 'SIGVTALRM', 'SIGXCPU', 'SIGXFSZ', 'SIGUSR2', 'SIGSYS', 'SIGQUIT', 'SIGIOT'
+     // should detect profiler and enable/disable accordingly.
+     // see #21
+     // 'SIGPROF'
+diff --git a/dist/mjs/signals.js b/dist/mjs/signals.js
+index 7dbf15a5a63212d29186a43832656846931f4ed5..5fab158ab4fae1d0be47d4833e71b1332de0aac6 100644
+--- a/dist/mjs/signals.js
++++ b/dist/mjs/signals.js
+@@ -27,7 +27,7 @@
+ export const signals = [];
+ signals.push('SIGHUP', 'SIGINT', 'SIGTERM');
+ if (process.platform !== 'win32') {
+-    signals.push('SIGALRM', 'SIGABRT', 'SIGVTALRM', 'SIGXCPU', 'SIGXFSZ', 'SIGUSR2', 'SIGTRAP', 'SIGSYS', 'SIGQUIT', 'SIGIOT'
++    signals.push('SIGALRM', 'SIGABRT', 'SIGVTALRM', 'SIGXCPU', 'SIGXFSZ', 'SIGUSR2', 'SIGSYS', 'SIGQUIT', 'SIGIOT'
+     // should detect profiler and enable/disable accordingly.
+     // see #21
+     // 'SIGPROF'
