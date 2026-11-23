@@ -4,13 +4,20 @@ import {
   betaChannel,
   CLOUD_CHANNEL,
   CLOUD_DMG_ASSET_NAME,
+  CLOUD_LINUX_DEB_ARM64_ASSET_NAME,
+  CLOUD_LINUX_DEB_X64_ASSET_NAME,
+  CLOUD_LINUX_RPM_ARM64_ASSET_NAME,
+  CLOUD_LINUX_RPM_X64_ASSET_NAME,
+  CLOUD_RELEASES_PAGE_URL,
+  cloudTargetById,
   createBetaResolver,
-  createCloudResolver,
+  createCloudAssetsResolver,
   DMG_ASSET_NAME,
   FALLBACK_CACHE_CONTROL,
   MAX_RELEASE_PAGES,
   pickLatestPrereleaseAssetUrl,
   RELEASES_PAGE_URL,
+  resolveCloudTargetFromParams,
   STABLE_DMG_URL,
   SUCCESS_CACHE_CONTROL,
   toRedirectResponse,
@@ -365,21 +372,21 @@ describe('resolver upstream budget', () => {
         Array.from({ length: 100 }, (_, j) => release(`v0.89.${i}-beta.${j}`)),
       ]),
     );
-    const resolve = createCloudResolver({
+    const resolve = createCloudAssetsResolver({
       fetchImpl: pagedReleases(pages, requestedPages),
       now: () => clock,
     });
 
-    expect((await resolve()).kind).toBe('fallback');
+    expect((await resolve('macos-arm64')).kind).toBe('fallback');
     expect(requestedPages).toHaveLength(MAX_RELEASE_PAGES);
     clock = 299_000;
-    const repeated = await resolve();
+    const repeated = await resolve('macos-arm64');
     expect(repeated.kind).toBe('fallback');
     expect(requestedPages).toHaveLength(MAX_RELEASE_PAGES);
 
     pages[1] = [cloudRelease(17243)];
     clock = 300_000;
-    expect(await resolve()).toEqual({
+    expect(await resolve('macos-arm64')).toEqual({
       kind: 'fresh',
       url: dmgUrl('v0.89.13-cloud.17243', CLOUD_DMG_ASSET_NAME),
     });
@@ -463,44 +470,6 @@ describe('Cloud prerelease resolution', () => {
       ),
     ).toBeNull();
   });
-
-  test('resolves the newest Cloud DMG and serves it from the LKG inside the TTL', async () => {
-    let clock = 0;
-    const requestedPages: number[] = [];
-    const resolve = createCloudResolver({
-      fetchImpl: pagedReleases(
-        {
-          1: [
-            release('v0.89.13-beta.1'),
-            cloudRelease(17243),
-            release('v0.89.12', { prerelease: false }),
-          ],
-        },
-        requestedPages,
-      ),
-      now: () => clock,
-    });
-    const url = dmgUrl('v0.89.13-cloud.17243', CLOUD_DMG_ASSET_NAME);
-    expect(await resolve()).toEqual({ kind: 'fresh', url });
-    clock = 299_000;
-    expect(await resolve()).toEqual({ kind: 'cached', url });
-    expect(requestedPages).toEqual([1]);
-  });
-
-  test('falls back to the releases page while no Cloud prerelease is published', async () => {
-    const resolve = createCloudResolver({
-      fetchImpl: pagedReleases({
-        1: [release('v0.89.13-beta.1'), release('v0.89.12', { prerelease: false })],
-      }),
-      now: () => 0,
-    });
-    const result = await resolve();
-    expect(result.kind).toBe('fallback');
-    expect(result.url).toBe(RELEASES_PAGE_URL);
-    if (result.kind === 'fallback') {
-      expect(result.cause).toContain(CLOUD_DMG_ASSET_NAME);
-    }
-  });
 });
 
 describe('toRedirectResponse', () => {
@@ -533,6 +502,342 @@ describe('toRedirectResponse', () => {
     expect(res.status).toBe(302);
     expect(res.headers.get('location')).toBe(RELEASES_PAGE_URL);
     expect(res.headers.get('cache-control')).toBe(FALLBACK_CACHE_CONTROL);
+  });
+});
+
+describe('createCloudAssetsResolver', () => {
+  test('resolves all five Cloud desktop installers from a single GitHub releases fetch and caches them', async () => {
+    let clock = 0;
+    const requestedPages: number[] = [];
+    const resolve = createCloudAssetsResolver({
+      fetchImpl: pagedReleases(
+        {
+          1: [
+            release('v0.89.16-cloud.19223', {
+              assetNames: [
+                CLOUD_DMG_ASSET_NAME,
+                CLOUD_LINUX_DEB_X64_ASSET_NAME,
+                CLOUD_LINUX_DEB_ARM64_ASSET_NAME,
+                CLOUD_LINUX_RPM_X64_ASSET_NAME,
+                CLOUD_LINUX_RPM_ARM64_ASSET_NAME,
+              ],
+            }),
+          ],
+        },
+        requestedPages,
+      ),
+      now: () => clock,
+    });
+
+    expect(await resolve('macos-arm64')).toEqual({
+      kind: 'fresh',
+      url: dmgUrl('v0.89.16-cloud.19223', CLOUD_DMG_ASSET_NAME),
+    });
+    clock = 10_000;
+    expect(await resolve('linux-deb-x64')).toEqual({
+      kind: 'cached',
+      url: dmgUrl('v0.89.16-cloud.19223', CLOUD_LINUX_DEB_X64_ASSET_NAME),
+    });
+    expect(await resolve('linux-deb-arm64')).toEqual({
+      kind: 'cached',
+      url: dmgUrl('v0.89.16-cloud.19223', CLOUD_LINUX_DEB_ARM64_ASSET_NAME),
+    });
+    expect(await resolve('linux-rpm-x64')).toEqual({
+      kind: 'cached',
+      url: dmgUrl('v0.89.16-cloud.19223', CLOUD_LINUX_RPM_X64_ASSET_NAME),
+    });
+    expect(await resolve('linux-rpm-arm64')).toEqual({
+      kind: 'cached',
+      url: dmgUrl('v0.89.16-cloud.19223', CLOUD_LINUX_RPM_ARM64_ASSET_NAME),
+    });
+    expect(requestedPages).toEqual([1]);
+  });
+
+  test('keeps an older Cloud release for an installer omitted from the newest release', async () => {
+    const resolve = createCloudAssetsResolver({
+      fetchImpl: pagedReleases({
+        1: [
+          release('v0.89.16-cloud.19224', { assetNames: [CLOUD_DMG_ASSET_NAME] }),
+          release('v0.89.16-cloud.19223', {
+            assetNames: [CLOUD_DMG_ASSET_NAME, CLOUD_LINUX_DEB_X64_ASSET_NAME],
+          }),
+        ],
+      }),
+      now: () => 0,
+    });
+
+    expect(await resolve('macos-arm64')).toEqual({
+      kind: 'fresh',
+      url: dmgUrl('v0.89.16-cloud.19224', CLOUD_DMG_ASSET_NAME),
+    });
+    expect(await resolve('linux-deb-x64')).toEqual({
+      kind: 'cached',
+      url: dmgUrl('v0.89.16-cloud.19223', CLOUD_LINUX_DEB_X64_ASSET_NAME),
+    });
+    const missing = await resolve('linux-rpm-arm64');
+    expect(missing.kind).toBe('fallback');
+    expect(missing.url).toBe(CLOUD_RELEASES_PAGE_URL);
+  });
+
+  test('serves stale-lkg when refresh fails after TTL expiry and remembers the miss inside the negative-cache window', async () => {
+    let clock = 0;
+    let calls = 0;
+    let fail = false;
+    const resolve = createCloudAssetsResolver({
+      fetchImpl: async () => {
+        calls++;
+        if (fail) throw new Error('github 502');
+        return jsonResponse([
+          release('v0.89.16-cloud.19223', {
+            assetNames: [
+              CLOUD_DMG_ASSET_NAME,
+              CLOUD_LINUX_DEB_X64_ASSET_NAME,
+              CLOUD_LINUX_DEB_ARM64_ASSET_NAME,
+              CLOUD_LINUX_RPM_X64_ASSET_NAME,
+              CLOUD_LINUX_RPM_ARM64_ASSET_NAME,
+            ],
+          }),
+        ]);
+      },
+      now: () => clock,
+    });
+
+    const dmg = dmgUrl('v0.89.16-cloud.19223', CLOUD_DMG_ASSET_NAME);
+    expect(await resolve('macos-arm64')).toEqual({ kind: 'fresh', url: dmg });
+    expect(calls).toBe(1);
+
+    fail = true;
+    clock = 300_000;
+    expect(await resolve('macos-arm64')).toEqual({
+      kind: 'stale-lkg',
+      url: dmg,
+      refreshError: 'github 502',
+    });
+    expect(calls).toBe(2);
+
+    clock = 400_000;
+    expect(await resolve('macos-arm64')).toEqual({
+      kind: 'stale-lkg',
+      url: dmg,
+      refreshError: 'github 502',
+    });
+    expect(calls).toBe(2);
+
+    fail = false;
+    clock = 600_000;
+    expect(await resolve('macos-arm64')).toEqual({ kind: 'fresh', url: dmg });
+    expect(calls).toBe(3);
+  });
+
+  test('falls back and negative-caches when no Cloud release is published or fetch fails cold', async () => {
+    let clock = 0;
+    let calls = 0;
+    const resolve = createCloudAssetsResolver({
+      fetchImpl: async () => {
+        calls++;
+        return jsonResponse([
+          release('v0.89.16-beta.0'),
+          release('v0.89.15', { prerelease: false }),
+        ]);
+      },
+      now: () => clock,
+    });
+
+    const first = await resolve('macos-arm64');
+    expect(first.kind).toBe('fallback');
+    expect(first.url).toBe(CLOUD_RELEASES_PAGE_URL);
+    expect(calls).toBe(1);
+
+    clock = 120_000;
+    const second = await resolve('linux-deb-x64');
+    expect(second.kind).toBe('fallback');
+    expect(second.url).toBe(CLOUD_RELEASES_PAGE_URL);
+    expect(calls).toBe(1);
+
+    clock = 300_000;
+    await resolve('macos-arm64');
+    expect(calls).toBe(2);
+  });
+
+  test('shares a single in-flight GitHub fetch across concurrent callers', async () => {
+    let calls = 0;
+    const gate = Promise.withResolvers<void>();
+    const resolve = createCloudAssetsResolver({
+      fetchImpl: async () => {
+        calls++;
+        await gate.promise;
+        return jsonResponse([
+          release('v0.89.16-cloud.19223', {
+            assetNames: [
+              CLOUD_DMG_ASSET_NAME,
+              CLOUD_LINUX_DEB_X64_ASSET_NAME,
+              CLOUD_LINUX_DEB_ARM64_ASSET_NAME,
+              CLOUD_LINUX_RPM_X64_ASSET_NAME,
+              CLOUD_LINUX_RPM_ARM64_ASSET_NAME,
+            ],
+          }),
+        ]);
+      },
+      now: () => 0,
+    });
+
+    const p1 = resolve('macos-arm64');
+    const p2 = resolve('linux-deb-x64');
+    expect(calls).toBe(1);
+    gate.resolve();
+    const [r1, r2] = await Promise.all([p1, p2]);
+    expect(r1).toEqual({
+      kind: 'fresh',
+      url: dmgUrl('v0.89.16-cloud.19223', CLOUD_DMG_ASSET_NAME),
+    });
+    expect(r2).toEqual({
+      kind: 'fresh',
+      url: dmgUrl('v0.89.16-cloud.19223', CLOUD_LINUX_DEB_X64_ASSET_NAME),
+    });
+    expect(calls).toBe(1);
+  });
+
+  test('keeps page-1 targets servable if a later page throws while hunting for missing assets', async () => {
+    const requestedPages: number[] = [];
+    const page1 = [
+      release('v0.89.16-cloud.19223', { assetNames: [CLOUD_DMG_ASSET_NAME] }),
+      ...Array.from({ length: 99 }, (_, i) => release(`v0.89.15-beta.${i}`)),
+    ];
+    const resolve = createCloudAssetsResolver({
+      fetchImpl: async (input) => {
+        const page = Number(new URL(String(input)).searchParams.get('page'));
+        requestedPages.push(page);
+        if (page === 1) return jsonResponse(page1);
+        return new Response('rate limited', { status: 403 });
+      },
+      now: () => 0,
+    });
+
+    expect(await resolve('macos-arm64')).toEqual({
+      kind: 'fresh',
+      url: dmgUrl('v0.89.16-cloud.19223', CLOUD_DMG_ASSET_NAME),
+    });
+    expect(requestedPages).toEqual([1, 2]);
+    const linuxFallback = await resolve('linux-deb-x64');
+    expect(linuxFallback.kind).toBe('fallback');
+    if (linuxFallback.kind === 'fallback') {
+      expect(linuxFallback.cause).toMatch(/403/);
+    }
+  });
+
+  test('preserves warm LKG targets as stale-lkg when a later-page failure ends a refresh early', async () => {
+    let clock = 0;
+    let failPage2 = false;
+    const warmPage1 = [
+      release('v0.89.16-cloud.19223', {
+        assetNames: [
+          CLOUD_DMG_ASSET_NAME,
+          CLOUD_LINUX_DEB_X64_ASSET_NAME,
+          CLOUD_LINUX_DEB_ARM64_ASSET_NAME,
+          CLOUD_LINUX_RPM_X64_ASSET_NAME,
+          CLOUD_LINUX_RPM_ARM64_ASSET_NAME,
+        ],
+      }),
+    ];
+    const partialPage1 = [
+      release('v0.89.17-cloud.20000', { assetNames: [CLOUD_DMG_ASSET_NAME] }),
+      ...Array.from({ length: 99 }, (_, i) => release(`v0.89.16-beta.${i}`)),
+    ];
+    const resolve = createCloudAssetsResolver({
+      fetchImpl: async (input) => {
+        const page = Number(new URL(String(input)).searchParams.get('page'));
+        if (!failPage2) return jsonResponse(warmPage1);
+        if (page === 1) return jsonResponse(partialPage1);
+        return new Response('rate limited', { status: 403 });
+      },
+      now: () => clock,
+    });
+
+    expect(await resolve('linux-deb-x64')).toEqual({
+      kind: 'fresh',
+      url: dmgUrl('v0.89.16-cloud.19223', CLOUD_LINUX_DEB_X64_ASSET_NAME),
+    });
+
+    clock = 6 * 60 * 1000;
+    failPage2 = true;
+
+    const refreshedMac = await resolve('macos-arm64');
+    expect(refreshedMac).toEqual({
+      kind: 'fresh',
+      url: dmgUrl('v0.89.17-cloud.20000', CLOUD_DMG_ASSET_NAME),
+    });
+
+    const preservedLinux = await resolve('linux-deb-x64');
+    expect(preservedLinux.kind).toBe('stale-lkg');
+    if (preservedLinux.kind === 'stale-lkg') {
+      expect(preservedLinux.url).toBe(
+        dmgUrl('v0.89.16-cloud.19223', CLOUD_LINUX_DEB_X64_ASSET_NAME),
+      );
+      expect(preservedLinux.refreshError).toMatch(/403/);
+    }
+
+    clock = 12 * 60 * 1000;
+    failPage2 = false;
+    expect(await resolve('linux-deb-x64')).toEqual({
+      kind: 'fresh',
+      url: dmgUrl('v0.89.16-cloud.19223', CLOUD_LINUX_DEB_X64_ASSET_NAME),
+    });
+  });
+
+  test('walks subsequent pages to find Cloud releases past a full page of non-Cloud releases', async () => {
+    const requestedPages: number[] = [];
+    const page1 = Array.from({ length: 100 }, (_, i) => release(`v0.89.15-beta.${i}`));
+    const page2 = [
+      release('v0.89.16-cloud.19223', {
+        assetNames: [
+          CLOUD_DMG_ASSET_NAME,
+          CLOUD_LINUX_DEB_X64_ASSET_NAME,
+          CLOUD_LINUX_DEB_ARM64_ASSET_NAME,
+          CLOUD_LINUX_RPM_X64_ASSET_NAME,
+          CLOUD_LINUX_RPM_ARM64_ASSET_NAME,
+        ],
+      }),
+    ];
+    const resolve = createCloudAssetsResolver({
+      fetchImpl: pagedReleases({ 1: page1, 2: page2 }, requestedPages),
+      now: () => 0,
+    });
+
+    expect(await resolve('linux-rpm-x64')).toEqual({
+      kind: 'fresh',
+      url: dmgUrl('v0.89.16-cloud.19223', CLOUD_LINUX_RPM_X64_ASSET_NAME),
+    });
+    expect(requestedPages).toEqual([1, 2]);
+  });
+});
+
+describe('cloudTargetById', () => {
+  test('returns the catalog entry for macos-arm64', () => {
+    expect(cloudTargetById('macos-arm64')).toMatchObject({
+      id: 'macos-arm64',
+      os: 'macos',
+      arch: 'arm64',
+      format: 'dmg',
+      assetName: CLOUD_DMG_ASSET_NAME,
+    });
+  });
+});
+
+describe('resolveCloudTargetFromParams', () => {
+  test('matches every supported Cloud os/arch/format triple and rejects unsupported ones', () => {
+    expect(
+      resolveCloudTargetFromParams(new URLSearchParams('os=macos&arch=arm64&format=dmg'))?.id,
+    ).toBe('macos-arm64');
+    expect(
+      resolveCloudTargetFromParams(new URLSearchParams('os=linux&arch=x64&format=deb'))?.id,
+    ).toBe('linux-deb-x64');
+    expect(
+      resolveCloudTargetFromParams(new URLSearchParams('os=linux&arch=arm64&format=rpm'))?.id,
+    ).toBe('linux-rpm-arm64');
+    expect(
+      resolveCloudTargetFromParams(new URLSearchParams('os=windows&arch=x64&format=exe')),
+    ).toBeNull();
+    expect(resolveCloudTargetFromParams(new URLSearchParams(''))).toBeNull();
   });
 });
 
