@@ -1,0 +1,12 @@
+diff --git a/signals.js b/signals.js
+index 3bd67a8a554e30dddb9854997ab9485ac01e90dc..523131e4b302712f1394227a63c512068297bda5 100644
+--- a/signals.js
++++ b/signals.js
+@@ -32,7 +32,6 @@ if (process.platform !== 'win32') {
+     'SIGXCPU',
+     'SIGXFSZ',
+     'SIGUSR2',
+-    'SIGTRAP',
+     'SIGSYS',
+     'SIGQUIT',
+     'SIGIOT'
