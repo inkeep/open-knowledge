@@ -304,13 +304,35 @@ export class CommentService {
     this.index.remove(threadId);
   }
 
-  async renameDoc(from: string, to: string): Promise<void> {
-    if (from === to) return;
+  async renameDoc(from: string, to: string): Promise<number> {
+    if (from === to) return 0;
     await this.buildIndex();
     const threadIds = this.index.threadsForDoc(from);
-    if (threadIds.length === 0) return;
+    if (threadIds.length === 0) return 0;
     this.index.renameDoc(from, to);
-    await Promise.all(threadIds.map((id) => this.store.update(id, { docName: to })));
+    const results = await Promise.allSettled(threadIds.map((id) => this.moveThread(id, to)));
+    const failures = results.flatMap((r) => (r.status === 'rejected' ? [r.reason] : []));
+    if (failures.length > 0) {
+      throw new AggregateError(failures, `Moving comment threads from ${from} to ${to} failed`);
+    }
+    return results.filter((r) => r.status === 'fulfilled' && r.value).length;
+  }
+
+  private async moveThread(threadId: string, to: string): Promise<boolean> {
+    let saved: CommentThreadMeta | null;
+    try {
+      saved = await this.store.update(threadId, { docName: to });
+    } catch (err) {
+      this.reindex(threadId, await this.store.readMeta(threadId));
+      throw err;
+    }
+    this.reindex(threadId, saved);
+    return saved !== null;
+  }
+
+  private reindex(threadId: string, saved: CommentThreadMeta | null): void {
+    if (saved === null) this.index.remove(threadId);
+    else this.index.upsert(saved);
   }
 
   async deleteDoc(docName: string): Promise<number> {

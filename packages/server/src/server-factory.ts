@@ -4261,6 +4261,9 @@ export function createServer(options: ServerOptions): ServerInstance {
             );
             signalChannel('files');
             onUpstreamAdd(newDocName);
+            if (removal.namespaceCurrent()) {
+              await commentDocHooksRef.current?.renamed(oldDocName, newDocName);
+            }
             try {
               if (removal.namespaceCurrent()) {
                 await derivedDocumentIndex.recordDiskRename(oldDocName, newDocName, content);
