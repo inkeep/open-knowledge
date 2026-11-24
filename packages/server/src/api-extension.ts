@@ -1448,6 +1448,7 @@ function applyDiskEventToLiveAllFilesIndex(
 export interface CommentDocHooks {
   changed: (docName: string) => void;
   deleted: (docName: string) => void;
+  renamed: (fromDocName: string, toDocName: string) => Promise<void>;
 }
 
 function removedDocProblem(failure: StoreFailure) {
@@ -2104,7 +2105,19 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
             log.warn({ err, docName }, '[comments] cleanup after document delete failed');
           });
       },
-    };
+      renamed: async (fromDocName, toDocName) => {
+        try {
+          const count = await commentService.renameDoc(fromDocName, toDocName);
+          if (count > 0) signalChannel?.('comments');
+        } catch (err) {
+          signalChannel?.('comments');
+          log.warn(
+            { err, fromDocName, toDocName },
+            '[comments] update after document rename failed',
+          );
+        }
+      },
+    } satisfies CommentDocHooks;
   }
 
   function readPageTitleForDocName(docName: string): string {
@@ -3688,10 +3701,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
               try {
                 await commentService.renameDoc(fromDocName, toDocName);
               } catch (err) {
-                log.warn(
-                  { err, fromDocName, toDocName },
-                  '[comments] cover-sheet rename failed; index updated, disk self-corrects at boot',
-                );
+                log.warn({ err, fromDocName, toDocName }, '[comments] cover-sheet rename failed');
               }
               if (renamedSource.rewrites > 0) {
                 rewrittenDocs.push({ docName: toDocName, rewrites: renamedSource.rewrites });

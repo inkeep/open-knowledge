@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { getLogger } from '../logger.ts';
 import { CommentIndex } from './comment-index.ts';
@@ -719,7 +719,7 @@ describe('CommentService — renameDoc (US-12)', () => {
     const b = await makeThread('Q3');
     expect(index.threadsForDoc('notes/rollout').sort()).toEqual([a.threadId, b.threadId].sort());
 
-    await svc.renameDoc('notes/rollout', 'notes/rollout-2026');
+    await expect(svc.renameDoc('notes/rollout', 'notes/rollout-2026')).resolves.toBe(2);
 
     expect(index.threadsForDoc('notes/rollout')).toEqual([]);
     expect(index.threadsForDoc('notes/rollout-2026').sort()).toEqual(
@@ -727,11 +727,64 @@ describe('CommentService — renameDoc (US-12)', () => {
     );
     expect((await store.readMeta(a.threadId))?.docName).toBe('notes/rollout-2026');
     expect((await store.readMeta(b.threadId))?.docName).toBe('notes/rollout-2026');
+
+    await expect(svc.renameDoc('notes/rollout', 'notes/rollout-2026')).resolves.toBe(0);
   });
 
   test('is a no-op when the doc has no threads', async () => {
-    await expect(svc.renameDoc('empty', 'empty-2')).resolves.toBeUndefined();
+    await expect(svc.renameDoc('empty', 'empty-2')).resolves.toBe(0);
   });
+
+  test('a thread whose change was already pending lands under the new name in the index and on disk', async () => {
+    const { threadId } = await makeThread();
+
+    const resolving = svc.resolve(threadId);
+    const renaming = svc.renameDoc('notes/rollout', 'notes/rollout-2026');
+    const [resolved, moved] = await Promise.all([resolving, renaming]);
+
+    expect(resolved).toMatchObject({ docName: 'notes/rollout', state: 'resolved' });
+    expect(moved).toBe(1);
+    const saved = await store.readMeta(threadId);
+    expect(saved).toMatchObject({ docName: 'notes/rollout-2026', state: 'resolved' });
+    expect((await svc.listThreads('notes/rollout-2026')).map((m) => m.threadId)).toEqual([
+      threadId,
+    ]);
+    expect(await svc.listThreads('notes/rollout')).toEqual([]);
+    expect((await svc.listThreads()).find((m) => m.threadId === threadId)?.docName).toBe(
+      saved?.docName,
+    );
+  });
+
+  test('counts only threads whose cover sheet was saved under the new name', async () => {
+    const kept = await makeThread('minimal downtime');
+    const gone = await makeThread('Q3');
+
+    const deleting = svc.delete(gone.threadId);
+    const renaming = svc.renameDoc('notes/rollout', 'notes/rollout-2026');
+    const [, moved] = await Promise.all([deleting, renaming]);
+
+    expect(await store.readMeta(gone.threadId)).toBeNull();
+    expect((await store.readMeta(kept.threadId))?.docName).toBe('notes/rollout-2026');
+    expect(moved).toBe(1);
+  });
+
+  test.runIf(process.platform !== 'win32' && process.getuid?.() !== 0)(
+    'a rename whose cover-sheet write fails rejects and leaves the thread indexed under its saved name',
+    async () => {
+      const { threadId } = await makeThread();
+      const commentsDir = dirname(store.metaPath(threadId));
+      chmodSync(commentsDir, 0o555);
+      try {
+        await expect(svc.renameDoc('notes/rollout', 'notes/rollout-2026')).rejects.toThrow();
+      } finally {
+        chmodSync(commentsDir, 0o755);
+      }
+
+      expect((await store.readMeta(threadId))?.docName).toBe('notes/rollout');
+      expect((await svc.listThreads('notes/rollout')).map((m) => m.threadId)).toEqual([threadId]);
+      expect(await svc.listThreads('notes/rollout-2026')).toEqual([]);
+    },
+  );
 });
 
 describe('CommentService — delete', () => {
