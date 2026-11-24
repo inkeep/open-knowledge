@@ -255,7 +255,8 @@ export function formatFileEntry(m: EnrichedMeta): string {
     let line = `⚠ ${m.commentCount} unresolved comment${m.commentCount === 1 ? '' : 's'}`;
     if (m.comments && m.comments.length > 0) {
       const notes = m.comments.slice(0, COMMENT_PREVIEW_CAP).map(formatCommentPreview);
-      line += `: ${notes.join('; ')}${m.comments.length > COMMENT_PREVIEW_CAP ? '; …' : ''}`;
+      const omitted = m.comments.length - notes.length;
+      line += `: ${notes.join('; ')}${omitted > 0 ? `; … ${omitted} more. See \`enrichedPaths[].comments\` for this file or open the document in Open Knowledge and select Comments → This doc.` : ''}`;
     }
     parts.push(line);
   }

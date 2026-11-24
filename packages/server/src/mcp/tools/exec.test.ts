@@ -1098,22 +1098,33 @@ describe('formatFileEntry — unresolved comments', () => {
     expect(line).toContain('[passage gone]');
   });
 
-  test('caps inlined bodies and elides the rest', () => {
+  test('caps inlined bodies and identifies the omitted count and reading destination', () => {
+    const comments = [1, 2, 3, 4, 5].map((n) => ({
+      threadId: `c${n}`,
+      body: `note ${n}`,
+      quote: `q${n}`,
+      state: 'anchored' as const,
+      queued: false,
+    }));
+    const lastPreview = '"note 3" on “q3”';
+    const atCap = formatFileEntry({ ...base, commentCount: 3, comments: comments.slice(0, 3) });
+    expect(atCap).toContain('3 unresolved comments:');
+    expect(atCap.endsWith(lastPreview)).toBe(true);
+
     const line = formatFileEntry({
       ...base,
       commentCount: 5,
-      comments: [1, 2, 3, 4, 5].map((n) => ({
-        threadId: `c${n}`,
-        body: `note ${n}`,
-        quote: `q${n}`,
-        state: 'anchored' as const,
-        queued: false,
-      })),
+      comments,
     });
     expect(line).toContain('5 unresolved comments:');
-    expect(line).toContain('note 3');
-    expect(line).not.toContain('note 4');
-    expect(line).toContain('…');
+    expect(line.match(/\bnote \d+\b/g)).toEqual(['note 1', 'note 2', 'note 3']);
+    expect(line).toContain(lastPreview);
+
+    const suffix = line.slice(line.indexOf(lastPreview) + lastPreview.length);
+    expect.soft(suffix, 'exact number of omitted comments').toMatch(/\b2\b/);
+    expect
+      .soft(suffix, 'where to read the omitted comments')
+      .toMatch(/\bComments\b.*\bThis doc\b|\b(?:structuredContent|enrichedPaths)\b.*\bcomments\b/i);
   });
 
   test('says nothing when there are none, and nothing when unknown', () => {
