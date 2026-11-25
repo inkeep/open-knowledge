@@ -13,9 +13,11 @@ import {
   createIssueClosureReader,
   createRedactor,
   createRunOutput,
+  createVersionFor,
   deriveVersionForFixRefs,
   emailIdempotencyKey,
   findChangesetPath,
+  isCommitAncestorWith,
   isFixRepoInRemit,
   isRetryableNetworkError,
   isRetryableStatus,
@@ -29,7 +31,7 @@ import {
   makeReleaseWindow,
   notificationMarkerUrl,
   parseChangeset,
-  parseMergeShaOutput,
+  parsePullRequestOutput,
   parseRetryAfterSeconds,
   readIssueStateWith,
   resolveEmailMode,
@@ -37,10 +39,12 @@ import {
   runFailureMessage,
   runSummary,
   runWriteBack,
+  selectChangesetPulls,
   selectGhToken,
   sendReporterEmail,
   toContactNode,
   toNode,
+  validateBranchLandings,
 } from './write-back.mjs';
 import { composeReply, planIssueClose } from './write-back-gate.mjs';
 
@@ -471,20 +475,6 @@ describe('version derivation', () => {
     expect(logs.join(' ')).toContain('closed without merging');
   });
 
-  test('the merge-sha reply distinguishes "never merged" from "cannot be accounted for"', () => {
-    const at = { owner: 'inkeep', repo: 'agents-private', number: 2844 };
-    const sha = 'da71f0c698ccaac11da915169ca6c7d585d5eb97';
-
-    expect(parseMergeShaOutput('null\n', at)).toBeNull();
-    expect(parseMergeShaOutput('\n', at)).toBeNull();
-    expect(parseMergeShaOutput('2026-07-23T14:19:56Z\n' + sha, at)).toBe(sha);
-    expect(parseMergeShaOutput('2026-07-23T14:19:56Z\n' + sha.toUpperCase(), at)).toBe(sha);
-
-    expect(() => parseMergeShaOutput('2026-07-23T14:19:56Z\nnot-a-sha', at)).toThrow(
-      /merge_commit_sha/,
-    );
-  });
-
   test('a fix reference in a repo this workflow cannot reach is skipped, not attempted', () => {
     const logs = [];
     expect(
@@ -562,6 +552,507 @@ describe('version derivation', () => {
         },
       }),
     ).toThrow(/git exploded/);
+  });
+
+  test('parsePullRequestOutput separates merged, closed-unmerged and open pull requests', () => {
+    const at = { owner: 'inkeep', repo: 'agents-private', number: 11755 };
+    const sha = '692aed1d8dbf830ada649297bcb29ca1dfc6231f';
+    const syntheticClosedSha = '0d9d46ceddcac67f5cfc6a3a9c75e5dfa993b2ae';
+
+    expect(parsePullRequestOutput(`closed\t2026-11-24T18:11:17Z\t${sha}\tmain\n`, at)).toEqual({
+      state: 'merged',
+      sha,
+      baseRef: 'main',
+    });
+    expect(
+      parsePullRequestOutput(
+        `closed\t2026-11-24T18:11:17Z\t${sha.toUpperCase()}\tfeat/branch\n`,
+        at,
+      ),
+    ).toEqual({
+      state: 'merged',
+      sha,
+      baseRef: 'feat/branch',
+    });
+    expect(
+      parsePullRequestOutput(`closed\tnull\t${syntheticClosedSha}\tfeat/branch\n`, at),
+    ).toEqual({
+      state: 'closed-unmerged',
+      sha: null,
+      baseRef: 'feat/branch',
+    });
+    expect(parsePullRequestOutput(`open\tnull\tnull\tmain\n`, at)).toEqual({
+      state: 'open',
+      sha: null,
+      baseRef: 'main',
+    });
+    expect(() =>
+      parsePullRequestOutput('closed\t2026-11-24T18:11:17Z\tnot-a-sha\tmain\n', at),
+    ).toThrow(/merge_commit_sha/);
+    expect(() => parsePullRequestOutput('mystery\tnull\tnull\tmain\n', at)).toThrow(
+      /unexpected state/,
+    );
+  });
+
+  test('isCommitAncestorWith maps GitHub compare statuses and missing commits and rethrows infra errors', () => {
+    const ref = {
+      owner: 'inkeep',
+      repo: 'agents-private',
+      base: '1'.repeat(40),
+      head: '2'.repeat(40),
+    };
+    const calls = [];
+    const run = (status) =>
+      isCommitAncestorWith((args, target, options) => {
+        calls.push({ args, target, options });
+        return `${status}\n`;
+      }, ref);
+
+    expect(run('ahead')).toBe(true);
+    expect(run('identical')).toBe(true);
+    expect(run('behind')).toBe(false);
+    expect(run('diverged')).toBe(false);
+    expect(calls[0]).toEqual({
+      args: [
+        'api',
+        `repos/inkeep/agents-private/compare/${'1'.repeat(40)}...${'2'.repeat(40)}?per_page=1`,
+        '--jq',
+        '.status',
+      ],
+      target: { owner: 'inkeep', repo: 'agents-private' },
+      options: { timeout: expect.any(Number) },
+    });
+
+    const failing = (stderr) => () => {
+      throw Object.assign(new Error('Command failed: gh api'), { stderr });
+    };
+    expect(isCommitAncestorWith(failing('gh: No common ancestor (HTTP 422)\n'), ref)).toBe(false);
+    expect(isCommitAncestorWith(failing('gh: No common ancestor (HTTP 404)\n'), ref)).toBe(false);
+    expect(() => isCommitAncestorWith(failing('gh: Not Found (HTTP 404)\n'), ref)).toThrow(
+      /HTTP 404/,
+    );
+    expect(() =>
+      isCommitAncestorWith(failing('gh: Diff is taking too long to generate (HTTP 422)\n'), ref),
+    ).toThrow(/HTTP 422/);
+    expect(() => isCommitAncestorWith(failing('gh: Bad Gateway (HTTP 502)\n'), ref)).toThrow(
+      /HTTP 502/,
+    );
+    expect(() => run('weird')).toThrow(/unexpected compare status/);
+  });
+
+  test('validateBranchLandings accepts valid landings and rejects malformed entries', () => {
+    const tip = 'A'.repeat(40);
+    const mainSha = 'B'.repeat(40);
+    expect(validateBranchLandings(undefined)).toEqual([]);
+    expect(validateBranchLandings([])).toEqual([]);
+    expect(
+      validateBranchLandings([{ branch: 'feat/next', sourceTip: tip, mainCommit: mainSha }]),
+    ).toEqual([
+      { branch: 'feat/next', sourceTip: tip.toLowerCase(), mainCommit: mainSha.toLowerCase() },
+    ]);
+    expect(validateBranchLandings([{ sourceTip: tip, mainCommit: mainSha }])).toEqual([
+      { branch: null, sourceTip: tip.toLowerCase(), mainCommit: mainSha.toLowerCase() },
+    ]);
+    expect(() => validateBranchLandings('not-an-array')).toThrow(/array/);
+    expect(() => validateBranchLandings([{ sourceTip: 'short', mainCommit: mainSha }])).toThrow(
+      /sourceTip/,
+    );
+    expect(() => validateBranchLandings([{ sourceTip: tip, mainCommit: 'short' }])).toThrow(
+      /mainCommit/,
+    );
+    expect(() =>
+      validateBranchLandings([{ branch: 'main', sourceTip: tip, mainCommit: mainSha }]),
+    ).toThrow(/main/);
+    expect(() =>
+      validateBranchLandings([{ branch: '   ', sourceTip: tip, mainCommit: mainSha }]),
+    ).toThrow(/branch/);
+  });
+
+  test('a closed-unmerged PR attached beside a shipped PR does not block version derivation', () => {
+    const mergedUrl = 'https://github.com/inkeep/agents-private/pull/11029';
+    const closedUrl = 'https://github.com/inkeep/agents-private/pull/10933';
+    const logs = [];
+    expect(
+      derive({
+        fixReferences: [
+          { channel: 'pull-request', url: closedUrl },
+          { channel: 'pull-request', url: mergedUrl },
+        ],
+        resolvePrMergeSha: ({ number }) =>
+          number === 10933
+            ? { state: 'closed-unmerged', sha: null, baseRef: 'feat/next' }
+            : { state: 'merged', sha: PRIVATE_SHA, baseRef: 'main' },
+        log: (m) => logs.push(m),
+      }),
+    ).toBe('0.36.0');
+    expect(logs.join(' ')).toContain('closed without merging');
+  });
+
+  test('an open PR attached beside a shipped PR still withholds until it merges', () => {
+    const mergedUrl = 'https://github.com/inkeep/agents-private/pull/11029';
+    const openUrl = 'https://github.com/inkeep/agents-private/pull/11030';
+    const logs = [];
+    expect(
+      derive({
+        fixReferences: [
+          { channel: 'pull-request', url: mergedUrl },
+          { channel: 'pull-request', url: openUrl },
+        ],
+        resolvePrMergeSha: ({ number }) =>
+          number === 11030
+            ? { state: 'open', sha: null, baseRef: 'main' }
+            : { state: 'merged', sha: PRIVATE_SHA, baseRef: 'main' },
+        log: (m) => logs.push(m),
+      }),
+    ).toBeNull();
+    expect(logs.join(' ')).toContain('still open');
+  });
+
+  test('an open non-main branch port beside a shipped main PR does not withhold, while one with no primary PR does', () => {
+    const mainPrUrl = 'https://github.com/inkeep/agents-private/pull/10201';
+    const openPortUrl = 'https://github.com/inkeep/agents-private/pull/10202';
+    const mergedPortUrl = 'https://github.com/inkeep/agents-private/pull/10203';
+    const portSha = 'b'.repeat(40);
+    const tipSha = 'c'.repeat(40);
+    const landingMainSha = 'd'.repeat(40);
+    const landingMirrored = 'e'.repeat(40);
+
+    expect(
+      derive({
+        fixReferences: [
+          { channel: 'pull-request', url: mainPrUrl },
+          { channel: 'pull-request', url: openPortUrl },
+        ],
+        resolvePrMergeSha: ({ number }) =>
+          number === 10202
+            ? { state: 'open', sha: null, baseRef: 'feat/next' }
+            : { state: 'merged', sha: PRIVATE_SHA, baseRef: 'main' },
+      }),
+    ).toBe('0.36.0');
+
+    expect(
+      deriveVersionForFixRefs({
+        fixReferences: [
+          { channel: 'pull-request', url: mergedPortUrl },
+          { channel: 'pull-request', url: openPortUrl },
+        ],
+        stableTags: STABLE_TAGS,
+        resolvePrMergeSha: ({ number }) =>
+          number === 10202
+            ? { state: 'open', sha: null, baseRef: 'feat/next' }
+            : { state: 'merged', sha: portSha, baseRef: 'feat/next' },
+        findMirroredCommits: (sha) =>
+          sha === landingMainSha
+            ? [{ sha: landingMirrored, message: `GitOrigin-RevId: ${landingMainSha}` }]
+            : [],
+        contains: containsFrom({ [landingMirrored]: ['v0.36.0'] }),
+        branchLandings: [{ branch: 'feat/next', sourceTip: tipSha, mainCommit: landingMainSha }],
+        isCommitAncestor: () => true,
+      }),
+    ).toBeNull();
+  });
+
+  test('a non-main branch port attached beside a shipped main PR neither blocks nor shifts the version', () => {
+    const mainPrUrl = 'https://github.com/inkeep/agents-private/pull/10201';
+    const portPrUrl = 'https://github.com/inkeep/agents-private/pull/10202';
+    const portSha = 'b'.repeat(40);
+    const tipSha = 'c'.repeat(40);
+    const landingMainSha = 'd'.repeat(40);
+    const landingMirrored = 'e'.repeat(40);
+    const tags = ['v0.35.6', 'v0.36.0', 'v0.37.0'];
+
+    expect(
+      deriveVersionForFixRefs({
+        fixReferences: [
+          { channel: 'pull-request', url: portPrUrl },
+          { channel: 'pull-request', url: mainPrUrl },
+        ],
+        stableTags: tags,
+        resolvePrMergeSha: ({ number }) =>
+          number === 10201
+            ? { state: 'merged', sha: PRIVATE_SHA, baseRef: 'main' }
+            : { state: 'merged', sha: portSha, baseRef: 'feat/next' },
+        findMirroredCommits: (sha) => {
+          if (sha === PRIVATE_SHA)
+            return [{ sha: MIRRORED_SHA, message: `GitOrigin-RevId: ${PRIVATE_SHA}` }];
+          if (sha === landingMainSha)
+            return [{ sha: landingMirrored, message: `GitOrigin-RevId: ${landingMainSha}` }];
+          return [];
+        },
+        contains: containsFrom({
+          [MIRRORED_SHA]: ['v0.36.0', 'v0.37.0'],
+          [landingMirrored]: ['v0.37.0'],
+        }),
+        branchLandings: [{ branch: 'feat/next', sourceTip: tipSha, mainCommit: landingMainSha }],
+        isCommitAncestor: () => true,
+      }),
+    ).toBe('0.36.0');
+  });
+
+  test('an unshipped main PR still withholds even when a non-main branch landing has shipped', () => {
+    const mainPrUrl = 'https://github.com/inkeep/agents-private/pull/10201';
+    const portPrUrl = 'https://github.com/inkeep/agents-private/pull/10202';
+    const unshippedMainSha = 'a'.repeat(40);
+    const portSha = 'b'.repeat(40);
+    const tipSha = 'c'.repeat(40);
+    const landingMainSha = 'd'.repeat(40);
+    const landingMirrored = 'e'.repeat(40);
+
+    expect(
+      deriveVersionForFixRefs({
+        fixReferences: [
+          { channel: 'pull-request', url: mainPrUrl },
+          { channel: 'pull-request', url: portPrUrl },
+        ],
+        stableTags: STABLE_TAGS,
+        resolvePrMergeSha: ({ number }) =>
+          number === 10201
+            ? { state: 'merged', sha: unshippedMainSha, baseRef: 'main' }
+            : { state: 'merged', sha: portSha, baseRef: 'feat/next' },
+        findMirroredCommits: (sha) =>
+          sha === landingMainSha
+            ? [{ sha: landingMirrored, message: `GitOrigin-RevId: ${landingMainSha}` }]
+            : [],
+        contains: containsFrom({ [landingMirrored]: ['v0.36.0'] }),
+        branchLandings: [{ branch: 'feat/next', sourceTip: tipSha, mainCommit: landingMainSha }],
+        isCommitAncestor: () => true,
+      }),
+    ).toBeNull();
+  });
+
+  test('an unmirrored non-main PR resolves via branchLandings once its landing commit ships', () => {
+    const cloudPrUrl = 'https://github.com/inkeep/agents-private/pull/11755';
+    const cloudSha = '1'.repeat(40);
+    const tipSha = '2'.repeat(40);
+    const landingMainSha = '3'.repeat(40);
+    const landingMirrored = '4'.repeat(40);
+    const tags = ['v0.36.0', 'v0.37.0-beta.0', 'v0.37.0'];
+
+    const shared = {
+      fixReferences: [{ channel: 'pull-request', url: cloudPrUrl }],
+      stableTags: tags,
+      resolvePrMergeSha: () => ({ state: 'merged', sha: cloudSha, baseRef: 'feat/next' }),
+      findMirroredCommits: (sha) =>
+        sha === landingMainSha
+          ? [{ sha: landingMirrored, message: `GitOrigin-RevId: ${landingMainSha}` }]
+          : [],
+      contains: containsFrom({ [landingMirrored]: ['v0.37.0-beta.0', 'v0.37.0'] }),
+      branchLandings: [{ branch: 'feat/next', sourceTip: tipSha, mainCommit: landingMainSha }],
+      isCommitAncestor: ({ base, head }) => base === cloudSha && head === tipSha,
+    };
+
+    expect(deriveVersionForFixRefs({ ...shared, channel: 'beta' })).toBe('0.37.0-beta.0');
+    expect(deriveVersionForFixRefs({ ...shared, channel: 'stable' })).toBe('0.37.0');
+    expect(deriveVersionForFixRefs({ ...shared, branchLandings: [] })).toBeNull();
+    expect(
+      deriveVersionForFixRefs({
+        ...shared,
+        branchLandings: [{ branch: 'other-branch', sourceTip: tipSha, mainCommit: landingMainSha }],
+      }),
+    ).toBeNull();
+    expect(
+      deriveVersionForFixRefs({
+        ...shared,
+        isCommitAncestor: () => false,
+      }),
+    ).toBeNull();
+  });
+
+  test('branchLandings never match main-merged PRs or bare commit SHAs and skip compare before mainCommit ships', () => {
+    const mainPrUrl = 'https://github.com/inkeep/agents-private/pull/5000';
+    const cloudPrUrl = 'https://github.com/inkeep/agents-private/pull/11755';
+    const otherSha = '5'.repeat(40);
+    const tipSha = '2'.repeat(40);
+    const landingMainSha = '3'.repeat(40);
+    const landingMirrored = '4'.repeat(40);
+    let compareCalls = 0;
+
+    const baseArgs = {
+      stableTags: STABLE_TAGS,
+      findMirroredCommits: (sha) =>
+        sha === landingMainSha
+          ? [{ sha: landingMirrored, message: `GitOrigin-RevId: ${landingMainSha}` }]
+          : [],
+      contains: containsFrom({ [landingMirrored]: ['v0.36.0'] }),
+      branchLandings: [{ sourceTip: tipSha, mainCommit: landingMainSha }],
+      isCommitAncestor: () => {
+        compareCalls++;
+        return true;
+      },
+    };
+
+    expect(
+      deriveVersionForFixRefs({
+        ...baseArgs,
+        fixReferences: [{ channel: 'pull-request', url: mainPrUrl }],
+        resolvePrMergeSha: () => ({ state: 'merged', sha: otherSha, baseRef: 'main' }),
+      }),
+    ).toBeNull();
+    expect(
+      deriveVersionForFixRefs({
+        ...baseArgs,
+        fixReferences: [
+          {
+            channel: 'commit',
+            url: `https://github.com/inkeep/agents-private/commit/${otherSha}`,
+            sha: otherSha,
+          },
+        ],
+        resolvePrMergeSha: () => otherSha,
+      }),
+    ).toBeNull();
+    expect(
+      deriveVersionForFixRefs({
+        ...baseArgs,
+        contains: () => false,
+        fixReferences: [{ channel: 'pull-request', url: cloudPrUrl }],
+        resolvePrMergeSha: () => ({ state: 'merged', sha: otherSha, baseRef: 'feat/next' }),
+      }),
+    ).toBeNull();
+    expect(compareCalls).toBe(0);
+  });
+
+  test('branchLandings picks the earliest containing landing and withholds multi-PR branch fixes when one is outside', () => {
+    const pr1 = 'https://github.com/inkeep/agents-private/pull/11755';
+    const pr2 = 'https://github.com/inkeep/agents-private/pull/11756';
+    const sha1 = '1'.repeat(40);
+    const sha2 = '2'.repeat(40);
+    const tipA = 'a'.repeat(40);
+    const tipB = 'b'.repeat(40);
+    const mainA = 'c'.repeat(40);
+    const mainB = 'd'.repeat(40);
+    const mirA = 'e'.repeat(40);
+    const mirB = 'f'.repeat(40);
+
+    const shared = {
+      stableTags: ['v0.36.0', 'v0.37.0'],
+      findMirroredCommits: (sha) => {
+        if (sha === mainA) return [{ sha: mirA, message: `GitOrigin-RevId: ${mainA}` }];
+        if (sha === mainB) return [{ sha: mirB, message: `GitOrigin-RevId: ${mainB}` }];
+        return [];
+      },
+      contains: containsFrom({
+        [mirA]: ['v0.36.0', 'v0.37.0'],
+        [mirB]: ['v0.37.0'],
+      }),
+      branchLandings: [
+        { branch: 'feat/next', sourceTip: tipB, mainCommit: mainB },
+        { branch: 'feat/next', sourceTip: tipA, mainCommit: mainA },
+      ],
+    };
+
+    expect(
+      deriveVersionForFixRefs({
+        ...shared,
+        fixReferences: [{ channel: 'pull-request', url: pr1 }],
+        resolvePrMergeSha: () => ({ state: 'merged', sha: sha1, baseRef: 'feat/next' }),
+        isCommitAncestor: ({ base, head }) => base === sha1 && head === tipB,
+      }),
+    ).toBe('0.37.0');
+
+    expect(
+      deriveVersionForFixRefs({
+        ...shared,
+        fixReferences: [{ channel: 'pull-request', url: pr1 }],
+        resolvePrMergeSha: () => ({ state: 'merged', sha: sha1, baseRef: 'feat/next' }),
+        isCommitAncestor: ({ base, head }) => base === sha1 && (head === tipA || head === tipB),
+      }),
+    ).toBe('0.36.0');
+
+    expect(
+      deriveVersionForFixRefs({
+        ...shared,
+        fixReferences: [
+          { channel: 'pull-request', url: pr1 },
+          { channel: 'pull-request', url: pr2 },
+        ],
+        resolvePrMergeSha: ({ number }) => ({
+          state: 'merged',
+          sha: number === 11755 ? sha1 : sha2,
+          baseRef: 'feat/next',
+        }),
+        isCommitAncestor: ({ base, head }) => base === sha1 && head === tipA,
+      }),
+    ).toBeNull();
+  });
+
+  test('createVersionFor memoizes ancestry checks across beta and stable channels', () => {
+    const cloudSha = '1'.repeat(40);
+    const tipSha = '2'.repeat(40);
+    const landingMainSha = '3'.repeat(40);
+    const landingMirrored = '4'.repeat(40);
+    let compareCalls = 0;
+
+    const resolve = createVersionFor({
+      selfRepo: 'inkeep/open-knowledge',
+      stableTags: ['v0.78.0-beta.6', 'v0.78.0'],
+      resolvePrMergeSha: () => ({ state: 'merged', sha: cloudSha, baseRef: 'feat/next' }),
+      readCommitMessage: () => null,
+      findMirroredCommits: (sha) =>
+        sha === landingMainSha
+          ? [{ sha: landingMirrored, message: `GitOrigin-RevId: ${landingMainSha}` }]
+          : [],
+      contains: () => true,
+      branchLandings: [{ branch: 'feat/next', sourceTip: tipSha, mainCommit: landingMainSha }],
+      isCommitAncestor: () => {
+        compareCalls++;
+        return true;
+      },
+    });
+    const node = { attachmentUrls: ['https://github.com/inkeep/agents-private/pull/11755'] };
+    expect(resolve(node, 'beta')).toBe('0.78.0-beta.6');
+    expect(resolve(node, 'stable')).toBe('0.78.0');
+    expect(compareCalls).toBe(1);
+  });
+
+  test('selectChangesetPulls skips closed-unmerged and open PRs and prefers primary main PRs', () => {
+    const refs = [
+      {
+        channel: 'pull-request',
+        url: 'https://github.com/inkeep/management/pull/1',
+        owner: 'inkeep',
+        repo: 'management',
+        number: 1,
+      },
+      {
+        channel: 'pull-request',
+        url: 'https://github.com/inkeep/agents-private/pull/10933',
+        owner: 'inkeep',
+        repo: 'agents-private',
+        number: 10933,
+      },
+      {
+        channel: 'pull-request',
+        url: 'https://github.com/inkeep/agents-private/pull/10202',
+        owner: 'inkeep',
+        repo: 'agents-private',
+        number: 10202,
+      },
+      {
+        channel: 'pull-request',
+        url: 'https://github.com/inkeep/agents-private/pull/11030',
+        owner: 'inkeep',
+        repo: 'agents-private',
+        number: 11030,
+      },
+      {
+        channel: 'pull-request',
+        url: 'https://github.com/inkeep/agents-private/pull/10201',
+        owner: 'inkeep',
+        repo: 'agents-private',
+        number: 10201,
+      },
+    ];
+    const selected = selectChangesetPulls(refs, {
+      selfRepo: 'inkeep/open-knowledge',
+      resolvePrMergeSha: ({ number }) => {
+        if (number === 10933) return { state: 'closed-unmerged', sha: null, baseRef: 'feat/next' };
+        if (number === 11030) return { state: 'open', sha: null, baseRef: 'main' };
+        if (number === 10202) return { state: 'merged', sha: 'b'.repeat(40), baseRef: 'feat/next' };
+        return { state: 'merged', sha: PRIVATE_SHA, baseRef: 'main' };
+      },
+    });
+    expect(selected.map((p) => p.number)).toEqual([10201, 10202]);
   });
 });
 
