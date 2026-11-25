@@ -13,7 +13,6 @@ import {
   firstContainingStableTag,
   parseFixRef,
   parseGitOriginRevIds,
-  resolvePrivateSha,
   resolveShippedVersion,
   sortStableTagsAscending,
 } from './resolve-shipped-version.mjs';
@@ -151,6 +150,92 @@ export function isSelfRepoPr({ kind, owner, repo }, selfRepo, defaultRepo = DEFA
   return self === `${owner}/${repo}`.toLowerCase();
 }
 
+export function validateBranchLandings(raw) {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) {
+    throw new Error('branchLandings must be an array');
+  }
+  return raw.map((entry, index) => {
+    if (!entry || typeof entry !== 'object') {
+      throw new Error(`branchLandings[${index}] must be an object`);
+    }
+    const sourceTip = String(entry.sourceTip ?? '').trim();
+    if (!FULL_SHA_RE.test(sourceTip)) {
+      throw new Error(
+        `branchLandings[${index}] requires a 40-character sourceTip SHA (got '${sourceTip}')`,
+      );
+    }
+    const mainCommit = String(entry.mainCommit ?? '').trim();
+    if (!FULL_SHA_RE.test(mainCommit)) {
+      throw new Error(
+        `branchLandings[${index}] requires a 40-character mainCommit SHA (got '${mainCommit}')`,
+      );
+    }
+    let branch = null;
+    if (entry.branch !== undefined && entry.branch !== null) {
+      if (typeof entry.branch !== 'string') {
+        throw new Error(`branchLandings[${index}].branch must be a string`);
+      }
+      const trimmed = entry.branch.trim();
+      if (!trimmed || trimmed === 'main') {
+        throw new Error(
+          `branchLandings[${index}].branch must be a non-empty non-main branch name (got '${entry.branch}')`,
+        );
+      }
+      branch = trimmed;
+    }
+    return {
+      branch,
+      sourceTip: sourceTip.toLowerCase(),
+      mainCommit: mainCommit.toLowerCase(),
+    };
+  });
+}
+
+function normalizePrResolution(resolved) {
+  if (typeof resolved === 'string') {
+    return { state: 'merged', sha: resolved, baseRef: null };
+  }
+  if (resolved === null || resolved === undefined) {
+    return { state: 'closed-unmerged', sha: null, baseRef: null };
+  }
+  return {
+    state: resolved.state,
+    sha: resolved.sha ?? null,
+    baseRef: resolved.baseRef ?? null,
+  };
+}
+
+function isPrimaryFixRef({ selfPr, kind, baseRef }) {
+  return selfPr || kind === 'sha' || !baseRef || baseRef === 'main';
+}
+
+export function selectChangesetPulls(
+  fixReferences = [],
+  {
+    resolvePrMergeSha,
+    defaultRepo = DEFAULT_PRIVATE_REPO,
+    selfRepo = process.env.GITHUB_REPOSITORY,
+  },
+) {
+  const primary = [];
+  const branchPorts = [];
+  for (const ref of fixReferences) {
+    if (ref.channel !== 'pull-request') continue;
+    const parsed = parseFixRef(ref.url, { defaultRepo });
+    if (!isFixRepoInRemit(parsed, { defaultRepo, selfRepo })) continue;
+    const resolved = normalizePrResolution(resolvePrMergeSha(parsed));
+    if (resolved.state !== 'merged') continue;
+    const isPrimary = isPrimaryFixRef({
+      selfPr: isSelfRepoPr(parsed, selfRepo, defaultRepo),
+      kind: parsed.kind,
+      baseRef: resolved.baseRef,
+    });
+    (isPrimary ? primary : branchPorts).push(ref);
+  }
+  return [...primary, ...branchPorts];
+}
+
 export function deriveVersionForFixRefs({
   fixReferences = [],
   stableTags,
@@ -158,17 +243,21 @@ export function deriveVersionForFixRefs({
   contains,
   resolvePrMergeSha,
   readCommitMessage = () => null,
+  isCommitAncestor = () => false,
+  branchLandings = [],
   defaultRepo = DEFAULT_PRIVATE_REPO,
   selfRepo = process.env.GITHUB_REPOSITORY,
   channel = 'stable',
   log = () => {},
 }) {
+  const landings = validateBranchLandings(branchLandings);
   const usable = fixReferences.filter(
     (ref) => ref.channel !== 'commit' || FULL_SHA_RE.test(ref.sha ?? ''),
   );
   if (usable.length === 0) return null;
 
-  let highest = null;
+  const mergedRefs = [];
+  const openRefs = [];
   for (const ref of usable) {
     const parsed = parseFixRef(ref.channel === 'commit' ? ref.sha : ref.url, { defaultRepo });
     if (!isFixRepoInRemit(parsed, { defaultRepo, selfRepo })) {
@@ -178,16 +267,55 @@ export function deriveVersionForFixRefs({
       );
       return null;
     }
-    const refSha = resolvePrivateSha(parsed, { resolvePrMergeSha });
-    if (!refSha) {
+    if (parsed.kind === 'sha') {
+      mergedRefs.push({ ref, parsed, sha: parsed.sha, baseRef: null, selfPr: false });
+      continue;
+    }
+    const selfPr = isSelfRepoPr(parsed, selfRepo, defaultRepo);
+    const pr = normalizePrResolution(resolvePrMergeSha(parsed));
+    if (pr.state === 'open') {
+      openRefs.push({
+        ref,
+        primary: isPrimaryFixRef({ selfPr, kind: parsed.kind, baseRef: pr.baseRef }),
+      });
+      continue;
+    }
+    if (pr.state !== 'merged' || !pr.sha) {
       log(
         `::notice::write-back: ${ref.url} was closed without merging, so it carries no fix commit.`,
       );
-      return null;
+      continue;
     }
+    mergedRefs.push({
+      ref,
+      parsed,
+      sha: pr.sha,
+      baseRef: pr.baseRef,
+      selfPr,
+    });
+  }
+
+  const primaryRefs = mergedRefs.filter((entry) =>
+    isPrimaryFixRef({ selfPr: entry.selfPr, kind: entry.parsed.kind, baseRef: entry.baseRef }),
+  );
+  const blockingOpen =
+    primaryRefs.length > 0 ? openRefs.find((entry) => entry.primary) : openRefs[0];
+  if (blockingOpen) {
+    log(
+      `::notice::write-back: ${blockingOpen.ref.url} is still open, so it carries no merged fix commit yet.`,
+    );
+    return null;
+  }
+
+  if (mergedRefs.length === 0) return null;
+
+  const authoritative = primaryRefs.length > 0 ? primaryRefs : mergedRefs;
+
+  let highest = null;
+  for (const { ref, parsed, sha, baseRef, selfPr } of authoritative) {
     let result;
-    if (isSelfRepoPr(parsed, selfRepo, defaultRepo)) {
-      const revIds = parseGitOriginRevIds(readCommitMessage(refSha) ?? '');
+    if (selfPr) {
+      const revIds = parseGitOriginRevIds(readCommitMessage(sha) ?? '');
       if (revIds.length === 1) {
         result = resolveShippedVersion({
           privateSha: revIds[0],
@@ -207,7 +335,7 @@ export function deriveVersionForFixRefs({
             : sortStableTagsAscending(stableTags);
         const tag = firstContainingStableTag({
           sortedStableTags: sortedTags,
-          sha: refSha,
+          sha,
           contains,
         });
         result = tag
@@ -219,12 +347,50 @@ export function deriveVersionForFixRefs({
       }
     } else {
       result = resolveShippedVersion({
-        privateSha: refSha,
+        privateSha: sha,
         stableTags,
         findMirroredCommits,
         contains,
         channel,
       });
+      if (
+        !result.shipped &&
+        result.reason === 'not-mirrored' &&
+        parsed.kind === 'pr' &&
+        baseRef &&
+        baseRef !== 'main' &&
+        landings.length > 0
+      ) {
+        let earliestLanding = null;
+        for (const landing of landings) {
+          if (landing.branch && landing.branch !== baseRef) continue;
+          const landingResult = resolveShippedVersion({
+            privateSha: landing.mainCommit,
+            stableTags,
+            findMirroredCommits,
+            contains,
+            channel,
+          });
+          if (!landingResult.shipped) continue;
+          if (
+            !isCommitAncestor({
+              owner: parsed.owner,
+              repo: parsed.repo,
+              base: sha,
+              head: landing.sourceTip,
+            })
+          ) {
+            continue;
+          }
+          if (
+            earliestLanding === null ||
+            compareVersions(landingResult.version, earliestLanding.version) < 0
+          ) {
+            earliestLanding = landingResult;
+          }
+        }
+        if (earliestLanding) result = earliestLanding;
+      }
     }
     if (!result.shipped) {
       log(
@@ -298,23 +464,31 @@ export function unavailableNotificationVersions(options) {
   );
 }
 
-export function createVersionFor(deps) {
-  const memo = (fn, keyFor = (value) => value) => {
-    const cache = new Map();
-    return (value) => {
-      const key = keyFor(value);
-      if (!cache.has(key)) cache.set(key, fn(value));
-      return cache.get(key);
-    };
+function memoize(fn, keyFor = (value) => value) {
+  const cache = new Map();
+  return (value) => {
+    const key = keyFor(value);
+    if (!cache.has(key)) cache.set(key, fn(value));
+    return cache.get(key);
   };
+}
+
+export function createVersionFor(deps) {
   const shared = {
     ...deps,
-    findMirroredCommits: memo(deps.findMirroredCommits),
-    resolvePrMergeSha: memo(
+    branchLandings: validateBranchLandings(deps.branchLandings ?? writeBackPolicy.branchLandings),
+    findMirroredCommits: memoize(deps.findMirroredCommits),
+    resolvePrMergeSha: memoize(
       deps.resolvePrMergeSha,
       ({ owner, repo, number }) => `${owner}/${repo}/${number}`,
     ),
-    readCommitMessage: memo(deps.readCommitMessage),
+    readCommitMessage: memoize(deps.readCommitMessage),
+    isCommitAncestor: deps.isCommitAncestor
+      ? memoize(
+          deps.isCommitAncestor,
+          ({ owner, repo, base, head }) => `${owner}/${repo}/${base}...${head}`,
+        )
+      : () => false,
   };
   return (node, channel) =>
     deriveVersionForFixRefs({
@@ -1148,7 +1322,12 @@ function realResolvePrMergeSha({ owner, repo, number }) {
   let out;
   try {
     out = gh(
-      ['api', `repos/${owner}/${repo}/pulls/${number}`, '--jq', '.merged_at,.merge_commit_sha'],
+      [
+        'api',
+        `repos/${owner}/${repo}/pulls/${number}`,
+        '--jq',
+        '[.state, (.merged_at // "null"), (.merge_commit_sha // "null"), (.base.ref // "")] | join("\\t")',
+      ],
       {
         owner,
         repo,
@@ -1159,18 +1338,51 @@ function realResolvePrMergeSha({ owner, repo, number }) {
       `gh api repos/${owner}/${repo}/pulls/${number} failed: ${String(err?.stderr || err?.message || '').trim()}`,
     );
   }
-  return parseMergeShaOutput(out, { owner, repo, number });
+  return parsePullRequestOutput(out, { owner, repo, number });
 }
 
-export function parseMergeShaOutput(out, { owner, repo, number } = {}) {
-  const [mergedAt, sha] = String(out ?? '')
-    .split('\n')
+export function parsePullRequestOutput(out, { owner, repo, number } = {}) {
+  const [state = '', mergedAt = '', sha = '', baseRef = ''] = String(out ?? '')
+    .trimEnd()
+    .split('\t')
     .map((s) => s.trim());
-  if (!mergedAt || mergedAt === 'null') return null;
-  if (!FULL_SHA_RE.test(sha || '')) {
-    throw new Error(`${owner}/${repo}#${number} has no usable merge_commit_sha (got '${sha}').`);
+  const normalizedBase = baseRef || null;
+  if (mergedAt && mergedAt !== 'null') {
+    if (!FULL_SHA_RE.test(sha || '')) {
+      throw new Error(`${owner}/${repo}#${number} has no usable merge_commit_sha (got '${sha}').`);
+    }
+    return { state: 'merged', sha: sha.toLowerCase(), baseRef: normalizedBase };
   }
-  return sha.toLowerCase();
+  if (state === 'open') {
+    return { state: 'open', sha: null, baseRef: normalizedBase };
+  }
+  if (state === 'closed') {
+    return { state: 'closed-unmerged', sha: null, baseRef: normalizedBase };
+  }
+  throw new Error(`${owner}/${repo}#${number} returned unexpected state '${state}'.`);
+}
+
+export function isCommitAncestorWith(runGh, { owner, repo, base, head }) {
+  let out;
+  try {
+    out = runGh(
+      ['api', `repos/${owner}/${repo}/compare/${base}...${head}?per_page=1`, '--jq', '.status'],
+      { owner, repo },
+      { timeout: REQUEST_TIMEOUT_MS },
+    );
+  } catch (err) {
+    const stderr = String(err?.stderr ?? '');
+    if (/no common ancestor/i.test(stderr)) return false;
+    throw new Error(
+      `gh api repos/${owner}/${repo}/compare/${base}...${head} failed: ${String(err?.stderr || err?.message || '').trim()}`,
+    );
+  }
+  const status = String(out ?? '').trim();
+  if (status === 'ahead' || status === 'identical') return true;
+  if (status === 'behind' || status === 'diverged') return false;
+  throw new Error(
+    `gh api repos/${owner}/${repo}/compare/${base}...${head} returned unexpected compare status '${status}'.`,
+  );
 }
 
 export function changesetDirFor(repo) {
@@ -1186,50 +1398,56 @@ export function findChangesetPath(filenames, { repo } = {}) {
   return filenames.map((name) => String(name).trim()).find(isChangeset) ?? null;
 }
 
-function realReadChangesetProse(_candidate, { fixReferences }) {
-  const pull = fixReferences.find((ref) => ref.channel === 'pull-request');
-  if (!pull) return null;
+function realReadChangesetProse(_candidate, { fixReferences }, resolvePrMergeSha) {
+  const pulls = selectChangesetPulls(fixReferences, {
+    resolvePrMergeSha,
+    defaultRepo: DEFAULT_PRIVATE_REPO,
+    selfRepo: process.env.GITHUB_REPOSITORY,
+  });
+  for (const pull of pulls) {
+    let names;
+    try {
+      names = gh(
+        [
+          'api',
+          `repos/${pull.owner}/${pull.repo}/pulls/${pull.number}/files`,
+          '--paginate',
+          '--jq',
+          '.[].filename',
+        ],
+        pull,
+      );
+    } catch (err) {
+      throw new Error(
+        `gh api pulls/${pull.number}/files failed: ${String(err?.stderr || err?.message || '').trim()}`,
+      );
+    }
 
-  let names;
-  try {
-    names = gh(
-      [
-        'api',
-        `repos/${pull.owner}/${pull.repo}/pulls/${pull.number}/files`,
-        '--paginate',
-        '--jq',
-        '.[].filename',
-      ],
-      pull,
-    );
-  } catch (err) {
-    throw new Error(
-      `gh api pulls/${pull.number}/files failed: ${String(err?.stderr || err?.message || '').trim()}`,
-    );
+    const changesetPath = findChangesetPath(names.split('\n'), { repo: pull.repo });
+    if (!changesetPath) continue;
+
+    let raw;
+    try {
+      raw = gh(
+        [
+          'api',
+          `repos/${pull.owner}/${pull.repo}/contents/${changesetPath}?ref=refs/pull/${pull.number}/head`,
+          '--jq',
+          '.content',
+        ],
+        pull,
+      );
+    } catch (err) {
+      throw new Error(
+        `gh api contents/${changesetPath} failed: ${String(err?.stderr || err?.message || '').trim()}`,
+      );
+    }
+
+    const decoded = Buffer.from(raw.replace(/\s+/g, ''), 'base64').toString('utf8');
+    const parsed = parseChangeset(decoded);
+    if (parsed) return parsed;
   }
-
-  const changesetPath = findChangesetPath(names.split('\n'), { repo: pull.repo });
-  if (!changesetPath) return null;
-
-  let raw;
-  try {
-    raw = gh(
-      [
-        'api',
-        `repos/${pull.owner}/${pull.repo}/contents/${changesetPath}?ref=refs/pull/${pull.number}/head`,
-        '--jq',
-        '.content',
-      ],
-      pull,
-    );
-  } catch (err) {
-    throw new Error(
-      `gh api contents/${changesetPath} failed: ${String(err?.stderr || err?.message || '').trim()}`,
-    );
-  }
-
-  const decoded = Buffer.from(raw.replace(/\s+/g, ''), 'base64').toString('utf8');
-  return parseChangeset(decoded);
+  return null;
 }
 
 export function parseChangeset(raw) {
@@ -1411,12 +1629,17 @@ async function main() {
   const stableTags = realPublishedReleaseTags();
   requirePublishedRelease(releaseTag, stableTags);
   const contains = createTagContainment();
+  const resolvePrMergeSha = memoize(
+    realResolvePrMergeSha,
+    ({ owner, repo, number }) => `${owner}/${repo}/${number}`,
+  );
   const versionFor = createVersionFor({
     stableTags,
     findMirroredCommits: realFindMirroredCommits,
     contains,
-    resolvePrMergeSha: realResolvePrMergeSha,
+    resolvePrMergeSha,
     readCommitMessage: realReadCommitMessage,
+    isCommitAncestor: (ref) => isCommitAncestorWith(gh, ref),
     log,
   });
 
@@ -1470,7 +1693,8 @@ async function main() {
     classifyRelease,
     channel,
     emailMode,
-    readChangesetProse: (candidate, ctx) => realReadChangesetProse(candidate, ctx),
+    readChangesetProse: (candidate, ctx) =>
+      realReadChangesetProse(candidate, ctx, resolvePrMergeSha),
     postReply: (origin, text, message) => realPostReply(origin, text, { ...message, resendKey }),
     readIssueClosure: createIssueClosureReader({
       readIssueState: (origin) => readIssueStateWith(gh, origin),
