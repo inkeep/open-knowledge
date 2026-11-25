@@ -2,8 +2,10 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { getRequestListener, type HttpBindings } from '@hono/node-server';
 import { RESPONSE_ALREADY_SENT } from '@hono/node-server/utils/response';
 import { Hono } from 'hono';
+import type { ServerInspection } from '../applied-runtime.ts';
 import {
   buildIngressPolicy,
+  hasForwardingHeaders,
   type IngressPolicy,
   isHostAdmitted,
   isPeerAdmitted,
@@ -11,6 +13,7 @@ import {
   warnForwardedHeaderRefusalOnce,
 } from '../ingress-policy.ts';
 import type { PinoLogger } from '../logger.ts';
+import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from '../loopback.ts';
 import { errorResponse } from './error-response.ts';
 import type { McpDispatch } from './mcp-route.ts';
 
@@ -99,6 +102,7 @@ function isApiPath(url: string | undefined): boolean {
 
 export interface CreateHttpAppOptions {
   health?: HealthProvider;
+  inspection?: () => ServerInspection;
   legacyDispatch: (req: IncomingMessage, res: ServerResponse) => void;
   contentDispatch: (req: IncomingMessage, res: ServerResponse) => void;
   nativeApi?: NativeApiHandle;
@@ -170,6 +174,41 @@ export function createHttpApp(opts: CreateHttpAppOptions): HttpAppHandle {
   }
 
   const ingressPolicy = opts.ingressPolicy ?? buildIngressPolicy({});
+
+  if (opts.inspection !== undefined) {
+    app.all('/api/server-inspection', (c) => {
+      const req = c.env.incoming;
+      const res = c.env.outgoing;
+      if (!admitRequestSurface(req, res, ingressPolicy, 'native-api-surface', opts.log)) {
+        return RESPONSE_ALREADY_SENT;
+      }
+      const host = Array.isArray(req.headers.host) ? req.headers.host[0] : req.headers.host;
+      if (
+        !isLoopbackAddress(req.socket.remoteAddress) ||
+        !isAllowedWorkspaceHostHeader(host) ||
+        hasForwardingHeaders(req)
+      ) {
+        errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
+          handler: 'server-inspection',
+        });
+        return RESPONSE_ALREADY_SENT;
+      }
+      if (req.method !== 'GET') {
+        errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
+          handler: 'server-inspection',
+          extraHeaders: { Allow: 'GET' },
+        });
+        return RESPONSE_ALREADY_SENT;
+      }
+      res.writeHead(200, {
+        'Cache-Control': 'no-store',
+        'Content-Type': 'application/json',
+        'X-Content-Type-Options': 'nosniff',
+      });
+      res.end(JSON.stringify(opts.inspection?.()));
+      return RESPONSE_ALREADY_SENT;
+    });
+  }
 
   const dispatchFallback = (req: IncomingMessage, res: ServerResponse): void => {
     if (!isApiPath(req.url)) {
