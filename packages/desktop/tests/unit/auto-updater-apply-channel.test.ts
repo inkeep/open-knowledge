@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import { applyChannelSettings, channelFromVersion } from '../../src/main/auto-updater.ts';
+import {
+  applyChannelSettings,
+  channelFromVersion,
+  majorFromVersion,
+} from '../../src/main/auto-updater.ts';
 
 interface Bag {
   channel: string | null;
@@ -61,5 +65,22 @@ describe('channelFromVersion', () => {
     expect(channelFromVersion('not-a-version')).toBe('latest');
     expect(channelFromVersion('0.4')).toBe('latest');
     expect(channelFromVersion(undefined as unknown as string)).toBe('latest');
+  });
+});
+
+describe('majorFromVersion', () => {
+  test('extracts the numeric major version from stable, prerelease, and build-metadata semver', () => {
+    expect(majorFromVersion('0.89.18')).toBe(0);
+    expect(majorFromVersion('0.89.18-beta.0')).toBe(0);
+    expect(majorFromVersion('1.0.0')).toBe(1);
+    expect(majorFromVersion('1.0.0-beta.0')).toBe(1);
+    expect(majorFromVersion('12.34.56+sha.abc')).toBe(12);
+  });
+
+  test('returns null for empty or unparseable versions', () => {
+    expect(majorFromVersion('')).toBeNull();
+    expect(majorFromVersion('not-a-version')).toBeNull();
+    expect(majorFromVersion('0.89')).toBeNull();
+    expect(majorFromVersion(undefined as unknown as string)).toBeNull();
   });
 });

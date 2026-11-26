@@ -1,13 +1,69 @@
-import { createBetaResolver } from '@/lib/download-links';
+import {
+  betaChannel,
+  createBetaResolver,
+  createStableResolver,
+  stableChannel,
+} from '@/lib/download-links';
 import { captureServerEvent, resolveDistinctId, userAgentProperties } from '@/lib/track';
 
 export const dynamic = 'force-dynamic';
 
 const RELEASES_BASE = 'https://github.com/inkeep/open-knowledge/releases';
+const BETA_PRODUCT_PREFIX = 'OpenKnowledge-Beta-';
+const MANIFEST_SUFFIXES = ['.yml', '-mac.yml', '-linux.yml', '-linux-arm64.yml'] as const;
+
+const V0_STABLE_FALLBACK_TAG = 'v0.89.17';
+const V0_BETA_FALLBACK_TAG = 'v0.89.17-beta.0';
+
 const CHANNELS = {
-  stable: { manifestPrefix: 'latest', productPrefix: 'OpenKnowledge-' },
-  beta: { manifestPrefix: 'beta', productPrefix: 'OpenKnowledge-' },
-  'beta-product': { manifestPrefix: 'beta-product', productPrefix: 'OpenKnowledge-Beta-' },
+  stable: {
+    manifestPrefix: 'latest',
+    productPrefix: 'OpenKnowledge-',
+    prerelease: false,
+    major: 0,
+    tagPattern: stableChannel('latest-mac.yml', 0).tagPattern,
+    fallbackTag: V0_STABLE_FALLBACK_TAG,
+  },
+  beta: {
+    manifestPrefix: 'beta',
+    productPrefix: 'OpenKnowledge-',
+    prerelease: true,
+    major: 0,
+    tagPattern: betaChannel('beta-mac.yml', 0).tagPattern,
+    fallbackTag: V0_BETA_FALLBACK_TAG,
+  },
+  'beta-product': {
+    manifestPrefix: 'beta-product',
+    productPrefix: BETA_PRODUCT_PREFIX,
+    prerelease: true,
+    major: 0,
+    tagPattern: betaChannel('beta-product-mac.yml', 0).tagPattern,
+    fallbackTag: V0_BETA_FALLBACK_TAG,
+  },
+  'v1-stable': {
+    manifestPrefix: 'latest',
+    productPrefix: 'OpenKnowledge-',
+    prerelease: false,
+    major: 1,
+    tagPattern: stableChannel('latest-mac.yml', 1).tagPattern,
+    fallbackTag: null,
+  },
+  'v1-beta': {
+    manifestPrefix: 'beta',
+    productPrefix: 'OpenKnowledge-',
+    prerelease: true,
+    major: 1,
+    tagPattern: betaChannel('beta-mac.yml', 1).tagPattern,
+    fallbackTag: null,
+  },
+  'v1-beta-product': {
+    manifestPrefix: 'beta-product',
+    productPrefix: BETA_PRODUCT_PREFIX,
+    prerelease: true,
+    major: 1,
+    tagPattern: betaChannel('beta-product-mac.yml', 1).tagPattern,
+    fallbackTag: null,
+  },
 } as const;
 type UpdateChannel = keyof typeof CHANNELS;
 const SAFE_FILENAME = /^[A-Za-z0-9._-]+$/;
@@ -23,13 +79,17 @@ function headerVersion(request: Request, name: string): string | undefined {
 }
 const VERSION_FROM_TAG = /^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)$/;
 
-const betaResolvers = new Map(
-  ['beta', 'beta-product'].flatMap((prefix) =>
-    ['.yml', '-mac.yml', '-linux.yml', '-linux-arm64.yml'].map((suffix) => {
-      const assetName = `${prefix}${suffix}`;
-      return [assetName, createBetaResolver({ assetName })] as const;
-    }),
-  ),
+const channelResolvers = new Map(
+  (Object.keys(CHANNELS) as UpdateChannel[]).flatMap((channel) => {
+    const config = CHANNELS[channel];
+    return MANIFEST_SUFFIXES.map((suffix) => {
+      const assetName = `${config.manifestPrefix}${suffix}`;
+      const resolver = config.prerelease
+        ? createBetaResolver({ assetName, major: config.major })
+        : createStableResolver({ assetName, major: config.major });
+      return [`${channel}:${assetName}`, resolver] as const;
+    });
+  }),
 );
 
 type ArtifactType = 'manifest' | 'zip' | 'blockmap' | 'dmg' | 'exe' | 'deb' | 'rpm' | 'other';
@@ -79,29 +139,39 @@ function errorResponse(status: number): Response {
   return new Response(null, { status, headers: { 'cache-control': 'no-store' } });
 }
 
-async function latestBetaTag(
-  channel: 'beta' | 'beta-product',
+function manifestFor(channel: UpdateChannel, filename: string, type: ArtifactType): string {
+  const prefix = CHANNELS[channel].manifestPrefix;
+  if (type === 'manifest') return filename;
+  if (type === 'exe') return `${prefix}.yml`;
+  if (type === 'deb' || type === 'rpm') {
+    return `${prefix}-linux${archOf(filename) === 'arm64' ? '-arm64' : ''}.yml`;
+  }
+  return `${prefix}-mac.yml`;
+}
+
+async function latestChannelTag(
+  channel: UpdateChannel,
   filename: string,
   type: ArtifactType,
 ): Promise<string | null> {
-  const manifest =
-    type === 'manifest'
-      ? filename
-      : type === 'exe'
-        ? `${channel}.yml`
-        : type === 'deb' || type === 'rpm'
-          ? `${channel}-linux${archOf(filename) === 'arm64' ? '-arm64' : ''}.yml`
-          : `${channel}-mac.yml`;
-  const resolve = betaResolvers.get(manifest);
+  const manifest = manifestFor(channel, filename, type);
+  const resolve = channelResolvers.get(`${channel}:${manifest}`);
   if (!resolve) return null;
   const redirect = await resolve();
   if (redirect.kind === 'stale-lkg') {
     console.warn(
-      `[updates/beta] serving stale LKG tag after refresh failure: ${redirect.refreshError}`,
+      `[updates/${channel}] serving stale LKG tag after refresh failure: ${redirect.refreshError}`,
     );
   }
   if (redirect.kind === 'fallback') {
-    console.error(`[updates/beta] ${manifest} resolver fell back: ${redirect.cause}`);
+    const fallbackTag = CHANNELS[channel].fallbackTag;
+    if (fallbackTag) {
+      console.warn(
+        `[updates/${channel}] ${manifest} resolver fell back (${redirect.cause}); serving pinned floor ${fallbackTag}`,
+      );
+      return fallbackTag;
+    }
+    console.error(`[updates/${channel}] ${manifest} resolver fell back: ${redirect.cause}`);
     return null;
   }
   return TAG_FROM_URL.exec(redirect.url)?.[1] ?? null;
@@ -118,12 +188,14 @@ function matchesChannelIdentity(
 ): boolean {
   const config = CHANNELS[channel];
   if (type === 'manifest') {
-    return ['.yml', '-mac.yml', '-linux.yml', '-linux-arm64.yml'].some(
-      (suffix) => filename === `${config.manifestPrefix}${suffix}`,
-    );
+    return MANIFEST_SUFFIXES.some((suffix) => filename === `${config.manifestPrefix}${suffix}`);
   }
   if (!filename.startsWith(config.productPrefix)) return false;
-  return channel === 'beta-product' || !filename.startsWith(CHANNELS['beta-product'].productPrefix);
+  return config.productPrefix === BETA_PRODUCT_PREFIX || !filename.startsWith(BETA_PRODUCT_PREFIX);
+}
+
+function matchesChannelVersion(channel: UpdateChannel, version: string): boolean {
+  return CHANNELS[channel].tagPattern.test(`v${version}`);
 }
 
 export async function GET(
@@ -142,7 +214,7 @@ export async function GET(
   }
 
   const version = ARTIFACT_VERSION.exec(filename)?.[1];
-  if (version && (channel === 'stable' ? version.includes('-') : !/-beta\.\d+$/.test(version))) {
+  if (version && !matchesChannelVersion(channel, version)) {
     return errorResponse(404);
   }
 
@@ -150,10 +222,8 @@ export async function GET(
   let resolvedTagVersion: string | undefined;
   if (version) {
     target = `${RELEASES_BASE}/download/v${version}/${filename}`;
-  } else if (channel === 'stable') {
-    target = `${RELEASES_BASE}/latest/download/${filename}`;
   } else {
-    const tag = await latestBetaTag(channel, filename, type);
+    const tag = await latestChannelTag(channel, filename, type);
     if (!tag) {
       return errorResponse(503);
     }
@@ -172,7 +242,7 @@ export async function GET(
         artifact_type: type,
         os: OS_BY_ARTIFACT[type],
         arch: archOf(filename),
-        to_version: version ?? resolvedTagVersion ?? headerVersion(request, 'x-ok-to-version'),
+        to_version: version ?? resolvedTagVersion,
         from_version: headerVersion(request, 'x-ok-from-version'),
         ...userAgentProperties(request),
       },

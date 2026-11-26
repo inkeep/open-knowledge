@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   BETA_DMG_ASSET_NAME,
   betaChannel,
@@ -12,14 +12,17 @@ import {
   cloudTargetById,
   createBetaResolver,
   createCloudAssetsResolver,
+  createReleasesPageCache,
+  createStableResolver,
   DMG_ASSET_NAME,
   FALLBACK_CACHE_CONTROL,
   MAX_RELEASE_PAGES,
-  pickLatestPrereleaseAssetUrl,
+  pickLatestReleaseAssetUrl,
   RELEASES_PAGE_URL,
   resolveCloudTargetFromParams,
   STABLE_DMG_URL,
   SUCCESS_CACHE_CONTROL,
+  stableChannel,
   toRedirectResponse,
 } from './download-links.ts';
 
@@ -49,7 +52,7 @@ function dmgUrl(tag: string, assetName = BETA_DMG_ASSET_NAME) {
 }
 
 function pickLatestBeta(payload: unknown) {
-  return pickLatestPrereleaseAssetUrl(payload, betaChannel());
+  return pickLatestReleaseAssetUrl(payload, betaChannel());
 }
 
 function jsonResponse(payload: unknown, status = 200) {
@@ -73,19 +76,19 @@ function pagedReleases(pages: Record<number, unknown>, requestedPages: number[] 
   };
 }
 
-describe('pickLatestPrereleaseAssetUrl for the beta channel', () => {
+describe('pickLatestReleaseAssetUrl for the beta channel', () => {
   test('keeps a platform on its latest available release when a newer release omits it', () => {
     const releases = [
       release('v0.78.0-beta.7', { assetNames: ['beta-mac.yml', DMG_ASSET_NAME] }),
       release('v0.78.0-beta.6', { assetNames: ['beta.yml', 'beta-linux-arm64.yml'] }),
     ];
-    expect(pickLatestPrereleaseAssetUrl(releases, betaChannel('beta.yml'))).toBe(
+    expect(pickLatestReleaseAssetUrl(releases, betaChannel('beta.yml'))).toBe(
       dmgUrl('v0.78.0-beta.6', 'beta.yml'),
     );
-    expect(pickLatestPrereleaseAssetUrl(releases, betaChannel('beta-linux-arm64.yml'))).toBe(
+    expect(pickLatestReleaseAssetUrl(releases, betaChannel('beta-linux-arm64.yml'))).toBe(
       dmgUrl('v0.78.0-beta.6', 'beta-linux-arm64.yml'),
     );
-    expect(pickLatestPrereleaseAssetUrl(releases, betaChannel('beta-mac.yml'))).toBe(
+    expect(pickLatestReleaseAssetUrl(releases, betaChannel('beta-mac.yml'))).toBe(
       dmgUrl('v0.78.0-beta.7', 'beta-mac.yml'),
     );
   });
@@ -95,10 +98,10 @@ describe('pickLatestPrereleaseAssetUrl for the beta channel', () => {
       release('v0.78.0-beta.6', { assetNames: [DMG_ASSET_NAME, BETA_DMG_ASSET_NAME] }),
       release('v0.78.0-beta.7', { assetNames: [BETA_DMG_ASSET_NAME] }),
     ];
-    expect(pickLatestPrereleaseAssetUrl(releases, betaChannel(DMG_ASSET_NAME))).toBe(
+    expect(pickLatestReleaseAssetUrl(releases, betaChannel(DMG_ASSET_NAME))).toBe(
       dmgUrl('v0.78.0-beta.6', DMG_ASSET_NAME),
     );
-    expect(pickLatestPrereleaseAssetUrl(releases, betaChannel())).toBe(dmgUrl('v0.78.0-beta.7'));
+    expect(pickLatestReleaseAssetUrl(releases, betaChannel())).toBe(dmgUrl('v0.78.0-beta.7'));
   });
 
   test('picks the highest-versioned published beta', () => {
@@ -440,7 +443,7 @@ describe('resolver upstream budget', () => {
 
 describe('Cloud prerelease resolution', () => {
   test('picks the newest Cloud prerelease carrying the Cloud DMG and ignores betas, stables and drafts', () => {
-    const url = pickLatestPrereleaseAssetUrl(
+    const url = pickLatestReleaseAssetUrl(
       [
         release('v0.89.14-beta.0', { assetNames: [BETA_DMG_ASSET_NAME, CLOUD_DMG_ASSET_NAME] }),
         release('v0.89.14', { prerelease: false, assetNames: [CLOUD_DMG_ASSET_NAME] }),
@@ -455,7 +458,7 @@ describe('Cloud prerelease resolution', () => {
   });
 
   test('ranks Cloud prereleases by version, not by counter alone', () => {
-    const url = pickLatestPrereleaseAssetUrl(
+    const url = pickLatestReleaseAssetUrl(
       [cloudRelease(17299), release('v0.90.0-cloud.17260', { assetNames: [CLOUD_DMG_ASSET_NAME] })],
       CLOUD_CHANNEL,
     );
@@ -464,7 +467,7 @@ describe('Cloud prerelease resolution', () => {
 
   test('the beta channel never serves a Cloud prerelease', () => {
     expect(
-      pickLatestPrereleaseAssetUrl(
+      pickLatestReleaseAssetUrl(
         [release('v0.89.13-cloud.17250', { assetNames: [BETA_DMG_ASSET_NAME] })],
         betaChannel(),
       ),
@@ -846,5 +849,243 @@ describe('STABLE_DMG_URL', () => {
     expect(STABLE_DMG_URL).toBe(
       `https://github.com/inkeep/open-knowledge/releases/latest/download/${DMG_ASSET_NAME}`,
     );
+  });
+});
+
+describe('major-scoped release resolution', () => {
+  test('v0 stable picks the newest v0.* non-prerelease and ignores v1.* and prereleases', () => {
+    const releases = [
+      release('v1.0.0', { prerelease: false, assetNames: ['latest-mac.yml'] }),
+      release('v0.89.19-beta.0', { prerelease: true, assetNames: ['latest-mac.yml'] }),
+      release('v0.89.18', { prerelease: false, assetNames: ['latest-mac.yml'] }),
+      release('v0.89.17', { prerelease: false, assetNames: ['latest-mac.yml'] }),
+    ];
+    expect(pickLatestReleaseAssetUrl(releases, stableChannel('latest-mac.yml', 0))).toBe(
+      dmgUrl('v0.89.18', 'latest-mac.yml'),
+    );
+    expect(pickLatestReleaseAssetUrl(releases, stableChannel('latest-mac.yml', 1))).toBe(
+      dmgUrl('v1.0.0', 'latest-mac.yml'),
+    );
+  });
+
+  test('major-scoped beta channels isolate v0.*-beta.* from v1.*-beta.*', () => {
+    const releases = [
+      release('v1.0.0-beta.2', { assetNames: ['beta-mac.yml'] }),
+      release('v0.89.18-beta.1', { assetNames: ['beta-mac.yml'] }),
+      release('v0.89.18', { prerelease: false, assetNames: ['beta-mac.yml'] }),
+    ];
+    expect(pickLatestReleaseAssetUrl(releases, betaChannel('beta-mac.yml', 0))).toBe(
+      dmgUrl('v0.89.18-beta.1', 'beta-mac.yml'),
+    );
+    expect(pickLatestReleaseAssetUrl(releases, betaChannel('beta-mac.yml', 1))).toBe(
+      dmgUrl('v1.0.0-beta.2', 'beta-mac.yml'),
+    );
+  });
+
+  test('v0 stable falls back to git matching-refs when v0 releases age past MAX_RELEASE_PAGES', async () => {
+    const requestedUrls: string[] = [];
+    const resolve = createStableResolver({
+      assetName: 'latest-mac.yml',
+      major: 0,
+      now: () => 0,
+      fetchImpl: async (input) => {
+        const url = String(input);
+        requestedUrls.push(url);
+        if (url.includes('/releases?')) {
+          return jsonResponse(
+            Array.from({ length: 100 }, (_, i) =>
+              release(`v1.0.0-cloud.${1000 + i}`, { assetNames: [CLOUD_DMG_ASSET_NAME] }),
+            ),
+          );
+        }
+        if (url.endsWith('/git/matching-refs/tags/v0.')) {
+          return jsonResponse([
+            { ref: 'refs/tags/v0.89.17' },
+            { ref: 'refs/tags/v0.89.18-beta.0' },
+            { ref: 'refs/tags/v0.89.18' },
+            { ref: 'refs/tags/v0.89.19' },
+          ]);
+        }
+        if (url.endsWith('/releases/tags/v0.89.19')) {
+          return new Response('Not Found', { status: 404 });
+        }
+        if (url.endsWith('/releases/tags/v0.89.18')) {
+          return jsonResponse(
+            release('v0.89.18', { prerelease: false, assetNames: ['latest-mac.yml'] }),
+          );
+        }
+        return new Response('unexpected', { status: 500 });
+      },
+    });
+
+    expect(await resolve()).toEqual({
+      kind: 'fresh',
+      url: dmgUrl('v0.89.18', 'latest-mac.yml'),
+    });
+    expect(requestedUrls.some((url) => url.endsWith('/git/matching-refs/tags/v0.'))).toBe(true);
+    expect(requestedUrls.some((url) => url.endsWith('/releases/tags/v0.89.18'))).toBe(true);
+  });
+
+  test('v1 stable falls back cleanly when no v1.* stable release exists yet', async () => {
+    const resolve = createStableResolver({
+      assetName: 'latest-mac.yml',
+      major: 1,
+      now: () => 0,
+      fetchImpl: async () =>
+        jsonResponse([
+          release('v0.89.18', { prerelease: false, assetNames: ['latest-mac.yml'] }),
+          release('v1.0.0-beta.0', { prerelease: true, assetNames: ['latest-mac.yml'] }),
+        ]),
+    });
+
+    const result = await resolve();
+    expect(result.kind).toBe('fallback');
+    expect(result.url).toBe(RELEASES_PAGE_URL);
+  });
+
+  test('matching-refs fallback reports tag-lookup details and warns on malformed by-tag payload', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const resolve = createStableResolver({
+        assetName: 'latest-mac.yml',
+        major: 0,
+        now: () => 0,
+        fetchImpl: async (input) => {
+          const url = String(input);
+          if (url.includes('/releases?')) {
+            return jsonResponse(
+              Array.from({ length: 100 }, (_, i) =>
+                release(`v1.0.0-cloud.${1000 + i}`, { assetNames: [CLOUD_DMG_ASSET_NAME] }),
+              ),
+            );
+          }
+          if (url.endsWith('/git/matching-refs/tags/v0.')) {
+            return jsonResponse([{ ref: 'refs/tags/v0.89.18' }]);
+          }
+          if (url.endsWith('/releases/tags/v0.89.18')) {
+            return jsonResponse({ tag_name: 42 });
+          }
+          return new Response('unexpected', { status: 500 });
+        },
+      });
+
+      const result = await resolve();
+      expect(result.kind).toBe('fallback');
+      if (result.kind === 'fallback') {
+        expect(result.cause).toContain('via v0. tag lookup (1 matching tag(s) checked)');
+      }
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('release payload for tag v0.89.18 failed schema validation'),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
+describe('GITHUB_TOKEN 401 anonymous retry and shared releases cache', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test('retries anonymously and logs a warning when GITHUB_TOKEN is refused with HTTP 401', async () => {
+    vi.stubEnv('GITHUB_TOKEN', 'ghp_expired_token');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const seenAuthHeaders: Array<string | undefined> = [];
+    try {
+      const resolve = createStableResolver({
+        assetName: 'latest-mac.yml',
+        major: 0,
+        now: () => 0,
+        fetchImpl: async (_input, init) => {
+          const headers = (init?.headers ?? {}) as Record<string, string | undefined>;
+          seenAuthHeaders.push(headers.authorization);
+          if (headers.authorization) {
+            return jsonResponse({ message: 'Bad credentials' }, 401);
+          }
+          return jsonResponse([
+            release('v0.89.18', { prerelease: false, assetNames: ['latest-mac.yml'] }),
+          ]);
+        },
+      });
+
+      expect(await resolve()).toEqual({
+        kind: 'fresh',
+        url: dmgUrl('v0.89.18', 'latest-mac.yml'),
+      });
+      expect(seenAuthHeaders).toEqual(['Bearer ghp_expired_token', undefined]);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('HTTP 401: the GITHUB_TOKEN this deployment sent was refused'),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test('does not retry a 401 when GITHUB_TOKEN is unset', async () => {
+    vi.stubEnv('GITHUB_TOKEN', '');
+    let calls = 0;
+    const resolve = createStableResolver({
+      assetName: 'latest-mac.yml',
+      major: 0,
+      now: () => 0,
+      fetchImpl: async () => {
+        calls++;
+        return jsonResponse({ message: 'Unauthorized' }, 401);
+      },
+    });
+
+    const result = await resolve();
+    expect(result.kind).toBe('fallback');
+    expect(calls).toBe(1);
+  });
+
+  test('shares a single cached GitHub releases page fetch across multiple channel resolvers', async () => {
+    let calls = 0;
+    let clock = 0;
+    const pageCache = createReleasesPageCache({
+      now: () => clock,
+      fetchImpl: async () => {
+        calls++;
+        return jsonResponse([
+          release('v1.0.0', { prerelease: false, assetNames: ['latest-mac.yml'] }),
+          release('v0.89.18', { prerelease: false, assetNames: ['latest-mac.yml'] }),
+          release('v0.89.18-beta.1', { prerelease: true, assetNames: ['beta-mac.yml'] }),
+        ]);
+      },
+    });
+
+    const resolveV0Stable = createStableResolver({
+      assetName: 'latest-mac.yml',
+      major: 0,
+      now: () => clock,
+      pageCache,
+    });
+    const resolveV1Stable = createStableResolver({
+      assetName: 'latest-mac.yml',
+      major: 1,
+      now: () => clock,
+      pageCache,
+    });
+    const resolveV0Beta = createBetaResolver({
+      assetName: 'beta-mac.yml',
+      major: 0,
+      now: () => clock,
+      pageCache,
+    });
+
+    const [v0Stable, v1Stable, v0Beta] = await Promise.all([
+      resolveV0Stable(),
+      resolveV1Stable(),
+      resolveV0Beta(),
+    ]);
+    expect(v0Stable).toEqual({ kind: 'fresh', url: dmgUrl('v0.89.18', 'latest-mac.yml') });
+    expect(v1Stable).toEqual({ kind: 'fresh', url: dmgUrl('v1.0.0', 'latest-mac.yml') });
+    expect(v0Beta).toEqual({ kind: 'fresh', url: dmgUrl('v0.89.18-beta.1', 'beta-mac.yml') });
+    expect(calls).toBe(1);
+
+    clock = 300_000;
+    await resolveV0Stable();
+    expect(calls).toBe(2);
   });
 });
