@@ -208,6 +208,9 @@ function makeRig(
       channels: ReadonlySet<'latest' | 'beta'>;
       betaChannel?: 'beta' | 'beta-product';
     };
+    arch?: string;
+    v1ProbeFetch?: Parameters<typeof startAutoUpdater>[0]['v1ProbeFetch'];
+    v1ImpactDeps?: Parameters<typeof startAutoUpdater>[0]['v1ImpactDeps'];
     updaterSetup?: (u: FakeUpdater) => void;
     extraWindowCount?: number;
     prepareForRelaunch?: () => void;
@@ -230,6 +233,9 @@ function makeRig(
     forceDevBypass,
     feedUrl,
     proxyFeed,
+    arch,
+    v1ProbeFetch = () => Promise.resolve({ status: 404, headers: new Headers() }),
+    v1ImpactDeps,
     updaterSetup,
     extraWindowCount = 0,
     prepareForRelaunch,
@@ -281,9 +287,12 @@ function makeRig(
     buildChannel,
     isPackaged,
     platform,
+    arch,
     forceDevBypass,
     feedUrl,
     proxyFeed,
+    v1ProbeFetch,
+    v1ImpactDeps,
     prepareForRelaunch,
     sweepUpdateSurvivors,
     showCheckNowResult,
@@ -7294,5 +7303,531 @@ describe('install-failure give-up tombstone', () => {
     const { rig } = makeRig({ gaveUpOnVersion: '0.3.2', versionPendingInstall: '0.3.2' });
     await rig.ipc.invoke('ok:update:dispatch', { kind: 'relaunch-now' });
     expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('v0 -> v1 opt-in upgrade probe, strict updateMode=off, and explicit download flow', () => {
+  const V1_LOCATION =
+    'https://github.com/inkeep/open-knowledge/releases/download/v1.0.0/latest-mac.yml';
+
+  function makeLiveV1Fetch(location = V1_LOCATION) {
+    return vi.fn(async () => ({
+      status: 302,
+      headers: new Headers({ location }),
+    }));
+  }
+
+  function v1Snapshots(captured: CapturedSend[]) {
+    return captured
+      .filter((entry) => entry.channel === 'ok:update:v1-upgrade')
+      .map(
+        (entry) =>
+          entry.payload as ReturnType<ReturnType<typeof startAutoUpdater>['getV1UpgradeSnapshot']>,
+      );
+  }
+
+  test('stays completely dormant when the v1 proxy returns 404', async () => {
+    const probeFetch = vi.fn(async () => ({ status: 404, headers: new Headers() }));
+    const { rig, handle } = makeRig({
+      appVersion: '0.89.18',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      v1ProbeFetch: probeFetch,
+    });
+
+    await vi.waitFor(() => expect(rig.dispatches).toContain('v1-probe-dormant' as DispatchKind));
+    expect(probeFetch).toHaveBeenCalledTimes(1);
+    expect(probeFetch).toHaveBeenCalledWith(
+      `${PROXY_BASE}/v1-stable/latest-mac.yml`,
+      expect.objectContaining({ method: 'HEAD', redirect: 'manual' }),
+    );
+    expect(handle.getV1UpgradeSnapshot().availableVersion).toBeNull();
+    expect(v1Snapshots(rig.captured)).toHaveLength(0);
+    handle.destroy();
+  });
+
+  test('preserves last known v1 offer on 503 outage, and clears + resets state only on affirmative 404', async () => {
+    let nextResponse: { status: number; headers: Headers } = {
+      status: 302,
+      headers: new Headers({ location: V1_LOCATION }),
+    };
+    const probeFetch = vi.fn(async () => nextResponse);
+    const { rig, handle } = makeRig({
+      appVersion: '0.89.18',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      v1ProbeFetch: probeFetch,
+    });
+
+    await vi.waitFor(() => expect(handle.getV1UpgradeSnapshot().availableVersion).toBe('1.0.0'));
+
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'opt-in-v1-upgrade' });
+    rig.updater.emit('error', new Error('transient error'));
+    expect(handle.getV1UpgradeSnapshot()).toMatchObject({
+      availableVersion: '1.0.0',
+      phase: 'error',
+      errorCode: 'download-failed',
+    });
+
+    nextResponse = { status: 503, headers: new Headers() };
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'check-now' });
+    await vi.waitFor(() => expect(rig.dispatches).toContain('v1-probe-error' as DispatchKind));
+    expect(handle.getV1UpgradeSnapshot()).toMatchObject({
+      availableVersion: '1.0.0',
+      phase: 'error',
+      errorCode: 'download-failed',
+    });
+
+    nextResponse = { status: 404, headers: new Headers() };
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'check-now' });
+    await vi.waitFor(() => expect(handle.getV1UpgradeSnapshot().availableVersion).toBeNull());
+    expect(handle.getV1UpgradeSnapshot()).toMatchObject({
+      availableVersion: null,
+      phase: 'idle',
+      progressPercent: null,
+      errorCode: null,
+    });
+    handle.destroy();
+  });
+
+  test('detects live v1 release on boot when updateMode is auto and broadcasts snapshot', async () => {
+    const probeFetch = makeLiveV1Fetch();
+    const { rig, handle } = makeRig({
+      appVersion: '0.89.18',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      v1ProbeFetch: probeFetch,
+    });
+
+    await vi.waitFor(() => expect(handle.getV1UpgradeSnapshot().availableVersion).toBe('1.0.0'));
+
+    const snapshot = handle.getV1UpgradeSnapshot();
+    expect(snapshot).toMatchObject({
+      availableVersion: '1.0.0',
+      proactiveAllowed: true,
+      toastDismissed: false,
+      canInstallInApp: true,
+      autoInstallOnAppQuit: true,
+      phase: 'idle',
+      progressPercent: null,
+      errorCode: null,
+    });
+    expect(v1Snapshots(rig.captured).at(-1)?.availableVersion).toBe('1.0.0');
+    handle.destroy();
+  });
+
+  test('makes zero background v1 probes when updateMode is off, and probes on manual check-now with proactiveAllowed=false', async () => {
+    const probeFetch = makeLiveV1Fetch();
+    const { rig, handle } = makeRig({
+      appVersion: '0.89.18',
+      updateMode: 'off',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      v1ProbeFetch: probeFetch,
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(probeFetch).not.toHaveBeenCalled();
+    expect(handle.getV1UpgradeSnapshot()).toMatchObject({
+      availableVersion: null,
+      proactiveAllowed: false,
+    });
+
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'check-now' });
+    await vi.waitFor(() => expect(handle.getV1UpgradeSnapshot().availableVersion).toBe('1.0.0'));
+
+    expect(probeFetch).toHaveBeenCalledTimes(1);
+    expect(handle.getV1UpgradeSnapshot()).toMatchObject({
+      availableVersion: '1.0.0',
+      proactiveAllowed: false,
+    });
+    handle.destroy();
+  });
+
+  test('toggling updateMode auto -> off flips proactiveAllowed=false immediately and off -> auto resumes probing', async () => {
+    const probeFetch = makeLiveV1Fetch();
+    const { rig, handle } = makeRig({
+      appVersion: '0.89.18',
+      updateMode: 'off',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      v1ProbeFetch: probeFetch,
+    });
+
+    expect(probeFetch).not.toHaveBeenCalled();
+
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'set-mode', mode: 'auto' });
+    await vi.waitFor(() => expect(handle.getV1UpgradeSnapshot().availableVersion).toBe('1.0.0'));
+    expect(handle.getV1UpgradeSnapshot().proactiveAllowed).toBe(true);
+
+    rig.captured.length = 0;
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'set-mode', mode: 'off' });
+    expect(handle.getV1UpgradeSnapshot().proactiveAllowed).toBe(false);
+    expect(v1Snapshots(rig.captured).at(-1)?.proactiveAllowed).toBe(false);
+    handle.destroy();
+  });
+
+  test('dismiss-v1-toast persists v1ToastDismissed=true and broadcasts updated snapshot', async () => {
+    const probeFetch = makeLiveV1Fetch();
+    const { rig, handle } = makeRig({
+      appVersion: '0.89.18',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      v1ProbeFetch: probeFetch,
+    });
+
+    await vi.waitFor(() => expect(handle.getV1UpgradeSnapshot().availableVersion).toBe('1.0.0'));
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'dismiss-v1-toast' });
+
+    expect(rig.state.v1ToastDismissed).toBe(true);
+    expect(handle.getV1UpgradeSnapshot().toastDismissed).toBe(true);
+    expect(v1Snapshots(rig.captured).at(-1)?.toastDismissed).toBe(true);
+    handle.destroy();
+  });
+
+  test('opt-in-v1-upgrade switches feed to v1, downloads even when updateMode is off, restores v0 feed, and skips v0 refresh on relaunch', async () => {
+    const probeFetch = makeLiveV1Fetch();
+    const { rig, handle } = makeRig({
+      appVersion: '0.89.18',
+      updateMode: 'off',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      v1ProbeFetch: probeFetch,
+    });
+
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'check-now' });
+    await vi.waitFor(() => expect(handle.getV1UpgradeSnapshot().availableVersion).toBe('1.0.0'));
+    rig.updater.setFeedURL.mockClear();
+    rig.updater.checkForUpdates.mockClear();
+    rig.updater.downloadUpdate.mockClear();
+
+    const result = await rig.ipc.invoke('ok:update:dispatch', { kind: 'opt-in-v1-upgrade' });
+    expect(result).toEqual({ kind: 'opt-in-v1-upgrade', ok: true });
+    expect(rig.updater.setFeedURL).toHaveBeenCalledWith({
+      provider: 'generic',
+      url: `${PROXY_BASE}/v1-stable`,
+    });
+    expect(rig.updater.requestHeaders).toEqual({
+      'x-ok-from-version': '0.89.18',
+      'x-ok-channel': 'v1-stable',
+    });
+    expect(handle.getV1UpgradeSnapshot().phase).toBe('checking');
+
+    rig.updater.emit('update-available', { version: '1.0.0' });
+    expect(rig.updater.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(handle.getV1UpgradeSnapshot().phase).toBe('downloading');
+
+    rig.updater.emit('download-progress', { percent: 42.6 });
+    expect(handle.getV1UpgradeSnapshot().progressPercent).toBe(43);
+
+    rig.updater.emit('update-downloaded', { version: '1.0.0' });
+    expect(handle.getV1UpgradeSnapshot()).toMatchObject({
+      phase: 'ready',
+      progressPercent: 100,
+      errorCode: null,
+    });
+    expect(rig.updater.setFeedURL).toHaveBeenLastCalledWith({
+      provider: 'generic',
+      url: `${PROXY_BASE}/stable`,
+    });
+    expect(rig.state.versionPendingInstall).toBeNull();
+    expect(rig.state.attemptedInstall).toBeNull();
+
+    rig.updater.checkForUpdates.mockClear();
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'relaunch-now' });
+    expect(rig.updater.checkForUpdates).not.toHaveBeenCalled();
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    handle.destroy();
+  });
+
+  test('relaunch-now for staged 1.0.0 with updateMode=auto skips v0 refresh and never leaves stale v1 state on next boot', async () => {
+    const probeFetch = makeLiveV1Fetch();
+    const existsSpy = vi.fn(() => false);
+    const resolveAutoSyncSpy = vi.fn(() => null);
+    const { rig, handle } = makeRig({
+      appVersion: '0.89.18',
+      updateMode: 'auto',
+      recentProjects: [{ path: '/tmp/proj', name: 'proj', lastOpenedAt: '2026-01-01T00:00:00Z' }],
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      v1ProbeFetch: probeFetch,
+      v1ImpactDeps: { existsSync: existsSpy, resolveAutoSyncMode: resolveAutoSyncSpy },
+    });
+
+    await vi.waitFor(() => expect(handle.getV1UpgradeSnapshot().availableVersion).toBe('1.0.0'));
+    await Promise.resolve();
+
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'opt-in-v1-upgrade' });
+    const scanCountAfterOptIn = existsSpy.mock.calls.length;
+
+    rig.updater.emit('update-available', { version: '1.0.0' });
+    rig.updater.emit('download-progress', { percent: 10 });
+    rig.updater.emit('download-progress', { percent: 25 });
+    rig.updater.emit('download-progress', { percent: 80 });
+    expect(existsSpy.mock.calls.length).toBe(scanCountAfterOptIn);
+
+    rig.updater.emit('update-downloaded', { version: '1.0.0' });
+    expect(rig.state.versionPendingInstall).toBeNull();
+    expect(rig.state.attemptedInstall).toBeNull();
+    expect(handle.getV1UpgradeSnapshot().autoInstallOnAppQuit).toBe(true);
+
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'set-mode', mode: 'off' });
+    expect(handle.getV1UpgradeSnapshot().autoInstallOnAppQuit).toBe(true);
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'set-mode', mode: 'auto' });
+
+    rig.updater.checkForUpdates.mockClear();
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'relaunch-now' });
+    expect(rig.updater.checkForUpdates).not.toHaveBeenCalled();
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(rig.state.versionPendingInstall).toBeNull();
+    expect(rig.state.attemptedInstall).toBeNull();
+    handle.destroy();
+
+    const nextBoot = makeRig({
+      ...rig.state,
+      appVersion: '0.89.18',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      v1ProbeFetch: vi.fn(async () => ({ status: 404, headers: new Headers() })),
+    });
+    expect(nextBoot.handle.getPendingUpdate()).toBeNull();
+    expect(
+      nextBoot.rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed'),
+    ).toHaveLength(0);
+    nextBoot.handle.destroy();
+  });
+
+  test('opt-in-v1-upgrade watchdog times out a hung check, allows immediate retry, and ignores late abandoned settlement', async () => {
+    const probeFetch = makeLiveV1Fetch();
+    const { rig, handle } = makeRig({
+      appVersion: '0.89.18',
+      updateMode: 'off',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      v1ProbeFetch: probeFetch,
+    });
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'check-now' });
+    await vi.waitFor(() => expect(handle.getV1UpgradeSnapshot().availableVersion).toBe('1.0.0'));
+    rig.updater.emit('update-not-available', { version: '0.89.18' });
+    rig.updater.setFeedURL.mockClear();
+
+    const { promise: hungPromise, resolve: resolveHung } = Promise.withResolvers<unknown>();
+    rig.updater.checkForUpdates = vi.fn(() => hungPromise);
+
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'opt-in-v1-upgrade' });
+    expect(handle.getV1UpgradeSnapshot().phase).toBe('checking');
+
+    const watchdogTimer = [...rig.clock.timers.values()].find(
+      (t) => t.state === 'live' && t.ms === MANUAL_CHECK_WATCHDOG_MS,
+    );
+    expect(watchdogTimer).toBeDefined();
+    watchdogTimer?.cb();
+
+    expect(handle.getV1UpgradeSnapshot()).toMatchObject({
+      phase: 'error',
+      errorCode: 'timeout',
+    });
+    expect(rig.updater.setFeedURL).toHaveBeenLastCalledWith({
+      provider: 'generic',
+      url: `${PROXY_BASE}/stable`,
+    });
+
+    const dispatchesBeforeLate = rig.dispatches.length;
+    rig.updater.setFeedURL.mockClear();
+    rig.updater.emit('update-not-available', { version: '1.0.0' });
+    rig.updater.emit('error', new Error('late abandoned error'));
+    resolveHung(null);
+    await Promise.resolve();
+    expect(rig.dispatches.slice(dispatchesBeforeLate)).toEqual([]);
+    expect(rig.updater.setFeedURL).not.toHaveBeenCalled();
+
+    rig.updater.checkForUpdates = vi.fn(() =>
+      Promise.resolve({ updateInfo: { version: '1.0.0' } }),
+    );
+    const retryResult = await rig.ipc.invoke('ok:update:dispatch', { kind: 'opt-in-v1-upgrade' });
+    expect(retryResult).toEqual({ kind: 'opt-in-v1-upgrade', ok: true });
+    expect(handle.getV1UpgradeSnapshot().phase).toBe('checking');
+    handle.destroy();
+  });
+
+  test('check-now during active v1 opt-in emits informative v1-upgrade-in-progress verdict instead of error', async () => {
+    const showCheckNowResult = vi.fn(() => undefined);
+    const { rig, handle } = makeRig({
+      appVersion: '0.89.18',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      v1ProbeFetch: makeLiveV1Fetch(),
+      showCheckNowResult,
+    });
+
+    await vi.waitFor(() => expect(handle.getV1UpgradeSnapshot().availableVersion).toBe('1.0.0'));
+    await Promise.resolve();
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'opt-in-v1-upgrade' });
+    rig.captured.length = 0;
+
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'check-now' });
+    expect(
+      rig.captured.filter((entry) => entry.channel === 'ok:update:manual-check'),
+    ).toContainEqual(expect.objectContaining({ payload: { phase: 'settled' } }));
+    expect(showCheckNowResult).toHaveBeenCalledWith({ kind: 'v1-upgrade-in-progress' });
+    handle.destroy();
+  });
+
+  test('v1 relaunch failure paths broadcast ok:update:relaunch-failed and v1 error snapshot without persisting versionPendingInstall', async () => {
+    const stageV1 = async (
+      overrides: Parameters<typeof makeRig>[0] = {},
+      downloadedFile?: string,
+    ) => {
+      const result = makeRig({
+        appVersion: '0.89.18',
+        proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+        v1ProbeFetch: makeLiveV1Fetch(),
+        ...overrides,
+      });
+      await vi.waitFor(() =>
+        expect(result.handle.getV1UpgradeSnapshot().availableVersion).toBe('1.0.0'),
+      );
+      await Promise.resolve();
+      await result.rig.ipc.invoke('ok:update:dispatch', { kind: 'opt-in-v1-upgrade' });
+      result.rig.updater.emit('update-available', { version: '1.0.0' });
+      result.rig.updater.emit('update-downloaded', {
+        version: '1.0.0',
+        ...(downloadedFile ? { downloadedFile } : {}),
+      });
+      result.rig.captured.length = 0;
+      return result;
+    };
+
+    const watchdogCase = await stageV1();
+    await watchdogCase.rig.ipc.invoke('ok:update:dispatch', { kind: 'relaunch-now' });
+    const relaunchTimer = [...watchdogCase.rig.clock.timers.values()].find(
+      (t) => t.state === 'live' && t.ms === RELAUNCH_WATCHDOG_MS,
+    );
+    expect(relaunchTimer).toBeDefined();
+    relaunchTimer?.cb();
+    expect(watchdogCase.handle.getV1UpgradeSnapshot()).toMatchObject({
+      phase: 'error',
+      errorCode: 'relaunch-failed',
+    });
+    expect(
+      watchdogCase.rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed'),
+    ).toHaveLength(1);
+    expect(
+      watchdogCase.rig.captured.filter((c) => c.channel === 'ok:update:downloaded'),
+    ).toHaveLength(0);
+    expect(watchdogCase.rig.state.versionPendingInstall).toBeNull();
+    watchdogCase.handle.destroy();
+
+    const throwCase = await stageV1();
+    throwCase.rig.updater.quitAndInstall = vi.fn(() => {
+      throw new Error('quit failed');
+    });
+    await expect(
+      throwCase.rig.ipc.invoke('ok:update:dispatch', { kind: 'relaunch-now' }),
+    ).rejects.toThrow('quit failed');
+    expect(throwCase.handle.getV1UpgradeSnapshot()).toMatchObject({
+      phase: 'error',
+      errorCode: 'relaunch-failed',
+    });
+    expect(
+      throwCase.rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed'),
+    ).toHaveLength(1);
+    expect(throwCase.rig.state.versionPendingInstall).toBeNull();
+    throwCase.handle.destroy();
+
+    const errorEventCase = await stageV1();
+    await errorEventCase.rig.ipc.invoke('ok:update:dispatch', { kind: 'relaunch-now' });
+    errorEventCase.rig.updater.emit('error', new Error('installer exited'));
+    expect(errorEventCase.handle.getV1UpgradeSnapshot()).toMatchObject({
+      phase: 'error',
+      errorCode: 'relaunch-failed',
+    });
+    expect(
+      errorEventCase.rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed'),
+    ).toHaveLength(1);
+    expect(errorEventCase.rig.state.versionPendingInstall).toBeNull();
+    errorEventCase.handle.destroy();
+
+    let hasGraphicalAuth = true;
+    const showManualInstallFallback = vi.fn();
+    const linuxCase = await stageV1(
+      {
+        platform: 'linux',
+        arch: 'x64',
+        v1ProbeFetch: makeLiveV1Fetch(
+          'https://github.com/inkeep/open-knowledge/releases/download/v1.0.0/latest-linux.yml',
+        ),
+        linuxInstallSupport: {
+          hasGraphicalAuth: () => hasGraphicalAuth,
+          showManualInstallFallback,
+        },
+      },
+      '/tmp/open-knowledge-1.0.0-amd64.deb',
+    );
+    hasGraphicalAuth = false;
+    await linuxCase.rig.ipc.invoke('ok:update:dispatch', { kind: 'relaunch-now' });
+    expect(showManualInstallFallback).toHaveBeenCalledTimes(1);
+    expect(linuxCase.handle.getV1UpgradeSnapshot()).toMatchObject({
+      phase: 'error',
+      errorCode: 'relaunch-failed',
+    });
+    expect(
+      linuxCase.rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed'),
+    ).toHaveLength(1);
+    expect(linuxCase.rig.state.versionPendingInstall).toBeNull();
+    linuxCase.handle.destroy();
+  });
+
+  test('opt-in-v1-upgrade restores the v0 feed immediately when the v1 download fails', async () => {
+    const probeFetch = makeLiveV1Fetch();
+    const { rig, handle } = makeRig({
+      appVersion: '0.89.18',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      v1ProbeFetch: probeFetch,
+    });
+
+    await vi.waitFor(() => expect(handle.getV1UpgradeSnapshot().availableVersion).toBe('1.0.0'));
+    await Promise.resolve();
+    rig.updater.setFeedURL.mockClear();
+
+    await rig.ipc.invoke('ok:update:dispatch', { kind: 'opt-in-v1-upgrade' });
+    rig.updater.emit('error', new Error('v1 manifest 503'));
+
+    expect(handle.getV1UpgradeSnapshot()).toMatchObject({
+      phase: 'error',
+      errorCode: 'download-failed',
+    });
+    expect(rig.updater.setFeedURL).toHaveBeenLastCalledWith({
+      provider: 'generic',
+      url: `${PROXY_BASE}/stable`,
+    });
+    expect(rig.updater.requestHeaders).toEqual({
+      'x-ok-from-version': '0.89.18',
+      'x-ok-channel': 'stable',
+    });
+
+    rig.updater.downloadUpdate.mockClear();
+    rig.updater.emit('update-available', { version: '1.0.0' });
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(rig.dispatches).toContain('major-version-blocked' as DispatchKind);
+    handle.destroy();
+  });
+
+  test('returns manual-download-required on Linux without graphical auth', async () => {
+    const probeFetch = makeLiveV1Fetch(
+      'https://github.com/inkeep/open-knowledge/releases/download/v1.0.0/latest-linux.yml',
+    );
+    const { rig, handle } = makeRig({
+      appVersion: '0.89.18',
+      platform: 'linux',
+      arch: 'x64',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      v1ProbeFetch: probeFetch,
+      linuxInstallSupport: {
+        hasGraphicalAuth: () => false,
+        showManualInstallFallback: vi.fn(),
+      },
+    });
+
+    await vi.waitFor(() => expect(handle.getV1UpgradeSnapshot().availableVersion).toBe('1.0.0'));
+    expect(handle.getV1UpgradeSnapshot().canInstallInApp).toBe(false);
+
+    const result = await rig.ipc.invoke('ok:update:dispatch', { kind: 'opt-in-v1-upgrade' });
+    expect(result).toEqual({
+      kind: 'opt-in-v1-upgrade',
+      ok: false,
+      reason: 'manual-download-required',
+    });
+    handle.destroy();
   });
 });

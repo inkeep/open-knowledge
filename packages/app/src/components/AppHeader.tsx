@@ -19,6 +19,7 @@ import { PublishToGitHubDialog } from '@/components/PublishToGitHubDialog';
 import { SettingsButton } from '@/components/SettingsButton';
 import { ShareButton, type ShareButtonProps } from '@/components/ShareButton';
 import { displayState, SyncStatusBadge } from '@/components/SyncStatusBadge';
+import { V1UpgradeHeaderPill } from '@/components/V1UpgradeNotice';
 import { WebProjectName } from '@/components/WebProjectName';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { useGitSyncStatusDetailed } from '@/hooks/use-git-sync-status';
@@ -31,6 +32,7 @@ import {
 } from '@/lib/share/run-share-action';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 import { cn } from '@/lib/utils';
+import { shouldShowV1HeaderPill, useV1UpgradeState } from '@/lib/v1-upgrade-store';
 import { PresenceBar } from '@/presence/PresenceBar';
 import { SyncToastHost } from '@/presence/SyncToastHost';
 import { usePresence } from '@/presence/use-presence';
@@ -140,12 +142,19 @@ export function AppHeader({ onOpenSearch }: AppHeaderProps) {
       })();
   const { status: gitSyncStatus } = useGitSyncStatusDetailed();
   const paneButtonSet = useHeaderPaneButtonSet();
+  const { snapshot: v1UpgradeSnapshot } = useV1UpgradeState();
+  const v1PillSignature = shouldShowV1HeaderPill(v1UpgradeSnapshot)
+    ? v1UpgradeSnapshot?.phase === 'ready'
+      ? 'ready'
+      : 'available'
+    : 'hidden';
   const trailingContentSignature = [
     String(shareInput != null),
     gitSyncStatus?.hasRemote ? displayState(gitSyncStatus) : 'no-remote',
     paneButtonSet.join(','),
     presence.current.length,
     presence.crossDoc.length,
+    v1PillSignature,
   ].join('|');
 
   const { overflowed: actionsOverflowed, remeasuring: actionsRemeasuring } = useTrailingOverflow({
@@ -217,6 +226,7 @@ export function AppHeader({ onOpenSearch }: AppHeaderProps) {
 
   const renderTrailingActions = (onClickWhenNoRemote: ShareButtonProps['onClickWhenNoRemote']) => (
     <>
+      <V1UpgradeHeaderPill />
       <PresenceBar {...presence} />
       {!singleFile && (
         <ShareButton

@@ -101,7 +101,12 @@ export async function openDesktopHeader(
       if (overrides.instanceLabel !== undefined) bridge.instanceLabel = overrides.instanceLabel;
       const channel = overrides.channel;
       if (channel !== undefined) {
-        bridge.state.query = async () => ({ channel, schemaIncompatibility: null });
+        const previousQuery = bridge.state.query;
+        bridge.state.query = async () => ({
+          ...((await previousQuery()) as Record<string, unknown>),
+          channel,
+          schemaIncompatibility: null,
+        });
       }
       if (captionWidth !== null) {
         new MutationObserver((_records, observer) => {

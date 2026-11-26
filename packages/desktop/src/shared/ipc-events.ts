@@ -4,6 +4,7 @@ import type {
   OkNoteWindowMainAction,
   OkOnboardingToastPayload,
   OkUserConfigSnapshot,
+  OkV1UpgradeSnapshot,
 } from '@inkeep/open-knowledge-core/desktop-bridge';
 import type {
   OkDesktopConfig,
@@ -40,6 +41,7 @@ export interface EventChannels {
   'ok:update:whats-new-dismissed': { payload: { version: string } };
   'ok:update:stuck-hint': { payload: { downloadUrl: string } };
   'ok:update:manual-check': { payload: { phase: 'started' | 'settled' } };
+  'ok:update:v1-upgrade': { payload: OkV1UpgradeSnapshot };
   'ok:deep-link': { payload: OkDeepLinkPayload };
   'ok:share:received': { payload: OkShareReceivedPayload };
   'ok:mcp-wiring:show': {

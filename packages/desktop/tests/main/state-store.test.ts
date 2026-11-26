@@ -1053,10 +1053,19 @@ describe('state-store (update preference fields)', () => {
       updateMode: 'off',
       gaveUpOnVersion: '0.3.2',
       dismissedUpdateVersion: '0.3.3',
+      v1ToastDismissed: true,
     });
     expect(parsed?.updateMode).toBe('off');
     expect(parsed?.gaveUpOnVersion).toBe('0.3.2');
     expect(parsed?.dismissedUpdateVersion).toBe('0.3.3');
+    expect(parsed?.v1ToastDismissed).toBe(true);
+  });
+
+  test('v1ToastDismissed defaults to false when absent or non-boolean', () => {
+    expect(parseAppState({ recentProjects: [] })?.v1ToastDismissed).toBe(false);
+    expect(parseAppState({ recentProjects: [], v1ToastDismissed: 'yes' })?.v1ToastDismissed).toBe(
+      false,
+    );
   });
 
   test('an unrecognized persisted mode never resolves to off', () => {

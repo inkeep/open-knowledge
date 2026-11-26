@@ -1,5 +1,11 @@
 import type { OutgoingHttpHeaders } from 'node:http';
 import { MANUAL_CHECK_WATCHDOG_MS } from '@inkeep/open-knowledge-core';
+import type {
+  OkV1UpgradeErrorCode,
+  OkV1UpgradeOptInFailure,
+  OkV1UpgradePhase,
+  OkV1UpgradeSnapshot,
+} from '@inkeep/open-knowledge-core/desktop-bridge';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type {
   OkUpdateDispatchRequest,
@@ -21,6 +27,17 @@ import {
   resolveUpdateMode,
   type UpdateChannel,
 } from './state-store.ts';
+import {
+  buildDormantV1UpgradeSnapshot,
+  probeV1UpgradeVersion,
+  resolveV1UpgradeFeed,
+  scanV1UpgradeImpact,
+  V1_MANUAL_DOWNLOAD_URL,
+  V1_MIGRATION_GUIDE_URL,
+  V1_RELEASE_NOTES_URL,
+  type V1ImpactDeps,
+  type V1ProbeFetch,
+} from './v1-upgrade.ts';
 import type { WindowsUpdateSurvivorSweepResult } from './windows-update-survivor-sweep.ts';
 
 const GITHUB_OWNER = 'inkeep';
@@ -117,7 +134,14 @@ export type DispatchKind =
   | 'install-failed-notice-skipped-updates-off'
   | 'stuck-hint-skipped-updates-off'
   | 'downloaded-dismiss-recorded'
-  | 'update-mode-changed';
+  | 'update-mode-changed'
+  | 'v1-probe-available'
+  | 'v1-probe-dormant'
+  | 'v1-probe-error'
+  | 'v1-toast-dismissed'
+  | 'v1-opt-in-started'
+  | 'v1-opt-in-ready'
+  | 'v1-opt-in-failed';
 
 interface StartAutoUpdaterOpts {
   updater: UpdaterLike;
@@ -130,6 +154,7 @@ interface StartAutoUpdaterOpts {
   buildChannel?: UpdateChannel;
   isPackaged: boolean;
   platform?: NodeJS.Platform;
+  arch?: string;
   forceDevBypass?: boolean;
   feedUrl?: string;
   proxyFeed?: {
@@ -137,6 +162,8 @@ interface StartAutoUpdaterOpts {
     channels: ReadonlySet<UpdateChannel>;
     betaChannel?: 'beta' | 'beta-product';
   };
+  v1ProbeFetch?: V1ProbeFetch;
+  v1ImpactDeps?: V1ImpactDeps;
   whenRendererReady?: (fn: () => void) => void;
   prepareForRelaunch?: () => void | Promise<void>;
   sweepUpdateSurvivors?: () => WindowsUpdateSurvivorSweepResult | undefined;
@@ -173,6 +200,7 @@ type CheckNowResult =
     }
   | { kind: 'not-available'; currentVersion: string }
   | { kind: 'updater-inactive' }
+  | { kind: 'v1-upgrade-in-progress' }
   | { kind: 'download-failed'; latestVersion: string; message: string }
   | { kind: 'error'; message: string };
 
@@ -181,6 +209,7 @@ export interface StartAutoUpdaterHandle {
   checkForUpdatesNow(): Promise<unknown>;
   getActiveWhatsNew(): { version: string; releaseUrl: string } | null;
   getPendingUpdate(): { version: string } | null;
+  getV1UpgradeSnapshot(): OkV1UpgradeSnapshot;
   suppressAutoInstallOnQuit(): void;
   recordInstallHandoffOnQuit(): void;
 }
@@ -437,9 +466,12 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     buildChannel: configuredBuildChannel,
     isPackaged,
     platform = process.platform,
+    arch = process.arch,
     forceDevBypass = false,
     feedUrl,
     proxyFeed,
+    v1ProbeFetch = fetch,
+    v1ImpactDeps,
     whenRendererReady,
     reclaimStagedUpdateCache,
     linuxInstallSupport,
@@ -489,8 +521,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     startedAt: number;
     deadline: ReturnType<typeof setTimeout>;
     timedOut: boolean;
+    abandoned: boolean;
   };
   let checkInFlight: TrackedCheck | null = null;
+  let abandonedV1Checks = 0;
   if (feedUrl) {
     updater.setFeedURL(feedUrl);
     logger.info('setFeedURL (dev override) — updater will pull manifest from local mock', {
@@ -510,6 +544,102 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
 
   const updatesEnabled = isPackaged || forceDevBypass;
 
+  const v1FeedTarget = feedUrl
+    ? null
+    : resolveV1UpgradeFeed({
+        proxyFeed,
+        buildChannel,
+        platform,
+        arch,
+        appVersion,
+      });
+  let v1AvailableVersion: string | null = null;
+  let v1Phase: OkV1UpgradePhase = 'idle';
+  let v1ProgressPercent: number | null = null;
+  let v1ErrorCode: OkV1UpgradeErrorCode | null = null;
+  let v1OptInActive: {
+    feedUrl: string;
+    channelSlug: string;
+    watchdog: ReturnType<typeof setTimeout>;
+    trackedCheck: TrackedCheck | null;
+  } | null = null;
+  let v1ReadyVersion: string | null = null;
+  let v1AutoInstallOnAppQuit: boolean | null = null;
+  let v1ProbeInFlight: Promise<string | null> | null = null;
+  let v1ImpactCache: {
+    readonly okignoreProjects: readonly string[];
+    readonly hasGitProjects: boolean;
+  } = { okignoreProjects: [], hasGitProjects: false };
+
+  const refreshV1ImpactCache = (): void => {
+    v1ImpactCache = scanV1UpgradeImpact(readState().recentProjects, v1ImpactDeps);
+  };
+
+  const clearV1OptInWatchdog = (): void => {
+    if (v1OptInActive !== null) {
+      clock.clearTimeout(v1OptInActive.watchdog);
+    }
+  };
+
+  const abandonV1OptInCheck = (): void => {
+    const tracked = v1OptInActive?.trackedCheck ?? null;
+    if (tracked === null || tracked.abandoned) return;
+    tracked.abandoned = true;
+    abandonedV1Checks += 1;
+    clock.clearTimeout(tracked.deadline);
+    if (checkInFlight === tracked) checkInFlight = null;
+  };
+
+  const isLateAbandonedV1Event = (): boolean =>
+    abandonedV1Checks > 0 &&
+    checkInFlight === null &&
+    v1OptInActive === null &&
+    menuCheck === null &&
+    !fallbackRetryPending &&
+    relaunchInFlight === null;
+
+  const canInstallV1InApp = (): boolean =>
+    updatesEnabled &&
+    !(
+      platform === 'linux' &&
+      linuxInstallSupport != null &&
+      !linuxInstallSupport.hasGraphicalAuth()
+    );
+
+  const getV1UpgradeSnapshot = (): OkV1UpgradeSnapshot => {
+    const state = readState();
+    const proactiveAllowed = !updatesOff();
+    const toastDismissed = state.v1ToastDismissed === true;
+    const canInstallInApp = canInstallV1InApp();
+    const autoInstallOnAppQuit =
+      v1ReadyVersion !== null && v1AutoInstallOnAppQuit !== null
+        ? v1AutoInstallOnAppQuit
+        : platform !== 'linux' && updater.autoInstallOnAppQuit;
+    if (v1AvailableVersion === null) {
+      return buildDormantV1UpgradeSnapshot({
+        proactiveAllowed,
+        toastDismissed,
+        canInstallInApp,
+        autoInstallOnAppQuit,
+      });
+    }
+    return {
+      availableVersion: v1AvailableVersion,
+      proactiveAllowed,
+      toastDismissed,
+      canInstallInApp,
+      autoInstallOnAppQuit,
+      phase: v1Phase,
+      progressPercent: v1ProgressPercent,
+      errorCode: v1ErrorCode,
+      okignoreProjects: v1ImpactCache.okignoreProjects,
+      hasGitProjects: v1ImpactCache.hasGitProjects,
+      manualDownloadUrl: V1_MANUAL_DOWNLOAD_URL,
+      migrationGuideUrl: V1_MIGRATION_GUIDE_URL,
+      releaseNotesUrl: V1_RELEASE_NOTES_URL,
+    };
+  };
+
   const prepareConfiguredFeedForCheck = (): void => {
     if (!configuredProxyFeed) return;
     proxyFallbackTried = false;
@@ -528,6 +658,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   const trackCheck = (checkPromise: Promise<unknown>): TrackedCheck => {
     const startedAt = now().getTime();
     const deadline = clock.setTimeout(() => {
+      if (entry.abandoned) return;
       const ageMs = now().getTime() - startedAt;
       entry.timedOut = true;
       logger.warn('update check exceeded its deadline', {
@@ -541,11 +672,20 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       maybeFireStuckHint();
       startPeriodicChecks();
     }, UPDATE_CHECK_DEADLINE_MS);
-    const entry = { promise: checkPromise, startedAt, deadline, timedOut: false };
+    const entry: TrackedCheck = {
+      promise: checkPromise,
+      startedAt,
+      deadline,
+      timedOut: false,
+      abandoned: false,
+    };
     checkInFlight = entry;
     const clearCheck = (): void => {
       clock.clearTimeout(entry.deadline);
       if (checkInFlight === entry) checkInFlight = null;
+      if (entry.abandoned) {
+        abandonedV1Checks = Math.max(0, abandonedV1Checks - 1);
+      }
     };
     void checkPromise.then(clearCheck, clearCheck);
     return entry;
@@ -578,7 +718,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   };
 
   const revertToGithubFeed = (err: unknown): boolean => {
-    if (destroyed) return false;
+    if (destroyed || v1OptInActive !== null) return false;
     if (!usingProxyFeed || proxyFallbackTried) return false;
     if (!shouldFallBackFromProxy(err)) {
       if (proxyIneligibleLogged) return false;
@@ -673,6 +813,77 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     for (const win of all) {
       sendToRenderer(win.webContents, channel, payload);
     }
+  };
+
+  const broadcastV1UpgradeSnapshot = (): void => {
+    broadcastToAllWindows('ok:update:v1-upgrade', getV1UpgradeSnapshot());
+  };
+
+  const restoreV0FeedAfterV1OptIn = (): void => {
+    clearV1OptInWatchdog();
+    v1OptInActive = null;
+    usingProxyFeed = false;
+    prepareConfiguredFeedForCheck();
+  };
+
+  const failV1OptIn = (code: OkV1UpgradeErrorCode, detail?: string): void => {
+    restoreV0FeedAfterV1OptIn();
+    v1Phase = 'error';
+    v1ProgressPercent = null;
+    v1ErrorCode = code;
+    logger.warn('v1 opt-in upgrade failed — restored v0 feed', { code, detail });
+    onDispatch?.('v1-opt-in-failed');
+    broadcastV1UpgradeSnapshot();
+  };
+
+  const runV1UpgradeProbe = (): Promise<string | null> => {
+    if (destroyed || !v1FeedTarget) return Promise.resolve(null);
+    if (v1OptInActive !== null) return Promise.resolve(v1AvailableVersion);
+    if (v1ProbeInFlight !== null) return v1ProbeInFlight;
+    const probe = probeV1UpgradeVersion(v1FeedTarget.manifestUrl, v1ProbeFetch)
+      .then((result) => {
+        if (v1ProbeInFlight === probe) v1ProbeInFlight = null;
+        if (destroyed) return null;
+        if (result.kind === 'available') {
+          const changed = v1AvailableVersion !== result.version;
+          v1AvailableVersion = result.version;
+          refreshV1ImpactCache();
+          onDispatch?.('v1-probe-available');
+          if (changed) broadcastV1UpgradeSnapshot();
+          return result.version;
+        }
+        if (result.kind === 'dormant') {
+          if (v1ReadyVersion === null && v1OptInActive === null) {
+            const changed =
+              v1AvailableVersion !== null ||
+              v1Phase !== 'idle' ||
+              v1ProgressPercent !== null ||
+              v1ErrorCode !== null;
+            v1AvailableVersion = null;
+            v1AutoInstallOnAppQuit = null;
+            v1Phase = 'idle';
+            v1ProgressPercent = null;
+            v1ErrorCode = null;
+            v1ImpactCache = { okignoreProjects: [], hasGitProjects: false };
+            if (changed) broadcastV1UpgradeSnapshot();
+          }
+          onDispatch?.('v1-probe-dormant');
+          return null;
+        }
+        logger.warn('v1 upgrade probe failed — preserving last known state', {
+          reason: result.reason,
+          manifestUrl: v1FeedTarget.manifestUrl,
+        });
+        onDispatch?.('v1-probe-error');
+        return v1AvailableVersion;
+      })
+      .catch((err: unknown) => {
+        if (v1ProbeInFlight === probe) v1ProbeInFlight = null;
+        logger.warn('v1 upgrade probe threw unexpectedly', { err });
+        return v1AvailableVersion;
+      });
+    v1ProbeInFlight = probe;
+    return probe;
   };
 
   const persistSafely = (next: AppState, ctx: string): boolean => {
@@ -912,6 +1123,26 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       relaunchInFlight = null;
     }
     installRequested = false;
+    if (v1ReadyVersion !== null && version === v1ReadyVersion) {
+      v1Phase = 'error';
+      v1ProgressPercent = null;
+      v1ErrorCode = 'relaunch-failed';
+      broadcastToAllWindows('ok:update:relaunch-failed', {
+        version,
+        message,
+        dismissPending: true,
+      });
+      broadcastV1UpgradeSnapshot();
+      logger.warn('v1 relaunch failed — keeping v1 ready session in memory only', {
+        version,
+        kind,
+        message,
+        causeCode: cause?.code,
+        causeStack: cause?.stack,
+      });
+      onDispatch?.(kind);
+      return;
+    }
     const restored = persistSafely(
       { ...readState(), versionPendingInstall: version },
       'relaunch-failed-restore',
@@ -969,6 +1200,12 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   const runMenuDrivenCheck = (): Promise<unknown> => {
     if (destroyed) return Promise.resolve(undefined);
     clearDismissalOnManualCheck();
+    void runV1UpgradeProbe();
+    if (v1OptInActive !== null) {
+      broadcastToAllWindows('ok:update:manual-check', { phase: 'settled' });
+      presentCheckNowResult({ kind: 'v1-upgrade-in-progress' });
+      return Promise.resolve(undefined);
+    }
     broadcastToAllWindows('ok:update:manual-check', { phase: 'started' });
     if (menuCheck !== null) {
       logger.info('check-now already pending, re-acknowledged');
@@ -1023,8 +1260,14 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     if (channelFromVersion(offeredVersion) !== buildChannel) {
       return 'channel-mismatch';
     }
-    const currentMajor = majorFromVersion(appVersion);
     const offeredMajor = majorFromVersion(offeredVersion);
+    if (v1OptInActive !== null) {
+      if (offeredMajor === null || offeredMajor < 1) {
+        return 'major-mismatch';
+      }
+      return 'same-channel';
+    }
+    const currentMajor = majorFromVersion(appVersion);
     if (currentMajor !== null && offeredMajor !== null && offeredMajor > currentMajor) {
       return 'major-mismatch';
     }
@@ -1055,7 +1298,15 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
 
   const onUpdateAvailable = (info: { version?: string }): void => {
     logger.info('update-available', { version: info.version });
+    if (isLateAbandonedV1Event()) {
+      logger.debug('ignoring late update-available from abandoned v1 opt-in check', {
+        version: info.version,
+      });
+      return;
+    }
     const offeredVersion = info.version;
+    const isV1OptIn = v1OptInActive !== null;
+    if (isV1OptIn) clearV1OptInWatchdog();
     const offerClass = classifyOffer(offeredVersion);
     if (offerClass !== 'same-channel') {
       logger.warn('update-available vetoed', {
@@ -1066,12 +1317,15 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         offeredChannel:
           offerClass === 'channel-mismatch' ? channelFromVersion(info.version ?? '') : null,
       });
-      markCheckSucceeded();
+      if (!isV1OptIn) markCheckSucceeded();
       settleCheckWaiters('settled');
       onDispatch?.(vetoDispatchKind(offerClass));
+      if (isV1OptIn) {
+        failV1OptIn('feed-mismatch', `vetoed offer (${offerClass}): ${String(offeredVersion)}`);
+      }
       return;
     }
-    markCheckSucceeded();
+    if (!isV1OptIn) markCheckSucceeded();
     const armedVersion = declinedForStagedVersion(offeredVersion);
     if (armedVersion !== null) {
       const reOffer = armedVersion === offeredVersion;
@@ -1084,9 +1338,23 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       );
       settleCheckWaiters('settled');
       onDispatch?.(reOffer ? 'download-skipped-already-staged' : 'download-skipped-install-armed');
+      if (isV1OptIn) {
+        if (reOffer) {
+          restoreV0FeedAfterV1OptIn();
+          v1ReadyVersion = armedVersion;
+          v1AutoInstallOnAppQuit = platform !== 'linux' && updater.autoInstallOnAppQuit;
+          v1Phase = 'ready';
+          v1ProgressPercent = 100;
+          v1ErrorCode = null;
+          onDispatch?.('v1-opt-in-ready');
+          broadcastV1UpgradeSnapshot();
+        } else {
+          failV1OptIn('already-staged', `armedVersion=${armedVersion}`);
+        }
+      }
       return;
     }
-    if (updatesOff()) {
+    if (updatesOff() && !isV1OptIn) {
       logger.info('update-available while updates are off — not downloading', {
         version: offeredVersion,
       });
@@ -1100,9 +1368,16 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         'x-ok-to-version': offeredVersion,
       };
     }
+    if (isV1OptIn) {
+      v1Phase = 'downloading';
+      v1ProgressPercent = 0;
+      v1ErrorCode = null;
+      broadcastV1UpgradeSnapshot();
+    }
     const staging = {
       version: offeredVersion ?? 'unknown',
-      fromMenuCheck: menuCheck !== null || menuDownloadFailureOwed !== null,
+      fromMenuCheck: !isV1OptIn && (menuCheck !== null || menuDownloadFailureOwed !== null),
+      v1OptIn: isV1OptIn,
     };
     menuDownloadFailureOwed = null;
     stagingInFlight = staging;
@@ -1120,6 +1395,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         stagingInFlight = null;
         settleStagingWaiters(false);
       }
+      if (staging.v1OptIn && !destroyed && v1OptInActive !== null) {
+        failV1OptIn('download-failed', err instanceof Error ? err.message : String(err));
+        return;
+      }
       if (!staging.fromMenuCheck || destroyed) return;
       if (reportedDownloadFailures.has(download)) return;
       reportedDownloadFailures.add(download);
@@ -1132,6 +1411,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       }
       reportMenuDownloadFailure(staging.version);
     });
+    if (threwSynchronously && staging.v1OptIn && v1OptInActive !== null) {
+      failV1OptIn('download-failed', 'downloadUpdate threw synchronously');
+      return;
+    }
     if (threwSynchronously && menuCheck !== null) {
       reportedDownloadFailures.add(download);
       onDispatch?.('check-now-download-failed-shown');
@@ -1173,6 +1456,17 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
 
   const onUpdateNotAvailable = (info: { version?: string }): void => {
     logger.info('update-not-available', { version: info.version });
+    if (isLateAbandonedV1Event()) {
+      logger.debug('ignoring late update-not-available from abandoned v1 opt-in check', {
+        version: info.version,
+      });
+      return;
+    }
+    if (v1OptInActive !== null) {
+      settleCheckWaiters('settled');
+      failV1OptIn('not-available', `update-not-available: ${String(info.version ?? '')}`);
+      return;
+    }
     markCheckSucceeded();
     settleCheckWaiters('settled');
     settleMenuCheck({
@@ -1186,10 +1480,24 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       percent: info.percent,
       bytesPerSecond: info.bytesPerSecond,
     });
+    if (v1OptInActive !== null && v1Phase === 'downloading') {
+      const pct =
+        typeof info.percent === 'number' && Number.isFinite(info.percent)
+          ? Math.max(0, Math.min(100, Math.round(info.percent)))
+          : null;
+      if (pct !== null && pct !== v1ProgressPercent) {
+        v1ProgressPercent = pct;
+        broadcastV1UpgradeSnapshot();
+      }
+    }
   };
 
   const onUpdateDownloaded = (info: { version?: string; downloadedFile?: string }): void => {
     logger.info('update-downloaded', { version: info.version });
+    const wasV1OptIn = v1OptInActive !== null;
+    if (wasV1OptIn) {
+      restoreV0FeedAfterV1OptIn();
+    }
     stagingInFlight = null;
     settleStagingWaiters(true);
     if (typeof info.downloadedFile === 'string' && info.downloadedFile !== '') {
@@ -1199,9 +1507,22 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     if (!version) {
       logger.warn('update-downloaded with empty version — skipping dispatch');
       onDispatch?.('update-downloaded-empty-version');
+      if (wasV1OptIn) {
+        failV1OptIn('download-failed', 'downloaded 1.0 update had empty version');
+      }
       return;
     }
     stagedThisSession = version;
+    if (wasV1OptIn) {
+      v1ReadyVersion = version;
+      v1AutoInstallOnAppQuit = platform !== 'linux' && updater.autoInstallOnAppQuit;
+      v1Phase = 'ready';
+      v1ProgressPercent = 100;
+      v1ErrorCode = null;
+      onDispatch?.('v1-opt-in-ready');
+      broadcastV1UpgradeSnapshot();
+      return;
+    }
     const state = readState();
     const installCommittedAtDownload = platform !== 'linux' && updater.autoInstallOnAppQuit;
     const installCommitment = {
@@ -1300,6 +1621,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
 
   // UPSTREAM(electron-updater@6.8.4): checkForUpdates emits 'error' before its promise rejects, so onError runs before the caller's catch.
   const onError = (err: Error & { code?: string }): void => {
+    if (isLateAbandonedV1Event()) {
+      logger.debug('ignoring late error from abandoned v1 opt-in check', { err });
+      return;
+    }
     if (isClassifiedUpdaterError(err)) {
       logger.warn('error (classified)', {
         code: err.code,
@@ -1318,6 +1643,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     if (stagingInFlight) {
       stagingInFlight = null;
       settleStagingWaiters(false);
+    }
+    if (v1OptInActive !== null) {
+      failV1OptIn('download-failed', err.message || UPDATE_CHECK_FAILED_MESSAGE);
+      return;
     }
     const retrying = revertToGithubFeed(err);
     if (relaunchInFlight) {
@@ -1419,10 +1748,83 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     );
   };
 
+  const needsLinuxManualFallback = (): boolean =>
+    platform === 'linux' &&
+    linuxInstallSupport != null &&
+    manualInstallPlanFor(usableStagedInstallerPath()) !== null &&
+    !linuxInstallSupport.hasGraphicalAuth();
+
+  const commitRelaunchHandoff = async (pending: string, extraLogCtx: object): Promise<void> => {
+    broadcastToAllWindows('ok:update:relaunching', { version: pending });
+    onDispatch?.('relaunching-broadcast');
+    if (opts.prepareForRelaunch) {
+      try {
+        await opts.prepareForRelaunch();
+      } catch (err) {
+        logger.warn('prepareForRelaunch threw — proceeding to quitAndInstall anyway', {
+          err,
+        });
+      }
+    }
+    if (opts.sweepUpdateSurvivors) {
+      try {
+        const result = opts.sweepUpdateSurvivors();
+        if (result && (result.scanFailed || result.revalidationFailed || result.failedCount > 0)) {
+          logger.warn('update survivor sweep incomplete — proceeding to quitAndInstall anyway', {
+            result,
+          });
+        }
+      } catch (err) {
+        logger.warn('update survivor sweep threw — proceeding to quitAndInstall anyway', { err });
+      }
+    }
+    logger.info('relaunch-now invoked — calling autoUpdater.quitAndInstall', {
+      pending,
+      ...extraLogCtx,
+    });
+    onDispatch?.('relaunch-now');
+    if (isPackaged) {
+      const watchdog = clock.setTimeout(() => {
+        failRelaunch(pending, 'the update timed out', 'relaunch-watchdog-fired');
+      }, RELAUNCH_WATCHDOG_MS);
+      relaunchInFlight = { version: pending, watchdog };
+    }
+    try {
+      updater.quitAndInstall();
+    } catch (err) {
+      failRelaunch(
+        pending,
+        err instanceof Error ? err.message : String(err),
+        'relaunch-failed-rearm',
+      );
+      throw err;
+    }
+  };
+
   const relaunchNow = async (requestedVersion?: string): Promise<undefined> => {
     if (installRequested) {
       logger.warn('relaunch-now invoked while an install is already committed — ignoring');
       onDispatch?.('relaunch-double-invoke-blocked');
+      return undefined;
+    }
+    if (v1ReadyVersion !== null) {
+      const pendingV1 = v1ReadyVersion;
+      installRequested = true;
+      if (needsLinuxManualFallback()) {
+        installRequested = false;
+        v1Phase = 'error';
+        v1ProgressPercent = null;
+        v1ErrorCode = 'relaunch-failed';
+        broadcastToAllWindows('ok:update:relaunch-failed', {
+          version: pendingV1,
+          message: 'manual install required',
+          dismissPending: true,
+        });
+        broadcastV1UpgradeSnapshot();
+        offerManualInstallFallback(pendingV1, 'linux-manual-fallback-no-auth');
+        return undefined;
+      }
+      await commitRelaunchHandoff(pendingV1, { v1OptIn: true });
       return undefined;
     }
     const preRefresh = readState();
@@ -1454,12 +1856,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       return undefined;
     }
     const pending = snapshot.versionPendingInstall;
-    if (
-      platform === 'linux' &&
-      linuxInstallSupport &&
-      manualInstallPlanFor(usableStagedInstallerPath()) !== null &&
-      !linuxInstallSupport.hasGraphicalAuth()
-    ) {
+    if (needsLinuxManualFallback()) {
       installRequested = false;
       broadcastToAllWindows('ok:update:downloaded', { version: pending });
       offerManualInstallFallback(pending, 'linux-manual-fallback-no-auth');
@@ -1493,50 +1890,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       });
       throw new Error('could not save the update state');
     }
-    broadcastToAllWindows('ok:update:relaunching', { version: pending });
-    onDispatch?.('relaunching-broadcast');
-    if (opts.prepareForRelaunch) {
-      try {
-        await opts.prepareForRelaunch();
-      } catch (err) {
-        logger.warn('prepareForRelaunch threw — proceeding to quitAndInstall anyway', {
-          err,
-        });
-      }
-    }
-    if (opts.sweepUpdateSurvivors) {
-      try {
-        const result = opts.sweepUpdateSurvivors();
-        if (result && (result.scanFailed || result.revalidationFailed || result.failedCount > 0)) {
-          logger.warn('update survivor sweep incomplete — proceeding to quitAndInstall anyway', {
-            result,
-          });
-        }
-      } catch (err) {
-        logger.warn('update survivor sweep threw — proceeding to quitAndInstall anyway', { err });
-      }
-    }
-    logger.info('relaunch-now invoked — calling autoUpdater.quitAndInstall', {
-      pending,
-      stagingAgeMs,
-    });
-    onDispatch?.('relaunch-now');
-    if (isPackaged) {
-      const watchdog = clock.setTimeout(() => {
-        failRelaunch(pending, 'the update timed out', 'relaunch-watchdog-fired');
-      }, RELAUNCH_WATCHDOG_MS);
-      relaunchInFlight = { version: pending, watchdog };
-    }
-    try {
-      updater.quitAndInstall();
-    } catch (err) {
-      failRelaunch(
-        pending,
-        err instanceof Error ? err.message : String(err),
-        'relaunch-failed-rearm',
-      );
-      throw err;
-    }
+    await commitRelaunchHandoff(pending, { stagingAgeMs });
     return undefined;
   };
 
@@ -1569,12 +1923,96 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   };
 
   const runBackgroundCheck = (): void => {
+    if (v1OptInActive !== null) return;
     void checkForUpdatesFromConfiguredFeed().catch((err: unknown) => {
       revertToGithubFeed(err);
       logger.debug('checkForUpdates rejected', {
         err,
       });
     });
+    if (!updatesOff()) {
+      void runV1UpgradeProbe();
+    }
+  };
+
+  const dismissV1Toast = (): void => {
+    const state = readState();
+    if (!state.v1ToastDismissed) {
+      if (!persistSafely({ ...state, v1ToastDismissed: true }, 'v1-toast-dismiss')) return;
+    }
+    logger.info('recorded dismissal of v1 upgrade corner toast');
+    onDispatch?.('v1-toast-dismissed');
+    broadcastV1UpgradeSnapshot();
+  };
+
+  const optInV1Upgrade = ():
+    | { readonly ok: true }
+    | { readonly ok: false; readonly reason: OkV1UpgradeOptInFailure } => {
+    if (destroyed || v1AvailableVersion === null || !v1FeedTarget) {
+      return { ok: false, reason: 'not-available' };
+    }
+    if (v1Phase === 'ready') {
+      return { ok: true };
+    }
+    if (!canInstallV1InApp()) {
+      return { ok: false, reason: 'manual-download-required' };
+    }
+    if (
+      v1OptInActive !== null ||
+      checkInFlight !== null ||
+      stagingInFlight !== null ||
+      installRequested
+    ) {
+      return { ok: false, reason: 'busy' };
+    }
+    refreshV1ImpactCache();
+    const watchdog = clock.setTimeout(() => {
+      if (destroyed || v1OptInActive === null || v1Phase !== 'checking') return;
+      abandonV1OptInCheck();
+      failV1OptIn('timeout', `v1 opt-in check timed out after ${MANUAL_CHECK_WATCHDOG_MS}ms`);
+    }, MANUAL_CHECK_WATCHDOG_MS);
+    v1OptInActive = {
+      feedUrl: v1FeedTarget.feedUrl,
+      channelSlug: v1FeedTarget.channelSlug,
+      watchdog,
+      trackedCheck: null,
+    };
+    v1Phase = 'checking';
+    v1ProgressPercent = null;
+    v1ErrorCode = null;
+    onDispatch?.('v1-opt-in-started');
+    broadcastV1UpgradeSnapshot();
+    try {
+      updater.setFeedURL({ provider: 'generic', url: v1OptInActive.feedUrl });
+      usingProxyFeed = true;
+      updater.requestHeaders = {
+        'x-ok-from-version': appVersion,
+        'x-ok-channel': v1OptInActive.channelSlug,
+      };
+    } catch (err) {
+      failV1OptIn('download-failed', err instanceof Error ? err.message : String(err));
+      return { ok: true };
+    }
+    let tracked: TrackedCheck;
+    try {
+      tracked = trackCheck(updater.checkForUpdates());
+      v1OptInActive.trackedCheck = tracked;
+    } catch (err) {
+      failV1OptIn('download-failed', err instanceof Error ? err.message : String(err));
+      return { ok: true };
+    }
+    void tracked.promise
+      .then((result) => {
+        if (destroyed || tracked.abandoned || v1OptInActive?.trackedCheck !== tracked) return;
+        if (result === null && v1Phase === 'checking') {
+          failV1OptIn('not-available', 'checkForUpdates resolved null');
+        }
+      })
+      .catch((err: unknown) => {
+        if (destroyed || tracked.abandoned || v1OptInActive?.trackedCheck !== tracked) return;
+        failV1OptIn('download-failed', err instanceof Error ? err.message : String(err));
+      });
+    return { ok: true };
   };
 
   const setUpdateMode = (
@@ -1599,7 +2037,11 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     if (requested === 'off') {
       cancelPeriodicChecks();
       broadcastToAllWindows('ok:update:downloaded', { version: null });
+      broadcastV1UpgradeSnapshot();
       return { ok: true, mode: requested };
+    }
+    if (previous === 'off') {
+      broadcastV1UpgradeSnapshot();
     }
     if (previous === 'off' && updatesEnabled && !destroyed) {
       const rebind =
@@ -1637,6 +2079,11 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         return { kind: 'downloaded-dismiss' };
       case 'set-mode':
         return { kind: 'set-mode', ...setUpdateMode(request.mode) };
+      case 'dismiss-v1-toast':
+        dismissV1Toast();
+        return { kind: 'dismiss-v1-toast' };
+      case 'opt-in-v1-upgrade':
+        return { kind: 'opt-in-v1-upgrade', ...optInV1Upgrade() };
       default: {
         const unhandled: never = request;
         logger.warn('ok:update:dispatch received an unrecognized kind', {
@@ -1946,6 +2393,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       onDispatch?.('skipped-updates-off');
       return;
     }
+    void runV1UpgradeProbe();
     void checkForUpdatesFromConfiguredFeed()
       .then(() => {
         startPeriodicChecks();
@@ -1990,6 +2438,9 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     getPendingUpdate(): { version: string } | null {
       return pendingToastA();
     },
+    getV1UpgradeSnapshot(): OkV1UpgradeSnapshot {
+      return getV1UpgradeSnapshot();
+    },
     suppressAutoInstallOnQuit(): void {
       autoInstallSuppressed = true;
       applyAutoInstallOnQuit();
@@ -2031,6 +2482,9 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       if (destroyed) return;
       destroyed = true;
       fallbackRetryPending = false;
+      clearV1OptInWatchdog();
+      v1OptInActive = null;
+      v1ProbeInFlight = null;
       if (checkInFlight !== null) {
         clock.clearTimeout(checkInFlight.deadline);
         checkInFlight = null;

@@ -105,6 +105,34 @@ describe('replayUpdateNoticesOnEveryLoad', () => {
     ]);
   });
 
+  test('replays an available v1 upgrade snapshot on load', () => {
+    const wc = makeWebContents();
+    const v1Upgrade = {
+      availableVersion: '1.0.0',
+      proactiveAllowed: true,
+      toastDismissed: false,
+      canInstallInApp: true,
+      autoInstallOnAppQuit: true,
+      phase: 'idle' as const,
+      progressPercent: null,
+      errorCode: null,
+      okignoreProjects: [],
+      hasGitProjects: false,
+      manualDownloadUrl: 'https://openknowledge.ai/download',
+      migrationGuideUrl: 'https://openknowledge.ai/updates/v1-guide',
+      releaseNotesUrl: 'https://openknowledge.ai/updates/v1-notes',
+    };
+    const source: UpdateNoticeSource = {
+      ...makeSource({}),
+      getV1UpgradeSnapshot: () => v1Upgrade,
+    };
+    replayUpdateNoticesOnEveryLoad(wc.webContents, () => source);
+
+    wc.load();
+
+    expect(wc.sent).toEqual([{ channel: 'ok:update:v1-upgrade', payload: v1Upgrade }]);
+  });
+
   test('sends nothing while there is no source', () => {
     const wc = makeWebContents();
     replayUpdateNoticesOnEveryLoad(wc.webContents, () => null);

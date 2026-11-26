@@ -139,6 +139,18 @@ function errorResponse(status: number): Response {
   return new Response(null, { status, headers: { 'cache-control': 'no-store' } });
 }
 
+function dormantNotFoundResponse(): Response {
+  return new Response(null, {
+    status: 404,
+    headers: { 'cache-control': 'public, max-age=60, s-maxage=60' },
+  });
+}
+
+type ChannelTagLookup =
+  | { readonly kind: 'ok'; readonly tag: string }
+  | { readonly kind: 'not-found' }
+  | { readonly kind: 'error' };
+
 function manifestFor(channel: UpdateChannel, filename: string, type: ArtifactType): string {
   const prefix = CHANNELS[channel].manifestPrefix;
   if (type === 'manifest') return filename;
@@ -153,10 +165,10 @@ async function latestChannelTag(
   channel: UpdateChannel,
   filename: string,
   type: ArtifactType,
-): Promise<string | null> {
+): Promise<ChannelTagLookup> {
   const manifest = manifestFor(channel, filename, type);
   const resolve = channelResolvers.get(`${channel}:${manifest}`);
-  if (!resolve) return null;
+  if (!resolve) return { kind: 'error' };
   const redirect = await resolve();
   if (redirect.kind === 'stale-lkg') {
     console.warn(
@@ -169,12 +181,16 @@ async function latestChannelTag(
       console.warn(
         `[updates/${channel}] ${manifest} resolver fell back (${redirect.cause}); serving pinned floor ${fallbackTag}`,
       );
-      return fallbackTag;
+      return { kind: 'ok', tag: fallbackTag };
+    }
+    if (redirect.notPublished === true) {
+      return { kind: 'not-found' };
     }
     console.error(`[updates/${channel}] ${manifest} resolver fell back: ${redirect.cause}`);
-    return null;
+    return { kind: 'error' };
   }
-  return TAG_FROM_URL.exec(redirect.url)?.[1] ?? null;
+  const tag = TAG_FROM_URL.exec(redirect.url)?.[1];
+  return tag ? { kind: 'ok', tag } : { kind: 'error' };
 }
 
 function isUpdateChannel(value: string): value is UpdateChannel {
@@ -223,12 +239,15 @@ export async function GET(
   if (version) {
     target = `${RELEASES_BASE}/download/v${version}/${filename}`;
   } else {
-    const tag = await latestChannelTag(channel, filename, type);
-    if (!tag) {
+    const lookup = await latestChannelTag(channel, filename, type);
+    if (lookup.kind === 'not-found') {
+      return dormantNotFoundResponse();
+    }
+    if (lookup.kind === 'error') {
       return errorResponse(503);
     }
-    target = `${RELEASES_BASE}/download/${tag}/${filename}`;
-    resolvedTagVersion = VERSION_FROM_TAG.exec(tag)?.[1];
+    target = `${RELEASES_BASE}/download/${lookup.tag}/${filename}`;
+    resolvedTagVersion = VERSION_FROM_TAG.exec(lookup.tag)?.[1];
   }
 
   const counted =

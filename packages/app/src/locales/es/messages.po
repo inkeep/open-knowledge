@@ -43,6 +43,9 @@ msgstr ".myteam/skills"
 msgid ".ok folders"
 msgstr "Carpetas .ok"
 
+msgid ".okignore is removed in 1.0"
+msgstr ".okignore se elimina en la versión 1.0"
+
 msgid "\"{0}\""
 msgstr "«{0}»"
 
@@ -892,6 +895,15 @@ msgstr "<0>{cliCommand}</0> no funcionará en terminales externas hasta que lo a
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> no se puede combinar aquí. Elige la versión que quieres conservar."
 
+msgid "<0>Built-in Git sync is replaced by Cloud brains.</0>"
+msgstr "<0>La sincronización integrada con Git se reemplaza por cerebros en la nube.</0>"
+
+msgid "<0>Built-in Git sync is replaced by Cloud brains</0> — commit or save local Git edits before switching."
+msgstr "<0>La sincronización integrada con Git se reemplaza por cerebros en la nube</0>: confirma o guarda tus cambios locales de Git antes de cambiar."
+
+msgid "<0>CLI renamed</0> — <1>ok</1> becomes <2>open-knowledge</2>."
+msgstr "<0>CLI renombrada</0>: <1>ok</1> pasa a ser <2>open-knowledge</2>."
+
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>Espejo: elige una fuente.</0> Define <1>src</1> + <2>name</2> desde el panel de propiedades para apuntar a un <3><MirrorSource></3> de otro sitio."
 
@@ -900,6 +912,9 @@ msgstr "<0>No se encontró el nombre del espejo.</0> No existe ningún <1>{mirro
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>Se eliminó la fuente del espejo.</0> El documento <1>{src}</1> ya no está disponible."
+
+msgid "<0>Settings and recents start fresh</0> — your Markdown files stay untouched on disk."
+msgstr "<0>La configuración y los recientes empiezan desde cero</0>: tus archivos Markdown permanecen intactos en el disco."
 
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
 msgstr "<0>Espacio</0> para saltar · <1>↓</1> para agacharse"
@@ -924,6 +939,9 @@ msgstr "1 hora"
 
 msgid "1 minute"
 msgstr "1 minuto"
+
+msgid "1.0 available"
+msgstr "1.0 disponible"
 
 msgid "15 minutes"
 msgstr "15 minutos"
@@ -1510,6 +1528,12 @@ msgstr "Otro programa está usando Git aquí: espera a que termine y vuelve a si
 
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "Hay otra operación de sincronización en curso. Inténtalo de nuevo en un momento."
+
+msgid "Another update check is already running. Try again in a moment."
+msgstr "Ya hay otra comprobación de actualizaciones en curso. Inténtalo de nuevo en un momento."
+
+msgid "Another update is already ready to install. Restart first, then upgrade to 1.0."
+msgstr "Ya hay otra actualización lista para instalar. Reinicia primero y luego actualiza a 1.0."
 
 msgid "any"
 msgstr "cualquiera"
@@ -2142,6 +2166,9 @@ msgstr "Comprobando la conexión con GitHub..."
 msgid "Checking links"
 msgstr "Comprobando enlaces"
 
+msgid "Checking OpenKnowledge 1.0"
+msgstr "Comprobando OpenKnowledge 1.0"
+
 msgid "Checking out files"
 msgstr "Extrayendo archivos"
 
@@ -2398,6 +2425,15 @@ msgstr "Cerrar ventana"
 msgctxt "GitHub pull request or issue state"
 msgid "Closed"
 msgstr "Cerrada"
+
+msgid "Cloud brains and a rebuilt local workspace."
+msgstr "Cerebros en la nube y un espacio de trabajo local reconstruido."
+
+msgid "Cloud brains and a rebuilt local workspace. Nothing downloads until you confirm, and your Markdown files stay untouched on disk."
+msgstr "Cerebros en la nube y un espacio de trabajo local reconstruido. No se descarga nada hasta que confirmes, y tus archivos Markdown permanecen intactos en el disco."
+
+msgid "Cloud brains and a rebuilt local workspace. Upgrading is optional."
+msgstr "Cerebros en la nube y un espacio de trabajo local reconstruido. Actualizar es opcional."
 
 msgid "Clusters"
 msgstr "Grupos"
@@ -3010,6 +3046,9 @@ msgstr "No se pudo eliminar este tema. Actualiza e inténtalo de nuevo."
 msgid "Couldn't disconnect — please try again."
 msgstr "No se pudo desconectar; inténtalo de nuevo."
 
+msgid "Couldn't download OpenKnowledge 1.0. Try again or download it manually."
+msgstr "No se pudo descargar OpenKnowledge 1.0. Inténtalo de nuevo o descárgalo manualmente."
+
 msgid "Couldn't duplicate \"{0}\": {1}"
 msgstr "No se pudo duplicar \"{0}\": {1}"
 
@@ -3235,6 +3274,9 @@ msgstr "No se pudo reiniciar el servidor. Ejecuta {cliCommand} start en esta car
 msgid "Couldn't restart the server. Try `{cliCommand} start` in this folder."
 msgstr "No se pudo reiniciar el servidor. Prueba `{cliCommand} start` en esta carpeta."
 
+msgid "Couldn't restart to install OpenKnowledge 1.0. Download it manually or quit and reopen the app."
+msgstr "No se pudo reiniciar para instalar OpenKnowledge 1.0. Descárgalo manualmente o cierra y vuelve a abrir la aplicación."
+
 msgid "Couldn’t restore {0}. That name is already in use."
 msgstr "No se pudo restaurar {0}. Ese nombre ya está en uso."
 
@@ -3291,6 +3333,9 @@ msgstr "No se pudo enviar tu prompt; inténtalo de nuevo."
 
 msgid "Couldn't start Slidev."
 msgstr "No se pudo iniciar Slidev."
+
+msgid "Couldn't start the 1.0 download."
+msgstr "No se pudo iniciar la descarga de 1.0."
 
 msgid "Couldn't start the agent thread — please try again."
 msgstr "No se pudo iniciar el hilo del agente; inténtalo de nuevo."
@@ -3687,6 +3732,9 @@ msgstr "Detalles"
 msgid "Detected in {0}"
 msgstr "Detectado en {0}"
 
+msgid "Detected in {okignoreList}. Move private exclusions to .gitignore or .git/info/exclude before opening these folders in 1.0."
+msgstr "Detectado en {okignoreList}. Mueve las exclusiones privadas a .gitignore o .git/info/exclude antes de abrir estas carpetas en 1.0."
+
 msgid "Detected OpenKnowledge projects"
 msgstr "Proyectos de OpenKnowledge detectados"
 
@@ -3764,6 +3812,9 @@ msgstr "Descartar"
 
 msgid "Dismiss notice"
 msgstr "Descartar el aviso"
+
+msgid "Dismiss OpenKnowledge 1.0 notice"
+msgstr "Descartar aviso de OpenKnowledge 1.0"
 
 msgid "Display text"
 msgstr "Texto mostrado"
@@ -3852,6 +3903,12 @@ msgstr "Haz doble clic para editar"
 msgid "Download {0}"
 msgstr "Descargar {0}"
 
+msgid "Download & Upgrade to 1.0"
+msgstr "Descargar y actualizar a 1.0"
+
+msgid "Download 1.0"
+msgstr "Descargar 1.0"
+
 msgid "Download and install updates automatically"
 msgstr "Descargar e instalar actualizaciones automáticamente"
 
@@ -3861,11 +3918,20 @@ msgstr "Descargar la aplicación"
 msgid "Download file"
 msgstr "Descargar archivo"
 
+msgid "Download manually"
+msgstr "Descargar manualmente"
+
 msgid "Download started"
 msgstr "Descarga iniciada"
 
+msgid "Downloading"
+msgstr "Descargando"
+
 msgid "Downloading {0} {1}…"
 msgstr "Descargando {0} {1}…"
+
+msgid "Downloading OpenKnowledge 1.0"
+msgstr "Descargando OpenKnowledge 1.0"
 
 msgid "Downloads a fresh copy from GitHub."
 msgstr "Descarga una copia nueva desde GitHub."
@@ -5326,6 +5392,9 @@ msgstr "Ya lo tengo en local →"
 msgid "I'm switching to another tool"
 msgstr "Me paso a otra herramienta"
 
+msgid "I've reviewed my .okignore exclusions"
+msgstr "He revisado mis exclusiones de .okignore"
+
 msgid "Icon picker"
 msgstr "Selector de iconos"
 
@@ -6293,6 +6362,9 @@ msgstr "Escribir a {agentName}"
 
 msgid "Message not sent: {0}"
 msgstr "No se envió el mensaje: {0}"
+
+msgid "Migration guide"
+msgstr "Guía de migración"
 
 msgid "Minimize"
 msgstr "Minimizar"
@@ -7538,6 +7610,18 @@ msgstr "Abriendo..."
 
 msgid "OpenKnowledge"
 msgstr "OpenKnowledge"
+
+msgid "OpenKnowledge 1.0 is currently unavailable for in-app download."
+msgstr "OpenKnowledge 1.0 no está disponible actualmente para descarga en la aplicación."
+
+msgid "OpenKnowledge 1.0 is downloaded and ready to install."
+msgstr "OpenKnowledge 1.0 se ha descargado y está listo para instalar."
+
+msgid "OpenKnowledge 1.0 is downloaded. It installs when you restart now or the next time you quit."
+msgstr "OpenKnowledge 1.0 se ha descargado. Se instalará al reiniciar ahora o la próxima vez que cierres la aplicación."
+
+msgid "OpenKnowledge 1.0 is ready"
+msgstr "OpenKnowledge 1.0 está listo"
 
 msgid "OpenKnowledge can't sign in to GitHub for this project."
 msgstr "OpenKnowledge no puede iniciar sesión en GitHub para este proyecto."
@@ -8908,6 +8992,9 @@ msgstr "Resolviendo deltas"
 msgid "Resources"
 msgstr "Recursos"
 
+msgid "Restart & Install 1.0"
+msgstr "Reiniciar e instalar 1.0"
+
 msgid "Restart server"
 msgstr "Reiniciar el servidor"
 
@@ -8916,6 +9003,9 @@ msgstr "Reiniciar la terminal"
 
 msgid "Restart this terminal session to use the newly installed OpenKnowledge tools."
 msgstr "Reinicia esta sesión de terminal para usar las herramientas de OpenKnowledge recién instaladas."
+
+msgid "Restart to finish 1.0"
+msgstr "Reinicia para terminar 1.0"
 
 msgid "Restart with this app's version"
 msgstr "Reiniciar con la versión de esta aplicación"
@@ -8983,6 +9073,9 @@ msgstr "Reanudando el chat"
 msgid "Retrieving…"
 msgstr "Recuperando…"
 
+msgid "Retry"
+msgstr "Reintentar"
+
 msgid "Retry push"
 msgstr "Reintentar el push"
 
@@ -9024,6 +9117,12 @@ msgstr "Revirtiendo"
 
 msgid "Review"
 msgstr "Revisar"
+
+msgid "Review .okignore before upgrading"
+msgstr "Revisa .okignore antes de actualizar"
+
+msgid "Review 1.0"
+msgstr "Revisar 1.0"
 
 msgid "Review your report"
 msgstr "Revisa tu informe"
@@ -10819,6 +10918,9 @@ msgstr "No se encontró el ejecutable terminal.shell de .ok/local/config.yml. Se
 msgid "The token needs the repo and read:user scopes."
 msgstr "El token necesita los ámbitos repo y read:user."
 
+msgid "The update feed did not offer a matching OpenKnowledge 1.0 build, so nothing was installed. Download it manually from openknowledge.ai/download."
+msgstr "El canal de actualizaciones no ofreció una compilación compatible de OpenKnowledge 1.0, por lo que no se instaló nada. Descárgala manualmente desde openknowledge.ai/download."
+
 msgid "The username git sends with the token. Some hosts expect a fixed value: type <0>x-bitbucket-api-token-auth</0> for a Bitbucket API token, <1>x-token-auth</1> for a Bitbucket repository or workspace access token, or <2>oauth2</2> for GitLab. For Gitea, use your Gitea username. Azure DevOps accepts any value."
 msgstr "El nombre de usuario que git envía con el token. Algunos hosts esperan un valor fijo: escribe <0>x-bitbucket-api-token-auth</0> para un token de API de Bitbucket, <1>x-token-auth</1> para un token de acceso de repositorio o de espacio de trabajo de Bitbucket, u <2>oauth2</2> para GitLab. En Gitea, usa tu nombre de usuario de Gitea. Azure DevOps acepta cualquier valor."
 
@@ -11278,6 +11380,9 @@ msgstr "Este árbol de trabajo ya no está disponible."
 msgid "Tidying up…"
 msgstr "Ordenando…"
 
+msgid "Timed out checking for OpenKnowledge 1.0. Try again or download it manually."
+msgstr "Se agotó el tiempo de espera al comprobar OpenKnowledge 1.0. Inténtalo de nuevo o descárgalo manualmente."
+
 msgid "Timeline"
 msgstr "Cronología"
 
@@ -11705,6 +11810,9 @@ msgstr "Las actualizaciones del origen se aplican automáticamente (salvo que se
 msgid "Updating"
 msgstr "Actualizando"
 
+msgid "Upgrade to OpenKnowledge 1.0"
+msgstr "Actualizar a OpenKnowledge 1.0"
+
 msgid "Upload"
 msgstr "Subir"
 
@@ -11966,6 +12074,9 @@ msgstr "Lo hemos pasado al equipo y hemos adjuntado tus registros."
 
 msgid "Welcome to OpenKnowledge"
 msgstr "Te damos la bienvenida a OpenKnowledge"
+
+msgid "What changes"
+msgstr "Qué cambia"
 
 #. Button on each setup row that opens the list of files that row writes to
 msgid "What changes?"

@@ -227,15 +227,38 @@ describe('GET /updates/[channel]/[...path]', () => {
     expect(_lastCapture).toBeNull();
   });
 
-  test('v1-stable returns 503 (never leaks v0) before any v1.* stable release exists', async () => {
-    _releasesPayload = [
-      makeRelease('v0.89.18', { prerelease: false, assetNames: ['latest-mac.yml'] }),
-      makeRelease('v1.0.0-beta.2', { prerelease: true, assetNames: ['beta-mac.yml'] }),
-    ];
-    const res = await call('v1-stable', ['latest-mac.yml']);
-    expect(res.status).toBe(503);
-    expect(res.headers.get('cache-control')).toBe('no-store');
-    expect(_lastCapture).toBeNull();
+  test('v1-stable returns cacheable 404 without console.error (never leaks v0) before any v1.* stable release exists', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      _releasesPayload = [
+        makeRelease('v0.89.18', { prerelease: false, assetNames: ['latest-mac.yml'] }),
+        makeRelease('v1.0.0-beta.2', { prerelease: true, assetNames: ['beta-mac.yml'] }),
+      ];
+      const res = await call('v1-stable', ['latest-mac.yml']);
+      expect(res.status).toBe(404);
+      expect(res.headers.get('cache-control')).toBe('public, max-age=60, s-maxage=60');
+      expect(errorSpy).not.toHaveBeenCalled();
+      expect(_lastCapture).toBeNull();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  test('v1-stable returns 503 with no-store and logs console.error on a GitHub outage', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      _overrideRedirect = {
+        kind: 'fallback',
+        url: REL,
+        cause: 'GitHub releases API responded 502',
+      };
+      const res = await call('v1-stable', ['latest-mac.yml']);
+      expect(res.status).toBe(503);
+      expect(res.headers.get('cache-control')).toBe('no-store');
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   test('stable zip 302s to the tagged v0 release and counts app_update_downloaded', async () => {

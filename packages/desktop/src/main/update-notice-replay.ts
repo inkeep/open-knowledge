@@ -1,8 +1,10 @@
+import type { OkV1UpgradeSnapshot } from '@inkeep/open-knowledge-core/desktop-bridge';
 import { type SendableWebContents, sendToRenderer } from '../shared/ipc-send.ts';
 
 export interface UpdateNoticeSource {
   getPendingUpdate(): { version: string } | null;
   getActiveWhatsNew(): { version: string; releaseUrl: string } | null;
+  getV1UpgradeSnapshot?(): OkV1UpgradeSnapshot;
 }
 
 export interface UpdateNoticeReplayTarget extends SendableWebContents {
@@ -25,6 +27,10 @@ function deliverUpdateNotices(
   if (pending) sendToRenderer(webContents, 'ok:update:downloaded', pending);
   const whatsNew = source.getActiveWhatsNew();
   if (whatsNew) sendToRenderer(webContents, 'ok:update:whats-new', whatsNew);
+  const v1Upgrade = source.getV1UpgradeSnapshot?.();
+  if (v1Upgrade && v1Upgrade.availableVersion !== null) {
+    sendToRenderer(webContents, 'ok:update:v1-upgrade', v1Upgrade);
+  }
 }
 
 const replaying = new WeakSet<UpdateNoticeReplayTarget>();

@@ -127,6 +127,7 @@ export interface AppState {
   updateMode: OkUpdateMode | null;
   gaveUpOnVersion: string | null;
   dismissedUpdateVersion: string | null;
+  v1ToastDismissed: boolean;
 }
 
 const RECENT_CAP = 20;
@@ -168,6 +169,7 @@ export function emptyState(): AppState {
     updateMode: null,
     gaveUpOnVersion: null,
     dismissedUpdateVersion: null,
+    v1ToastDismissed: false,
   };
 }
 
@@ -712,6 +714,7 @@ export function parseAppState(raw: unknown): AppState | null {
   const gaveUpOnVersion = typeof obj.gaveUpOnVersion === 'string' ? obj.gaveUpOnVersion : null;
   const dismissedUpdateVersion =
     typeof obj.dismissedUpdateVersion === 'string' ? obj.dismissedUpdateVersion : null;
+  const v1ToastDismissed = obj.v1ToastDismissed === true;
   return {
     recentProjects,
     recentFiles,
@@ -739,5 +742,6 @@ export function parseAppState(raw: unknown): AppState | null {
     updateMode,
     gaveUpOnVersion,
     dismissedUpdateVersion,
+    v1ToastDismissed,
   };
 }

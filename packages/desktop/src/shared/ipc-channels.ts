@@ -72,6 +72,7 @@ import type {
   OkUpdateMode,
   OkUserConfigPatchResult,
   OkUserConfigSnapshot,
+  OkV1UpgradeOptInFailure,
   OkSeedApplyOptions as SeedApplyOptions,
   OkSeedPlanOptions as SeedPlanOptions,
   SlidevOpenFailureReason,
@@ -378,7 +379,9 @@ export type OkUpdateDispatchRequest =
   | { readonly kind: 'check-now' }
   | { readonly kind: 'whats-new-dismiss'; readonly version: string }
   | { readonly kind: 'downloaded-dismiss'; readonly version: string }
-  | { readonly kind: 'set-mode'; readonly mode: OkUpdateMode };
+  | { readonly kind: 'set-mode'; readonly mode: OkUpdateMode }
+  | { readonly kind: 'dismiss-v1-toast' }
+  | { readonly kind: 'opt-in-v1-upgrade' };
 
 export type OkUpdateSetModeFailure = 'unrecognized-mode' | 'persist-failed';
 
@@ -389,6 +392,13 @@ export type OkUpdateDispatchResult =
   | { readonly kind: 'downloaded-dismiss' }
   | { readonly kind: 'set-mode'; readonly ok: true; readonly mode: OkUpdateMode }
   | { readonly kind: 'set-mode'; readonly ok: false; readonly reason: OkUpdateSetModeFailure }
+  | { readonly kind: 'dismiss-v1-toast' }
+  | { readonly kind: 'opt-in-v1-upgrade'; readonly ok: true }
+  | {
+      readonly kind: 'opt-in-v1-upgrade';
+      readonly ok: false;
+      readonly reason: OkV1UpgradeOptInFailure;
+    }
   | { readonly kind: 'unknown'; readonly ok: false; readonly reason: 'unrecognized-kind' };
 
 export type UserConfigDispatchRequest =

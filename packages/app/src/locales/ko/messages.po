@@ -43,6 +43,9 @@ msgstr ".myteam/skills"
 msgid ".ok folders"
 msgstr ".ok 폴더"
 
+msgid ".okignore is removed in 1.0"
+msgstr "1.0에서는 .okignore가 제거되었습니다"
+
 msgid "\"{0}\""
 msgstr "\"{0}\""
 
@@ -892,6 +895,15 @@ msgstr "<0>{cliCommand}</0>는 나중에 파일 메뉴에서 추가할 때까지
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0>은 여기에서 병합할 수 없습니다. 유지할 버전을 고르세요."
 
+msgid "<0>Built-in Git sync is replaced by Cloud brains.</0>"
+msgstr "<0>기본 제공 Git 동기화가 클라우드 브레인으로 대체됩니다.</0>"
+
+msgid "<0>Built-in Git sync is replaced by Cloud brains</0> — commit or save local Git edits before switching."
+msgstr "<0>기본 제공 Git 동기화가 클라우드 브레인으로 대체됩니다</0> — 전환하기 전에 로컬 Git 변경 사항을 커밋하거나 저장하세요."
+
+msgid "<0>CLI renamed</0> — <1>ok</1> becomes <2>open-knowledge</2>."
+msgstr "<0>CLI 이름 변경</0> — <1>ok</1>가 <2>open-knowledge</2>로 변경됩니다."
+
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>미러, 소스를 선택하세요.</0> 속성 패널에서 <1>src</1>와 <2>name</2>을 설정해 다른 곳의 <3><MirrorSource></3>를 가리키세요."
 
@@ -900,6 +912,9 @@ msgstr "<0>미러 이름을 찾을 수 없습니다.</0> <1>{mirrorSourceTag}</1
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>미러 소스가 삭제되었습니다.</0> 문서 <1>{src}</1>는 더 이상 사용할 수 없습니다."
+
+msgid "<0>Settings and recents start fresh</0> — your Markdown files stay untouched on disk."
+msgstr "<0>설정 및 최근 항목이 새로 시작됩니다</0> — 디스크의 Markdown 파일은 그대로 유지됩니다."
 
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
 msgstr "<0>스페이스</0>로 점프 · <1>↓</1>로 숙이기"
@@ -924,6 +939,9 @@ msgstr "1시간"
 
 msgid "1 minute"
 msgstr "1분"
+
+msgid "1.0 available"
+msgstr "1.0 사용 가능"
 
 msgid "15 minutes"
 msgstr "15분"
@@ -1510,6 +1528,12 @@ msgstr "다른 프로그램이 여기서 Git을 사용 중입니다. 끝날 때�
 
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "다른 동기화 작업이 진행 중입니다. 잠시 후 다시 시도하세요."
+
+msgid "Another update check is already running. Try again in a moment."
+msgstr "다른 업데이트 확인이 이미 실행 중입니다. 잠시 후 다시 시도하세요."
+
+msgid "Another update is already ready to install. Restart first, then upgrade to 1.0."
+msgstr "다른 업데이트가 이미 설치 준비되었습니다. 먼저 다시 시작한 다음 1.0으로 업그레이드하세요."
 
 msgid "any"
 msgstr "모두"
@@ -2142,6 +2166,9 @@ msgstr "GitHub 연결 확인 중…"
 msgid "Checking links"
 msgstr "링크 확인 중"
 
+msgid "Checking OpenKnowledge 1.0"
+msgstr "OpenKnowledge 1.0 확인 중"
+
 msgid "Checking out files"
 msgstr "파일 체크아웃 중"
 
@@ -2398,6 +2425,15 @@ msgstr "창 닫기"
 msgctxt "GitHub pull request or issue state"
 msgid "Closed"
 msgstr "닫힘"
+
+msgid "Cloud brains and a rebuilt local workspace."
+msgstr "클라우드 브레인과 새로 구축된 로컬 워크스페이스."
+
+msgid "Cloud brains and a rebuilt local workspace. Nothing downloads until you confirm, and your Markdown files stay untouched on disk."
+msgstr "클라우드 브레인과 새로 구축된 로컬 워크스페이스. 확인하기 전까지 아무것도 다운로드되지 않으며 디스크의 Markdown 파일은 그대로 유지됩니다."
+
+msgid "Cloud brains and a rebuilt local workspace. Upgrading is optional."
+msgstr "클라우드 브레인과 새로 구축된 로컬 워크스페이스. 업그레이드는 선택 사항입니다."
 
 msgid "Clusters"
 msgstr "클러스터"
@@ -3010,6 +3046,9 @@ msgstr "이 테마를 삭제하지 못했습니다. 새로 고친 후 다시 시
 msgid "Couldn't disconnect — please try again."
 msgstr "연결을 해제하지 못했습니다. 다시 시도합니다."
 
+msgid "Couldn't download OpenKnowledge 1.0. Try again or download it manually."
+msgstr "OpenKnowledge 1.0을 다운로드할 수 없습니다. 다시 시도하거나 수동으로 다운로드하세요."
+
 msgid "Couldn't duplicate \"{0}\": {1}"
 msgstr "\"{0}\" 복제 실패: {1}"
 
@@ -3235,6 +3274,9 @@ msgstr "서버를 다시 시작할 수 없습니다. 다시 시도하려면 이 
 msgid "Couldn't restart the server. Try `{cliCommand} start` in this folder."
 msgstr "서버를 다시 시작할 수 없습니다. 이 폴더에서 `{cliCommand} start`를 실행해 보세요."
 
+msgid "Couldn't restart to install OpenKnowledge 1.0. Download it manually or quit and reopen the app."
+msgstr "OpenKnowledge 1.0을 설치하기 위해 다시 시작할 수 없습니다. 수동으로 다운로드하거나 앱을 종료한 뒤 다시 열어 주세요."
+
 msgid "Couldn’t restore {0}. That name is already in use."
 msgstr "{0} 복원에 실패했습니다. 이미 사용 중인 이름입니다."
 
@@ -3291,6 +3333,9 @@ msgstr "프롬프트 전송 실패. 다시 시도하세요."
 
 msgid "Couldn't start Slidev."
 msgstr "Slidev를 시작하지 못했습니다."
+
+msgid "Couldn't start the 1.0 download."
+msgstr "1.0 다운로드를 시작하지 못했습니다."
 
 msgid "Couldn't start the agent thread — please try again."
 msgstr "에이전트 스레드 시작 실패. 다시 시도하세요."
@@ -3687,6 +3732,9 @@ msgstr "세부 정보"
 msgid "Detected in {0}"
 msgstr "{0}에서 감지됨"
 
+msgid "Detected in {okignoreList}. Move private exclusions to .gitignore or .git/info/exclude before opening these folders in 1.0."
+msgstr "{okignoreList}에서 감지되었습니다. 1.0에서 이 폴더를 열기 전에 비공개 제외 규칙을 .gitignore 또는 .git/info/exclude로 옮기세요."
+
 msgid "Detected OpenKnowledge projects"
 msgstr "감지된 OpenKnowledge 프로젝트"
 
@@ -3764,6 +3812,9 @@ msgstr "닫기"
 
 msgid "Dismiss notice"
 msgstr "알림 닫기"
+
+msgid "Dismiss OpenKnowledge 1.0 notice"
+msgstr "OpenKnowledge 1.0 알림 닫기"
 
 msgid "Display text"
 msgstr "표시 텍스트"
@@ -3852,6 +3903,12 @@ msgstr "편집하려면 두 번 클릭"
 msgid "Download {0}"
 msgstr "{0} 다운로드"
 
+msgid "Download & Upgrade to 1.0"
+msgstr "다운로드 및 1.0으로 업그레이드"
+
+msgid "Download 1.0"
+msgstr "1.0 다운로드"
+
 msgid "Download and install updates automatically"
 msgstr "업데이트를 자동으로 다운로드하고 설치"
 
@@ -3861,11 +3918,20 @@ msgstr "앱 다운로드"
 msgid "Download file"
 msgstr "파일 다운로드"
 
+msgid "Download manually"
+msgstr "직접 다운로드"
+
 msgid "Download started"
 msgstr "다운로드 시작됨"
 
+msgid "Downloading"
+msgstr "다운로드 중"
+
 msgid "Downloading {0} {1}…"
 msgstr "{0} {1} 다운로드 중…"
+
+msgid "Downloading OpenKnowledge 1.0"
+msgstr "OpenKnowledge 1.0 다운로드 중"
 
 msgid "Downloads a fresh copy from GitHub."
 msgstr "GitHub에서 최신 사본을 다운로드합니다."
@@ -5326,6 +5392,9 @@ msgstr "이미 로컬에 있음 →"
 msgid "I'm switching to another tool"
 msgstr "다른 도구로 전환하려고 합니다"
 
+msgid "I've reviewed my .okignore exclusions"
+msgstr ".okignore 제외 규칙을 확인했습니다"
+
 msgid "Icon picker"
 msgstr "아이콘 선택기"
 
@@ -6293,6 +6362,9 @@ msgstr "{agentName} 메시지"
 
 msgid "Message not sent: {0}"
 msgstr "메시지 전송 실패: {0}"
+
+msgid "Migration guide"
+msgstr "마이그레이션 가이드"
 
 msgid "Minimize"
 msgstr "최소화"
@@ -7538,6 +7610,18 @@ msgstr "여는 중…"
 
 msgid "OpenKnowledge"
 msgstr "OpenKnowledge"
+
+msgid "OpenKnowledge 1.0 is currently unavailable for in-app download."
+msgstr "현재 앱 내에서 OpenKnowledge 1.0을 다운로드할 수 없습니다."
+
+msgid "OpenKnowledge 1.0 is downloaded and ready to install."
+msgstr "OpenKnowledge 1.0이 다운로드되어 설치할 준비가 되었습니다."
+
+msgid "OpenKnowledge 1.0 is downloaded. It installs when you restart now or the next time you quit."
+msgstr "OpenKnowledge 1.0이 다운로드되었습니다. 지금 다시 시작하거나 다음에 종료할 때 설치됩니다."
+
+msgid "OpenKnowledge 1.0 is ready"
+msgstr "OpenKnowledge 1.0 준비됨"
 
 msgid "OpenKnowledge can't sign in to GitHub for this project."
 msgstr "OpenKnowledge는 이 프로젝트에서 GitHub에 로그인할 수 없습니다."
@@ -8908,6 +8992,9 @@ msgstr "델타 해결 중"
 msgid "Resources"
 msgstr "리소스"
 
+msgid "Restart & Install 1.0"
+msgstr "재시작 및 1.0 설치"
+
 msgid "Restart server"
 msgstr "서버 재시작"
 
@@ -8916,6 +9003,9 @@ msgstr "터미널 재시작"
 
 msgid "Restart this terminal session to use the newly installed OpenKnowledge tools."
 msgstr "새로 설치한 OpenKnowledge 도구를 사용하려면 이 터미널 세션을 다시 시작하세요."
+
+msgid "Restart to finish 1.0"
+msgstr "재시작하여 1.0 완료"
 
 msgid "Restart with this app's version"
 msgstr "이 앱의 버전으로 다시 시작"
@@ -8983,6 +9073,9 @@ msgstr "채팅 재개 중"
 msgid "Retrieving…"
 msgstr "가져오는 중…"
 
+msgid "Retry"
+msgstr "다시 시도"
+
 msgid "Retry push"
 msgstr "푸시 재시도"
 
@@ -9024,6 +9117,12 @@ msgstr "되돌리는 중"
 
 msgid "Review"
 msgstr "검토"
+
+msgid "Review .okignore before upgrading"
+msgstr "업그레이드 전에 .okignore 확인"
+
+msgid "Review 1.0"
+msgstr "1.0 살펴보기"
 
 msgid "Review your report"
 msgstr "보고서 검토"
@@ -10819,6 +10918,9 @@ msgstr ".ok/local/config.yml의 terminal.shell 실행 파일을 찾을 수 없�
 msgid "The token needs the repo and read:user scopes."
 msgstr "토큰에 repo 및 read:user 범위가 필요합니다."
 
+msgid "The update feed did not offer a matching OpenKnowledge 1.0 build, so nothing was installed. Download it manually from openknowledge.ai/download."
+msgstr "업데이트 피드에서 일치하는 OpenKnowledge 1.0 빌드를 제공하지 않아 아무것도 설치되지 않았습니다. openknowledge.ai/download에서 수동으로 다운로드하세요."
+
 msgid "The username git sends with the token. Some hosts expect a fixed value: type <0>x-bitbucket-api-token-auth</0> for a Bitbucket API token, <1>x-token-auth</1> for a Bitbucket repository or workspace access token, or <2>oauth2</2> for GitLab. For Gitea, use your Gitea username. Azure DevOps accepts any value."
 msgstr "git이 토큰과 함께 보내는 사용자 이름입니다. 일부 호스트는 고정된 값을 요구합니다. Bitbucket API 토큰이면 <0>x-bitbucket-api-token-auth</0>, Bitbucket 저장소 또는 워크스페이스 액세스 토큰이면 <1>x-token-auth</1>, GitLab이면 <2>oauth2</2>를 입력하세요. Gitea는 Gitea 사용자 이름을 사용합니다. Azure DevOps는 아무 값이나 허용합니다."
 
@@ -11278,6 +11380,9 @@ msgstr "이 워크트리는 더 이상 사용할 수 없습니다."
 msgid "Tidying up…"
 msgstr "정리 중…"
 
+msgid "Timed out checking for OpenKnowledge 1.0. Try again or download it manually."
+msgstr "OpenKnowledge 1.0 확인 시간이 초과되었습니다. 다시 시도하거나 수동으로 다운로드하세요."
+
 msgid "Timeline"
 msgstr "타임라인"
 
@@ -11705,6 +11810,9 @@ msgstr "소스 업데이트가 자동으로 적용됩니다(로컬에서 편집�
 msgid "Updating"
 msgstr "업데이트 중"
 
+msgid "Upgrade to OpenKnowledge 1.0"
+msgstr "OpenKnowledge 1.0으로 업그레이드"
+
 msgid "Upload"
 msgstr "업로드"
 
@@ -11966,6 +12074,9 @@ msgstr "팀에 전달하고 로그를 첨부했습니다."
 
 msgid "Welcome to OpenKnowledge"
 msgstr "OpenKnowledge에 오신 것을 환영합니다"
+
+msgid "What changes"
+msgstr "변경 사항"
 
 #. Button on each setup row that opens the list of files that row writes to
 msgid "What changes?"

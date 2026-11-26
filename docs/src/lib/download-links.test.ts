@@ -1088,4 +1088,67 @@ describe('GITHUB_TOKEN 401 anonymous retry and shared releases cache', () => {
     await resolveV0Stable();
     expect(calls).toBe(2);
   });
+
+  test('marks dormant v1 channels as notPublished and preserves notPublished across miss cooldown', async () => {
+    let clock = 1_000;
+    let calls = 0;
+    const resolveV1Stable = createStableResolver({
+      assetName: 'latest-mac.yml',
+      major: 1,
+      now: () => clock,
+      fetchImpl: async () => {
+        calls++;
+        return jsonResponse([
+          release('v0.89.18', { prerelease: false, assetNames: ['latest-mac.yml'] }),
+          release('v1.0.0-beta.2', { prerelease: true, assetNames: ['beta-mac.yml'] }),
+        ]);
+      },
+    });
+
+    const first = await resolveV1Stable();
+    expect(first).toMatchObject({
+      kind: 'fallback',
+      url: RELEASES_PAGE_URL,
+      notPublished: true,
+    });
+    expect(calls).toBe(1);
+
+    clock += 5_000;
+    const cachedMiss = await resolveV1Stable();
+    expect(cachedMiss).toMatchObject({
+      kind: 'fallback',
+      url: RELEASES_PAGE_URL,
+      notPublished: true,
+    });
+    expect(calls).toBe(1);
+  });
+
+  test('does not mark GitHub API or network outages as notPublished, including across miss cooldown', async () => {
+    let clock = 1_000;
+    let calls = 0;
+    const resolveV1Stable = createStableResolver({
+      assetName: 'latest-mac.yml',
+      major: 1,
+      now: () => clock,
+      fetchImpl: async () => {
+        calls++;
+        return new Response('upstream error', { status: 503 });
+      },
+    });
+
+    const first = await resolveV1Stable();
+    expect(first.kind).toBe('fallback');
+    if (first.kind === 'fallback') {
+      expect(first.notPublished).toBeUndefined();
+    }
+    expect(calls).toBe(1);
+
+    clock += 5_000;
+    const cachedMiss = await resolveV1Stable();
+    expect(cachedMiss.kind).toBe('fallback');
+    if (cachedMiss.kind === 'fallback') {
+      expect(cachedMiss.notPublished).toBeUndefined();
+    }
+    expect(calls).toBe(1);
+  });
 });
