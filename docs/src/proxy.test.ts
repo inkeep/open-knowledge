@@ -113,6 +113,8 @@ describe('public HTML policy', () => {
     '/llms.mdx/overview',
     '/og/docs/overview',
     '/updates/stable/example.yml',
+    '/updates/v1-guide',
+    '/updates/v1-notes',
     '/images/overview.png',
   ])('does not change %s', (path) => expect(policy(path)).toBeNull());
 });

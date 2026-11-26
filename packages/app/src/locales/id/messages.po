@@ -43,6 +43,9 @@ msgstr ".myteam/skills"
 msgid ".ok folders"
 msgstr "Folder .ok"
 
+msgid ".okignore is removed in 1.0"
+msgstr ".okignore dihapus di 1.0"
+
 msgid "\"{0}\""
 msgstr "“{0}”"
 
@@ -888,6 +891,15 @@ msgstr "<0>{cliCommand}</0> tidak akan berjalan di terminal eksternal sampai And
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> tidak bisa digabungkan di sini. Pilih versi yang ingin disimpan."
 
+msgid "<0>Built-in Git sync is replaced by Cloud brains.</0>"
+msgstr "<0>Sinkronisasi Git bawaan digantikan oleh Cloud brains.</0>"
+
+msgid "<0>Built-in Git sync is replaced by Cloud brains</0> — commit or save local Git edits before switching."
+msgstr "<0>Sinkronisasi Git bawaan digantikan oleh Cloud brains</0> — commit atau simpan perubahan Git lokal sebelum beralih."
+
+msgid "<0>CLI renamed</0> — <1>ok</1> becomes <2>open-knowledge</2>."
+msgstr "<0>CLI berganti nama</0> — <1>ok</1> menjadi <2>open-knowledge</2>."
+
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>Cermin — pilih sebuah sumber.</0> Atur <1>src</1> + <2>name</2> lewat panel properti agar mengarah ke <3><MirrorSource></3> di tempat lain."
 
@@ -896,6 +908,9 @@ msgstr "<0>Nama cermin tidak ditemukan.</0> Tidak ada <1>{mirrorSourceTag}</1> d
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>Sumber cermin dihapus.</0> Dokumen <1>{src}</1> sudah tidak tersedia."
+
+msgid "<0>Settings and recents start fresh</0> — your Markdown files stay untouched on disk."
+msgstr "<0>Pengaturan dan daftar terbaru dimulai ulang</0> — file Markdown Anda tetap utuh di disk."
 
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
 msgstr "<0>Spasi</0> untuk melompat · <1>↓</1> untuk menunduk"
@@ -920,6 +935,9 @@ msgstr "1 jam"
 
 msgid "1 minute"
 msgstr "1 menit"
+
+msgid "1.0 available"
+msgstr "1.0 tersedia"
 
 msgid "15 minutes"
 msgstr "15 menit"
@@ -1506,6 +1524,12 @@ msgstr "Program lain sedang memakai Git di sini — tunggu sampai selesai, lalu 
 
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "Operasi sinkronisasi lain sedang berjalan. Coba lagi sebentar."
+
+msgid "Another update check is already running. Try again in a moment."
+msgstr "Pemeriksaan pembaruan lain sedang berjalan. Coba lagi sebentar lagi."
+
+msgid "Another update is already ready to install. Restart first, then upgrade to 1.0."
+msgstr "Pembaruan lain sudah siap dipasang. Mulai ulang terlebih dahulu, lalu tingkatkan ke 1.0."
 
 msgid "any"
 msgstr "apa saja"
@@ -2138,6 +2162,9 @@ msgstr "Memeriksa koneksi GitHub..."
 msgid "Checking links"
 msgstr "Memeriksa tautan"
 
+msgid "Checking OpenKnowledge 1.0"
+msgstr "Memeriksa OpenKnowledge 1.0"
+
 msgid "Checking out files"
 msgstr "Mengambil berkas"
 
@@ -2394,6 +2421,15 @@ msgstr "Tutup Jendela"
 msgctxt "GitHub pull request or issue state"
 msgid "Closed"
 msgstr "Ditutup"
+
+msgid "Cloud brains and a rebuilt local workspace."
+msgstr "Cloud brains dan ruang kerja lokal yang dibangun ulang."
+
+msgid "Cloud brains and a rebuilt local workspace. Nothing downloads until you confirm, and your Markdown files stay untouched on disk."
+msgstr "Cloud brains dan ruang kerja lokal yang dibangun ulang. Tidak ada yang diunduh sampai Anda mengonfirmasi, dan file Markdown Anda tetap utuh di disk."
+
+msgid "Cloud brains and a rebuilt local workspace. Upgrading is optional."
+msgstr "Cloud brains dan ruang kerja lokal yang dibangun ulang. Pembaruan bersifat opsional."
 
 msgid "Clusters"
 msgstr "Klaster"
@@ -3006,6 +3042,9 @@ msgstr "Tema ini tidak dapat dihapus. Muat ulang lalu coba lagi."
 msgid "Couldn't disconnect — please try again."
 msgstr "Tidak bisa memutus koneksi — silakan coba lagi."
 
+msgid "Couldn't download OpenKnowledge 1.0. Try again or download it manually."
+msgstr "Tidak dapat mengunduh OpenKnowledge 1.0. Coba lagi atau unduh secara manual."
+
 msgid "Couldn't duplicate \"{0}\": {1}"
 msgstr "\"{0}\" tidak bisa digandakan: {1}"
 
@@ -3231,6 +3270,9 @@ msgstr "Tidak dapat memulai ulang server. Jalankan {cliCommand} start di folder 
 msgid "Couldn't restart the server. Try `{cliCommand} start` in this folder."
 msgstr "Server tidak bisa dimulai ulang. Coba `{cliCommand} start` di folder ini."
 
+msgid "Couldn't restart to install OpenKnowledge 1.0. Download it manually or quit and reopen the app."
+msgstr "Tidak dapat memulai ulang untuk memasang OpenKnowledge 1.0. Unduh secara manual atau tutup lalu buka kembali aplikasi."
+
 msgid "Couldn’t restore {0}. That name is already in use."
 msgstr "{0} tidak dapat dipulihkan. Nama itu sudah digunakan."
 
@@ -3287,6 +3329,9 @@ msgstr "Prompt Anda tidak bisa dikirim — silakan coba lagi."
 
 msgid "Couldn't start Slidev."
 msgstr "Tidak dapat menjalankan Slidev."
+
+msgid "Couldn't start the 1.0 download."
+msgstr "Tidak dapat memulai unduhan 1.0."
 
 msgid "Couldn't start the agent thread — please try again."
 msgstr "Utas agen tidak bisa dimulai — silakan coba lagi."
@@ -3683,6 +3728,9 @@ msgstr "Detail"
 msgid "Detected in {0}"
 msgstr "Terdeteksi di {0}"
 
+msgid "Detected in {okignoreList}. Move private exclusions to .gitignore or .git/info/exclude before opening these folders in 1.0."
+msgstr "Terdeteksi di {okignoreList}. Pindahkan pengecualian pribadi ke .gitignore atau .git/info/exclude sebelum membuka folder ini di 1.0."
+
 msgid "Detected OpenKnowledge projects"
 msgstr "Proyek OpenKnowledge yang terdeteksi"
 
@@ -3760,6 +3808,9 @@ msgstr "Tutup"
 
 msgid "Dismiss notice"
 msgstr "Tutup pemberitahuan"
+
+msgid "Dismiss OpenKnowledge 1.0 notice"
+msgstr "Tutup pemberitahuan OpenKnowledge 1.0"
 
 msgid "Display text"
 msgstr "Teks tampilan"
@@ -3848,6 +3899,12 @@ msgstr "Klik dua kali untuk menyunting"
 msgid "Download {0}"
 msgstr "Unduh {0}"
 
+msgid "Download & Upgrade to 1.0"
+msgstr "Unduh & Tingkatkan ke 1.0"
+
+msgid "Download 1.0"
+msgstr "Unduh 1.0"
+
 msgid "Download and install updates automatically"
 msgstr "Unduh dan pasang pembaruan secara otomatis"
 
@@ -3857,11 +3914,20 @@ msgstr "Unduh aplikasi"
 msgid "Download file"
 msgstr "Unduh berkas"
 
+msgid "Download manually"
+msgstr "Unduh secara manual"
+
 msgid "Download started"
 msgstr "Unduhan dimulai"
 
+msgid "Downloading"
+msgstr "Mengunduh"
+
 msgid "Downloading {0} {1}…"
 msgstr "Mengunduh {0} {1}…"
+
+msgid "Downloading OpenKnowledge 1.0"
+msgstr "Mengunduh OpenKnowledge 1.0"
 
 msgid "Downloads a fresh copy from GitHub."
 msgstr "Mengunduh salinan baru dari GitHub."
@@ -5322,6 +5388,9 @@ msgstr "Saya sudah punya secara lokal →"
 msgid "I'm switching to another tool"
 msgstr "Saya beralih ke alat lain"
 
+msgid "I've reviewed my .okignore exclusions"
+msgstr "Saya telah meninjau pengecualian .okignore saya"
+
 msgid "Icon picker"
 msgstr "Pemilih ikon"
 
@@ -6289,6 +6358,9 @@ msgstr "Kirim pesan ke {agentName}"
 
 msgid "Message not sent: {0}"
 msgstr "Pesan tidak terkirim: {0}"
+
+msgid "Migration guide"
+msgstr "Panduan migrasi"
 
 msgid "Minimize"
 msgstr "Perkecil"
@@ -7534,6 +7606,18 @@ msgstr "Membuka..."
 
 msgid "OpenKnowledge"
 msgstr "OpenKnowledge"
+
+msgid "OpenKnowledge 1.0 is currently unavailable for in-app download."
+msgstr "OpenKnowledge 1.0 saat ini tidak tersedia untuk unduhan dalam aplikasi."
+
+msgid "OpenKnowledge 1.0 is downloaded and ready to install."
+msgstr "OpenKnowledge 1.0 telah diunduh dan siap dipasang."
+
+msgid "OpenKnowledge 1.0 is downloaded. It installs when you restart now or the next time you quit."
+msgstr "OpenKnowledge 1.0 sudah diunduh. Pembaruan akan dipasang saat Anda memulai ulang sekarang atau saat berikutnya Anda keluar."
+
+msgid "OpenKnowledge 1.0 is ready"
+msgstr "OpenKnowledge 1.0 siap"
 
 msgid "OpenKnowledge can't sign in to GitHub for this project."
 msgstr "OpenKnowledge tidak dapat masuk ke GitHub untuk proyek ini."
@@ -8904,6 +8988,9 @@ msgstr "Menyelesaikan delta"
 msgid "Resources"
 msgstr "Sumber daya"
 
+msgid "Restart & Install 1.0"
+msgstr "Mulai ulang & Pasang 1.0"
+
 msgid "Restart server"
 msgstr "Mulai ulang server"
 
@@ -8912,6 +8999,9 @@ msgstr "Mulai ulang terminal"
 
 msgid "Restart this terminal session to use the newly installed OpenKnowledge tools."
 msgstr "Mulai ulang sesi terminal ini untuk menggunakan alat OpenKnowledge yang baru diinstal."
+
+msgid "Restart to finish 1.0"
+msgstr "Mulai ulang untuk menyelesaikan 1.0"
 
 msgid "Restart with this app's version"
 msgstr "Mulai ulang dengan versi aplikasi ini"
@@ -8979,6 +9069,9 @@ msgstr "Melanjutkan obrolan"
 msgid "Retrieving…"
 msgstr "Mengambil…"
 
+msgid "Retry"
+msgstr "Coba lagi"
+
 msgid "Retry push"
 msgstr "Coba push lagi"
 
@@ -9020,6 +9113,12 @@ msgstr "Mengembalikan"
 
 msgid "Review"
 msgstr "Tinjau"
+
+msgid "Review .okignore before upgrading"
+msgstr "Tinjau .okignore sebelum meningkatkan"
+
+msgid "Review 1.0"
+msgstr "Tinjau 1.0"
 
 msgid "Review your report"
 msgstr "Tinjau laporan Anda"
@@ -10815,6 +10914,9 @@ msgstr "Executable terminal.shell di .ok/local/config.yml tidak ditemukan. Shell
 msgid "The token needs the repo and read:user scopes."
 msgstr "Token itu memerlukan cakupan repo dan read:user."
 
+msgid "The update feed did not offer a matching OpenKnowledge 1.0 build, so nothing was installed. Download it manually from openknowledge.ai/download."
+msgstr "Umpan pembaruan tidak menawarkan versi OpenKnowledge 1.0 yang sesuai, sehingga tidak ada yang dipasang. Unduh secara manual dari openknowledge.ai/download."
+
 msgid "The username git sends with the token. Some hosts expect a fixed value: type <0>x-bitbucket-api-token-auth</0> for a Bitbucket API token, <1>x-token-auth</1> for a Bitbucket repository or workspace access token, or <2>oauth2</2> for GitLab. For Gitea, use your Gitea username. Azure DevOps accepts any value."
 msgstr "Nama pengguna yang dikirim git bersama token. Beberapa host mengharapkan nilai tetap: ketik <0>x-bitbucket-api-token-auth</0> untuk token API Bitbucket, <1>x-token-auth</1> untuk token akses repositori atau workspace Bitbucket, atau <2>oauth2</2> untuk GitLab. Untuk Gitea, gunakan nama pengguna Gitea Anda. Azure DevOps menerima nilai apa pun."
 
@@ -11274,6 +11376,9 @@ msgstr "Worktree ini tidak lagi tersedia."
 msgid "Tidying up…"
 msgstr "Merapikan…"
 
+msgid "Timed out checking for OpenKnowledge 1.0. Try again or download it manually."
+msgstr "Waktu habis saat memeriksa OpenKnowledge 1.0. Coba lagi atau unduh secara manual."
+
 msgid "Timeline"
 msgstr "Lini masa"
 
@@ -11701,6 +11806,9 @@ msgstr "Pembaruan dari sumbernya berlaku otomatis (kecuali sudah disunting secar
 msgid "Updating"
 msgstr "Memperbarui"
 
+msgid "Upgrade to OpenKnowledge 1.0"
+msgstr "Tingkatkan ke OpenKnowledge 1.0"
+
 msgid "Upload"
 msgstr "Unggah"
 
@@ -11962,6 +12070,9 @@ msgstr "Kami sudah meneruskannya ke tim dan melampirkan log Anda."
 
 msgid "Welcome to OpenKnowledge"
 msgstr "Selamat datang di OpenKnowledge"
+
+msgid "What changes"
+msgstr "Yang berubah"
 
 #. Button on each setup row that opens the list of files that row writes to
 msgid "What changes?"

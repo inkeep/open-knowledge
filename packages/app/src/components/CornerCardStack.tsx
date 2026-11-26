@@ -1,6 +1,7 @@
 import { useLingui } from '@lingui/react/macro';
 import { FeedbackCardMount } from '@/components/FeedbackCard';
 import { UpdateNotices } from '@/components/UpdateNotices';
+import { V1UpgradeCornerToast } from '@/components/V1UpgradeNotice';
 
 export function CornerCardStack() {
   const { t } = useLingui();
@@ -14,6 +15,7 @@ export function CornerCardStack() {
         data-testid="corner-card-stack-column"
         className="corner-card-column flex max-h-[calc(100vh-var(--ok-app-header-height,2.75rem)-1.5rem)] flex-col gap-2"
       >
+        <V1UpgradeCornerToast />
         <UpdateNotices />
         <FeedbackCardMount />
       </div>

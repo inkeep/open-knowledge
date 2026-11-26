@@ -337,6 +337,38 @@ export type OkUpdateChannel = 'latest' | 'beta';
 
 export type OkUpdateMode = 'auto' | 'off';
 
+export type OkV1UpgradePhase = 'idle' | 'checking' | 'downloading' | 'ready' | 'error';
+
+export type OkV1UpgradeErrorCode =
+  | 'feed-mismatch'
+  | 'already-staged'
+  | 'not-available'
+  | 'download-failed'
+  | 'relaunch-failed'
+  | 'timeout';
+
+export type OkV1UpgradeOptInFailure = 'manual-download-required' | 'not-available' | 'busy';
+
+export type OkV1UpgradeOptInResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: OkV1UpgradeOptInFailure };
+
+export interface OkV1UpgradeSnapshot {
+  readonly availableVersion: string | null;
+  readonly proactiveAllowed: boolean;
+  readonly toastDismissed: boolean;
+  readonly canInstallInApp: boolean;
+  readonly autoInstallOnAppQuit: boolean;
+  readonly phase: OkV1UpgradePhase;
+  readonly progressPercent: number | null;
+  readonly errorCode: OkV1UpgradeErrorCode | null;
+  readonly okignoreProjects: readonly string[];
+  readonly hasGitProjects: boolean;
+  readonly manualDownloadUrl: string;
+  readonly migrationGuideUrl: string;
+  readonly releaseNotesUrl: string;
+}
+
 export type OkThemeSource = 'system' | 'light' | 'dark';
 
 export interface OkUserConfigSnapshot {
@@ -367,6 +399,7 @@ export interface OkStateSnapshot {
   } | null;
   readonly about?: OkAboutInfo;
   readonly updateMode?: OkUpdateMode;
+  readonly v1Upgrade: OkV1UpgradeSnapshot;
 }
 
 export type OkMcpWiringEditorId = EditorId;
@@ -1172,6 +1205,7 @@ export interface OkDesktopBridge {
   onWhatsNewDismissed(cb: (info: { readonly version: string }) => void): OkUnsubscribe;
   onUpdateStuckHint(cb: (info: OkUpdateStuckHintInfo) => void): OkUnsubscribe;
   onUpdateManualCheck(cb: (info: OkUpdateManualCheckInfo) => void): OkUnsubscribe;
+  onV1UpgradeChanged(cb: (info: OkV1UpgradeSnapshot) => void): OkUnsubscribe;
   onDeepLink(cb: (evt: OkDeepLinkPayload) => void): OkUnsubscribe;
   onShareReceived(cb: (payload: OkShareReceivedPayload) => void): OkUnsubscribe;
 
@@ -1389,6 +1423,8 @@ export interface OkDesktopBridge {
     dismissWhatsNew(version: string): Promise<void>;
     dismissDownloaded(version: string): Promise<void>;
     setMode(mode: OkUpdateMode): Promise<void>;
+    dismissV1Toast(): Promise<void>;
+    optInV1Upgrade(): Promise<OkV1UpgradeOptInResult>;
   };
 
   state: {

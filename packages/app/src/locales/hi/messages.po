@@ -43,6 +43,9 @@ msgstr ".myteam/skills"
 msgid ".ok folders"
 msgstr ".ok फ़ोल्डर"
 
+msgid ".okignore is removed in 1.0"
+msgstr "1.0 में .okignore हटा दिया गया है"
+
 msgid "\"{0}\""
 msgstr "“{0}”"
 
@@ -888,6 +891,15 @@ msgstr "<0>{cliCommand}</0> तब तक बाहरी टर्मिनल 
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> को यहाँ मर्ज नहीं किया जा सकता। रखने के लिए संस्करण चुनें।"
 
+msgid "<0>Built-in Git sync is replaced by Cloud brains.</0>"
+msgstr "<0>अंतर्निहित Git सिंक को क्लाउड ब्रेन से बदल दिया गया है।</0>"
+
+msgid "<0>Built-in Git sync is replaced by Cloud brains</0> — commit or save local Git edits before switching."
+msgstr "<0>अंतर्निहित Git सिंक को क्लाउड ब्रेन से बदल दिया गया है</0> — स्विच करने से पहले स्थानीय Git बदलाव कमिट या सहेजें।"
+
+msgid "<0>CLI renamed</0> — <1>ok</1> becomes <2>open-knowledge</2>."
+msgstr "<0>CLI का नाम बदला गया</0> — <1>ok</1> अब <2>open-knowledge</2> है।"
+
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>मिरर — एक स्रोत चुनें।</0> कहीं और मौजूद किसी <3><MirrorSource></3> की ओर इंगित करने के लिए प्रॉपर्टी पैनल से <1>src</1> + <2>name</2> सेट करें।"
 
@@ -896,6 +908,9 @@ msgstr "<0>मिरर का नाम नहीं मिला।</0> <2>{sr
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>मिरर स्रोत हटा दिया गया।</0> दस्तावेज़ <1>{src}</1> अब उपलब्ध नहीं है।"
+
+msgid "<0>Settings and recents start fresh</0> — your Markdown files stay untouched on disk."
+msgstr "<0>सेटिंग्स और हाल की सूची नए सिरे से शुरू होंगी</0> — डिस्क पर आपकी Markdown फ़ाइलें सुरक्षित रहेंगी।"
 
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
 msgstr "कूदने के लिए <0>स्पेस</0> · झुकने के लिए <1>↓</1>"
@@ -920,6 +935,9 @@ msgstr "1 घंटा"
 
 msgid "1 minute"
 msgstr "1 मिनट"
+
+msgid "1.0 available"
+msgstr "1.0 उपलब्ध"
 
 msgid "15 minutes"
 msgstr "15 मिनट"
@@ -1506,6 +1524,12 @@ msgstr "कोई दूसरा प्रोग्राम यहाँ Git �
 
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "एक और सिंक कार्रवाई चल रही है। कुछ देर बाद फिर कोशिश करें।"
+
+msgid "Another update check is already running. Try again in a moment."
+msgstr "एक अन्य अपडेट जांच पहले से चल रही है। थोड़ी देर बाद पुनः प्रयास करें।"
+
+msgid "Another update is already ready to install. Restart first, then upgrade to 1.0."
+msgstr "एक अन्य अपडेट पहले से इंस्टॉल होने के लिए तैयार है। पहले पुनः प्रारंभ करें, फिर 1.0 पर अपग्रेड करें।"
 
 msgid "any"
 msgstr "कोई भी"
@@ -2138,6 +2162,9 @@ msgstr "GitHub कनेक्शन जाँचा जा रहा है…"
 msgid "Checking links"
 msgstr "लिंक की जाँच की जा रही है"
 
+msgid "Checking OpenKnowledge 1.0"
+msgstr "OpenKnowledge 1.0 की जांच की जा रही है"
+
 msgid "Checking out files"
 msgstr "फ़ाइलें चेक आउट की जा रही हैं"
 
@@ -2394,6 +2421,15 @@ msgstr "विंडो बंद करें"
 msgctxt "GitHub pull request or issue state"
 msgid "Closed"
 msgstr "बंद"
+
+msgid "Cloud brains and a rebuilt local workspace."
+msgstr "क्लाउड ब्रेन और पुनर्निर्मित स्थानीय कार्यक्षेत्र।"
+
+msgid "Cloud brains and a rebuilt local workspace. Nothing downloads until you confirm, and your Markdown files stay untouched on disk."
+msgstr "क्लाउड ब्रेन और पुनर्निर्मित स्थानीय कार्यक्षेत्र। आपके पुष्टि करने तक कुछ भी डाउनलोड नहीं होगा, और डिस्क पर आपकी Markdown फ़ाइलें सुरक्षित रहेंगी।"
+
+msgid "Cloud brains and a rebuilt local workspace. Upgrading is optional."
+msgstr "क्लाउड ब्रेन और पुनर्निर्मित स्थानीय कार्यक्षेत्र। अपग्रेड करना वैकल्पिक है।"
 
 msgid "Clusters"
 msgstr "समूह"
@@ -3006,6 +3042,9 @@ msgstr "यह थीम नहीं हटाई जा सकी। रीफ
 msgid "Couldn't disconnect — please try again."
 msgstr "कनेक्शन नहीं तोड़ा जा सका — कृपया फिर कोशिश करें।"
 
+msgid "Couldn't download OpenKnowledge 1.0. Try again or download it manually."
+msgstr "OpenKnowledge 1.0 डाउनलोड नहीं हो सका। फिर से प्रयास करें या इसे मैन्युअल रूप से डाउनलोड करें।"
+
 msgid "Couldn't duplicate \"{0}\": {1}"
 msgstr "\"{0}\" की नकल नहीं बनाई जा सकी: {1}"
 
@@ -3231,6 +3270,9 @@ msgstr "सर्वर पुनः आरंभ नहीं किया ज�
 msgid "Couldn't restart the server. Try `{cliCommand} start` in this folder."
 msgstr "सर्वर पुनः आरंभ नहीं किया जा सका। इस फ़ोल्डर में `{cliCommand} start` आज़माएँ।"
 
+msgid "Couldn't restart to install OpenKnowledge 1.0. Download it manually or quit and reopen the app."
+msgstr "OpenKnowledge 1.0 इंस्टॉल करने के लिए पुनः प्रारंभ नहीं हो सका। इसे मैन्युअल रूप से डाउनलोड करें या ऐप बंद करके फिर से खोलें।"
+
 msgid "Couldn’t restore {0}. That name is already in use."
 msgstr "{0} बहाल नहीं किया जा सका। वह नाम पहले से उपयोग में है।"
 
@@ -3287,6 +3329,9 @@ msgstr "आपका प्रॉम्प्ट नहीं भेजा ज�
 
 msgid "Couldn't start Slidev."
 msgstr "Slidev शुरू नहीं किया जा सका।"
+
+msgid "Couldn't start the 1.0 download."
+msgstr "1.0 डाउनलोड प्रारंभ नहीं हो सका।"
 
 msgid "Couldn't start the agent thread — please try again."
 msgstr "एजेंट थ्रेड शुरू नहीं किया जा सका — कृपया फिर कोशिश करें।"
@@ -3683,6 +3728,9 @@ msgstr "विवरण"
 msgid "Detected in {0}"
 msgstr "{0} में पाया गया"
 
+msgid "Detected in {okignoreList}. Move private exclusions to .gitignore or .git/info/exclude before opening these folders in 1.0."
+msgstr "{okignoreList} में पाया गया। 1.0 में इन फ़ोल्डर को खोलने से पहले निजी बहिष्करण नियमों को .gitignore या .git/info/exclude में ले जाएं।"
+
 msgid "Detected OpenKnowledge projects"
 msgstr "पाए गए OpenKnowledge प्रोजेक्ट"
 
@@ -3760,6 +3808,9 @@ msgstr "ख़ारिज करें"
 
 msgid "Dismiss notice"
 msgstr "सूचना ख़ारिज करें"
+
+msgid "Dismiss OpenKnowledge 1.0 notice"
+msgstr "OpenKnowledge 1.0 सूचना बंद करें"
 
 msgid "Display text"
 msgstr "प्रदर्शित पाठ"
@@ -3848,6 +3899,12 @@ msgstr "संपादित करने के लिए डबल-क्ल�
 msgid "Download {0}"
 msgstr "{0} डाउनलोड करें"
 
+msgid "Download & Upgrade to 1.0"
+msgstr "डाउनलोड करें और 1.0 पर अपग्रेड करें"
+
+msgid "Download 1.0"
+msgstr "1.0 डाउनलोड करें"
+
 msgid "Download and install updates automatically"
 msgstr "अपडेट अपने-आप डाउनलोड और इंस्टॉल करें"
 
@@ -3857,11 +3914,20 @@ msgstr "ऐप डाउनलोड करें"
 msgid "Download file"
 msgstr "फ़ाइल डाउनलोड करें"
 
+msgid "Download manually"
+msgstr "मैन्युअल रूप से डाउनलोड करें"
+
 msgid "Download started"
 msgstr "डाउनलोड शुरू हुआ"
 
+msgid "Downloading"
+msgstr "डाउनलोड हो रहा है"
+
 msgid "Downloading {0} {1}…"
 msgstr "{0} {1} डाउनलोड हो रहा है…"
+
+msgid "Downloading OpenKnowledge 1.0"
+msgstr "OpenKnowledge 1.0 डाउनलोड हो रहा है"
 
 msgid "Downloads a fresh copy from GitHub."
 msgstr "GitHub से एक नई प्रति डाउनलोड करता है।"
@@ -5322,6 +5388,9 @@ msgstr "यह मेरे पास पहले से स्थानीय 
 msgid "I'm switching to another tool"
 msgstr "मैं किसी दूसरे टूल पर जा रहा हूँ"
 
+msgid "I've reviewed my .okignore exclusions"
+msgstr "मैंने अपने .okignore बहिष्करण की समीक्षा कर ली है"
+
 msgid "Icon picker"
 msgstr "आइकन चयनकर्ता"
 
@@ -6289,6 +6358,9 @@ msgstr "{agentName} को संदेश भेजें"
 
 msgid "Message not sent: {0}"
 msgstr "संदेश नहीं भेजा गया: {0}"
+
+msgid "Migration guide"
+msgstr "माइग्रेशन गाइड"
 
 msgid "Minimize"
 msgstr "छोटा करें"
@@ -7534,6 +7606,18 @@ msgstr "खोला जा रहा है…"
 
 msgid "OpenKnowledge"
 msgstr "OpenKnowledge"
+
+msgid "OpenKnowledge 1.0 is currently unavailable for in-app download."
+msgstr "OpenKnowledge 1.0 वर्तमान में इन-ऐप डाउनलोड के लिए उपलब्ध नहीं है।"
+
+msgid "OpenKnowledge 1.0 is downloaded and ready to install."
+msgstr "OpenKnowledge 1.0 डाउनलोड हो गया है और इंस्टॉल करने के लिए तैयार है।"
+
+msgid "OpenKnowledge 1.0 is downloaded. It installs when you restart now or the next time you quit."
+msgstr "OpenKnowledge 1.0 डाउनलोड हो गया है। यह अभी पुनः प्रारंभ करने पर या अगली बार ऐप बंद करने पर इंस्टॉल होगा।"
+
+msgid "OpenKnowledge 1.0 is ready"
+msgstr "OpenKnowledge 1.0 तैयार है"
 
 msgid "OpenKnowledge can't sign in to GitHub for this project."
 msgstr "OpenKnowledge इस प्रोजेक्ट के लिए GitHub में साइन इन नहीं कर सकता।"
@@ -8904,6 +8988,9 @@ msgstr "डेल्टा सुलझाए जा रहे हैं"
 msgid "Resources"
 msgstr "संसाधन"
 
+msgid "Restart & Install 1.0"
+msgstr "पुनः प्रारंभ करें और 1.0 इंस्टॉल करें"
+
 msgid "Restart server"
 msgstr "सर्वर पुनः आरंभ करें"
 
@@ -8912,6 +8999,9 @@ msgstr "टर्मिनल पुनः आरंभ करें"
 
 msgid "Restart this terminal session to use the newly installed OpenKnowledge tools."
 msgstr "नए इंस्टॉल किए गए OpenKnowledge टूल इस्तेमाल करने के लिए इस टर्मिनल सत्र को फिर से शुरू करें।"
+
+msgid "Restart to finish 1.0"
+msgstr "1.0 पूरा करने के लिए पुनः प्रारंभ करें"
 
 msgid "Restart with this app's version"
 msgstr "इस ऐप के संस्करण के साथ पुनः आरंभ करें"
@@ -8979,6 +9069,9 @@ msgstr "चैट फिर से शुरू हो रही है"
 msgid "Retrieving…"
 msgstr "लाया जा रहा है…"
 
+msgid "Retry"
+msgstr "पुनः प्रयास करें"
+
 msgid "Retry push"
 msgstr "भेजना फिर आज़माएँ"
 
@@ -9020,6 +9113,12 @@ msgstr "वापस लिया जा रहा है"
 
 msgid "Review"
 msgstr "समीक्षा करें"
+
+msgid "Review .okignore before upgrading"
+msgstr "अपग्रेड करने से पहले .okignore की समीक्षा करें"
+
+msgid "Review 1.0"
+msgstr "1.0 देखें"
 
 msgid "Review your report"
 msgstr "अपनी रिपोर्ट देखें"
@@ -10815,6 +10914,9 @@ msgstr ".ok/local/config.yml में terminal.shell एक्ज़ीक्�
 msgid "The token needs the repo and read:user scopes."
 msgstr "टोकन को repo और read:user स्कोप चाहिए।"
 
+msgid "The update feed did not offer a matching OpenKnowledge 1.0 build, so nothing was installed. Download it manually from openknowledge.ai/download."
+msgstr "अपडेट फ़ीड ने कोई मेल खाता OpenKnowledge 1.0 बिल्ड नहीं दिया, इसलिए कुछ भी इंस्टॉल नहीं हुआ। इसे openknowledge.ai/download से मैन्युअल रूप से डाउनलोड करें।"
+
 msgid "The username git sends with the token. Some hosts expect a fixed value: type <0>x-bitbucket-api-token-auth</0> for a Bitbucket API token, <1>x-token-auth</1> for a Bitbucket repository or workspace access token, or <2>oauth2</2> for GitLab. For Gitea, use your Gitea username. Azure DevOps accepts any value."
 msgstr "वह उपयोगकर्ता नाम जो git टोकन के साथ भेजता है। कुछ होस्ट एक तय मान की अपेक्षा करते हैं: Bitbucket API टोकन के लिए <0>x-bitbucket-api-token-auth</0>, Bitbucket रिपॉज़िटरी या वर्कस्पेस पहुँच टोकन के लिए <1>x-token-auth</1>, या GitLab के लिए <2>oauth2</2> लिखें। Gitea के लिए अपना Gitea उपयोगकर्ता नाम दें। Azure DevOps कोई भी मान स्वीकार करता है।"
 
@@ -11274,6 +11376,9 @@ msgstr "यह वर्कट्री अब उपलब्ध नहीं �
 msgid "Tidying up…"
 msgstr "व्यवस्थित किया जा रहा है…"
 
+msgid "Timed out checking for OpenKnowledge 1.0. Try again or download it manually."
+msgstr "OpenKnowledge 1.0 की जांच का समय समाप्त हो गया। फिर से प्रयास करें या इसे मैन्युअल रूप से डाउनलोड करें।"
+
 msgid "Timeline"
 msgstr "समयरेखा"
 
@@ -11701,6 +11806,9 @@ msgstr "स्रोत के अपडेट अपने आप लागू 
 msgid "Updating"
 msgstr "अपडेट किया जा रहा है"
 
+msgid "Upgrade to OpenKnowledge 1.0"
+msgstr "OpenKnowledge 1.0 पर अपग्रेड करें"
+
 msgid "Upload"
 msgstr "अपलोड करें"
 
@@ -11962,6 +12070,9 @@ msgstr "हमने इसे टीम के पास दर्ज कर �
 
 msgid "Welcome to OpenKnowledge"
 msgstr "OpenKnowledge में आपका स्वागत है"
+
+msgid "What changes"
+msgstr "क्या बदलता है"
 
 #. Button on each setup row that opens the list of files that row writes to
 msgid "What changes?"

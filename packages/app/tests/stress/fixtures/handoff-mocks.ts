@@ -411,11 +411,28 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           dismissWhatsNew: async () => {},
           dismissDownloaded: async () => {},
           setMode: async () => {},
+          dismissV1Toast: async () => {},
+          optInV1Upgrade: async () => ({ ok: false as const, reason: 'not-available' as const }),
         },
         state: {
           query: async () => ({
             channel: 'latest' as const,
             schemaIncompatibility: null,
+            v1Upgrade: {
+              availableVersion: null,
+              proactiveAllowed: false,
+              toastDismissed: false,
+              canInstallInApp: true,
+              autoInstallOnAppQuit: true,
+              phase: 'idle' as const,
+              progressPercent: null,
+              errorCode: null,
+              okignoreProjects: [],
+              hasGitProjects: false,
+              manualDownloadUrl: 'https://openknowledge.ai/download',
+              migrationGuideUrl: 'https://openknowledge.ai/updates/v1-guide',
+              releaseNotesUrl: 'https://openknowledge.ai/updates/v1-notes',
+            },
           }),
           resetIncompatible: async () => {},
         },
@@ -592,6 +609,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         cliCommandName: null,
         getPathForFile: () => null,
         setDisplayLockCrashKey: () => undefined,
+        onV1UpgradeChanged: () => () => {},
       } satisfies OkDesktopBridge;
 
       // biome-ignore lint/suspicious/noExplicitAny: test-only global attachment.

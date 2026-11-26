@@ -17,6 +17,7 @@ import { selectDesktopRootApp } from '@/components/desktop-root-app';
 import { ReportBugCrashInviteTrigger } from '@/components/ReportBugCrashInviteTrigger';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { V1UpgradeDialogHost } from '@/components/V1UpgradeNotice';
 import { startDisplayLockCrashKeyReporter } from '@/editor/display-lock-crash-key';
 import '@/lib/desktop-bridge-types';
 import { useHydrateRegisteredAgentMeta } from '@/lib/acp/catalog';
@@ -46,6 +47,7 @@ import { installShareReceivedListener } from '@/lib/share/receive-store';
 import { seedInitialDocHashFromWindow } from '@/lib/single-file-initial-doc';
 import { installSubscribeCardStore } from '@/lib/subscribe-card-store';
 import { installUpdateNoticesBridge } from '@/lib/update-notices-store';
+import { installV1UpgradeBridge } from '@/lib/v1-upgrade-store';
 import '@fontsource-variable/inter';
 import '@fontsource-variable/jetbrains-mono';
 import 'react-medium-image-zoom/dist/styles.css';
@@ -68,6 +70,8 @@ if (import.meta.env.DEV || import.meta.env.MODE === 'test') {
 }
 
 installUpdateNoticesBridge();
+
+installV1UpgradeBridge();
 
 installOnboardingCardStore();
 
@@ -158,6 +162,7 @@ createRoot(root).render(
                 <ReportBugCrashInviteTrigger bridge={desktopBridge} />
               </CrashReportingBoundary>
             )}
+            <V1UpgradeDialogHost />
             <Toaster richColors closeButton />
           </TooltipProvider>
         </ThemeProvider>

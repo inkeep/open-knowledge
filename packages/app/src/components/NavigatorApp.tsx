@@ -56,6 +56,7 @@ import { RecentItemContextMenu } from './recent-remove-controls';
 import { SettingsDialogShell } from './settings/SettingsDialogShell';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
+import { V1UpgradeNavigatorCard } from './V1UpgradeNotice';
 
 const ShareReceiveDialog = lazy(() =>
   import('./ShareReceiveDialog').then((m) => ({ default: m.ShareReceiveDialog })),
@@ -347,6 +348,8 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
               </Button>
             </div>
           ) : null}
+
+          <V1UpgradeNavigatorCard />
 
           {loading ? (
             <section className="flex shrink-0 flex-col items-center">

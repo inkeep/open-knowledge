@@ -29,6 +29,8 @@ type BridgeProbe = {
     dismissWhatsNew(version: string): Promise<void>;
     dismissDownloaded(version: string): Promise<void>;
     setMode(mode: 'auto' | 'off'): Promise<void>;
+    dismissV1Toast(): Promise<void>;
+    optInV1Upgrade(): Promise<{ ok: true } | { ok: false; reason: string }>;
   };
   config: {
     languagePreference?: string;
@@ -379,21 +381,40 @@ describe('preload update dispatch marshalling', () => {
 
   it('sends each update method as its own dispatch kind', async () => {
     const bridge = await loadBridge();
-    for (let i = 0; i < 5; i++) invokeMock.mockImplementationOnce(echoKind as never);
+    for (let i = 0; i < 7; i++) invokeMock.mockImplementationOnce(echoKind as never);
 
     await bridge.update.relaunchNow();
     await bridge.update.checkNow();
     await bridge.update.dismissWhatsNew('0.3.1');
     await bridge.update.dismissDownloaded('0.3.2');
     await bridge.update.setMode('off');
+    await bridge.update.dismissV1Toast();
+    const optInResult = await bridge.update.optInV1Upgrade();
 
+    expect(optInResult).toEqual({ ok: true });
     expect(invokeMock.mock.calls).toEqual([
       ['ok:update:dispatch', { kind: 'relaunch-now' }],
       ['ok:update:dispatch', { kind: 'check-now' }],
       ['ok:update:dispatch', { kind: 'whats-new-dismiss', version: '0.3.1' }],
       ['ok:update:dispatch', { kind: 'downloaded-dismiss', version: '0.3.2' }],
       ['ok:update:dispatch', { kind: 'set-mode', mode: 'off' }],
+      ['ok:update:dispatch', { kind: 'dismiss-v1-toast' }],
+      ['ok:update:dispatch', { kind: 'opt-in-v1-upgrade' }],
     ]);
+  });
+
+  it('returns the failure reason when optInV1Upgrade is refused', async () => {
+    const bridge = await loadBridge();
+    invokeMock.mockResolvedValueOnce({
+      kind: 'opt-in-v1-upgrade',
+      ok: false,
+      reason: 'manual-download-required',
+    } as never);
+
+    await expect(bridge.update.optInV1Upgrade()).resolves.toEqual({
+      ok: false,
+      reason: 'manual-download-required',
+    });
   });
 
   it('rejects a reply whose kind does not match the request', async () => {

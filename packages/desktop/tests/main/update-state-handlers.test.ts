@@ -155,5 +155,30 @@ describe('applyStateQuery update mode', () => {
       makeRig({ state: { ...emptyState(), updateMode: 'off' } }).deps,
     );
     expect(snapshot.updateMode).toBe('off');
+    expect(snapshot.v1Upgrade.proactiveAllowed).toBe(false);
+    expect(snapshot.v1Upgrade.availableVersion).toBeNull();
+  });
+
+  test('includes the live v1Upgrade snapshot when supplied by the updater', async () => {
+    const rig = makeRig();
+    const v1Upgrade = {
+      availableVersion: '1.0.0',
+      proactiveAllowed: true,
+      toastDismissed: false,
+      canInstallInApp: true,
+      autoInstallOnAppQuit: true,
+      phase: 'idle' as const,
+      progressPercent: null,
+      errorCode: null,
+      okignoreProjects: ['handbook'],
+      hasGitProjects: true,
+      manualDownloadUrl: 'https://openknowledge.ai/download',
+      migrationGuideUrl: 'https://openknowledge.ai/updates/v1-guide',
+      releaseNotesUrl: 'https://openknowledge.ai/updates/v1-notes',
+    };
+    rig.deps.getV1UpgradeSnapshot = () => v1Upgrade;
+
+    const snapshot = await applyStateQuery(rig.deps);
+    expect(snapshot.v1Upgrade).toEqual(v1Upgrade);
   });
 });

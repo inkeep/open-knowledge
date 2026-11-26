@@ -58,6 +58,7 @@ import type {
   OkUpdateStuckHintInfo,
   OkUserConfigPatchResult,
   OkUserConfigSnapshot,
+  OkV1UpgradeSnapshot,
   OkWhatsNewInfo,
 } from '../shared/bridge-contract.ts';
 import {
@@ -438,6 +439,13 @@ const bridge: OkDesktopBridge = {
     return () => ipcRenderer.removeListener('ok:update:manual-check', listener);
   },
 
+  onV1UpgradeChanged(cb: (info: OkV1UpgradeSnapshot) => void) {
+    const listener = (_event: IpcRendererEvent, info: OkV1UpgradeSnapshot) => cb(info);
+    // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
+    ipcRenderer.on('ok:update:v1-upgrade', listener);
+    return () => ipcRenderer.removeListener('ok:update:v1-upgrade', listener);
+  },
+
   onDeepLink(cb: (evt: OkDeepLinkPayload) => void) {
     const listener = (_event: IpcRendererEvent, evt: OkDeepLinkPayload) => cb(evt);
     // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
@@ -727,6 +735,16 @@ const bridge: OkDesktopBridge = {
       if (result.kind === 'set-mode' && !result.ok) {
         throw new Error(`ok:update:dispatch: set-mode refused (${result.reason})`);
       }
+    },
+    dismissV1Toast: async () => {
+      await dispatchUpdate({ kind: 'dismiss-v1-toast' });
+    },
+    optInV1Upgrade: async () => {
+      const result = await dispatchUpdate({ kind: 'opt-in-v1-upgrade' });
+      if (result.kind !== 'opt-in-v1-upgrade') {
+        throw new Error(`ok:update:dispatch: expected opt-in-v1-upgrade, got ${result.kind}`);
+      }
+      return result.ok ? { ok: true } : { ok: false, reason: result.reason };
     },
   },
 

@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
+import { V1UpgradeAboutCard } from '@/components/V1UpgradeNotice';
 import type { OkAboutInfo, OkUpdateMode } from '@/lib/desktop-bridge-types';
+import { applyV1UpgradeSnapshot } from '@/lib/v1-upgrade-store';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 const UNAVAILABLE_REREAD_INTERVAL_MS = 3000;
@@ -45,6 +47,7 @@ export function AboutSection() {
           if (cancelled || read !== reads.latest || !snapshot.about) return;
           setAbout(snapshot.about);
           if (modeWrites.current === modeWritesAtRead) setUpdateMode(snapshot.updateMode ?? null);
+          if (snapshot.v1Upgrade) applyV1UpgradeSnapshot(snapshot.v1Upgrade);
           if (snapshot.about.updateChecks === 'unavailable') scheduleReread();
         })
         .catch((err: unknown) => {
@@ -152,6 +155,7 @@ export function AboutSection() {
             </Button>
           </div>
         ) : null}
+        <V1UpgradeAboutCard />
         {updatesUnavailable ? (
           <p className="text-1sm text-muted-foreground">
             <Trans>Automatic updates are not available right now.</Trans>

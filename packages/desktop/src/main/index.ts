@@ -5546,6 +5546,7 @@ function registerIpcHandlers() {
     getAppVersion: () => app.getVersion(),
     variant: DESKTOP_VARIANT,
     isUpdaterRunning: () => autoUpdaterHandle != null,
+    getV1UpgradeSnapshot: () => autoUpdaterHandle?.getV1UpgradeSnapshot(),
   });
   handle('ok:state:reset-incompatible', async () => applyResetIncompatible(updateStateDeps()));
   handle('ok:state:query', async () => applyStateQuery(updateStateDeps()));
@@ -7066,6 +7067,15 @@ function bootPrimaryInstance(): void {
               title: "Couldn't Download the Update",
               message: `OpenKnowledge ${result.latestVersion} couldn't be downloaded.`,
               detail: result.message,
+            });
+          } else if (result.kind === 'v1-upgrade-in-progress') {
+            void dialog.showMessageBox(target, {
+              type: 'info',
+              buttons: ['OK'],
+              defaultId: 0,
+              title: 'OpenKnowledge 1.0 Download in Progress',
+              message: 'OpenKnowledge 1.0 is already downloading.',
+              detail: 'Open the OpenKnowledge 1.0 upgrade dialog to check download progress.',
             });
           } else if (result.kind === 'error') {
             void dialog.showMessageBox(target, {

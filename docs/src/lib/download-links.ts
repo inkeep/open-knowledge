@@ -204,20 +204,12 @@ function matchingAssetUrl(
   return asset?.browser_download_url ?? null;
 }
 
-export function pickLatestReleaseAssetUrl(
-  payload: unknown,
+function pickLatestFromParsedReleases(
+  releases: readonly z.infer<typeof releaseSchema>[],
   channel: ReleaseChannel,
 ): string | null {
-  const parsed = releasesSchema.safeParse(payload);
-  if (!parsed.success) {
-    console.warn(
-      `[download-links] releases payload failed schema validation: ${parsed.error.message}`,
-    );
-    return null;
-  }
-
   let best: { rank: PrereleaseRank; url: string } | null = null;
-  for (const release of parsed.data) {
+  for (const release of releases) {
     const url = matchingAssetUrl(release, channel);
     if (!url) continue;
     const rank = parseReleaseRank(release.tag_name, channel.tagPattern);
@@ -229,10 +221,26 @@ export function pickLatestReleaseAssetUrl(
   return best?.url ?? null;
 }
 
+export function pickLatestReleaseAssetUrl(
+  payload: unknown,
+  channel: ReleaseChannel,
+): string | null {
+  const parsed = releasesSchema.safeParse(payload);
+  if (!parsed.success) {
+    console.warn(
+      `[download-links] releases payload failed schema validation: ${parsed.error.message}`,
+    );
+    return null;
+  }
+  return pickLatestFromParsedReleases(parsed.data, channel);
+}
+
 export type PrereleaseRedirect =
   | { kind: 'fresh' | 'cached'; url: string }
   | { kind: 'stale-lkg'; url: string; refreshError: string }
-  | { kind: 'fallback'; url: string; cause: string };
+  | { kind: 'fallback'; url: string; cause: string; notPublished?: boolean };
+
+class NoPublishedReleaseError extends Error {}
 
 function describeError(err: unknown): string {
   if (!(err instanceof Error)) return String(err);
@@ -351,7 +359,7 @@ async function findLatestAssetUrlViaMatchingRefs(
     console.warn(
       `[download-links] matching-refs payload failed schema validation: ${parsedRefs.error.message}`,
     );
-    return { url: null, checkedTags: 0 };
+    throw new Error(`matching-refs payload failed schema validation: ${parsedRefs.error.message}`);
   }
 
   const candidates: Array<{ tag: string; rank: PrereleaseRank }> = [];
@@ -404,9 +412,16 @@ async function findLatestReleaseAssetUrl(
   let exhaustedAllPages = true;
   for (let page = 1; page <= MAX_RELEASE_PAGES; page++) {
     const payload = await getPage(page);
-    const url = pickLatestReleaseAssetUrl(payload, channel);
+    const parsed = releasesSchema.safeParse(payload);
+    if (!parsed.success) {
+      console.warn(
+        `[download-links] releases payload failed schema validation: ${parsed.error.message}`,
+      );
+      throw new Error(`releases payload failed schema validation: ${parsed.error.message}`);
+    }
+    const url = pickLatestFromParsedReleases(parsed.data, channel);
     if (url) return url;
-    if (!Array.isArray(payload) || payload.length < RELEASES_PER_PAGE) {
+    if (parsed.data.length < RELEASES_PER_PAGE) {
       exhaustedAllPages = false;
       break;
     }
@@ -414,11 +429,11 @@ async function findLatestReleaseAssetUrl(
   if (exhaustedAllPages && channel.tagRefPrefix) {
     const fallback = await findLatestAssetUrlViaMatchingRefs(fetchImpl, channel);
     if (fallback.url) return fallback.url;
-    throw new Error(
+    throw new NoPublishedReleaseError(
       `no published ${channel.name} release carries ${channel.assetName} in the newest ${MAX_RELEASE_PAGES * RELEASES_PER_PAGE} releases or via ${channel.tagRefPrefix} tag lookup (${fallback.checkedTags} matching tag(s) checked)`,
     );
   }
-  throw new Error(
+  throw new NoPublishedReleaseError(
     `no published ${channel.name} release carries ${channel.assetName} in the newest ${MAX_RELEASE_PAGES * RELEASES_PER_PAGE} releases`,
   );
 }
@@ -436,12 +451,17 @@ function createReleaseResolver(
     ? (page: number) => pageCache.getPage(page)
     : (page: number) => fetchReleasesPage(fetchImpl, page);
   let lkg: { url: string; fetchedAt: number } | null = null;
-  let miss: { refreshError: string; checkedAt: number } | null = null;
+  let miss: { refreshError: string; checkedAt: number; notPublished: boolean } | null = null;
   let refreshing: Promise<PrereleaseRedirect> | null = null;
 
-  function afterMiss(refreshError: string): PrereleaseRedirect {
+  function afterMiss(refreshError: string, notPublished: boolean): PrereleaseRedirect {
     if (lkg) return { kind: 'stale-lkg', url: lkg.url, refreshError };
-    return { kind: 'fallback', url: RELEASES_PAGE_URL, cause: refreshError };
+    return {
+      kind: 'fallback',
+      url: RELEASES_PAGE_URL,
+      cause: refreshError,
+      ...(notPublished ? { notPublished: true } : {}),
+    };
   }
 
   async function refresh(): Promise<PrereleaseRedirect> {
@@ -451,8 +471,12 @@ function createReleaseResolver(
       miss = null;
       return { kind: 'fresh', url };
     } catch (err) {
-      miss = { refreshError: describeError(err), checkedAt: now() };
-      return afterMiss(miss.refreshError);
+      miss = {
+        refreshError: describeError(err),
+        checkedAt: now(),
+        notPublished: err instanceof NoPublishedReleaseError,
+      };
+      return afterMiss(miss.refreshError, miss.notPublished);
     }
   }
 
@@ -461,7 +485,7 @@ function createReleaseResolver(
       return { kind: 'cached', url: lkg.url };
     }
     if (miss && now() - miss.checkedAt < LKG_TTL_MS) {
-      return afterMiss(miss.refreshError);
+      return afterMiss(miss.refreshError, miss.notPublished);
     }
     refreshing ??= refresh().finally(() => {
       refreshing = null;

@@ -43,6 +43,9 @@ msgstr ".myteam/skills"
 msgid ".ok folders"
 msgstr ".ok 文件夹"
 
+msgid ".okignore is removed in 1.0"
+msgstr "1.0 中已移除 .okignore"
+
 msgid "\"{0}\""
 msgstr "“{0}”"
 
@@ -892,6 +895,15 @@ msgstr "<0>{cliCommand}</0> 在你稍后从“文件”菜单添加之前，无�
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> 无法在这里合并。请选择要保留的版本。"
 
+msgid "<0>Built-in Git sync is replaced by Cloud brains.</0>"
+msgstr "<0>内置 Git 同步已由云端大脑取代。</0>"
+
+msgid "<0>Built-in Git sync is replaced by Cloud brains</0> — commit or save local Git edits before switching."
+msgstr "<0>内置 Git 同步已由云端大脑取代</0> — 切换前请先提交或保存本地 Git 更改。"
+
+msgid "<0>CLI renamed</0> — <1>ok</1> becomes <2>open-knowledge</2>."
+msgstr "<0>CLI 已更名</0> — <1>ok</1> 变为 <2>open-knowledge</2>。"
+
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>name</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>镜像——请选择一个来源。</0>在属性面板中设置 <1>src</1> + <2>name</2>，指向别处的 <3><MirrorSource></3>。"
 
@@ -900,6 +912,9 @@ msgstr "<0>找不到镜像名称。</0><2>{src}</2> 中不存在 <1>{mirrorSourc
 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>镜像来源已被移除。</0>文档 <1>{src}</1> 已不可用。"
+
+msgid "<0>Settings and recents start fresh</0> — your Markdown files stay untouched on disk."
+msgstr "<0>设置和最近列表将重新开始</0> — 磁盘上的 Markdown 文件保持不变。"
 
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
 msgstr "<0>空格</0>跳跃 · <1>↓</1>下蹲"
@@ -924,6 +939,9 @@ msgstr "1 小时"
 
 msgid "1 minute"
 msgstr "1 分钟"
+
+msgid "1.0 available"
+msgstr "1.0 可用"
 
 msgid "15 minutes"
 msgstr "15 分钟"
@@ -1510,6 +1528,12 @@ msgstr "另一个程序正在这里使用 Git——等它完成后再同步一�
 
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "另一个同步操作正在进行中。请稍后再试。"
+
+msgid "Another update check is already running. Try again in a moment."
+msgstr "另一项更新检查正在运行，请稍后再试。"
+
+msgid "Another update is already ready to install. Restart first, then upgrade to 1.0."
+msgstr "另一个更新已准备好安装。请先重启，再升级到 1.0。"
 
 msgid "any"
 msgstr "任意"
@@ -2142,6 +2166,9 @@ msgstr "正在检查 GitHub 连接…"
 msgid "Checking links"
 msgstr "正在检查链接"
 
+msgid "Checking OpenKnowledge 1.0"
+msgstr "正在检查 OpenKnowledge 1.0"
+
 msgid "Checking out files"
 msgstr "正在检出文件"
 
@@ -2398,6 +2425,15 @@ msgstr "关闭窗口"
 msgctxt "GitHub pull request or issue state"
 msgid "Closed"
 msgstr "已关闭"
+
+msgid "Cloud brains and a rebuilt local workspace."
+msgstr "云端大脑与重构的本地工作区。"
+
+msgid "Cloud brains and a rebuilt local workspace. Nothing downloads until you confirm, and your Markdown files stay untouched on disk."
+msgstr "云端大脑与重构的本地工作区。在您确认之前不会下载任何内容，磁盘上的 Markdown 文件也将保持不变。"
+
+msgid "Cloud brains and a rebuilt local workspace. Upgrading is optional."
+msgstr "云端大脑与重构的本地工作区。升级为可选项。"
 
 msgid "Clusters"
 msgstr "聚类"
@@ -3010,6 +3046,9 @@ msgstr "无法删除此主题。请刷新后重试。"
 msgid "Couldn't disconnect — please try again."
 msgstr "无法断开连接——请重试。"
 
+msgid "Couldn't download OpenKnowledge 1.0. Try again or download it manually."
+msgstr "无法下载 OpenKnowledge 1.0。请重试或手动下载。"
+
 msgid "Couldn't duplicate \"{0}\": {1}"
 msgstr "无法复制 \"{0}\"：{1}"
 
@@ -3235,6 +3274,9 @@ msgstr "无法重启服务器。请在此文件夹中运行 {cliCommand} start �
 msgid "Couldn't restart the server. Try `{cliCommand} start` in this folder."
 msgstr "无法重启服务器。请在这个文件夹中尝试 `{cliCommand} start`。"
 
+msgid "Couldn't restart to install OpenKnowledge 1.0. Download it manually or quit and reopen the app."
+msgstr "无法重启以安装 OpenKnowledge 1.0。请手动下载，或退出后重新打开应用。"
+
 msgid "Couldn’t restore {0}. That name is already in use."
 msgstr "无法恢复 {0}。该名称已被使用。"
 
@@ -3291,6 +3333,9 @@ msgstr "无法发送你的提示词——请重试。"
 
 msgid "Couldn't start Slidev."
 msgstr "无法启动 Slidev。"
+
+msgid "Couldn't start the 1.0 download."
+msgstr "无法开始下载 1.0。"
 
 msgid "Couldn't start the agent thread — please try again."
 msgstr "无法启动智能体线程——请重试。"
@@ -3687,6 +3732,9 @@ msgstr "详情"
 msgid "Detected in {0}"
 msgstr "在 {0} 中检测到"
 
+msgid "Detected in {okignoreList}. Move private exclusions to .gitignore or .git/info/exclude before opening these folders in 1.0."
+msgstr "在 {okignoreList} 中检测到。在 1.0 中打开这些文件夹之前，请将私密排除规则移至 .gitignore 或 .git/info/exclude。"
+
 msgid "Detected OpenKnowledge projects"
 msgstr "检测到的 OpenKnowledge 项目"
 
@@ -3764,6 +3812,9 @@ msgstr "忽略"
 
 msgid "Dismiss notice"
 msgstr "忽略此提示"
+
+msgid "Dismiss OpenKnowledge 1.0 notice"
+msgstr "关闭 OpenKnowledge 1.0 通知"
 
 msgid "Display text"
 msgstr "显示文本"
@@ -3852,6 +3903,12 @@ msgstr "双击进行编辑"
 msgid "Download {0}"
 msgstr "下载 {0}"
 
+msgid "Download & Upgrade to 1.0"
+msgstr "下载并升级到 1.0"
+
+msgid "Download 1.0"
+msgstr "下载 1.0"
+
 msgid "Download and install updates automatically"
 msgstr "自动下载并安装更新"
 
@@ -3861,11 +3918,20 @@ msgstr "下载应用"
 msgid "Download file"
 msgstr "下载文件"
 
+msgid "Download manually"
+msgstr "手动下载"
+
 msgid "Download started"
 msgstr "下载已开始"
 
+msgid "Downloading"
+msgstr "正在下载"
+
 msgid "Downloading {0} {1}…"
 msgstr "正在下载 {0} {1}…"
+
+msgid "Downloading OpenKnowledge 1.0"
+msgstr "正在下载 OpenKnowledge 1.0"
 
 msgid "Downloads a fresh copy from GitHub."
 msgstr "从 GitHub 下载一份全新的副本。"
@@ -5326,6 +5392,9 @@ msgstr "我本地已经有了 →"
 msgid "I'm switching to another tool"
 msgstr "我要换用另一个工具"
 
+msgid "I've reviewed my .okignore exclusions"
+msgstr "我已检查我的 .okignore 排除规则"
+
 msgid "Icon picker"
 msgstr "图标选择器"
 
@@ -6293,6 +6362,9 @@ msgstr "给 {agentName} 发消息"
 
 msgid "Message not sent: {0}"
 msgstr "消息未发送：{0}"
+
+msgid "Migration guide"
+msgstr "迁移指南"
 
 msgid "Minimize"
 msgstr "最小化"
@@ -7538,6 +7610,18 @@ msgstr "正在打开…"
 
 msgid "OpenKnowledge"
 msgstr "OpenKnowledge"
+
+msgid "OpenKnowledge 1.0 is currently unavailable for in-app download."
+msgstr "OpenKnowledge 1.0 目前无法在应用内下载。"
+
+msgid "OpenKnowledge 1.0 is downloaded and ready to install."
+msgstr "OpenKnowledge 1.0 已下载，准备就绪可以安装。"
+
+msgid "OpenKnowledge 1.0 is downloaded. It installs when you restart now or the next time you quit."
+msgstr "OpenKnowledge 1.0 已下载。现在重启或下次退出应用时将会安装。"
+
+msgid "OpenKnowledge 1.0 is ready"
+msgstr "OpenKnowledge 1.0 已就绪"
 
 msgid "OpenKnowledge can't sign in to GitHub for this project."
 msgstr "OpenKnowledge 无法为此项目登录 GitHub。"
@@ -8908,6 +8992,9 @@ msgstr "正在解析差异"
 msgid "Resources"
 msgstr "资源"
 
+msgid "Restart & Install 1.0"
+msgstr "重启并安装 1.0"
+
 msgid "Restart server"
 msgstr "重启服务器"
 
@@ -8916,6 +9003,9 @@ msgstr "重启终端"
 
 msgid "Restart this terminal session to use the newly installed OpenKnowledge tools."
 msgstr "请重启此终端会话，以使用新安装的 OpenKnowledge 工具。"
+
+msgid "Restart to finish 1.0"
+msgstr "重启以完成 1.0 升级"
 
 msgid "Restart with this app's version"
 msgstr "用这个应用的版本重启"
@@ -8983,6 +9073,9 @@ msgstr "正在恢复对话"
 msgid "Retrieving…"
 msgstr "正在检索…"
 
+msgid "Retry"
+msgstr "重试"
+
 msgid "Retry push"
 msgstr "重试推送"
 
@@ -9024,6 +9117,12 @@ msgstr "正在还原"
 
 msgid "Review"
 msgstr "查看"
+
+msgid "Review .okignore before upgrading"
+msgstr "升级前请检查 .okignore"
+
+msgid "Review 1.0"
+msgstr "查看 1.0"
 
 msgid "Review your report"
 msgstr "检查你的报告"
@@ -10819,6 +10918,9 @@ msgstr "未找到 .ok/local/config.yml 中指定的 terminal.shell 可执行文�
 msgid "The token needs the repo and read:user scopes."
 msgstr "这个令牌需要 repo 和 read:user 权限范围。"
 
+msgid "The update feed did not offer a matching OpenKnowledge 1.0 build, so nothing was installed. Download it manually from openknowledge.ai/download."
+msgstr "更新源未提供匹配的 OpenKnowledge 1.0 构建，因此未安装任何内容。请从 openknowledge.ai/download 手动下载。"
+
 msgid "The username git sends with the token. Some hosts expect a fixed value: type <0>x-bitbucket-api-token-auth</0> for a Bitbucket API token, <1>x-token-auth</1> for a Bitbucket repository or workspace access token, or <2>oauth2</2> for GitLab. For Gitea, use your Gitea username. Azure DevOps accepts any value."
 msgstr "git 随令牌一起发送的用户名。有些主机要求填写固定值：Bitbucket API 令牌填 <0>x-bitbucket-api-token-auth</0>，Bitbucket 仓库或工作区访问令牌填 <1>x-token-auth</1>，GitLab 填 <2>oauth2</2>。Gitea 请填你的 Gitea 用户名。Azure DevOps 可填任意值。"
 
@@ -11278,6 +11380,9 @@ msgstr "此工作树已不可用。"
 msgid "Tidying up…"
 msgstr "正在收拾…"
 
+msgid "Timed out checking for OpenKnowledge 1.0. Try again or download it manually."
+msgstr "检查 OpenKnowledge 1.0 超时。请重试或手动下载。"
+
 msgid "Timeline"
 msgstr "时间线"
 
@@ -11705,6 +11810,9 @@ msgstr "来源的更新会自动应用（除非在本地编辑过）"
 msgid "Updating"
 msgstr "正在更新"
 
+msgid "Upgrade to OpenKnowledge 1.0"
+msgstr "升级到 OpenKnowledge 1.0"
+
 msgid "Upload"
 msgstr "上传"
 
@@ -11966,6 +12074,9 @@ msgstr "我们已经把它提交给团队，并附上了你的日志。"
 
 msgid "Welcome to OpenKnowledge"
 msgstr "欢迎使用 OpenKnowledge"
+
+msgid "What changes"
+msgstr "变更内容"
 
 #. Button on each setup row that opens the list of files that row writes to
 msgid "What changes?"
