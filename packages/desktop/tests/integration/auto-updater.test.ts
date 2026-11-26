@@ -1267,6 +1267,105 @@ describe('cross-channel veto on update-available', () => {
   });
 });
 
+describe('major-version veto on update-available', () => {
+  test('0.89.18 accepts same-major patch and minor offers (0.89.19, 0.90.0)', () => {
+    const patch = makeRig({ appVersion: '0.89.18' });
+    patch.rig.updater.emit('update-available', { version: '0.89.19' });
+    expect(patch.rig.updater.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(patch.rig.dispatches).not.toContain('major-version-blocked' as DispatchKind);
+
+    const minor = makeRig({ appVersion: '0.89.18' });
+    minor.rig.updater.emit('update-available', { version: '0.90.0' });
+    expect(minor.rig.updater.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(minor.rig.dispatches).not.toContain('major-version-blocked' as DispatchKind);
+  });
+
+  test('0.89.18 rejects 1.0.0 without downloading and records the check as successful', () => {
+    const priorCheckAt = '2026-05-01T00:00:00.000Z';
+    const { rig } = makeRig({
+      appVersion: '0.89.18',
+      lastSuccessfulCheckAt: priorCheckAt,
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+    });
+    rig.updater.emit('update-available', { version: '1.0.0' });
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(rig.updater.requestHeaders).toEqual({
+      'x-ok-from-version': '0.89.18',
+      'x-ok-channel': 'stable',
+    });
+    expect(rig.state.lastSuccessfulCheckAt).toBe(rig.now.toISOString());
+    expect(rig.dispatches).toContain('major-version-blocked' as DispatchKind);
+    expect(rig.dispatches).toContain('check-success' as DispatchKind);
+  });
+
+  test('0.89.18 rejects 1.0.0-beta.0 without downloading', () => {
+    const { rig } = makeRig({ appVersion: '0.89.18' });
+    rig.updater.emit('update-available', { version: '1.0.0-beta.0' });
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(rig.dispatches).toContain('cross-channel-blocked' as DispatchKind);
+  });
+
+  test('0.89.18-beta.0 accepts same-major beta and rejects 1.0.0-beta.0', () => {
+    const sameMajor = makeRig({ appVersion: '0.89.18-beta.0' });
+    sameMajor.rig.updater.emit('update-available', { version: '0.89.19-beta.0' });
+    expect(sameMajor.rig.updater.downloadUpdate).toHaveBeenCalledTimes(1);
+
+    const nextMajor = makeRig({ appVersion: '0.89.18-beta.0' });
+    nextMajor.rig.updater.emit('update-available', { version: '1.0.0-beta.0' });
+    expect(nextMajor.rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(nextMajor.rig.dispatches).toContain('major-version-blocked' as DispatchKind);
+  });
+
+  test('menu-driven check: major-version offer remaps to not-available without downloading', () => {
+    const showCheckNowResult = vi.fn(() => {});
+    const { rig } = makeRig({ appVersion: '0.89.18', showCheckNowResult });
+    rig.ipc.invoke('ok:update:dispatch', { kind: 'check-now' });
+    rig.updater.emit('update-available', { version: '1.0.0' });
+    expect(showCheckNowResult).toHaveBeenCalledWith({
+      kind: 'not-available',
+      currentVersion: '0.89.18',
+    });
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+  });
+
+  test('transient proxy 503 fallback to GitHub feed still vetoes a 1.0.0 offer on 0.89.18', async () => {
+    const showCheckNowResult = vi.fn(() => {});
+    const { rig, handle } = makeRig({
+      appVersion: '0.89.18',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      showCheckNowResult,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    rig.updater.checkForUpdates.mockImplementation(() => {
+      const feed = rig.updater.setFeedURL.mock.calls.at(-1)?.[0];
+      if (typeof feed === 'object' && feed.provider === 'generic') {
+        return rejectAfterErrorEvent(
+          rig.updater,
+          Object.assign(new Error('proxy unavailable'), { code: 'HTTP_ERROR_503' }),
+        );
+      }
+      rig.updater.emit('update-available', { version: '1.0.0' });
+      return Promise.resolve(undefined);
+    });
+
+    await handle.checkForUpdatesNow().catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(rig.updater.setFeedURL).toHaveBeenLastCalledWith({
+      provider: 'github',
+      owner: 'inkeep',
+      repo: 'open-knowledge',
+    });
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(rig.dispatches).toContain('major-version-blocked' as DispatchKind);
+    expect(showCheckNowResult).toHaveBeenCalledWith({
+      kind: 'not-available',
+      currentVersion: '0.89.18',
+    });
+  });
+});
+
 describe('schemaVersion boot-incompatibility check (US-007 AC5)', () => {
   test('persisted schemaVersion > MAX_SUPPORTED → incompatible diagnostic', () => {
     const persisted = { ...emptyState(), schemaVersion: 999 };

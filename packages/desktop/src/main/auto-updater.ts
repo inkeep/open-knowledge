@@ -89,6 +89,7 @@ export type DispatchKind =
   | 'install-failed-giveup'
   | 'attempted-install-cross-channel'
   | 'cross-channel-blocked'
+  | 'major-version-blocked'
   | 'staged-cache-reclaimed'
   | 'linux-manual-fallback-no-auth'
   | 'linux-manual-fallback-after-error'
@@ -280,6 +281,14 @@ export function channelFromVersion(version: string): UpdateChannel {
   const match = /^\d+\.\d+\.\d+(?:-([\w.-]+))?$/.exec(stripped);
   if (!match) return 'latest';
   return match[1] ? 'beta' : 'latest';
+}
+
+export function majorFromVersion(version: string): number | null {
+  if (typeof version !== 'string' || version === '') return null;
+  const stripped = version.split('+', 1)[0] ?? version;
+  const match = /^(\d+)\.\d+\.\d+(?:-[\w.-]+)?$/.exec(stripped);
+  if (!match) return null;
+  return Number(match[1]);
 }
 
 export function buildCheckNowResultFromError(err: unknown, currentVersion: string): CheckNowResult {
@@ -1007,13 +1016,19 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
 
   const classifyOffer = (
     offeredVersion: string | undefined,
-  ): 'same-channel' | 'empty-version' | 'channel-mismatch' => {
+  ): 'same-channel' | 'empty-version' | 'channel-mismatch' | 'major-mismatch' => {
     if (typeof offeredVersion !== 'string' || offeredVersion === '') {
       return 'empty-version';
     }
-    return channelFromVersion(offeredVersion) === buildChannel
-      ? 'same-channel'
-      : 'channel-mismatch';
+    if (channelFromVersion(offeredVersion) !== buildChannel) {
+      return 'channel-mismatch';
+    }
+    const currentMajor = majorFromVersion(appVersion);
+    const offeredMajor = majorFromVersion(offeredVersion);
+    if (currentMajor !== null && offeredMajor !== null && offeredMajor > currentMajor) {
+      return 'major-mismatch';
+    }
+    return 'same-channel';
   };
 
   const reportedDownloadFailures = new WeakSet<Promise<unknown>>();
@@ -1026,6 +1041,18 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     }
   };
 
+  const vetoDispatchKind = (
+    reason: 'empty-version' | 'channel-mismatch' | 'major-mismatch',
+  ): DispatchKind => {
+    switch (reason) {
+      case 'major-mismatch':
+        return 'major-version-blocked';
+      case 'empty-version':
+      case 'channel-mismatch':
+        return 'cross-channel-blocked';
+    }
+  };
+
   const onUpdateAvailable = (info: { version?: string }): void => {
     logger.info('update-available', { version: info.version });
     const offeredVersion = info.version;
@@ -1034,13 +1061,14 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       logger.warn('update-available vetoed', {
         reason: offerClass,
         buildChannel,
+        appVersion,
         offeredVersion: info.version,
         offeredChannel:
           offerClass === 'channel-mismatch' ? channelFromVersion(info.version ?? '') : null,
       });
       markCheckSucceeded();
       settleCheckWaiters('settled');
-      onDispatch?.('cross-channel-blocked');
+      onDispatch?.(vetoDispatchKind(offerClass));
       return;
     }
     markCheckSucceeded();
