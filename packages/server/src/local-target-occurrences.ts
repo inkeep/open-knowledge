@@ -301,7 +301,7 @@ function scanLine(ctx: ScanContext, line: string): void {
   }
 }
 
-const REFERENCE_HEADER_ONLY_RE = /^( {0,3}\[([^\]\n]+)\]:)[ \t]*$/;
+const REFERENCE_HEADER_ONLY_RE = /^( {0,3}\[(?!\^)([^\]\n]+)\]:)[ \t]*$/;
 const REFERENCE_DESTINATION_CONTINUATION_RE =
   /^([ \t]*)(<[^>\n]*>|[^\s\n]+)((?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?)[ \t]*$/;
 const REFERENCE_TITLE_ONLY_RE = /^[ \t]*(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\))[ \t]*$/;
